@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  input[type='text'],
+  input[type='email'],
+  input[type='number'],
+  input[type='date'],
+  input[type='tel'],
+  textarea,
+  select {
+    @apply py-1 px-2.5 text-sm;
+  }
+
+  label {
+    @apply mb-0.5 text-sm;
+  }
+
+  .form-group {
+    @apply mb-2.5;
+  }
+
+  /* Compact table styling */
+  table {
+    @apply text-sm;
+  }
+
+  table thead th {
+    @apply px-4 py-2 text-xs;
+  }
+
+  table tbody td {
+    @apply px-4 py-2.5 text-sm;
+  }
+
+  /* Compact badges and pills */
+  .badge,
+  [class*="rounded-full"][class*="px-"],
+  [class*="bg-"][class*="text-xs"] {
+    @apply px-2 py-0.5 text-xs leading-tight;
+  }
+
+  /* Compact cards */
+  .card, .bg-white.rounded-lg {
+    @apply p-4;
+  }
+
+  /* Compact spacing */
+  .space-y-6 > * + * {
+    margin-top: 1rem !important;
+  }
+
+  .space-y-4 > * + * {
+    margin-top: 0.75rem !important;
+  }
+
+  /* Compact buttons */
+  button:not(.no-compact) {
+    @apply py-1.5 px-3 text-sm;
+  }
+
+  .email-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .email-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+    border: 2px solid #d1d5db;
+  }
+
+  .email-content th,
+  .email-content td {
+    border: 1px solid #d1d5db;
+    padding: 10px 12px;
+    text-align: left;
+  }
+
+  .email-content th {
+    background-color: #f3f4f6;
+    font-weight: 600;
+    color: #111827;
+  }
+
+  .email-content td {
+    background-color: #ffffff;
+    color: #374151;
+  }
+
+  .email-content tr:hover td {
+    background-color: #f9fafb;
+  }
+}
