@@ -322,8 +322,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
       if (newSet.has(id)) {
         newSet.delete(id);
       } else {
-        newSet.clear(); // Only allow single selection
-        newSet.add(id);
+        newSet.add(id); // Allow multiple selections
       }
       return newSet;
     });
@@ -472,6 +471,32 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
     }
   };
 
+  const handleDeleteSelected = async () => {
+    if (selectedRows.size === 0) return;
+
+    const count = selectedRows.size;
+    if (!confirm(`Are you sure you want to delete ${count} selected ${count === 1 ? 'inquiry' : 'inquiries'}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const idsToDelete = Array.from(selectedRows);
+      const { error } = await supabase
+        .from('crm_inquiries')
+        .delete()
+        .in('id', idsToDelete);
+
+      if (error) throw error;
+
+      setSelectedRows(new Set());
+      alert(`Successfully deleted ${count} ${count === 1 ? 'inquiry' : 'inquiries'}`);
+      onRefresh();
+    } catch (error) {
+      console.error('Error deleting inquiries:', error);
+      alert('Failed to delete inquiries. Please try again.');
+    }
+  };
+
   const handleScheduleFollowUp = () => {
     setFollowUpModalOpen(true);
   };
@@ -581,6 +606,14 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
               >
                 <CheckSquare className="w-4 h-4" />
                 Create Task
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+                title="Delete Selected"
+              >
+                <X className="w-4 h-4" />
+                Delete
               </button>
               <button
                 onClick={() => setSelectedRows(new Set())}
@@ -1106,8 +1139,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
                       <td className="px-3 py-2 border-r border-gray-200">
                         {editingCell?.id === inquiry.id && editingCell?.field === 'purchase_price' ? (
                           <input
-                            type="number"
-                            step="0.01"
+                            type="text"
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onBlur={saveEdit}
@@ -1117,6 +1149,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
                             }}
                             className="w-full px-2 py-1 border-2 border-blue-500 rounded focus:outline-none text-xs"
                             autoFocus
+                            placeholder="Click to add"
                           />
                         ) : (
                           <div
@@ -1136,8 +1169,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
                     <td className="px-3 py-2 border-r border-gray-200">
                       {editingCell?.id === inquiry.id && editingCell?.field === 'offered_price' ? (
                         <input
-                          type="number"
-                          step="0.01"
+                          type="text"
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           onBlur={saveEdit}
@@ -1147,6 +1179,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
                           }}
                           className="w-full px-2 py-1 border-2 border-blue-500 rounded focus:outline-none text-xs"
                           autoFocus
+                          placeholder="Click to add"
                         />
                       ) : (
                         <div

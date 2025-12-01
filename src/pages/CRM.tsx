@@ -646,12 +646,11 @@ export function CRM() {
                         Purchase Price
                       </label>
                       <input
-                        type="number"
+                        type="text"
                         value={formData.purchase_price}
                         onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="0.00"
-                        step="0.01"
+                        placeholder="Click to add"
                       />
                     </div>
                     <div>
@@ -683,12 +682,11 @@ export function CRM() {
                       Price
                     </label>
                     <input
-                      type="number"
+                      type="text"
                       value={formData.offered_price}
                       onChange={(e) => setFormData({ ...formData, offered_price: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      placeholder="0.00"
-                      step="0.01"
+                      placeholder="Click to add"
                     />
                   </div>
                   <div>
