@@ -34,14 +34,11 @@ export function ReminderCalendar({ onReminderCreated }: ReminderCalendarProps) {
 
   useEffect(() => {
     loadReminders();
-  }, [currentDate]);
+  }, [currentDate, view]);
 
   const loadReminders = async () => {
     try {
-      const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-
-      const { data, error } = await supabase
+      let query = supabase
         .from('crm_reminders')
         .select(`
           *,
@@ -50,10 +47,17 @@ export function ReminderCalendar({ onReminderCreated }: ReminderCalendarProps) {
             company_name,
             product_name
           )
-        `)
-        .gte('due_date', startOfMonth.toISOString())
-        .lte('due_date', endOfMonth.toISOString())
-        .order('due_date', { ascending: true });
+        `);
+
+      if (view === 'month') {
+        const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+        const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+        query = query
+          .gte('due_date', startOfMonth.toISOString())
+          .lte('due_date', endOfMonth.toISOString());
+      }
+
+      const { data, error } = await query.order('due_date', { ascending: true });
 
       if (error) throw error;
       setReminders(data || []);
@@ -294,7 +298,14 @@ export function ReminderCalendar({ onReminderCreated }: ReminderCalendarProps) {
         {overdueReminders.length === 0 && todayReminders.length === 0 && upcomingReminders.length === 0 && (
           <div className="text-center py-12 text-gray-500">
             <Clock className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-            <p>No upcoming reminders</p>
+            {reminders.length === 0 ? (
+              <p>No reminders found. Create one using the quick actions!</p>
+            ) : (
+              <div>
+                <p className="font-medium">No upcoming reminders in the next 7 days</p>
+                <p className="text-sm mt-1">You have {reminders.length} reminder{reminders.length === 1 ? '' : 's'} total (all past or completed)</p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -351,16 +362,29 @@ export function ReminderCalendar({ onReminderCreated }: ReminderCalendarProps) {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
         </div>
       ) : view === 'month' ? (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="grid grid-cols-7 border-b border-gray-200">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-              <div key={day} className="p-2 text-center text-sm font-semibold text-gray-700 bg-gray-50">
-                {day}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {renderMonthView()}
+        <div className="space-y-2">
+          {reminders.length === 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+              <p className="font-medium">No reminders for {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+              <p className="text-xs mt-1">Use the arrows above to navigate to other months, or switch to "List" view to see all reminders.</p>
+            </div>
+          )}
+          {reminders.length > 0 && (
+            <div className="text-sm text-gray-600 px-2">
+              {reminders.length} reminder{reminders.length === 1 ? '' : 's'} in {currentDate.toLocaleDateString('en-US', { month: 'long' })}
+            </div>
+          )}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="grid grid-cols-7 border-b border-gray-200">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                <div key={day} className="p-2 text-center text-sm font-semibold text-gray-700 bg-gray-50">
+                  {day}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7">
+              {renderMonthView()}
+            </div>
           </div>
         </div>
       ) : (
