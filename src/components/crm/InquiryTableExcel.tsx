@@ -683,20 +683,20 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
           <button
             onClick={exportToExcel}
             disabled={exporting || filteredData.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
             title="Export to Excel (.xlsx)"
           >
-            <FileSpreadsheet className="w-4 h-4" />
-            {exporting ? 'Exporting...' : 'Export to Excel'}
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            {exporting ? 'Exporting...' : 'Export Excel'}
           </button>
           <button
             onClick={exportToCSV}
             disabled={exporting || filteredData.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
             title="Export to CSV for Google Sheets"
           >
-            <Download className="w-4 h-4" />
-            {exporting ? 'Exporting...' : 'Export to CSV'}
+            <Download className="w-3.5 h-3.5" />
+            {exporting ? 'Exporting...' : 'Export CSV'}
           </button>
 
           {canManage && (
@@ -704,14 +704,14 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
               <div className="w-px h-8 bg-gray-300 mx-2" />
               <button
                 onClick={downloadImportTemplate}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
                 title="Download Excel template for bulk import"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5" />
                 Download Template
               </button>
-              <label className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition text-sm font-medium cursor-pointer">
-                <FileSpreadsheet className="w-4 h-4" />
+              <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition cursor-pointer">
+                <FileSpreadsheet className="w-3.5 h-3.5" />
                 Import Excel
                 <input
                   type="file"
@@ -742,53 +742,53 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
             <div className="flex items-center gap-2">
               <button
                 onClick={handleSendQuote}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition"
               >
-                <Send className="w-4 h-4" />
-                Send Price Quote
+                <Send className="w-3.5 h-3.5" />
+                Send Price
               </button>
               <button
                 onClick={handleSendCOAMSDS}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 transition"
               >
-                <FileText className="w-4 h-4" />
+                <FileText className="w-3.5 h-3.5" />
                 Send COA/MSDS
               </button>
               <button
                 onClick={handleLogCall}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
               >
-                <Phone className="w-4 h-4" />
+                <Phone className="w-3.5 h-3.5" />
                 Log Call
               </button>
               <button
                 onClick={handleScheduleFollowUp}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition text-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
               >
-                <Calendar className="w-4 h-4" />
+                <Calendar className="w-3.5 h-3.5" />
                 Schedule Follow-up
               </button>
               <button
                 onClick={() => setCreateTaskModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
               >
-                <CheckSquare className="w-4 h-4" />
+                <CheckSquare className="w-3.5 h-3.5" />
                 Create Task
               </button>
               <button
                 onClick={handleDeleteSelected}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition"
                 title="Delete Selected"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
                 Delete
               </button>
               <button
                 onClick={() => setSelectedRows(new Set())}
-                className="p-2 text-gray-600 hover:bg-gray-200 rounded-lg transition"
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"
                 title="Deselect"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
