@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, X, Search } from 'lucide-react';
 
@@ -8,6 +8,8 @@ interface Customer {
   contact_person: string | null;
   email: string | null;
   phone: string | null;
+  mobile: string | null;
+  landline: string | null;
   country: string | null;
 }
 
@@ -25,6 +27,7 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
     product_name: initialData?.product_name || '',
@@ -61,6 +64,8 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
     contact_person: '',
     email: '',
     phone: '',
+    mobile: '',
+    landline: '',
     country: '',
     address: '',
   });
@@ -68,6 +73,22 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
   useEffect(() => {
     loadCustomers();
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+    };
+
+    if (showCustomerDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showCustomerDropdown]);
 
   useEffect(() => {
     if (customerSearch) {
@@ -83,8 +104,8 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
   const loadCustomers = async () => {
     try {
       const { data, error } = await supabase
-        .from('customers')
-        .select('id, company_name, contact_person, email, phone, country')
+        .from('crm_contacts')
+        .select('id, company_name, contact_person, email, phone, mobile, landline, country')
         .eq('is_active', true)
         .order('company_name');
 
@@ -120,7 +141,7 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
-        .from('customers')
+        .from('crm_contacts')
         .insert({
           ...newCustomer,
           is_active: true,
@@ -139,6 +160,8 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
         contact_person: '',
         email: '',
         phone: '',
+        mobile: '',
+        landline: '',
         country: '',
         address: '',
       });
@@ -275,7 +298,7 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
               placeholder="Supplier country"
             />
           </div>
-          <div className="relative">
+          <div ref={dropdownRef} className="relative">
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Customer <span className="text-red-500">*</span>
             </label>
@@ -656,17 +679,43 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
                   placeholder="email@example.com"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Phone
-                </label>
-                <input
-                  type="tel"
-                  value={newCustomer.phone}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
-                  className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="+62 xxx"
-                />
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Mobile
+                  </label>
+                  <input
+                    type="tel"
+                    value={newCustomer.mobile}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, mobile: e.target.value })}
+                    className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="+62 xxx"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Landline
+                  </label>
+                  <input
+                    type="tel"
+                    value={newCustomer.landline}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, landline: e.target.value })}
+                    className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="021-xxx"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Phone
+                  </label>
+                  <input
+                    type="tel"
+                    value={newCustomer.phone}
+                    onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
+                    className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Other"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">

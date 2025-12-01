@@ -10,6 +10,7 @@ import { ReminderCalendar } from '../components/crm/ReminderCalendar';
 import { PipelineBoard } from '../components/crm/PipelineBoard';
 import { EmailComposer } from '../components/crm/EmailComposer';
 import { CustomerDatabase } from '../components/crm/CustomerDatabase';
+import { CustomerDatabaseExcel } from '../components/crm/CustomerDatabaseExcel';
 import { ActivityLogger } from '../components/crm/ActivityLogger';
 import { AppointmentScheduler } from '../components/crm/AppointmentScheduler';
 import { ArchiveView } from '../components/crm/ArchiveView';
@@ -326,7 +327,7 @@ export function CRM() {
             )}
 
             {activeTab === 'customers' && (
-              <CustomerDatabase canManage={canManage} />
+              <CustomerDatabaseExcel />
             )}
 
             {activeTab === 'activities' && (
