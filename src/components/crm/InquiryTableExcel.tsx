@@ -203,7 +203,21 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
         'Supplier': inquiry.supplier_name || '-',
         'Country': inquiry.supplier_country || '-',
         'Company': inquiry.company_name,
-        'Status': statusOptions.find(s => s.value === inquiry.status)?.label || inquiry.status,
+        'Mail Subject': inquiry.mail_subject || '-',
+        'ACE ERP#': inquiry.aceerp_no || '-',
+        'Pipeline': pipelineStatusOptions.find(p => p.value === inquiry.pipeline_status)?.label || '-',
+        'Price Needed': inquiry.price_required ? 'Yes' : 'No',
+        'COA Needed': inquiry.coa_required ? 'Yes' : 'No',
+        'Sample Needed': inquiry.sample_required ? 'Yes' : 'No',
+        'Agency Letter Needed': inquiry.agency_letter_required ? 'Yes' : 'No',
+        'Price Sent': inquiry.price_sent_at ? 'Yes' : 'No',
+        'COA Sent': inquiry.coa_sent_at ? 'Yes' : 'No',
+        'Sample Sent': inquiry.sample_sent_at ? 'Yes' : 'No',
+        'Agency Letter Sent': inquiry.agency_letter_sent_at ? 'Yes' : 'No',
+        'Purchase Price': inquiry.purchase_price ? `${inquiry.purchase_price} ${inquiry.purchase_price_currency || 'USD'}` : '-',
+        'Offered Price': inquiry.offered_price ? `${inquiry.offered_price} ${inquiry.offered_price_currency || 'USD'}` : '-',
+        'Delivery Date': inquiry.delivery_date ? new Date(inquiry.delivery_date).toLocaleDateString('en-GB') : '-',
+        'Delivery Terms': inquiry.delivery_terms || '-',
         'Priority': priorityOptions.find(p => p.value === inquiry.priority)?.label || inquiry.priority,
         'Remarks': inquiry.remarks || '-',
       }));
@@ -212,7 +226,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
 
       // Set column widths
       ws['!cols'] = [
-        { wch: 12 },  // No.
+        { wch: 15 },  // No.
         { wch: 12 },  // Date
         { wch: 30 },  // Product
         { wch: 20 },  // Specification
@@ -220,7 +234,21 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
         { wch: 20 },  // Supplier
         { wch: 12 },  // Country
         { wch: 25 },  // Company
-        { wch: 15 },  // Status
+        { wch: 30 },  // Mail Subject
+        { wch: 12 },  // ACE ERP#
+        { wch: 15 },  // Pipeline
+        { wch: 13 },  // Price Needed
+        { wch: 12 },  // COA Needed
+        { wch: 15 },  // Sample Needed
+        { wch: 20 },  // Agency Letter Needed
+        { wch: 12 },  // Price Sent
+        { wch: 11 },  // COA Sent
+        { wch: 13 },  // Sample Sent
+        { wch: 19 },  // Agency Letter Sent
+        { wch: 18 },  // Purchase Price
+        { wch: 18 },  // Offered Price
+        { wch: 15 },  // Delivery Date
+        { wch: 18 },  // Delivery Terms
         { wch: 10 },  // Priority
         { wch: 30 },  // Remarks
       ];
@@ -257,7 +285,21 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
         'Supplier': inquiry.supplier_name || '-',
         'Country': inquiry.supplier_country || '-',
         'Company': inquiry.company_name,
-        'Status': statusOptions.find(s => s.value === inquiry.status)?.label || inquiry.status,
+        'Mail Subject': inquiry.mail_subject || '-',
+        'ACE ERP#': inquiry.aceerp_no || '-',
+        'Pipeline': pipelineStatusOptions.find(p => p.value === inquiry.pipeline_status)?.label || '-',
+        'Price Needed': inquiry.price_required ? 'Yes' : 'No',
+        'COA Needed': inquiry.coa_required ? 'Yes' : 'No',
+        'Sample Needed': inquiry.sample_required ? 'Yes' : 'No',
+        'Agency Letter Needed': inquiry.agency_letter_required ? 'Yes' : 'No',
+        'Price Sent': inquiry.price_sent_at ? 'Yes' : 'No',
+        'COA Sent': inquiry.coa_sent_at ? 'Yes' : 'No',
+        'Sample Sent': inquiry.sample_sent_at ? 'Yes' : 'No',
+        'Agency Letter Sent': inquiry.agency_letter_sent_at ? 'Yes' : 'No',
+        'Purchase Price': inquiry.purchase_price ? `${inquiry.purchase_price} ${inquiry.purchase_price_currency || 'USD'}` : '-',
+        'Offered Price': inquiry.offered_price ? `${inquiry.offered_price} ${inquiry.offered_price_currency || 'USD'}` : '-',
+        'Delivery Date': inquiry.delivery_date ? new Date(inquiry.delivery_date).toLocaleDateString('en-GB') : '-',
+        'Delivery Terms': inquiry.delivery_terms || '-',
         'Priority': priorityOptions.find(p => p.value === inquiry.priority)?.label || inquiry.priority,
         'Remarks': inquiry.remarks || '-',
       }));
@@ -284,6 +326,107 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
     } finally {
       setExporting(false);
     }
+  };
+
+  const downloadImportTemplate = () => {
+    const templateData = [{
+      'Product': 'Example Product Name',
+      'Specification': 'BP / USP / EP',
+      'Qty': '500 KG',
+      'Supplier': 'Manufacturer Name',
+      'Country': 'Japan',
+      'Company': 'Customer Company Name',
+      'Mail Subject': 'Inquiry for Product',
+      'ACE ERP#': 'ACE-123',
+      'Price Needed': 'Yes',
+      'COA Needed': 'Yes',
+      'Sample Needed': 'No',
+      'Agency Letter Needed': 'No',
+      'Purchase Price': '100',
+      'Purchase Price Currency': 'USD',
+      'Offered Price': '150',
+      'Offered Price Currency': 'USD',
+      'Delivery Date': '2025-12-31',
+      'Delivery Terms': 'FOB Shanghai',
+      'Priority': 'Medium',
+      'Remarks': 'Additional notes',
+    }];
+
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Import Template');
+
+    XLSX.writeFile(wb, 'CRM-Import-Template.xlsx');
+    alert('Template downloaded! Fill in your data and use the Import button to upload.');
+  };
+
+  const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        if (jsonData.length === 0) {
+          alert('No data found in the file');
+          return;
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('Not authenticated');
+
+        const inquiriesToInsert = jsonData.map((row: any) => ({
+          product_name: row['Product'] || '',
+          specification: row['Specification'] || null,
+          quantity: row['Qty'] || '',
+          supplier_name: row['Supplier'] || null,
+          supplier_country: row['Country'] || null,
+          company_name: row['Company'] || '',
+          mail_subject: row['Mail Subject'] || null,
+          aceerp_no: row['ACE ERP#'] || null,
+          price_required: (row['Price Needed'] || '').toLowerCase() === 'yes',
+          coa_required: (row['COA Needed'] || '').toLowerCase() === 'yes',
+          sample_required: (row['Sample Needed'] || '').toLowerCase() === 'yes',
+          agency_letter_required: (row['Agency Letter Needed'] || '').toLowerCase() === 'yes',
+          purchase_price: row['Purchase Price'] ? parseFloat(row['Purchase Price']) : null,
+          purchase_price_currency: row['Purchase Price Currency'] || 'USD',
+          offered_price: row['Offered Price'] ? parseFloat(row['Offered Price']) : null,
+          offered_price_currency: row['Offered Price Currency'] || 'USD',
+          delivery_date: row['Delivery Date'] || null,
+          delivery_terms: row['Delivery Terms'] || null,
+          priority: (row['Priority'] || 'medium').toLowerCase(),
+          remarks: row['Remarks'] || null,
+          inquiry_date: new Date().toISOString().split('T')[0],
+          pipeline_status: 'new',
+          status: 'new',
+          inquiry_source: 'import',
+          assigned_to: user.id,
+          created_by: user.id,
+        }));
+
+        const { error } = await supabase
+          .from('crm_inquiries')
+          .insert(inquiriesToInsert);
+
+        if (error) throw error;
+
+        alert(`Successfully imported ${inquiriesToInsert.length} inquiries!`);
+        onRefresh();
+
+        event.target.value = '';
+      } catch (error) {
+        console.error('Import error:', error);
+        alert('Failed to import data. Please check the file format and try again.');
+        event.target.value = '';
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
   };
 
   const toggleFilter = (column: string, value: string) => {
@@ -534,7 +677,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
 
   return (
     <div className="space-y-4">
-      {/* Export Buttons */}
+      {/* Export/Import Buttons */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button
@@ -555,6 +698,31 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
             <Download className="w-4 h-4" />
             {exporting ? 'Exporting...' : 'Export to CSV'}
           </button>
+
+          {canManage && (
+            <>
+              <div className="w-px h-8 bg-gray-300 mx-2" />
+              <button
+                onClick={downloadImportTemplate}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm font-medium"
+                title="Download Excel template for bulk import"
+              >
+                <Download className="w-4 h-4" />
+                Download Template
+              </button>
+              <label className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition text-sm font-medium cursor-pointer">
+                <FileSpreadsheet className="w-4 h-4" />
+                Import Excel
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportFile}
+                  className="hidden"
+                />
+              </label>
+            </>
+          )}
+
           <div className="text-sm text-gray-600 ml-2">
             {filteredData.length} {filteredData.length === 1 ? 'inquiry' : 'inquiries'}
             {filters.length > 0 && ' (filtered)'}
