@@ -23,6 +23,7 @@ export interface ParsedEmailData {
   msdsRequested: boolean;
   sampleRequested: boolean;
   priceRequested: boolean;
+  agencyLetterRequested?: boolean;
   purposeIcons: string[];
   deliveryDateExpected?: string;
   urgency: 'low' | 'medium' | 'high' | 'urgent';

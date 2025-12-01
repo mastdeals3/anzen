@@ -153,10 +153,11 @@ export function CRMCommandCenter() {
         contact_person: formData.contactPerson || null,
         contact_email: formData.contactEmail,
         contact_phone: formData.contactPhone || null,
-        email_subject: selectedEmail.subject,
+        mail_subject: selectedEmail.subject,
         email_body: selectedEmail.body,
         inquiry_source: 'email',
         status: 'new',
+        pipeline_status: 'new',
         priority: formData.priority,
         purpose_icons: formData.purposeIcons,
         delivery_date_expected: parseDeliveryDate(formData.deliveryDateExpected),
@@ -167,6 +168,18 @@ export function CRMCommandCenter() {
         msds_sent: false,
         sample_sent: false,
         price_quoted: false,
+        // New fields for unified tracking
+        price_required: formData.priceRequested,
+        coa_required: formData.coaRequested,
+        sample_required: formData.sampleRequested,
+        agency_letter_required: formData.agencyLetterRequested || false,
+        aceerp_no: formData.aceerp_no || null,
+        purchase_price: formData.purchasePrice ? parseFloat(formData.purchasePrice) : null,
+        purchase_price_currency: formData.purchasePriceCurrency || 'USD',
+        offered_price: formData.offeredPrice ? parseFloat(formData.offeredPrice) : null,
+        offered_price_currency: formData.offeredPriceCurrency || 'USD',
+        delivery_date: formData.deliveryDate || null,
+        delivery_terms: formData.deliveryTerms || null,
         remarks: formData.remarks || null,
         assigned_to: user.id,
         created_by: user.id,
@@ -191,8 +204,19 @@ export function CRMCommandCenter() {
         })
         .eq('id', selectedEmail.id);
 
-      if (formData.coaRequested || formData.msdsRequested || formData.sampleRequested || formData.priceRequested) {
+      if (formData.coaRequested || formData.msdsRequested || formData.sampleRequested || formData.priceRequested || formData.agencyLetterRequested) {
         const reminders = [];
+
+        if (formData.priceRequested) {
+          reminders.push({
+            inquiry_id: inquiry.id,
+            reminder_type: 'send_price',
+            title: 'Send price quote to customer',
+            due_date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(),
+            assigned_to: user.id,
+            created_by: user.id,
+          });
+        }
 
         if (formData.coaRequested) {
           reminders.push({
@@ -208,7 +232,7 @@ export function CRMCommandCenter() {
         if (formData.msdsRequested) {
           reminders.push({
             inquiry_id: inquiry.id,
-            reminder_type: 'send_coa',
+            reminder_type: 'send_msds',
             title: 'Send MSDS to customer',
             due_date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
             assigned_to: user.id,
@@ -227,11 +251,11 @@ export function CRMCommandCenter() {
           });
         }
 
-        if (formData.priceRequested) {
+        if (formData.agencyLetterRequested) {
           reminders.push({
             inquiry_id: inquiry.id,
-            reminder_type: 'send_price',
-            title: 'Send price quote to customer',
+            reminder_type: 'send_agency_letter',
+            title: 'Send agency letter to customer',
             due_date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(),
             assigned_to: user.id,
             created_by: user.id,

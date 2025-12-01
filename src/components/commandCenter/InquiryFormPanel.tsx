@@ -29,6 +29,14 @@ export interface InquiryFormData {
   msdsRequested: boolean;
   sampleRequested: boolean;
   priceRequested: boolean;
+  agencyLetterRequested: boolean;
+  aceerp_no: string;
+  purchasePrice: string;
+  purchasePriceCurrency: string;
+  offeredPrice: string;
+  offeredPriceCurrency: string;
+  deliveryDate: string;
+  deliveryTerms: string;
 }
 
 export function InquiryFormPanel({ email, parsedData, onSave, saving }: InquiryFormPanelProps) {
@@ -52,6 +60,14 @@ export function InquiryFormPanel({ email, parsedData, onSave, saving }: InquiryF
     msdsRequested: false,
     sampleRequested: false,
     priceRequested: true,
+    agencyLetterRequested: false,
+    aceerp_no: '',
+    purchasePrice: '',
+    purchasePriceCurrency: 'USD',
+    offeredPrice: '',
+    offeredPriceCurrency: 'USD',
+    deliveryDate: '',
+    deliveryTerms: '',
   });
 
   useEffect(() => {
@@ -75,6 +91,14 @@ export function InquiryFormPanel({ email, parsedData, onSave, saving }: InquiryF
         msdsRequested: parsedData.msdsRequested || false,
         sampleRequested: parsedData.sampleRequested || false,
         priceRequested: parsedData.priceRequested || true,
+        agencyLetterRequested: parsedData.agencyLetterRequested || false,
+        aceerp_no: '',
+        purchasePrice: '',
+        purchasePriceCurrency: 'USD',
+        offeredPrice: '',
+        offeredPriceCurrency: 'USD',
+        deliveryDate: '',
+        deliveryTerms: '',
       });
     }
   }, [parsedData]);
@@ -442,6 +466,94 @@ export function InquiryFormPanel({ email, parsedData, onSave, saving }: InquiryF
                 />
                 <span className="text-sm font-medium">Sample</span>
               </label>
+              <label className="flex items-center gap-2 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  checked={formData.agencyLetterRequested}
+                  onChange={(e) => setFormData({ ...formData, agencyLetterRequested: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <span className="text-sm font-medium">Agency Letter</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 pt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Pricing</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Offered Price
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="number"
+                    value={formData.offeredPrice}
+                    onChange={(e) => setFormData({ ...formData, offeredPrice: e.target.value })}
+                    className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
+                    step="0.01"
+                  />
+                  <select
+                    value={formData.offeredPriceCurrency}
+                    onChange={(e) => setFormData({ ...formData, offeredPriceCurrency: e.target.value })}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="INR">INR</option>
+                    <option value="GBP">GBP</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  ACE ERP No
+                </label>
+                <input
+                  type="text"
+                  value={formData.aceerp_no}
+                  onChange={(e) => setFormData({ ...formData, aceerp_no: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 pt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Delivery</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Delivery Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.deliveryDate}
+                  onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Delivery Terms
+                </label>
+                <select
+                  value={formData.deliveryTerms}
+                  onChange={(e) => setFormData({ ...formData, deliveryTerms: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select...</option>
+                  <option value="FOB Shanghai">FOB Shanghai</option>
+                  <option value="CIF Dubai">CIF Dubai</option>
+                  <option value="EXW">EXW</option>
+                  <option value="DDP">DDP</option>
+                  <option value="DAP">DAP</option>
+                </select>
+              </div>
             </div>
           </div>
 
