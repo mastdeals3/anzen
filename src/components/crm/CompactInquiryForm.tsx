@@ -46,6 +46,7 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
     coa_required: initialData?.coa_required || false,
     sample_required: initialData?.sample_required || false,
     agency_letter_required: initialData?.agency_letter_required || false,
+    others_required: initialData?.others_required || false,
     purchase_price: initialData?.purchase_price || '',
     purchase_price_currency: initialData?.purchase_price_currency || 'USD',
     offered_price: initialData?.offered_price || '',
@@ -190,37 +191,37 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
   return (
     <>
       <form onSubmit={handleSubmit} className="space-y-3">
-        {/* Product Name - Full Width */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Product Name <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            value={formData.product_name}
-            onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-            className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            placeholder="Enter product name"
-            required
-          />
-        </div>
-
-        {/* Specification - Full Width */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Specification
-          </label>
-          <input
-            type="text"
-            value={formData.specification}
-            onChange={(e) => setFormData({ ...formData, specification: e.target.value })}
-            className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            placeholder="BP / USP / EP"
-          />
-        </div>
-
-        {/* Row: Quantity | Priority */}
+        {/* Row: Product Name | Specification */}
         <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Product Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={formData.product_name}
+              onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
+              className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter product name"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Specification
+            </label>
+            <input
+              type="text"
+              value={formData.specification}
+              onChange={(e) => setFormData({ ...formData, specification: e.target.value })}
+              className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              placeholder="BP / USP / EP"
+            />
+          </div>
+        </div>
+
+        {/* Row: Quantity | Priority | Inquiry Source */}
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Quantity <span className="text-red-500">*</span>
@@ -249,10 +250,6 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
               <option value="urgent">Urgent</option>
             </select>
           </div>
-        </div>
-
-        {/* Row: Inquiry Source | Supplier Name */}
-        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Inquiry Source
@@ -270,6 +267,10 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
               <option value="other">Other</option>
             </select>
           </div>
+        </div>
+
+        {/* Row: Supplier Name | Country of Origin | Customer Dropdown */}
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Supplier Name
@@ -282,10 +283,6 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
               placeholder="Manufacturer/Supplier"
             />
           </div>
-        </div>
-
-        {/* Row: Country of Origin | Customer Dropdown */}
-        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Country of Origin
@@ -401,12 +398,12 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
           />
         </div>
 
-        {/* Customer Requested - 4 checkboxes in one row */}
+        {/* Customer Requested - 5 checkboxes in one row */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-2">
             Customer Requested
           </label>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-5 gap-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -443,14 +440,23 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
               />
               <span className="text-xs text-gray-700">Agency Letter</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.others_required}
+                onChange={(e) => setFormData({ ...formData, others_required: e.target.checked })}
+                className="w-4 h-4 rounded border-gray-300"
+              />
+              <span className="text-xs text-gray-700">Others</span>
+            </label>
           </div>
         </div>
 
         <div className="border-t border-gray-200 pt-3">
           <h3 className="text-xs font-semibold text-gray-700 mb-2">Pricing</h3>
 
-          {/* Row: Purchase Price | Currency */}
-          <div className="grid grid-cols-3 gap-3 mb-3">
+          {/* Row: Purchase Price | Currency | Offered Price | Currency */}
+          <div className="grid grid-cols-6 gap-2">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Purchase Price
@@ -463,7 +469,7 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
                 placeholder="100.00"
               />
             </div>
-            <div>
+            <div className="col-span-1">
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Currency
               </label>
@@ -473,16 +479,9 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
                 className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               >
                 <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-                <option value="INR">INR</option>
-                <option value="GBP">GBP</option>
-                <option value="JPY">JPY</option>
+                <option value="IDR">IDR</option>
               </select>
             </div>
-          </div>
-
-          {/* Row: Offered Price | Currency */}
-          <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Offered Price
@@ -495,7 +494,7 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
                 placeholder="150.00"
               />
             </div>
-            <div>
+            <div className="col-span-1">
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Currency
               </label>
@@ -505,10 +504,7 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
                 className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               >
                 <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-                <option value="INR">INR</option>
-                <option value="GBP">GBP</option>
-                <option value="JPY">JPY</option>
+                <option value="IDR">IDR</option>
               </select>
             </div>
           </div>
@@ -537,12 +533,17 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
               className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Select...</option>
-              <option value="FOB Shanghai">FOB Shanghai</option>
-              <option value="CIF Dubai">CIF Dubai</option>
+              <option value="FOB Jakarta">FOB Jakarta</option>
+              <option value="CIF Jakarta">CIF Jakarta</option>
+              <option value="FOB Surabaya">FOB Surabaya</option>
+              <option value="CIF Surabaya">CIF Surabaya</option>
+              <option value="FOB Semarang">FOB Semarang</option>
+              <option value="CIF Semarang">CIF Semarang</option>
               <option value="EXW">EXW</option>
               <option value="DDP">DDP</option>
               <option value="DAP">DAP</option>
               <option value="CFR">CFR</option>
+              <option value="FCA">FCA</option>
             </select>
           </div>
         </div>
