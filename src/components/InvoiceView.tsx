@@ -75,6 +75,18 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
     return `${day} ${month} ${year}`;
   };
 
+  const formatExpiryDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const months = language === 'id'
+      ? ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des']
+      : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+
+    return `${month} ${year}`;
+  };
+
   const numberToWords = (num: number): string => {
     if (language === 'id') {
       return numberToWordsIndonesian(num);
@@ -375,7 +387,7 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
                     const quantity = item.quantity || 0;
                     const unitPrice = item.unit_price || 0;
                     const itemSubtotal = quantity * unitPrice;
-                    const expDate = item.batches?.expiry_date ? formatDate(item.batches.expiry_date) : '-';
+                    const expDate = item.batches?.expiry_date ? formatExpiryDate(item.batches.expiry_date) : '-';
 
                     return (
                       <tr key={item.id || index} className="border-b border-black">

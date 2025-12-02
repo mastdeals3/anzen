@@ -125,6 +125,14 @@ export function DeliveryChallanView({ challan, items, onClose }: DeliveryChallan
     return `${day.toString().padStart(2, '0')}-${month.toString().padStart(2, '0')}-${year}`;
   };
 
+  const formatExpiryDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+    return `${month} ${year}`;
+  };
+
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
   const firstItemUnit = items[0]?.products?.unit || 'kg';
 
@@ -273,7 +281,7 @@ export function DeliveryChallanView({ challan, items, onClose }: DeliveryChallan
                       <td className="border-r border-black p-2 print:p-1">{item.products?.product_name}</td>
                       <td className="border-r border-black p-2 text-center print:p-1">{item.batches?.batch_number}</td>
                       <td className="border-r border-black p-2 text-center print:p-1">
-                        {item.batches?.expiry_date ? formatDate(item.batches.expiry_date) : '-'}
+                        {item.batches?.expiry_date ? formatExpiryDate(item.batches.expiry_date) : '-'}
                       </td>
                       <td className="border-r border-black p-2 text-center print:p-1">
                         {item.pack_type && item.pack_size ? `${item.pack_size} ${item.pack_type}` : '-'}
