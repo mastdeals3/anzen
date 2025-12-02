@@ -18,6 +18,7 @@ interface Customer {
   customer_type: string | null;
   notes: string | null;
   is_active: boolean;
+  created_at: string;
 }
 
 interface EditingCell {
@@ -32,6 +33,7 @@ export function CustomerDatabaseExcel() {
   const [editValue, setEditValue] = useState('');
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+    created_at: 110,
     company_name: 200,
     contact_person: 150,
     designation: 120,
@@ -195,9 +197,18 @@ export function CustomerDatabaseExcel() {
     }
   };
 
+  const formatDateForExport = (dateString: string) => {
+    const date = new Date(dateString);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
+
   const exportToExcel = () => {
-    const headers = ['Company Name', 'Contact Person', 'Designation', 'Email', 'Mobile', 'Landline', 'Phone', 'Country', 'City', 'Address', 'Website', 'Customer Type', 'Notes'];
+    const headers = ['Date', 'Company Name', 'Contact Person', 'Designation', 'Email', 'Mobile', 'Landline', 'Phone', 'Country', 'City', 'Address', 'Website', 'Customer Type', 'Notes'];
     const rows = customers.map(c => [
+      formatDateForExport(c.created_at),
       c.company_name,
       c.contact_person || '',
       c.designation || '',
@@ -222,9 +233,159 @@ export function CustomerDatabaseExcel() {
     a.click();
   };
 
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim());
+
+      if (lines.length < 2) {
+        alert('CSV file is empty or invalid');
+        return;
+      }
+
+      const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+      const dataLines = lines.slice(1);
+
+      const dateIndex = headers.findIndex(h => h.toLowerCase() === 'date');
+      const companyNameIndex = headers.findIndex(h => h.toLowerCase() === 'company name');
+      const contactPersonIndex = headers.findIndex(h => h.toLowerCase() === 'contact person');
+      const designationIndex = headers.findIndex(h => h.toLowerCase() === 'designation');
+      const emailIndex = headers.findIndex(h => h.toLowerCase() === 'email');
+      const mobileIndex = headers.findIndex(h => h.toLowerCase() === 'mobile');
+      const landlineIndex = headers.findIndex(h => h.toLowerCase() === 'landline');
+      const phoneIndex = headers.findIndex(h => h.toLowerCase() === 'phone');
+      const countryIndex = headers.findIndex(h => h.toLowerCase() === 'country');
+      const cityIndex = headers.findIndex(h => h.toLowerCase() === 'city');
+      const addressIndex = headers.findIndex(h => h.toLowerCase() === 'address');
+      const websiteIndex = headers.findIndex(h => h.toLowerCase() === 'website');
+      const customerTypeIndex = headers.findIndex(h => h.toLowerCase() === 'customer type');
+      const notesIndex = headers.findIndex(h => h.toLowerCase() === 'notes');
+
+      if (companyNameIndex === -1) {
+        alert('CSV must have a "Company Name" column');
+        return;
+      }
+
+      const parseCSVLine = (line: string) => {
+        const values: string[] = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            values.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        values.push(current.trim());
+        return values;
+      };
+
+      const parseDate = (dateStr: string) => {
+        if (!dateStr) return new Date().toISOString();
+
+        const formats = [
+          /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
+          /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
+          /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+        ];
+
+        for (const format of formats) {
+          const match = dateStr.match(format);
+          if (match) {
+            let day, month, year;
+            if (format.toString().includes('\\d{4}$')) {
+              [, day, month, year] = match;
+            } else {
+              [, year, month, day] = match;
+            }
+            return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`).toISOString();
+          }
+        }
+
+        return new Date().toISOString();
+      };
+
+      const customersToInsert = dataLines.map(line => {
+        const values = parseCSVLine(line);
+        const companyName = values[companyNameIndex]?.replace(/"/g, '').trim();
+
+        if (!companyName) return null;
+
+        const createdAt = dateIndex !== -1 ? parseDate(values[dateIndex]?.replace(/"/g, '').trim()) : new Date().toISOString();
+
+        return {
+          company_name: companyName,
+          contact_person: contactPersonIndex !== -1 ? values[contactPersonIndex]?.replace(/"/g, '').trim() || null : null,
+          designation: designationIndex !== -1 ? values[designationIndex]?.replace(/"/g, '').trim() || null : null,
+          email: emailIndex !== -1 ? values[emailIndex]?.replace(/"/g, '').trim() || null : null,
+          mobile: mobileIndex !== -1 ? values[mobileIndex]?.replace(/"/g, '').trim() || null : null,
+          landline: landlineIndex !== -1 ? values[landlineIndex]?.replace(/"/g, '').trim() || null : null,
+          phone: phoneIndex !== -1 ? values[phoneIndex]?.replace(/"/g, '').trim() || null : null,
+          country: countryIndex !== -1 ? values[countryIndex]?.replace(/"/g, '').trim() || null : null,
+          city: cityIndex !== -1 ? values[cityIndex]?.replace(/"/g, '').trim() || null : null,
+          address: addressIndex !== -1 ? values[addressIndex]?.replace(/"/g, '').trim() || null : null,
+          website: websiteIndex !== -1 ? values[websiteIndex]?.replace(/"/g, '').trim() || null : null,
+          customer_type: customerTypeIndex !== -1 ? values[customerTypeIndex]?.replace(/"/g, '').trim() || null : null,
+          notes: notesIndex !== -1 ? values[notesIndex]?.replace(/"/g, '').trim() || null : null,
+          is_active: true,
+          created_by: user.id,
+          created_at: createdAt,
+        };
+      }).filter(Boolean);
+
+      if (customersToInsert.length === 0) {
+        alert('No valid customer data found in CSV');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('crm_contacts')
+        .insert(customersToInsert)
+        .select();
+
+      if (error) throw error;
+
+      alert(`Successfully imported ${customersToInsert.length} customer(s)`);
+      loadCustomers();
+    } catch (error) {
+      console.error('Error importing CSV:', error);
+      alert('Failed to import CSV. Please check the file format.');
+    }
+
+    e.target.value = '';
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
+
   const renderCell = (customer: Customer, field: keyof Customer) => {
     const isEditing = editingCell?.rowId === customer.id && editingCell?.field === field;
     const value = customer[field];
+
+    if (field === 'created_at') {
+      return (
+        <div className="px-2 py-1 h-full flex items-center">
+          <span className="truncate text-xs">{formatDate(customer.created_at)}</span>
+        </div>
+      );
+    }
 
     if (isEditing) {
       return (
@@ -293,6 +454,16 @@ export function CustomerDatabaseExcel() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition cursor-pointer">
+            <Upload className="w-3.5 h-3.5" />
+            Import CSV
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleImportCSV}
+              className="hidden"
+            />
+          </label>
           <button
             onClick={exportToExcel}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
@@ -317,6 +488,7 @@ export function CustomerDatabaseExcel() {
                 />
               </th>
               {[
+                { key: 'created_at', label: 'Date' },
                 { key: 'company_name', label: 'Company Name' },
                 { key: 'contact_person', label: 'Contact Person' },
                 { key: 'designation', label: 'Designation' },
@@ -361,6 +533,9 @@ export function CustomerDatabaseExcel() {
                     onChange={() => toggleRowSelection(customer.id)}
                     className="rounded"
                   />
+                </td>
+                <td className="border border-gray-300 h-8" style={{ width: columnWidths.created_at }}>
+                  {renderCell(customer, 'created_at')}
                 </td>
                 <td className="border border-gray-300 h-8" style={{ width: columnWidths.company_name }}>
                   {renderCell(customer, 'company_name')}
