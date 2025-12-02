@@ -313,21 +313,22 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
                 <div className="space-y-1 text-xs print:text-[10px] print:space-y-0 flex-1">
                   <div>
                     <span className="font-bold">{language === 'id' ? 'Company Name:' : 'Company Name:'}</span>
-                    <span className="font-semibold">{customer?.company_name || ''}</span>                  </div>
-            
+                    <span className="font-semibold">{customer?.company_name || ''}</span>
+                  </div>
+
                   <div className="pt-1">
                     <span className="font-bold">{language === 'id' ? 'Address:' : 'Address:'}</span>
                   </div>
-                  <div className="ml-4">
+                  <div className="ml-[4.5rem]">
                     <p>{customer?.address || ''}</p>
                     <p>{customer?.city || ''}</p>
                   </div>
                   <div className="flex pt-1">
-                    <span className="font-bold w-20">{language === 'id' ? 'Phone:' : 'Phone:'}</span>
+                    <span className="font-bold" style={{minWidth: '72px'}}>{language === 'id' ? 'Phone:' : 'Phone:'}</span>
                     <span>{customer?.phone || ''}</span>
                   </div>
                   <div className="flex">
-                    <span className="font-bold w-20">NPWP:</span>
+                    <span className="font-bold" style={{minWidth: '72px'}}>NPWP:</span>
                     <span>{customer?.npwp || ''}</span>
                   </div>
                 </div>
@@ -446,18 +447,48 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
               </div>
             )}
 
-            {/* Signatures */}
-            <div className="mt-4 grid grid-cols-2 gap-8 text-xs print:mt-2 print:text-[10px] print:gap-6">
+            {/* Signatures and Bank Details */}
+            <div className="mt-4 grid grid-cols-3 gap-6 text-xs print:mt-2 print:text-[10px] print:gap-4">
+              {/* Column 1 - Bank Details */}
+              <div>
+                <p className="font-semibold mb-2 print:mb-1">{language === 'id' ? 'Bank Details:' : 'Bank Details:'}</p>
+                <div className="space-y-0.5 print:space-y-0">
+                  <div className="flex">
+                    <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Bank Name' : 'Bank Name'}</span>
+                    <span className="mr-2">:</span>
+                    <span>BCA</span>
+                  </div>
+                  <div className="flex">
+                    <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Branch' : 'Branch'}</span>
+                    <span className="mr-2">:</span>
+                    <span>Sunter Mall, Jakarta</span>
+                  </div>
+                  <div className="flex">
+                    <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Account Name' : 'Account Name'}</span>
+                    <span className="mr-2">:</span>
+                    <span>PT. Shubham Anzen Pharma Jaya</span>
+                  </div>
+                  <div className="flex">
+                    <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Account Number' : 'Account Number'}</span>
+                    <span className="mr-2">:</span>
+                    <span>0930 2010 14 (IDR)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Column 2 - Received By */}
               <div>
                 <p className="font-semibold mb-1">{language === 'id' ? 'Received By:' : 'Received By:'}</p>
                 <p className="font-semibold mb-10 print:mb-8">{customer?.company_name || ''}</p>
-                <div className="w-3/5 border-t border-black pt-1">({language === 'id' ? 'Signature & Full Name' : 'Signature & Full Name'})</div>
+                <div className="w-4/5 border-t border-black pt-1">({language === 'id' ? 'Signature & Full Name' : 'Signature & Full Name'})</div>
                 <p className="mt-2 font-semibold print:mt-1">{language === 'id' ? 'Date Received:' : 'Date Received:'}</p>
               </div>
+
+              {/* Column 3 - Sincerely */}
               <div className="text-left">
                 <p className="font-semibold mb-1">{language === 'id' ? 'Sincerely,' : 'Sincerely,'}</p>
                 <p className="font-semibold mb-10 print:mb-8">PT. SHUBHAM ANZEN PHARMA JAYA</p>
-                <div className="w-3/5 border-t border-black pt-1">{language === 'id' ? 'Pharmacist:' : 'Pharmacist:'}</div>
+                <div className="w-4/5 border-t border-black pt-1">{language === 'id' ? 'Pharmacist:' : 'Pharmacist:'}</div>
               </div>
             </div>
           </div>
