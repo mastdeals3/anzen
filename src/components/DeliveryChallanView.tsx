@@ -284,7 +284,11 @@ export function DeliveryChallanView({ challan, items, onClose }: DeliveryChallan
                         {item.batches?.expiry_date ? formatExpiryDate(item.batches.expiry_date) : '-'}
                       </td>
                       <td className="border-r border-black p-2 text-center print:p-1">
-                        {item.pack_type && item.pack_size ? `${item.pack_size} ${item.pack_type}` : '-'}
+                        {item.pack_type && item.pack_size && item.number_of_packs
+                          ? `${item.pack_size} ${item.products?.unit || 'kg'}/${item.pack_type}`
+                          : item.pack_type && item.pack_size
+                          ? `${item.pack_size} ${item.pack_type}`
+                          : '-'}
                       </td>
                       <td className="border-r border-black p-2 text-center print:p-1">
                         {item.number_of_packs || '-'}
