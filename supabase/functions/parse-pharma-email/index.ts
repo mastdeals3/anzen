@@ -64,7 +64,29 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const domain = fromEmail.split('@')[1]?.toLowerCase();
+    let actualFromEmail = fromEmail;
+    let actualFromName = fromName;
+    let isForwarded = false;
+
+    const internalDomain = 'anzen.co.in';
+    const fromDomain = fromEmail.split('@')[1]?.toLowerCase();
+
+    if (fromDomain === internalDomain) {
+      isForwarded = true;
+
+      const fwdEmailMatch = emailBody.match(/From:\s*([^<\n]+)\s*<([^>]+)>|From:\s*([^\n@]+@[^\n\s]+)/i);
+      if (fwdEmailMatch) {
+        actualFromEmail = fwdEmailMatch[2] || fwdEmailMatch[3] || fromEmail;
+        actualFromName = fwdEmailMatch[1]?.trim() || fromName;
+      } else {
+        const simpleEmailMatch = emailBody.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+        if (simpleEmailMatch && !simpleEmailMatch[1].includes(internalDomain)) {
+          actualFromEmail = simpleEmailMatch[1];
+        }
+      }
+    }
+
+    const domain = actualFromEmail.split('@')[1]?.toLowerCase();
     let companyFromDomain = null;
     let autoDetectedCompany = false;
 
@@ -221,17 +243,33 @@ NOTE:
 
 IMPORTANT: deliveryDateExpected must be in YYYY-MM-DD format. Parse dates like "03.04.26" as "2026-04-03".`;
 
+    const allEmailAddresses: string[] = [];
+    const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+    let match;
+    while ((match = emailRegex.exec(emailBody)) !== null) {
+      const foundEmail = match[1].toLowerCase();
+      if (!foundEmail.includes(internalDomain) && !allEmailAddresses.includes(foundEmail)) {
+        allEmailAddresses.push(foundEmail);
+      }
+    }
+    if (!allEmailAddresses.includes(actualFromEmail.toLowerCase())) {
+      allEmailAddresses.unshift(actualFromEmail.toLowerCase());
+    }
+
     const userPrompt = `Parse this pharmaceutical inquiry email:
 
 SUBJECT: ${emailSubject}
-FROM: ${fromName || ''} <${fromEmail}>
+FROM: ${actualFromName || ''} <${actualFromEmail}>
+${isForwarded ? `\nNOTE: This email was FORWARDED from internal team. Extract the ORIGINAL sender's details from the forwarded email body.` : ''}
 ${companyFromDomain ? `\nKNOWN COMPANY (from domain): ${companyFromDomain}` : ''}
 ${receivedDate ? `\nRECEIVED DATE: ${receivedDate}` : ''}
+${allEmailAddresses.length > 1 ? `\nALL EMAIL ADDRESSES FOUND: ${allEmailAddresses.join(', ')}` : ''}
 
 BODY:
 ${emailBody}
 
 EXTRACT ALL PRODUCTS. If email contains a table with multiple products, extract each row as a separate product in the products array.
+${allEmailAddresses.length > 1 ? `\nIMPORTANT: Multiple email addresses found. Extract ALL contact persons from the email. Return an array of contacts with their names and email addresses.` : ''}
 
 Respond with a JSON object containing the extracted information.`;
 
@@ -306,8 +344,8 @@ Respond with a JSON object containing the extracted information.`;
       supplierName: aiResponse.supplierName || aiResponse.supplier_name || aiResponse.supplier || null,
       supplierCountry: aiResponse.supplierCountry || aiResponse.supplier_country || aiResponse.country || null,
       companyName: finalCompanyName,
-      contactPerson: aiResponse.contactPerson || aiResponse.contact_person || aiResponse.contact || fromName || null,
-      contactEmail: fromEmail,
+      contactPerson: aiResponse.contactPerson || aiResponse.contact_person || aiResponse.contact || actualFromName || null,
+      contactEmail: actualFromEmail,
       contactPhone: aiResponse.contactPhone || aiResponse.contact_phone || aiResponse.phone || aiResponse.whatsapp || null,
       coaRequested: aiResponse.coaRequested || aiResponse.coa_requested || aiResponse.coa || false,
       msdsRequested: aiResponse.msdsRequested || aiResponse.msds_requested || aiResponse.msds || false,
@@ -328,6 +366,8 @@ Respond with a JSON object containing the extracted information.`;
       JSON.stringify({
         success: true,
         data: parsedInquiry,
+        allEmailAddresses: allEmailAddresses,
+        isForwarded: isForwarded,
         rawAiResponse: aiResponse
       }),
       {
