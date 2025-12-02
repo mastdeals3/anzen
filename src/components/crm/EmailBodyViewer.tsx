@@ -14,11 +14,17 @@ export function EmailBodyViewer({ htmlContent, className = '' }: EmailBodyViewer
     if (!iframeRef.current || !htmlContent) return;
 
     const iframe = iframeRef.current;
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
 
-    if (!iframeDoc) return;
+    // Decode HTML entities to fix encoding issues
+    const decodeHTML = (html: string): string => {
+      const textarea = document.createElement('textarea');
+      textarea.innerHTML = html;
+      return textarea.value;
+    };
 
-    const sanitizedHTML = DOMPurify.sanitize(htmlContent, {
+    const decodedHTML = decodeHTML(htmlContent);
+
+    const sanitizedHTML = DOMPurify.sanitize(decodedHTML, {
       ALLOWED_TAGS: [
         'html', 'head', 'body', 'meta', 'title', 'style',
         'p', 'br', 'div', 'span', 'a', 'img',
@@ -183,6 +189,7 @@ export function EmailBodyViewer({ htmlContent, className = '' }: EmailBodyViewer
       <html>
         <head>
           <meta charset="UTF-8">
+          <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           ${emailStyles}
         </head>
@@ -192,50 +199,63 @@ export function EmailBodyViewer({ htmlContent, className = '' }: EmailBodyViewer
       </html>
     `;
 
-    iframeDoc.open();
-    iframeDoc.write(fullHTML);
-    iframeDoc.close();
+    // Use Blob with explicit UTF-8 encoding
+    const blob = new Blob([fullHTML], { type: 'text/html; charset=UTF-8' });
+    const blobURL = URL.createObjectURL(blob);
+    iframe.src = blobURL;
 
-    const resizeObserver = new ResizeObserver(() => {
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) return;
+
+    // Wait for iframe to load
+    const handleLoad = () => {
       try {
-        const body = iframeDoc.body;
-        const html = iframeDoc.documentElement;
-        const height = Math.max(
-          body?.scrollHeight || 0,
-          body?.offsetHeight || 0,
-          html?.clientHeight || 0,
-          html?.scrollHeight || 0,
-          html?.offsetHeight || 0
-        );
-        setIframeHeight(Math.max(height + 20, 100));
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!iframeDoc) return;
+
+        const measureHeight = () => {
+          const body = iframeDoc.body;
+          const html = iframeDoc.documentElement;
+          const height = Math.max(
+            body?.scrollHeight || 0,
+            body?.offsetHeight || 0,
+            html?.clientHeight || 0,
+            html?.scrollHeight || 0,
+            html?.offsetHeight || 0
+          );
+          setIframeHeight(Math.max(height + 20, 100));
+        };
+
+        // Initial measurement
+        measureHeight();
+
+        // Observe size changes
+        const resizeObserver = new ResizeObserver(measureHeight);
+        if (iframeDoc.body) {
+          resizeObserver.observe(iframeDoc.body);
+        }
+
+        // Remeasure after a delay to catch late-loading content
+        setTimeout(measureHeight, 150);
+
+        // Store cleanup in iframe data
+        (iframe as any).__cleanup = () => {
+          resizeObserver.disconnect();
+          URL.revokeObjectURL(blobURL);
+        };
       } catch (e) {
         console.error('Error measuring iframe height:', e);
       }
-    });
+    };
 
-    if (iframeDoc.body) {
-      resizeObserver.observe(iframeDoc.body);
-    }
-
-    setTimeout(() => {
-      try {
-        const body = iframeDoc.body;
-        const html = iframeDoc.documentElement;
-        const height = Math.max(
-          body?.scrollHeight || 0,
-          body?.offsetHeight || 0,
-          html?.clientHeight || 0,
-          html?.scrollHeight || 0,
-          html?.offsetHeight || 0
-        );
-        setIframeHeight(Math.max(height + 20, 100));
-      } catch (e) {
-        console.error('Error measuring iframe height:', e);
-      }
-    }, 100);
+    iframe.addEventListener('load', handleLoad);
 
     return () => {
-      resizeObserver.disconnect();
+      iframe.removeEventListener('load', handleLoad);
+      if ((iframe as any).__cleanup) {
+        (iframe as any).__cleanup();
+      }
+      URL.revokeObjectURL(blobURL);
     };
   }, [htmlContent]);
 
