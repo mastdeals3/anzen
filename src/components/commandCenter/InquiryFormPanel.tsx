@@ -196,13 +196,10 @@ export function InquiryFormPanel({ email, parsedData, onSave, saving }: InquiryF
                 </div>
                 <div className="px-5 py-6 max-h-[500px] overflow-y-auto">
                   <div
-                    className="text-sm text-gray-900 leading-relaxed email-content"
-                    style={{
-                      fontFamily: 'system-ui, -apple-system, sans-serif'
-                    }}
+                    className="email-content"
                     dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(email.body, {
-                      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'b', 'i', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-                      ALLOWED_ATTR: ['style', 'class']
+                      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'b', 'i', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'img', 'font'],
+                      ALLOWED_ATTR: ['style', 'class', 'bgcolor', 'color', 'border', 'cellpadding', 'cellspacing', 'width', 'height', 'align', 'valign', 'href', 'src', 'alt', 'title']
                     }) }}
                   />
                 </div>
