@@ -333,6 +333,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
 
   const downloadImportTemplate = () => {
     const templateData = [{
+      'Date': '02-12-2024',
       'Product': 'Example Product Name',
       'Specification': 'BP / USP / EP',
       'Qty': '500 KG',
@@ -383,6 +384,31 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not authenticated');
 
+        const parseDate = (dateStr: string) => {
+          if (!dateStr) return new Date().toISOString().split('T')[0];
+
+          const formats = [
+            /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
+            /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
+            /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+          ];
+
+          for (const format of formats) {
+            const match = dateStr.toString().match(format);
+            if (match) {
+              let day, month, year;
+              if (format.toString().includes('\\d{4}$')) {
+                [, day, month, year] = match;
+              } else {
+                [, year, month, day] = match;
+              }
+              return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+            }
+          }
+
+          return new Date().toISOString().split('T')[0];
+        };
+
         const inquiriesToInsert = jsonData.map((row: any) => ({
           product_name: row['Product'] || '',
           specification: row['Specification'] || null,
@@ -404,7 +430,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
           delivery_terms: row['Delivery Terms'] || null,
           priority: (row['Priority'] || 'medium').toLowerCase(),
           remarks: row['Remarks'] || null,
-          inquiry_date: new Date().toISOString().split('T')[0],
+          inquiry_date: parseDate(row['Date']),
           pipeline_status: 'new',
           status: 'new',
           inquiry_source: 'import',
