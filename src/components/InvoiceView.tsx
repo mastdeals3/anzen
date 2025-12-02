@@ -477,12 +477,12 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
                       <span>Sunter Mall, Jakarta</span>
                     </div>
                     <div className="flex">
-                      <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'A/C Name' : 'A/C Name'}</span>
+                      <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Account Name' : 'Account Name'}</span>
                       <span className="mr-2">:</span>
                       <span className="whitespace-nowrap">PT. Shubham Anzen Pharma Jaya</span>
                     </div>
                     <div className="flex">
-                      <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'A/C Number' : 'A/C Number'}</span>
+                      <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Account Number' : 'Account Number'}</span>
                       <span className="mr-2">:</span>
                       <span>0930 2010 14 (IDR)</span>
                     </div>
