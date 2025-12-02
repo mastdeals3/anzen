@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Mail, RefreshCw, Sparkles, DollarSign, FileText, TestTube, Package, Calendar, AlertCircle } from 'lucide-react';
 import type { Email, ParsedEmailData } from '../../types/commandCenter';
@@ -13,6 +13,66 @@ export function EmailListPanel({ onEmailSelect, selectedEmailId }: EmailListPane
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [parsingEmailId, setParsingEmailId] = useState<string | null>(null);
+
+  const loadEmails = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('crm_email_inbox')
+        .select('*')
+        .eq('is_processed', false)
+        .order('received_date', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setEmails(data || []);
+    } catch (error) {
+      console.error('Error loading emails:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('Not authenticated');
+        setRefreshing(false);
+        return;
+      }
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-gmail-emails`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Sync failed: ${response.status}`);
+      }
+
+      await response.json();
+      await loadEmails();
+    } catch (error) {
+      console.error('Error syncing emails:', error);
+      await loadEmails();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadEmails]);
 
   useEffect(() => {
     loadEmails();
@@ -32,34 +92,16 @@ export function EmailListPanel({ onEmailSelect, selectedEmailId }: EmailListPane
       )
       .subscribe();
 
+    // Auto-sync emails every 10 minutes
+    const syncInterval = setInterval(() => {
+      handleRefresh();
+    }, 600000); // 10 minutes
+
     return () => {
       subscription.unsubscribe();
+      clearInterval(syncInterval);
     };
-  }, []);
-
-  const loadEmails = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('crm_email_inbox')
-        .select('*')
-        .eq('is_processed', false)
-        .order('received_date', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      setEmails(data || []);
-    } catch (error) {
-      console.error('Error loading emails:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    loadEmails();
-  };
+  }, [loadEmails, handleRefresh]);
 
   const handleEmailClick = async (email: Email) => {
     setParsingEmailId(email.id);
