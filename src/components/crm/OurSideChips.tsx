@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 
 interface OurSideChipsProps {
   inquiry: {
@@ -12,21 +12,21 @@ interface OurSideChipsProps {
     agency_letter_sent_at?: string | null;
   };
   compact?: boolean;
+  onMarkSent?: (type: 'price' | 'coa' | 'sample' | 'agency_letter') => void;
 }
 
-export function OurSideChips({ inquiry, compact = false }: OurSideChipsProps) {
-  const pending: string[] = [];
+export function OurSideChips({ inquiry, compact = false, onMarkSent }: OurSideChipsProps) {
+  const requirements = [
+    { type: 'price' as const, letter: 'P', required: inquiry.price_required, sent: inquiry.price_sent_at, label: 'Price' },
+    { type: 'coa' as const, letter: 'C', required: inquiry.coa_required, sent: inquiry.coa_sent_at, label: 'COA' },
+    { type: 'sample' as const, letter: 'S', required: inquiry.sample_required, sent: inquiry.sample_sent_at, label: 'Sample' },
+    { type: 'agency_letter' as const, letter: 'A', required: inquiry.agency_letter_required, sent: inquiry.agency_letter_sent_at, label: 'Agency Letter' },
+  ];
 
-  if (inquiry.price_required && !inquiry.price_sent_at) pending.push('Price');
-  if (inquiry.coa_required && !inquiry.coa_sent_at) pending.push('COA');
-  if (inquiry.sample_required && !inquiry.sample_sent_at) pending.push('Sample');
-  if (inquiry.agency_letter_required && !inquiry.agency_letter_sent_at) pending.push('Agency');
+  const anyRequired = requirements.some(r => r.required);
 
   // If nothing required at all, show neutral state
-  const nothingRequired = !inquiry.price_required && !inquiry.coa_required &&
-                          !inquiry.sample_required && !inquiry.agency_letter_required;
-
-  if (nothingRequired) {
+  if (!anyRequired) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-500">
         <Minus className="w-3 h-3" />
@@ -35,8 +35,10 @@ export function OurSideChips({ inquiry, compact = false }: OurSideChipsProps) {
     );
   }
 
+  const allSent = requirements.filter(r => r.required).every(r => r.sent);
+
   // All requirements fulfilled
-  if (pending.length === 0) {
+  if (allSent) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-50 text-green-700 font-medium">
         <CheckCircle2 className="w-3 h-3" />
@@ -45,18 +47,28 @@ export function OurSideChips({ inquiry, compact = false }: OurSideChipsProps) {
     );
   }
 
-  // Has pending items
+  // Show letter buttons with color indicators
   return (
-    <div className="flex flex-wrap gap-1">
-      {pending.map(item => (
-        <span
-          key={item}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700 border border-amber-200"
-          title={`${item} not sent yet`}
+    <div className="flex flex-wrap gap-1.5">
+      {requirements.filter(r => r.required).map(req => (
+        <button
+          key={req.type}
+          onClick={() => !req.sent && onMarkSent?.(req.type)}
+          disabled={!!req.sent || !onMarkSent}
+          className={`
+            inline-flex items-center justify-center
+            w-6 h-6 rounded text-xs font-bold
+            transition-colors duration-150
+            ${req.sent
+              ? 'bg-green-100 text-green-700 cursor-default'
+              : 'bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer'
+            }
+            ${!onMarkSent ? 'cursor-default' : ''}
+          `}
+          title={`${req.label}${req.sent ? ' - Sent' : ' - Pending (Click to mark as sent)'}`}
         >
-          <Clock className="w-3 h-3" />
-          {item}
-        </span>
+          {req.letter}
+        </button>
       ))}
     </div>
   );

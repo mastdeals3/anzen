@@ -85,6 +85,9 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
   const [exporting, setExporting] = useState(false);
   const [lostReasonModalOpen, setLostReasonModalOpen] = useState(false);
   const [inquiryToMarkLost, setInquiryToMarkLost] = useState<Inquiry | null>(null);
+  const [offeredPriceModalOpen, setOfferedPriceModalOpen] = useState(false);
+  const [inquiryForOfferedPrice, setInquiryForOfferedPrice] = useState<Inquiry | null>(null);
+  const [offeredPriceInput, setOfferedPriceInput] = useState('');
   const filterRef = useRef<HTMLDivElement>(null);
 
   const statusOptions = [
@@ -552,6 +555,13 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
   };
 
   const markRequirementSent = async (inquiry: Inquiry, requirementType: 'price' | 'coa' | 'sample' | 'agency_letter') => {
+    if (requirementType === 'price') {
+      setInquiryForOfferedPrice(inquiry);
+      setOfferedPriceInput(inquiry.offered_price?.toString() || '');
+      setOfferedPriceModalOpen(true);
+      return;
+    }
+
     try {
       const { error } = await supabase.rpc('mark_requirement_sent', {
         inquiry_id: inquiry.id,
@@ -564,6 +574,37 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
     } catch (error) {
       console.error('Error marking requirement as sent:', error);
       alert('Failed to mark as sent. Please try again.');
+    }
+  };
+
+  const saveOfferedPriceAndMarkSent = async () => {
+    if (!inquiryForOfferedPrice) return;
+
+    const price = offeredPriceInput.trim() ? parseFloat(offeredPriceInput) : null;
+
+    try {
+      const { error: updateError } = await supabase
+        .from('crm_inquiries')
+        .update({ offered_price: price })
+        .eq('id', inquiryForOfferedPrice.id);
+
+      if (updateError) throw updateError;
+
+      const { error: markError } = await supabase.rpc('mark_requirement_sent', {
+        inquiry_id: inquiryForOfferedPrice.id,
+        requirement_type: 'price'
+      });
+
+      if (markError) throw markError;
+
+      setOfferedPriceModalOpen(false);
+      setInquiryForOfferedPrice(null);
+      setOfferedPriceInput('');
+      onRefresh();
+      alert('Price marked as sent with offered price updated!');
+    } catch (error) {
+      console.error('Error saving offered price and marking sent:', error);
+      alert('Failed to save. Please try again.');
     }
   };
 
@@ -1275,30 +1316,11 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
 
                     {/* Our Side */}
                     <td className="px-3 py-2 border-r border-gray-200">
-                      <div className="flex items-center justify-between gap-1">
-                        <OurSideChips inquiry={inquiry} />
-                        {canManage && (
-                          <div className="flex gap-0.5">
-                            {inquiry.price_required && !inquiry.price_sent_at && (
-                              <button
-                                onClick={() => markRequirementSent(inquiry, 'price')}
-                                className="p-1 text-green-600 hover:bg-green-50 rounded"
-                                title="Mark Price Sent"
-                              >
-                                <Check className="w-3 h-3" />
-                              </button>
-                            )}
-                            {inquiry.coa_required && !inquiry.coa_sent_at && (
-                              <button
-                                onClick={() => markRequirementSent(inquiry, 'coa')}
-                                className="p-1 text-green-600 hover:bg-green-50 rounded"
-                                title="Mark COA Sent"
-                              >
-                                <Check className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        )}
+                      <div className="flex items-center justify-center">
+                        <OurSideChips
+                          inquiry={inquiry}
+                          onMarkSent={canManage ? (type) => markRequirementSent(inquiry, type) : undefined}
+                        />
                       </div>
                     </td>
 
@@ -1585,6 +1607,65 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
           }}
         />
       )}
+
+      {/* Offered Price Modal */}
+      <Modal
+        isOpen={offeredPriceModalOpen}
+        onClose={() => {
+          setOfferedPriceModalOpen(false);
+          setInquiryForOfferedPrice(null);
+          setOfferedPriceInput('');
+        }}
+        title="Enter Offered Price"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Inquiry: {inquiryForOfferedPrice?.inquiry_number || '-'}
+            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Product: {inquiryForOfferedPrice?.product_name || '-'}
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Offered Price (O.Price) *
+            </label>
+            <input
+              type="number"
+              value={offeredPriceInput}
+              onChange={(e) => setOfferedPriceInput(e.target.value)}
+              placeholder="Enter offered price"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              step="0.01"
+              min="0"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Enter the price you offered to the customer
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              onClick={() => {
+                setOfferedPriceModalOpen(false);
+                setInquiryForOfferedPrice(null);
+                setOfferedPriceInput('');
+              }}
+              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={saveOfferedPriceAndMarkSent}
+              className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+            >
+              Save & Mark Price as Sent
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
