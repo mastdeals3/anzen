@@ -39,15 +39,14 @@ function extractEmailBody(payload: any): string {
 
   if (payload.parts) {
     for (const part of payload.parts) {
-      if (part.mimeType === 'text/plain' && part.body?.data) {
+      if (part.mimeType === 'text/html' && part.body?.data) {
         return decodeBase64Url(part.body.data);
       }
     }
 
     for (const part of payload.parts) {
-      if (part.mimeType === 'text/html' && part.body?.data) {
-        const html = decodeBase64Url(part.body.data);
-        return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ');
+      if (part.mimeType === 'text/plain' && part.body?.data) {
+        return decodeBase64Url(part.body.data);
       }
     }
 
@@ -103,6 +102,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    let totalMessages = 0;
     let totalProcessed = 0;
     let totalInquiries = 0;
 
@@ -156,6 +156,7 @@ Deno.serve(async (req: Request) => {
 
         const messagesData = await messagesResponse.json();
         const messageList = messagesData.messages || [];
+        totalMessages += messageList.length;
 
         const batchPromises = messageList.slice(0, 5).map(async (message: { id: string }) => {
           try {
@@ -202,6 +203,7 @@ Deno.serve(async (req: Request) => {
                   emailBody: body,
                   fromEmail: fromEmail,
                   fromName: fromName,
+                  receivedDate: receivedDate.toISOString(),
                 }),
               });
 
@@ -274,8 +276,9 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        processed: totalProcessed,
-        inquiries: totalInquiries,
+        totalMessages,
+        processedCount: totalProcessed,
+        newInquiriesCount: totalInquiries,
       }),
       {
         headers: {

@@ -12,9 +12,19 @@ interface EmailParseRequest {
   emailBody: string;
   fromEmail: string;
   fromName?: string;
+  receivedDate?: string;
+}
+
+interface ProductLine {
+  productName: string;
+  specification?: string;
+  quantity: string;
+  itemNumber?: string;
+  etdPo?: string;
 }
 
 interface ParsedInquiry {
+  products: ProductLine[];
   productName: string;
   specification?: string;
   quantity: string;
@@ -48,7 +58,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { emailSubject, emailBody, fromEmail, fromName }: EmailParseRequest = await req.json();
+    const { emailSubject, emailBody, fromEmail, fromName, receivedDate }: EmailParseRequest = await req.json();
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -119,6 +129,8 @@ Deno.serve(async (req: Request) => {
 
 CRITICAL: Only extract data from emails that are legitimate pharmaceutical/chemical product inquiries or quotation requests.
 
+IMPORTANT: Many inquiries contain MULTIPLE PRODUCTS. You must extract ALL products as an array.
+
 REJECT these email types (set isInquiry: false):
 - Marketing emails (Amazon, Google, YouTube, Instagram, StackBlitz, etc.)
 - Social media notifications
@@ -137,22 +149,30 @@ ACCEPT only these:
 - Keywords: "Permintaan Penawaran Harga" (Indonesian for price quotation request), "quotation", "inquiry", "penawaran", "bahan baku"
 
 Extract information for VALID inquiries:
-1. Product name (e.g., "Sodium Hypophosphite Pharma Grade", "Triamcinolone Acetonide USP", "Valacyclovie HCL Hydrate")
-2. Specification/Grade (e.g., "BP, Powder", "USP", "EP", "IP", "JP", "GMP Certified", "Pharma Grade", "Food Grade", "Technical Grade", "India BP, Powder 150 KG")
-3. Quantity with units (e.g., "150 KG", "2 MT", "500 KG")
-4. Supplier/Manufacturer name if mentioned (e.g., "Hetero Drugs", "Sun Pharma", "Aurobindo")
-5. Country of origin if mentioned (e.g., "India", "China", "USA")
-6. Company name from signature
-7. Contact person name
-8. Whether COA (Certificate of Analysis) is requested
-9. Whether MSDS (Material Safety Data Sheet) is requested
-10. Whether sample is requested
-11. Whether price quotation is requested
-12. Expected delivery date (parse formats like "03.04.26", "DD.MM.YY", "DD/MM/YYYY" and convert to YYYY-MM-DD)
-13. Urgency level
-14. Phone/WhatsApp number
-15. Detect language (Indonesian/English)
-16. Confidence score (0.0 to 1.0) - Set BELOW 0.4 for non-pharma emails
+
+**MULTIPLE PRODUCTS:** Extract ALL products from the email. Many emails contain 2-5 products in a table or list.
+
+For EACH product extract:
+1. Product name (e.g., "ESCITALOPRAM OXALATE", "ATRACURIUM BESYLATE (EXPORT)")
+2. Specification/Grade (e.g., "BP, Powder", "USP", "EP")
+3. Quantity with units (e.g., "25 KG", "6 KG")
+4. Item number if in table (e.g., "153109", "117535")
+5. ETD/PO date if in table (e.g., "25/01/2026", "15/12/2025")
+
+General inquiry info:
+6. Supplier/Manufacturer name if mentioned
+7. Country of origin if mentioned
+8. Company name from signature
+9. Contact person name
+10. Whether COA (Certificate of Analysis) is requested
+11. Whether MSDS (Material Safety Data Sheet) is requested
+12. Whether sample is requested
+13. Whether price quotation is requested
+14. Expected delivery date (parse formats like "03.04.26", "DD.MM.YY", "DD/MM/YYYY" and convert to YYYY-MM-DD)
+15. Urgency level
+16. Phone/WhatsApp number
+17. Detect language (Indonesian/English)
+18. Confidence score (0.0 to 1.0) - Set BELOW 0.4 for non-pharma emails
 
 Common pharmaceutical specifications to extract:
 - Pharmacopeia standards: BP (British), USP (US), EP (European), IP (Indian), JP (Japanese)
@@ -163,6 +183,15 @@ Common pharmaceutical specifications to extract:
 Return a JSON object:
 {
   "isInquiry": boolean,
+  "products": [
+    {
+      "productName": string,
+      "specification": string | null,
+      "quantity": string,
+      "itemNumber": string | null,
+      "etdPo": "YYYY-MM-DD" | null
+    }
+  ],
   "productName": string,
   "specification": string | null,
   "quantity": string,
@@ -185,6 +214,11 @@ Return a JSON object:
   "rejectionReason": string | null
 }
 
+NOTE:
+- "products" array contains ALL products found
+- "productName", "specification", "quantity" are for backward compatibility (use first product or summary)
+- Parse ALL date formats to YYYY-MM-DD
+
 IMPORTANT: deliveryDateExpected must be in YYYY-MM-DD format. Parse dates like "03.04.26" as "2026-04-03".`;
 
     const userPrompt = `Parse this pharmaceutical inquiry email:
@@ -192,9 +226,12 @@ IMPORTANT: deliveryDateExpected must be in YYYY-MM-DD format. Parse dates like "
 SUBJECT: ${emailSubject}
 FROM: ${fromName || ''} <${fromEmail}>
 ${companyFromDomain ? `\nKNOWN COMPANY (from domain): ${companyFromDomain}` : ''}
+${receivedDate ? `\nRECEIVED DATE: ${receivedDate}` : ''}
 
 BODY:
 ${emailBody}
+
+EXTRACT ALL PRODUCTS. If email contains a table with multiple products, extract each row as a separate product in the products array.
 
 Respond with a JSON object containing the extracted information.`;
 
@@ -252,10 +289,20 @@ Respond with a JSON object containing the extracted information.`;
                            (aiResponse.confidenceScore || aiResponse.confidence_score || 0.7) >= 0.4 &&
                            (aiResponse.productName || aiResponse.product_name);
 
+    const products = aiResponse.products || [];
+    const firstProduct = products[0] || {};
+
     const parsedInquiry: ParsedInquiry = {
-      productName: aiResponse.productName || aiResponse.product_name || '',
-      specification: aiResponse.specification || aiResponse.spec || aiResponse.grade || null,
-      quantity: aiResponse.quantity || '',
+      products: products.map((p: any) => ({
+        productName: p.productName || p.product_name || '',
+        specification: p.specification || p.spec || p.grade || null,
+        quantity: p.quantity || '',
+        itemNumber: p.itemNumber || p.item_number || null,
+        etdPo: p.etdPo || p.etd_po || p.etd || null,
+      })),
+      productName: firstProduct.productName || aiResponse.productName || aiResponse.product_name || (products.length > 1 ? 'Multiple Products' : ''),
+      specification: firstProduct.specification || aiResponse.specification || aiResponse.spec || aiResponse.grade || null,
+      quantity: firstProduct.quantity || aiResponse.quantity || '',
       supplierName: aiResponse.supplierName || aiResponse.supplier_name || aiResponse.supplier || null,
       supplierCountry: aiResponse.supplierCountry || aiResponse.supplier_country || aiResponse.country || null,
       companyName: finalCompanyName,

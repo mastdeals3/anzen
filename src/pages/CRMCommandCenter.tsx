@@ -292,21 +292,18 @@ export function CRMCommandCenter() {
   return (
     <Layout>
       <div className="h-screen flex flex-col">
-        <div className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 border-b border-blue-800">
+        <div className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 border-b border-blue-800">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                <Zap className="w-7 h-7" />
-                CRM Command Center
-              </h1>
-              <p className="text-blue-100 text-sm mt-1">
-                Ultra-fast inquiry processing with AI automation
-              </p>
+            <div className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-white" />
+              <div>
+                <h1 className="text-lg font-bold text-white">CRM Command Center</h1>
+                <p className="text-blue-100 text-xs">AI-powered inquiry processing</p>
+              </div>
             </div>
             <div className="text-right">
-              <p className="text-xs text-blue-200">Total Clicks Required</p>
-              <p className="text-3xl font-bold text-white">2</p>
-              <p className="text-xs text-blue-100">Email → Save</p>
+              <p className="text-xs text-blue-200">Quick Actions</p>
+              <p className="text-xl font-bold text-white">2 Clicks</p>
             </div>
           </div>
         </div>
