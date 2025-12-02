@@ -555,6 +555,31 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
   };
 
   const markRequirementSent = async (inquiry: Inquiry, requirementType: 'price' | 'coa' | 'sample' | 'agency_letter') => {
+    const sentAtField = `${requirementType}_sent_at` as keyof Inquiry;
+    const isSent = inquiry[sentAtField];
+
+    if (isSent) {
+      if (!confirm(`Are you sure you want to unmark ${requirementType.toUpperCase()} as sent?`)) {
+        return;
+      }
+
+      try {
+        const updateData = { [sentAtField]: null };
+        const { error } = await supabase
+          .from('crm_inquiries')
+          .update(updateData)
+          .eq('id', inquiry.id);
+
+        if (error) throw error;
+        onRefresh();
+        alert(`${requirementType.toUpperCase()} unmarked!`);
+      } catch (error) {
+        console.error('Error unmarking requirement:', error);
+        alert('Failed to unmark. Please try again.');
+      }
+      return;
+    }
+
     if (requirementType === 'price') {
       setInquiryForOfferedPrice(inquiry);
       setOfferedPriceInput(inquiry.offered_price?.toString() || '');
@@ -769,48 +794,6 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
             {filters.length > 0 && ' (filtered)'}
             {sortConfig.direction && ' (sorted)'}
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-600 font-medium">Quick Filters:</span>
-          <button
-            onClick={() => {
-              const pricePendingInquiries = inquiries.filter(i =>
-                (i.price_required ?? true) && !i.price_sent_at
-              );
-              setFilteredData(pricePendingInquiries);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition"
-            title="Show inquiries with pending price"
-          >
-            <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center font-bold">P</span>
-            Price Pending
-          </button>
-          <button
-            onClick={() => {
-              const coaPendingInquiries = inquiries.filter(i =>
-                (i.coa_required ?? true) && !i.coa_sent_at
-              );
-              setFilteredData(coaPendingInquiries);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition"
-            title="Show inquiries with pending COA"
-          >
-            <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center font-bold">C</span>
-            COA Pending
-          </button>
-          <button
-            onClick={() => {
-              setFilteredData(inquiries);
-              setFilters([]);
-              setSortConfig({ column: '', direction: null });
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
-            title="Clear all filters"
-          >
-            <X className="w-3.5 h-3.5" />
-            Clear Filters
-          </button>
         </div>
       </div>
       {/* Quick Actions Bar */}
@@ -1070,8 +1053,85 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
                 </th>
 
                 {/* Our Side */}
-                <th className="px-3 py-2 text-left font-semibold text-gray-700 border-r border-gray-300 min-w-[120px]">
-                  <span>Our Side</span>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700 border-r border-gray-300 min-w-[120px] relative">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Our Side</span>
+                    <button
+                      onClick={() => setOpenFilter(openFilter === 'our_side' ? null : 'our_side')}
+                      className={`p-0.5 rounded hover:bg-gray-200 ${isColumnFiltered('our_side') ? 'text-blue-600' : ''}`}
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {openFilter === 'our_side' && (
+                    <div ref={filterRef} className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 w-56">
+                      <div className="p-2 border-b border-gray-200 flex items-center justify-between">
+                        <span className="text-xs font-medium">Filter Our Side</span>
+                        {isColumnFiltered('our_side') && (
+                          <button
+                            onClick={() => clearColumnFilter('our_side')}
+                            className="text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="p-2 space-y-1">
+                        <button
+                          onClick={() => {
+                            const pricePendingInquiries = inquiries.filter(i =>
+                              (i.price_required ?? true) && !i.price_sent_at
+                            );
+                            setFilteredData(pricePendingInquiries);
+                            setOpenFilter(null);
+                          }}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-red-50 rounded text-left text-sm"
+                        >
+                          <span className="w-5 h-5 rounded bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs">P</span>
+                          <span>Price Pending</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const coaPendingInquiries = inquiries.filter(i =>
+                              (i.coa_required ?? true) && !i.coa_sent_at
+                            );
+                            setFilteredData(coaPendingInquiries);
+                            setOpenFilter(null);
+                          }}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-red-50 rounded text-left text-sm"
+                        >
+                          <span className="w-5 h-5 rounded bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs">C</span>
+                          <span>COA Pending</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const priceSentInquiries = inquiries.filter(i =>
+                              (i.price_required ?? true) && i.price_sent_at
+                            );
+                            setFilteredData(priceSentInquiries);
+                            setOpenFilter(null);
+                          }}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-green-50 rounded text-left text-sm"
+                        >
+                          <span className="w-5 h-5 rounded bg-green-100 text-green-700 flex items-center justify-center font-bold text-xs">P</span>
+                          <span>Price Sent</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            const coaSentInquiries = inquiries.filter(i =>
+                              (i.coa_required ?? true) && i.coa_sent_at
+                            );
+                            setFilteredData(coaSentInquiries);
+                            setOpenFilter(null);
+                          }}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-green-50 rounded text-left text-sm"
+                        >
+                          <span className="w-5 h-5 rounded bg-green-100 text-green-700 flex items-center justify-center font-bold text-xs">C</span>
+                          <span>COA Sent</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </th>
 
                 {profile?.role === 'admin' && (

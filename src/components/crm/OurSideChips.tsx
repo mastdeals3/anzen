@@ -41,19 +41,19 @@ export function OurSideChips({ inquiry, compact = false, onMarkSent }: OurSideCh
       {requirements.filter(r => r.required).map(req => (
         <button
           key={req.type}
-          onClick={() => !req.sent && onMarkSent?.(req.type)}
-          disabled={!!req.sent || !onMarkSent}
+          onClick={() => onMarkSent?.(req.type)}
+          disabled={!onMarkSent}
           className={`
             inline-flex items-center justify-center
             w-6 h-6 rounded text-xs font-bold
             transition-colors duration-150
             ${req.sent
-              ? 'bg-green-100 text-green-700 cursor-default'
+              ? 'bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer'
               : 'bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer'
             }
             ${!onMarkSent ? 'cursor-default' : ''}
           `}
-          title={`${req.label}${req.sent ? ' - Sent' : ' - Pending (Click to mark as sent)'}`}
+          title={`${req.label}${req.sent ? ' - Sent (Click to unmark)' : ' - Pending (Click to mark as sent)'}`}
         >
           {req.letter}
         </button>
