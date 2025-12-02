@@ -33,32 +33,38 @@ function decodeBase64Url(str: string): string {
 }
 
 function extractEmailBody(payload: any): string {
+  let htmlBody = '';
+  let textBody = '';
+
+  function traverse(part: any) {
+    if (part.mimeType === 'text/html' && part.body?.data) {
+      const decoded = decodeBase64Url(part.body.data);
+      if (decoded && decoded.length > htmlBody.length) {
+        htmlBody = decoded;
+      }
+    } else if (part.mimeType === 'text/plain' && part.body?.data) {
+      const decoded = decodeBase64Url(part.body.data);
+      if (decoded && decoded.length > textBody.length) {
+        textBody = decoded;
+      }
+    }
+
+    if (part.parts && Array.isArray(part.parts)) {
+      for (const subPart of part.parts) {
+        traverse(subPart);
+      }
+    }
+  }
+
   if (payload.body?.data) {
     return decodeBase64Url(payload.body.data);
   }
 
   if (payload.parts) {
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/html' && part.body?.data) {
-        return decodeBase64Url(part.body.data);
-      }
-    }
-
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/plain' && part.body?.data) {
-        return decodeBase64Url(part.body.data);
-      }
-    }
-
-    for (const part of payload.parts) {
-      if (part.parts) {
-        const nested = extractEmailBody(part);
-        if (nested) return nested;
-      }
-    }
+    traverse(payload);
   }
 
-  return '';
+  return htmlBody || textBody || '';
 }
 
 function getHeader(headers: Array<{ name: string; value: string }>, name: string): string {

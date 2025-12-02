@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { FileText, Sparkles, AlertTriangle, CheckCircle2, Calendar, Package, Building2, Mail, ChevronDown, ChevronUp } from 'lucide-react';
-import DOMPurify from 'dompurify';
 import type { Email, ParsedEmailData } from '../../types/commandCenter';
 import { CompactInquiryForm } from '../crm/CompactInquiryForm';
+import { EmailBodyViewer } from '../crm/EmailBodyViewer';
 
 interface InquiryFormPanelProps {
   email: Email | null;
@@ -194,14 +194,8 @@ export function InquiryFormPanel({ email, parsedData, onSave, saving }: InquiryF
                     })}
                   </p>
                 </div>
-                <div className="px-5 py-6 max-h-[500px] overflow-y-auto">
-                  <div
-                    className="email-content"
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(email.body, {
-                      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'b', 'i', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'img', 'font'],
-                      ALLOWED_ATTR: ['style', 'class', 'bgcolor', 'color', 'border', 'cellpadding', 'cellspacing', 'width', 'height', 'align', 'valign', 'href', 'src', 'alt', 'title']
-                    }) }}
-                  />
+                <div className="px-5 py-4">
+                  <EmailBodyViewer htmlContent={email.body} className="max-h-[600px]" />
                 </div>
                 <div className="px-5 py-3 bg-blue-50 border-t border-blue-100">
                   <div className="flex items-center gap-2 text-sm text-blue-700">
