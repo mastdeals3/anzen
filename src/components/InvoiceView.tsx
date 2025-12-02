@@ -479,7 +479,7 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
                     <div className="flex">
                       <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'A/C Name' : 'A/C Name'}</span>
                       <span className="mr-2">:</span>
-                      <span>PT. Shubham Anzen Pharma Jaya</span>
+                      <span className="whitespace-nowrap">PT. Shubham Anzen Pharma Jaya</span>
                     </div>
                     <div className="flex">
                       <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'A/C Number' : 'A/C Number'}</span>
