@@ -770,6 +770,48 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage }: InquiryTa
             {sortConfig.direction && ' (sorted)'}
           </div>
         </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-600 font-medium">Quick Filters:</span>
+          <button
+            onClick={() => {
+              const pricePendingInquiries = inquiries.filter(i =>
+                (i.price_required ?? true) && !i.price_sent_at
+              );
+              setFilteredData(pricePendingInquiries);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition"
+            title="Show inquiries with pending price"
+          >
+            <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center font-bold">P</span>
+            Price Pending
+          </button>
+          <button
+            onClick={() => {
+              const coaPendingInquiries = inquiries.filter(i =>
+                (i.coa_required ?? true) && !i.coa_sent_at
+              );
+              setFilteredData(coaPendingInquiries);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition"
+            title="Show inquiries with pending COA"
+          >
+            <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center font-bold">C</span>
+            COA Pending
+          </button>
+          <button
+            onClick={() => {
+              setFilteredData(inquiries);
+              setFilters([]);
+              setSortConfig({ column: '', direction: null });
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
+            title="Clear all filters"
+          >
+            <X className="w-3.5 h-3.5" />
+            Clear Filters
+          </button>
+        </div>
       </div>
       {/* Quick Actions Bar */}
       {selectedRows.size > 0 && canManage && selectedInquiry && (

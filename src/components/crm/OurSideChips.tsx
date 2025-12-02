@@ -17,8 +17,8 @@ interface OurSideChipsProps {
 
 export function OurSideChips({ inquiry, compact = false, onMarkSent }: OurSideChipsProps) {
   const requirements = [
-    { type: 'price' as const, letter: 'P', required: inquiry.price_required, sent: inquiry.price_sent_at, label: 'Price' },
-    { type: 'coa' as const, letter: 'C', required: inquiry.coa_required, sent: inquiry.coa_sent_at, label: 'COA' },
+    { type: 'price' as const, letter: 'P', required: inquiry.price_required ?? true, sent: inquiry.price_sent_at, label: 'Price' },
+    { type: 'coa' as const, letter: 'C', required: inquiry.coa_required ?? true, sent: inquiry.coa_sent_at, label: 'COA' },
     { type: 'sample' as const, letter: 'S', required: inquiry.sample_required, sent: inquiry.sample_sent_at, label: 'Sample' },
     { type: 'agency_letter' as const, letter: 'A', required: inquiry.agency_letter_required, sent: inquiry.agency_letter_sent_at, label: 'Agency Letter' },
   ];
@@ -35,19 +35,7 @@ export function OurSideChips({ inquiry, compact = false, onMarkSent }: OurSideCh
     );
   }
 
-  const allSent = requirements.filter(r => r.required).every(r => r.sent);
-
-  // All requirements fulfilled
-  if (allSent) {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-50 text-green-700 font-medium">
-        <CheckCircle2 className="w-3 h-3" />
-        {!compact && 'All done'}
-      </span>
-    );
-  }
-
-  // Show letter buttons with color indicators
+  // Always show letter buttons with color indicators (removed "All done" badge)
   return (
     <div className="flex flex-wrap gap-1.5">
       {requirements.filter(r => r.required).map(req => (
