@@ -8,6 +8,12 @@ const corsHeaders = {
 };
 
 const WAREHOUSE_EMAIL = "accounts@sapharmajaya.co.id";
+const APP_URL = (Deno.env.get("APP_URL") ?? "https://sapharmajaya.co.id").replace(/\/$/, "");
+
+function appLink(path: string, label: string): string {
+  const url = `${APP_URL}/${path}`;
+  return `<a href="${url}" style="display:inline-block;margin-top:16px;padding:10px 20px;background:#1e40af;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600">${label} →</a>`;
+}
 
 interface NotificationPayload {
   type: "so_approved" | "dc_approved" | "invoice_created" | "low_stock" | "overdue_invoices" | "payment_reminder";
@@ -199,7 +205,8 @@ async function handleSOApproved(
       <tr><th>Total Amount</th><td>Rp ${Number(so.total_amount).toLocaleString("id-ID")}</td></tr>
       <tr><th>Status</th><td><span class="green">Approved</span></td></tr>
     </table>
-    <p>Please proceed with delivery challan creation as required.</p>`;
+    <p>Please proceed with delivery challan creation as required.</p>
+    ${appLink("sales-orders", "View Sales Order")}`;
 
   let sent = 0;
   const recipients = admins ?? [];
@@ -259,7 +266,8 @@ async function handleDCApproved(
       <tr><th>Challan Date</th><td>${dc.challan_date ?? "N/A"}</td></tr>
       <tr><th>Status</th><td><span class="green">Approved</span></td></tr>
     </table>
-    <p>Stock has been deducted from inventory. Please proceed with physical dispatch.</p>`;
+    <p>Stock has been deducted from inventory. Please proceed with physical dispatch.</p>
+    ${appLink("delivery-challan", "View Delivery Challan")}`;
 
   const ok = await sendViaGmail(
     senderResult.token,
@@ -301,7 +309,8 @@ async function handleInvoiceCreated(
       <tr><th>Total Amount</th><td>Rp ${Number(invoice.total_amount).toLocaleString("id-ID")}</td></tr>
       <tr><th>Status</th><td><span class="yellow">Pending Payment</span></td></tr>
     </table>
-    <p>Please ensure the invoice is dispatched to the customer and payment is tracked.</p>`;
+    <p>Please ensure the invoice is dispatched to the customer and payment is tracked.</p>
+    ${appLink("sales", "View Invoice")}`;
 
   const ok = await sendViaGmail(
     senderResult.token,
@@ -349,7 +358,8 @@ async function handleLowStock(supabase: ReturnType<typeof createClient>) {
       <thead><tr><th>Product</th><th>Current</th><th>Min Level</th><th>% of Min</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <p>Please create purchase orders or import requirements for these items.</p>`;
+    <p>Please create purchase orders or import requirements for these items.</p>
+    ${appLink("stock", "View Stock Levels")}`;
 
   let sent = 0;
   const seen = new Set<string>();
@@ -403,7 +413,8 @@ async function handleOverdueInvoices(supabase: ReturnType<typeof createClient>) 
       <thead><tr><th>Customer</th><th>Invoice #</th><th>Due Date</th><th>Amount</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <p>Check the Ageing Report in Finance for details and to send individual reminders.</p>`;
+    <p>Check the Ageing Report in Finance for details and to send individual reminders.</p>
+    ${appLink("reports", "View Ageing Report")}`;
 
   let sent = 0;
   const seen = new Set<string>();
