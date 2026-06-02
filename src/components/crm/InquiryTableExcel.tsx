@@ -147,6 +147,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
   const [editValue, setEditValue] = useState('');
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [selectedInquiryForEmail, setSelectedInquiryForEmail] = useState<Inquiry | null>(null);
+  const [selectedInquiriesForEmail, setSelectedInquiriesForEmail] = useState<Inquiry[]>([]);
   const [emailMode, setEmailMode] = useState<'price' | 'coa' | 'general'>('general');
   const [logCallModalOpen, setLogCallModalOpen] = useState(false);
   const [callNotes, setCallNotes] = useState('');
@@ -1226,19 +1227,48 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
   };
 
   const handleSendQuote = () => {
-    const selectedInquiry = filteredData.find(i => selectedRows.has(i.id));
-    if (selectedInquiry) {
-      setSelectedInquiryForEmail(selectedInquiry);
-      setEmailMode('price');
-      setEmailModalOpen(true);
+    const selected = filteredData.filter(i => selectedRows.has(i.id));
+    if (!selected.length) return;
+
+    if (selected.length > 1) {
+      // Validate same email thread (subject line must match)
+      const subjectKey = (inq: Inquiry) => (inq.mail_subject || inq.email_subject || '').trim().toLowerCase();
+      const firstSubject = subjectKey(selected[0]);
+      const allSameSubject = selected.every(i => subjectKey(i) === firstSubject);
+
+      if (!firstSubject) {
+        showToast({ type: 'error', title: 'Cannot group', message: 'Selected inquiries have no email subject. Multi-product reply requires a shared email thread.' });
+        return;
+      }
+      if (!allSameSubject) {
+        const subjects = [...new Set(selected.map(i => subjectKey(i)))];
+        showToast({ type: 'error', title: 'Different email threads', message: `Selected inquiries are from different email threads. Only group inquiries from the same email.\n\n${subjects.join('\n')}` });
+        return;
+      }
     }
+
+    setSelectedInquiryForEmail(selected[0]);
+    setSelectedInquiriesForEmail(selected);
+    setEmailMode('price');
+    setEmailModalOpen(true);
   };
 
   const handleSendCOAMSDS = async () => {
-    const selectedInquiry = filteredData.find(i => selectedRows.has(i.id));
-    if (!selectedInquiry) return;
+    const selected = filteredData.filter(i => selectedRows.has(i.id));
+    if (!selected.length) return;
 
-    setSelectedInquiryForEmail(selectedInquiry);
+    if (selected.length > 1) {
+      const subjectKey = (inq: Inquiry) => (inq.mail_subject || inq.email_subject || '').trim().toLowerCase();
+      const firstSubject = subjectKey(selected[0]);
+      const allSameSubject = selected.every(i => subjectKey(i) === firstSubject);
+      if (!firstSubject || !allSameSubject) {
+        showToast({ type: 'error', title: 'Different email threads', message: 'Multi-product COA/MSDS is only allowed when all selected inquiries share the same email thread subject.' });
+        return;
+      }
+    }
+
+    setSelectedInquiryForEmail(selected[0]);
+    setSelectedInquiriesForEmail(selected);
     setEmailMode('coa');
     setEmailModalOpen(true);
   };
@@ -2553,10 +2583,12 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
           onClose={() => {
             setEmailModalOpen(false);
             setSelectedInquiryForEmail(null);
+            setSelectedInquiriesForEmail([]);
             setEmailMode('general');
             onRefresh();
           }}
           inquiry={selectedInquiryForEmail}
+          inquiries={selectedInquiriesForEmail.length > 1 ? selectedInquiriesForEmail : undefined}
           mode={emailMode}
         />
       )}
