@@ -60,6 +60,8 @@ interface RowDraft {
   offered_price: string;
   purchase_currency: string;
   offered_currency: string;
+  india_price: string;
+  india_price_currency: string;
   kunal_remark: string;
   import_data_reference: string;
   selected_option_id: string | null;
@@ -239,11 +241,14 @@ export function PricingWorksheet() {
   const ensureDraft = (inq: Inquiry): RowDraft => {
     if (drafts[inq.id]) return drafts[inq.id];
     const selectedOption = (options[inq.id] || []).find(opt => opt.is_selected) || null;
+    const indiaOption = (options[inq.id] || []).find(opt => opt.source_type === 'india' && opt.source_price != null) || null;
     const init: RowDraft = {
       purchase_price: inq.purchase_price ? String(inq.purchase_price) : '',
       offered_price: inq.offered_price ? String(inq.offered_price) : '',
       purchase_currency: inq.purchase_price_currency || 'USD',
       offered_currency: inq.offered_price_currency || 'USD',
+      india_price: selectedOption?.source_price != null ? String(selectedOption.source_price) : (indiaOption?.source_price != null ? String(indiaOption.source_price) : ''),
+      india_price_currency: selectedOption?.source_currency || indiaOption?.source_currency || 'INR',
       kunal_remark: inq.kunal_pricing_note || '',
       import_data_reference: '',
       selected_option_id: selectedOption?.id || null,
@@ -308,7 +313,12 @@ export function PricingWorksheet() {
       ...current,
       [inquiryId]: currentOptions.map(opt => ({ ...opt, is_selected: opt.id === optionId })),
     }));
-    setDraft(inquiryId, { selected_option_id: optionId, purchase_currency: selectedOption?.source_currency || 'USD' });
+    setDraft(inquiryId, {
+      selected_option_id: optionId,
+      purchase_currency: selectedOption?.source_currency || 'USD',
+      india_price: selectedOption?.source_price != null ? String(selectedOption.source_price) : '',
+      india_price_currency: selectedOption?.source_currency || 'INR',
+    });
     await supabase.from('crm_inquiry_pricing_options').update({ is_selected: false }).eq('inquiry_id', inquiryId);
     await supabase.from('crm_inquiry_pricing_options').update({ is_selected: true, updated_at: new Date().toISOString() }).eq('id', optionId);
   };
@@ -340,10 +350,60 @@ export function PricingWorksheet() {
     }
 
     setSavingId(inq.id);
-    const selectedOption = (options[inq.id] || []).find(opt => opt.id === draft.selected_option_id)
+    const now = new Date().toISOString();
+
+    // If user typed an India price manually, upsert/update the India pricing option
+    let selectedOption = (options[inq.id] || []).find(opt => opt.id === draft.selected_option_id)
       || (options[inq.id] || []).find(opt => opt.source_price !== null)
       || null;
-    const now = new Date().toISOString();
+
+    const indiaPrice = draft.india_price ? parseFloat(draft.india_price) : null;
+    if (Number.isFinite(indiaPrice) && indiaPrice! > 0) {
+      const existingIndiaOpt = (options[inq.id] || []).find(opt => opt.source_type === 'india');
+      if (existingIndiaOpt) {
+        // Update existing india option
+        await supabase.from('crm_inquiry_pricing_options').update({
+          source_price: indiaPrice,
+          source_currency: draft.india_price_currency || 'INR',
+          is_selected: true,
+          updated_at: now,
+        }).eq('id', existingIndiaOpt.id);
+        // Deselect others
+        await supabase.from('crm_inquiry_pricing_options')
+          .update({ is_selected: false })
+          .eq('inquiry_id', inq.id)
+          .neq('id', existingIndiaOpt.id);
+        selectedOption = { ...existingIndiaOpt, source_price: indiaPrice!, source_currency: draft.india_price_currency || 'INR', is_selected: true };
+      } else {
+        // Create new india option
+        const { data: newOpt } = await supabase.from('crm_inquiry_pricing_options').insert({
+          inquiry_id: inq.id,
+          source_type: 'india',
+          source_price: indiaPrice,
+          source_currency: draft.india_price_currency || 'INR',
+          availability: 'available',
+          document_status: 'not_required',
+          is_selected: true,
+          created_by: profile?.id || null,
+        }).select('*').maybeSingle();
+        // Deselect others
+        if (newOpt) {
+          await supabase.from('crm_inquiry_pricing_options')
+            .update({ is_selected: false })
+            .eq('inquiry_id', inq.id)
+            .neq('id', newOpt.id);
+          selectedOption = newOpt as PricingOption;
+        }
+      }
+    }
+
+
+    const indiaPrice2 = draft.india_price ? parseFloat(draft.india_price) : null;
+    const extraUpdates: Record<string, unknown> = {};
+    if (Number.isFinite(indiaPrice2) && indiaPrice2! > 0) {
+      // Mark source as received since India price is now known
+      extraUpdates.source_status = 'received';
+    }
 
     const { error: inquiryError } = await supabase.from('crm_inquiries').update({
       purchase_price: purchasePrice,
@@ -354,6 +414,7 @@ export function PricingWorksheet() {
       price_ready: true,
       quote_status: 'not_sent',
       updated_at: now,
+      ...extraUpdates,
     }).eq('id', inq.id);
 
     if (inquiryError) {
@@ -531,13 +592,26 @@ export function PricingWorksheet() {
                           {table.isVisible('inr') && <td style={table.getCellStyle('inr')} className="px-2 py-1 text-xs text-gray-700 whitespace-nowrap border-r border-gray-200">
                             {sourceOption?.source_price != null ? (
                               <div>
-                                <span className="font-medium">{sourceOption.source_currency || 'INR'} {sourceOption.source_price}</span>
+                                <span className="font-medium text-orange-700">{sourceOption.source_currency || 'INR'} {sourceOption.source_price}</span>
                                 {sourceOption.offered_make && <div className="text-[10px] text-gray-500">{sourceOption.offered_make}</div>}
                               </div>
                             ) : (
-                              <span className="text-[11px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
-                                No source price yet — manual pricing allowed
-                              </span>
+                              <div className="flex gap-1">
+                                <select
+                                  value={draft.india_price_currency}
+                                  onChange={e => setDraft(inq.id, { india_price_currency: e.target.value })}
+                                  className="border border-gray-300 rounded px-1 py-0.5 text-xs w-14"
+                                >
+                                  {['INR', 'USD', 'CNY', 'IDR'].map(c => <option key={c}>{c}</option>)}
+                                </select>
+                                <input
+                                  type="number"
+                                  value={draft.india_price}
+                                  onChange={e => setDraft(inq.id, { india_price: e.target.value })}
+                                  placeholder="India price"
+                                  className="w-20 border border-orange-300 rounded px-2 py-0.5 text-xs focus:bg-orange-50 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                                />
+                              </div>
                             )}
                           </td>}
                           {table.isVisible('landed') && <td style={table.getCellStyle('landed')} className="px-2 py-1 border-r border-gray-200">
