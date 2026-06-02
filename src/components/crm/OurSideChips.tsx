@@ -1,4 +1,4 @@
-import { CheckCircle2 } from 'lucide-react';
+import { Paperclip } from 'lucide-react';
 
 interface OurSideChipsProps {
   inquiry: {
@@ -15,9 +15,11 @@ interface OurSideChipsProps {
   };
   compact?: boolean;
   onMarkSent?: (type: 'price' | 'coa' | 'sample' | 'agency_letter' | 'others') => void;
+  documentTypes?: string[];
+  onPreviewDocuments?: () => void;
 }
 
-export function OurSideChips({ inquiry, compact = false, onMarkSent }: OurSideChipsProps) {
+export function OurSideChips({ inquiry, compact = false, onMarkSent, documentTypes = [], onPreviewDocuments }: OurSideChipsProps) {
   const requirements = [
     { type: 'price' as const, letter: 'P', required: inquiry.price_required ?? true, sent: inquiry.price_sent_at, label: 'Price' },
     { type: 'coa' as const, letter: 'C', required: inquiry.coa_required ?? true, sent: inquiry.coa_sent_at, label: 'COA' },
@@ -40,7 +42,7 @@ export function OurSideChips({ inquiry, compact = false, onMarkSent }: OurSideCh
 
   // Always show letter buttons with color indicators (removed "All done" badge)
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5 items-center">
       {requirements.filter(r => r.required).map(req => (
         <button
           key={req.type}
@@ -61,6 +63,16 @@ export function OurSideChips({ inquiry, compact = false, onMarkSent }: OurSideCh
           {req.letter}
         </button>
       ))}
+      {onPreviewDocuments && (
+        <button
+          type="button"
+          onClick={onPreviewDocuments}
+          className="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-bold bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+          title={`Preview uploaded documents${documentTypes.length ? `: ${documentTypes.join(', ')}` : ''}`}
+        >
+          <Paperclip className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
   );
 }

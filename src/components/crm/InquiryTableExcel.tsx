@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import {
   ChevronDown, X, Mail, Phone, FileText, Calendar,
   Flame, ArrowUp, Minus, Send, MessageSquare, CheckSquare,
-  Download, FileSpreadsheet, ArrowUpDown, ArrowDown, Check, XCircle, Plus, ChevronRight, Layers, Clock, CheckCircle2, Calculator, Search
+  Download, FileSpreadsheet, ArrowUpDown, ArrowDown, Check, XCircle, Plus, ChevronRight, Layers, Clock, CheckCircle2, Calculator, Search, ExternalLink, Loader
 } from 'lucide-react';
 import { Modal } from '../Modal';
 import { GmailLikeComposer } from './GmailLikeComposer';
@@ -105,6 +105,15 @@ interface Inquiry {
   kunal_pricing_note?: string | null;
 }
 
+interface InquiryDocument {
+  id: string;
+  inquiry_id: string | null;
+  document_type: string;
+  display_file_name?: string | null;
+  original_file_name?: string | null;
+  storage_path: string;
+}
+
 interface InquiryContextEvent {
   id: string;
   source: 'activity' | 'appointment' | 'email' | 'requirement';
@@ -183,6 +192,13 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
   const [appointmentDate, setAppointmentDate] = useState('');
   const [appointmentType, setAppointmentType] = useState<'meeting' | 'video_call' | 'phone_call'>('meeting');
   const [appointmentNotes, setAppointmentNotes] = useState('');
+
+  const [inquiryDocuments, setInquiryDocuments] = useState<Map<string, InquiryDocument[]>>(new Map());
+  const [documentPreviewOpen, setDocumentPreviewOpen] = useState(false);
+  const [documentPreviewTitle, setDocumentPreviewTitle] = useState('Inquiry Documents');
+  const [documentPreviewUrl, setDocumentPreviewUrl] = useState<string | null>(null);
+  const [documentPreviewBlobUrl, setDocumentPreviewBlobUrl] = useState<string | null>(null);
+  const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
@@ -236,18 +252,6 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
   const [resizing, setResizing] = useState<{ column: string; startX: number; startWidth: number } | null>(null);
   const selectedInquiry = filteredData.find(i => selectedRows.has(i.id));
 
-  const statusOptions = [
-    { value: 'new', label: 'New' },
-    { value: 'price_quoted', label: 'Price Quoted' },
-    { value: 'coa_pending', label: 'COA Pending' },
-    { value: 'sample_sent', label: 'Sample Sent' },
-    { value: 'negotiation', label: 'Negotiation' },
-    { value: 'po_received', label: 'PO Received' },
-    { value: 'won', label: 'Won' },
-    { value: 'lost', label: 'Lost' },
-    { value: 'on_hold', label: 'On Hold' },
-  ];
-
   const priorityOptions = [
     { value: 'urgent', label: 'Urgent', icon: <Flame className="w-3 h-3 text-red-600" /> },
     { value: 'high', label: 'High', icon: <ArrowUp className="w-3 h-3 text-orange-600" /> },
@@ -258,6 +262,14 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
   useEffect(() => {
     applyFiltersAndSort();
   }, [inquiries, filters, productSearch, quickFilter, sortConfig]);
+
+  useEffect(() => {
+    loadInquiryDocuments();
+  }, [inquiries]);
+
+  useEffect(() => () => {
+    if (documentPreviewBlobUrl) URL.revokeObjectURL(documentPreviewBlobUrl);
+  }, [documentPreviewBlobUrl]);
 
   useEffect(() => {
     try {
@@ -464,6 +476,76 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
       && inquiry.quote_status !== 'lost';
   };
 
+  const normalizeDocumentTypeLabel = (type: string) => (type === 'SPEC' ? 'Specification' : type);
+
+  const getInquiryDocs = (inquiryId: string) => inquiryDocuments.get(inquiryId) || [];
+
+  const hasInquiryDocs = (inquiry: Inquiry) => getInquiryDocs(inquiry.id).length > 0;
+
+  const getInquiryDocTypeLabels = (inquiry: Inquiry) => Array.from(new Set(getInquiryDocs(inquiry.id).map(doc => normalizeDocumentTypeLabel(doc.document_type))));
+
+  const loadInquiryDocuments = async () => {
+    const ids = inquiries.map(i => i.id).filter(Boolean);
+    if (ids.length === 0) {
+      setInquiryDocuments(new Map());
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('crm_product_documents')
+        .select('id,inquiry_id,document_type,display_file_name,original_file_name,storage_path')
+        .in('inquiry_id', ids);
+      if (error) throw error;
+      const map = new Map<string, InquiryDocument[]>();
+      ((data || []) as InquiryDocument[]).forEach(doc => {
+        if (!doc.inquiry_id) return;
+        const existing = map.get(doc.inquiry_id) || [];
+        existing.push(doc);
+        map.set(doc.inquiry_id, existing);
+      });
+      setInquiryDocuments(map);
+    } catch (error) {
+      console.error('Error loading inquiry documents:', error);
+      setInquiryDocuments(new Map());
+    }
+  };
+
+  const openDocumentPreview = async (inquiry: Inquiry) => {
+    const docs = getInquiryDocs(inquiry.id);
+    if (docs.length === 0) {
+      showToast({ type: 'error', title: 'No documents', message: 'No uploaded documents are available for this inquiry.' });
+      return;
+    }
+    const firstDoc = docs[0];
+    const title = docs.length === 1
+      ? (firstDoc.display_file_name || firstDoc.original_file_name || firstDoc.storage_path.split('/').pop() || 'Inquiry Document')
+      : `${inquiry.inquiry_number} documents (${docs.length})`;
+    setDocumentPreviewTitle(title);
+    setDocumentPreviewOpen(true);
+    setDocumentPreviewLoading(true);
+    setDocumentPreviewUrl(null);
+    if (documentPreviewBlobUrl) {
+      URL.revokeObjectURL(documentPreviewBlobUrl);
+      setDocumentPreviewBlobUrl(null);
+    }
+    try {
+      const { data: signed, error } = await supabase.storage.from('crm-documents').createSignedUrl(firstDoc.storage_path, 3600);
+      if (error) throw error;
+      const signedUrl = signed?.signedUrl || null;
+      setDocumentPreviewUrl(signedUrl);
+      if (!signedUrl) return;
+      const res = await fetch(signedUrl);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      setDocumentPreviewBlobUrl(URL.createObjectURL(blob));
+    } catch (error) {
+      console.error('Error opening document preview:', error);
+      setDocumentPreviewBlobUrl(null);
+    } finally {
+      setDocumentPreviewLoading(false);
+    }
+  };
+
   const getWorkflowStatus = (inquiry: Inquiry) => {
     const pipeline = inquiry.pipeline_status || '';
     const quote = inquiry.quote_status || (inquiry.price_sent_at ? 'sent' : 'not_sent');
@@ -475,7 +557,9 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
     if (pipeline === 'closed') return 'Closed';
     if (quote === 'follow_up_due') return 'Follow-up Due';
     if (quote === 'sent' || !!inquiry.quote_sent_at) return 'Quote Sent';
-    if (inquiry.price_ready === true || inquiry.kunal_price_status === 'entered') return 'Price Ready';
+    const priceReady = inquiry.price_ready === true || inquiry.kunal_price_status === 'entered' || inquiry.offered_price != null;
+    if (priceReady && hasInquiryDocs(inquiry)) return 'Price & Docs Ready';
+    if (priceReady) return 'Price Ready';
     if (source === 'received' || source === 'partial_received') {
       return hasBothPrices ? 'Price Ready' : 'Pricing Pending';
     }
@@ -490,6 +574,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
     switch (status) {
       case 'Won':
       case 'Price Ready':
+      case 'Price & Docs Ready':
         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'Lost':
       case 'Closed':
@@ -511,7 +596,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
 
   const workflowTooltip = (inquiry: Inquiry) => [
     `Source: ${statusLabel(inquiry.source_status || 'not_sent')}`,
-    `Docs: ${statusLabel(inquiry.document_status || 'not_required')}`,
+    `Docs: ${getInquiryDocTypeLabels(inquiry).join(', ') || statusLabel(inquiry.document_status || 'not_required')}`,
     `Pricing: ${inquiry.price_ready || inquiry.kunal_price_status === 'entered' ? 'ready' : 'pending'}`,
     `Quote: ${statusLabel(inquiry.quote_status || (inquiry.price_sent_at ? 'sent' : 'not_sent'))}`,
   ].join(' | ');
@@ -1022,19 +1107,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
     }
   };
 
-  const updateStatus = async (inquiry: Inquiry, newStatus: string) => {
-    try {
-      const { error } = await supabase
-        .from('crm_inquiries')
-        .update({ status: newStatus })
-        .eq('id', inquiry.id);
 
-      if (error) throw error;
-      onRefresh();
-    } catch (error) {
-      console.error('Error updating status:', error);
-    }
-  };
 
   const updatePriority = async (inquiry: Inquiry, newPriority: string) => {
     try {
@@ -2149,7 +2222,9 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
                           </button>
                         )}
                         {inquiry.is_multi_product && (
-                          <Layers className="w-3.5 h-3.5 text-blue-500" title="Multi-product inquiry" />
+                          <span title="Multi-product inquiry">
+                            <Layers className="w-3.5 h-3.5 text-blue-500" />
+                          </span>
                         )}
                         <span>{inquiry.inquiry_number}</span>
                         {inquiry.price_ready && (
@@ -2349,13 +2424,24 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
                     {isColumnVisible('status_next') && <td className="px-3 py-1.5 border-r border-gray-200">
                       {(() => {
                         const workflowStatus = getWorkflowStatus(inquiry);
+                        const docTypes = getInquiryDocTypeLabels(inquiry);
                         return (
-                          <span
-                            className={`inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 whitespace-nowrap ${workflowStatusClass(workflowStatus)}`}
-                            title={workflowTooltip(inquiry)}
-                          >
-                            {workflowStatus}
-                          </span>
+                          <div className="space-y-1" title={workflowTooltip(inquiry)}>
+                            <span
+                              className={`inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4 whitespace-nowrap ${workflowStatusClass(workflowStatus)}`}
+                            >
+                              {workflowStatus}
+                            </span>
+                            {docTypes.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {docTypes.map(type => (
+                                  <span key={type} className="inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100">
+                                    {type}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         );
                       })()}
                     </td>}
@@ -2380,6 +2466,8 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
                         <OurSideChips
                           inquiry={inquiry}
                           onMarkSent={canManage ? (type) => markRequirementSent(inquiry, type) : undefined}
+                          documentTypes={getInquiryDocTypeLabels(inquiry)}
+                          onPreviewDocuments={getInquiryDocs(inquiry.id).length > 0 ? () => openDocumentPreview(inquiry) : undefined}
                         />
                       </div>
                     </td>}
@@ -2591,6 +2679,74 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
           inquiries={selectedInquiriesForEmail.length > 1 ? selectedInquiriesForEmail : undefined}
           mode={emailMode}
         />
+      )}
+
+      {/* Inquiry document preview modal (same Modal + iframe preview pattern as Sales Orders PO preview) */}
+      {documentPreviewOpen && (
+        <Modal
+          isOpen={documentPreviewOpen}
+          onClose={() => {
+            setDocumentPreviewOpen(false);
+            setDocumentPreviewUrl(null);
+            if (documentPreviewBlobUrl) {
+              URL.revokeObjectURL(documentPreviewBlobUrl);
+              setDocumentPreviewBlobUrl(null);
+            }
+          }}
+          title={documentPreviewTitle}
+          size="xl"
+        >
+          <div className="flex flex-col gap-2" style={{ height: '75vh' }}>
+            <div className="flex justify-end gap-2">
+              {documentPreviewUrl && (
+                <>
+                  <a
+                    href={documentPreviewUrl}
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-green-700 border border-green-200 rounded-lg hover:bg-green-50 transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download
+                  </a>
+                  <a
+                    href={documentPreviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open in new tab
+                  </a>
+                </>
+              )}
+            </div>
+
+            {documentPreviewLoading && (
+              <div className="flex-1 flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200">
+                <div className="text-center text-gray-500">
+                  <Loader className="w-8 h-8 animate-spin mx-auto mb-2 text-blue-500" />
+                  <p className="text-sm">Loading document...</p>
+                </div>
+              </div>
+            )}
+            {!documentPreviewLoading && documentPreviewBlobUrl && (
+              <iframe
+                src={documentPreviewBlobUrl}
+                className="flex-1 w-full rounded-lg border border-gray-200"
+                title="Inquiry document preview"
+              />
+            )}
+            {!documentPreviewLoading && !documentPreviewBlobUrl && (
+              <div className="flex-1 flex items-center justify-center bg-gray-50 rounded-lg border border-gray-200">
+                <div className="text-center text-gray-500 px-6">
+                  <FileText className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+                  <p className="text-sm font-medium mb-2">Document cannot be previewed</p>
+                  <p className="text-xs text-gray-400 mb-5">Please download or open the file in a new tab.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
 
       {/* Log Call Modal */}

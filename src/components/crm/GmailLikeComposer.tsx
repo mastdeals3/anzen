@@ -68,12 +68,6 @@ interface AttachedFile {
   size: number;
 }
 
-interface CrmDocAttachment {
-  doc: CrmDoc;
-  signedUrl?: string;
-  loading?: boolean;
-}
-
 function inferDocumentType(fileName: string, mode: 'price' | 'coa' | 'general'): 'COA' | 'MSDS' | 'MHD' | 'TDS' | 'SPEC' | 'OTHER' {
   const normalized = fileName.toLowerCase();
   if (normalized.includes('coa')) return 'COA';
@@ -104,41 +98,93 @@ function buildSubject(inquiry: Inquiry, _mode: 'price' | 'coa' | 'general', repl
   return `Re: ${baseSubject}`;
 }
 
-// Build a professional HTML table for multi-product price quotation
-function buildPriceTable(items: Inquiry[]): string {
-  const rows = items.map(inq => {
-    const cur = inq.offered_price_currency || 'USD';
-    const price = inq.offered_price && inq.offered_price > 0
-      ? `<strong>${cur} ${inq.offered_price.toLocaleString()} / kg</strong>`
-      : '<em>To be confirmed</em>';
-    const spec = inq.specification?.trim() || '';
-    const supplier = inq.supplier_name?.trim() || '';
-    const remarks = inq.remarks?.trim() || '';
+const escapeHtml = (value: unknown): string => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
 
-    return `<tr>
-      <td style="padding:8px 12px;border:1px solid #d1d5db;font-weight:600">${inq.product_name}</td>
-      ${spec ? `<td style="padding:8px 12px;border:1px solid #d1d5db;color:#374151">${spec}</td>` : ''}
-      ${supplier ? `<td style="padding:8px 12px;border:1px solid #d1d5db;color:#374151">${supplier}</td>` : ''}
-      <td style="padding:8px 12px;border:1px solid #d1d5db">${price}</td>
-      ${remarks ? `<td style="padding:8px 12px;border:1px solid #d1d5db;color:#374151">${remarks}</td>` : ''}
+const normalizeDocTypeLabel = (type: string): string => {
+  if (type === 'SPEC') return 'Specification';
+  return type;
+};
+
+const extractQuantityUnit = (quantity?: string | null): string => {
+  const normalized = (quantity || '').toLowerCase();
+  const match = normalized.match(/(?:^|\d|\s)(gm|gram|grams|kg|kilogram|kilograms|pcs|pieces)\b/);
+  const unit = match?.[1] || '';
+  if (['gm', 'gram', 'grams'].includes(unit)) return 'gm';
+  if (['kg', 'kilogram', 'kilograms'].includes(unit)) return 'kg';
+  if (['pcs', 'pieces'].includes(unit)) return 'pcs';
+  return '';
+};
+
+const formatOfferPrice = (inq: Inquiry): string => {
+  const currency = inq.offered_price_currency || 'USD';
+  if (!inq.offered_price || inq.offered_price <= 0) return 'To be confirmed';
+  const amount = Number(inq.offered_price).toLocaleString(undefined, { maximumFractionDigits: 4 });
+  const unit = extractQuantityUnit(inq.quantity);
+  return `${currency} ${amount}${unit ? `/${unit}` : ''}`;
+};
+
+const extractMakeFromRemarks = (remarks?: string | null): string => {
+  const text = remarks?.trim() || '';
+  const match = text.match(/make\s*:\s*([^,;\n|]+)/i);
+  return (match?.[1] || '').trim();
+};
+
+function buildCompanySignature(userName: string): string {
+  const safeUserName = escapeHtml(userName || '');
+  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#1f2937;line-height:1.45;font-size:14px;margin-top:18px;">
+    <p style="margin:0 0 6px 0;">Warm regards,</p>
+    <p style="margin:0 0 6px 0;">${safeUserName}</p>
+    <p style="margin:0 0 4px 0;color:#073763;font-size:20px;font-weight:700;">PT Shubham Anzen Pharma Jaya</p>
+    <p style="margin:0;">Ruko Sunter Terrace Blok C No.12, Jalan Danau Sunter Utara Kav. No.60</p>
+    <p style="margin:0 0 6px 0;">Sunter Agung, Tanjung Priok, Jakarta Utara 14350, Indonesia</p>
+    <p style="margin:0 0 2px 0;">
+      <span style="color:#0b66c3;">📧</span> <a href="mailto:sales@sapharmajaya.co.id" style="color:#0b66c3;text-decoration:underline;">sales@sapharmajaya.co.id</a>
+      <span style="display:inline-block;width:18px;">&nbsp;</span>
+      <span style="color:#0b66c3;">🌐</span> <a href="http://www.sapharmajaya.co.id" style="color:#0b66c3;text-decoration:underline;">www.sapharmajaya.co.id</a>
+    </p>
+    <p style="margin:0 0 18px 0;color:#274e13;">📱 WhatsApp: +62 85 888 600 999</p>
+    <p style="margin:0;color:#073763;font-weight:700;font-style:italic;">APIs | Excipients | Formulations | Nutraceuticals | Herbal Extracts | Pharma Packaging Solutions | Technology Transfers</p>
+  </div>`;
+}
+
+function buildSupportingDocsHtml(docs: CrmDoc[]): string {
+  const types = Array.from(new Set(docs.map(d => d.document_type))).filter(Boolean);
+  if (types.length === 0) return '';
+  const lines = types.map(type => `<div style="margin:2px 0;">&#10003; ${escapeHtml(normalizeDocTypeLabel(type))}</div>`).join('');
+  return `<p style="margin:16px 0 6px 0;">Supporting documents attached:</p><div style="margin:0 0 14px 0;">${lines}</div>`;
+}
+
+// Build a Gmail/Outlook compatible HTML table for selected inquiry rows.
+function buildPriceTable(items: Inquiry[]): string {
+  const headerStyle = 'padding:10px 12px;border:1px solid #b7c9df;background:#073763;color:#ffffff;text-align:left;font-weight:700;font-size:13px;';
+  const cellBase = 'padding:9px 12px;border:1px solid #d1d5db;color:#1f2937;font-size:13px;vertical-align:top;';
+  const rows = items.map((inq, index) => {
+    const background = index % 2 === 0 ? '#ffffff' : '#f8fafc';
+    const spec = inq.specification?.trim() || '-';
+    const make = extractMakeFromRemarks(inq.remarks) || '-';
+    const remarks = inq.remarks?.trim() || '-';
+    return `<tr style="background:${background};">
+      <td style="${cellBase}font-weight:600;">${escapeHtml(inq.product_name || '-')}</td>
+      <td style="${cellBase}">${escapeHtml(spec)}</td>
+      <td style="${cellBase}">${escapeHtml(make)}</td>
+      <td style="${cellBase}font-weight:600;white-space:nowrap;">${escapeHtml(formatOfferPrice(inq))}</td>
+      <td style="${cellBase}">${escapeHtml(remarks)}</td>
     </tr>`;
   }).join('');
 
-  // Determine which columns to show based on data presence
-  const hasSpec = items.some(i => i.specification?.trim());
-  const hasSupplier = items.some(i => i.supplier_name?.trim());
-  const hasRemarks = items.some(i => i.remarks?.trim());
-
-  const headers = [
-    '<th style="padding:8px 12px;border:1px solid #d1d5db;background:#f9fafb;text-align:left">Product</th>',
-    hasSpec ? '<th style="padding:8px 12px;border:1px solid #d1d5db;background:#f9fafb;text-align:left">Specification</th>' : '',
-    hasSupplier ? '<th style="padding:8px 12px;border:1px solid #d1d5db;background:#f9fafb;text-align:left">Make / Origin</th>' : '',
-    '<th style="padding:8px 12px;border:1px solid #d1d5db;background:#f9fafb;text-align:left">Offered Price</th>',
-    hasRemarks ? '<th style="padding:8px 12px;border:1px solid #d1d5db;background:#f9fafb;text-align:left">Remarks</th>' : '',
-  ].join('');
-
-  return `<table style="border-collapse:collapse;width:100%;font-size:14px;font-family:sans-serif">
-    <thead><tr>${headers}</tr></thead>
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;max-width:760px;font-family:Arial,Helvetica,sans-serif;font-size:13px;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+    <thead><tr>
+      <th style="${headerStyle}">Product</th>
+      <th style="${headerStyle}">Specification</th>
+      <th style="${headerStyle}">Make / Supplier</th>
+      <th style="${headerStyle}">Offer Price</th>
+      <th style="${headerStyle}">Remarks</th>
+    </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -174,47 +220,57 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
   useEffect(() => {
     if (!isOpen) return;
     loadTemplates();
-    loadUserInfo();
     setSubject(buildSubject(inquiry, mode, replyTo));
     setSelectedCrmDocs(new Set());
     setAttachments([]);
 
-    if (replyTo) {
-      const quotedBody = `<br><br><div style="border-left:3px solid #e2e8f0;padding-left:12px;margin-left:8px;color:#64748b"><p><strong>${replyTo.from_email} wrote:</strong></p>${replyTo.body}</div>`;
-      setBody(quotedBody);
-    } else {
-      generateBody(mode);
-    }
+    const initialiseComposer = async () => {
+      const [userName, docs] = await Promise.all([loadUserInfo(), loadCrmDocs()]);
+      if (replyTo) {
+        const quotedBody = `<br><br><div style="border-left:3px solid #e2e8f0;padding-left:12px;margin-left:8px;color:#64748b"><p><strong>${replyTo.from_email} wrote:</strong></p>${replyTo.body}</div>`;
+        setBody(quotedBody);
+      } else {
+        generateBody(mode, userName, docs);
+      }
+    };
 
-    // Load CRM docs for all inquiry IDs
-    loadCrmDocs();
+    initialiseComposer();
   }, [isOpen, inquiry.id, mode]);
 
   const loadUserInfo = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) return '';
       const [profileRes, gmailRes] = await Promise.all([
         supabase.from('user_profiles').select('full_name').eq('id', user.id).maybeSingle(),
         supabase.from('gmail_connections').select('id').eq('user_id', user.id).eq('is_connected', true).maybeSingle(),
       ]);
-      setCurrentUserName(profileRes.data?.full_name || '');
+      const fullName = profileRes.data?.full_name || '';
+      setCurrentUserName(fullName);
       setGmailConnected(!!gmailRes.data);
+      return fullName;
     } catch (err) {
       console.error('Error loading user info:', err);
+      return '';
     }
   };
 
   const loadCrmDocs = async () => {
     const ids = allInquiries.map(i => i.id);
+    if (ids.length === 0) return [] as CrmDoc[];
     setCrmDocsLoading(true);
     const { data } = await supabase
       .from('crm_product_documents')
       .select('id,inquiry_id,product_name,make,document_type,display_file_name,original_file_name,storage_path,created_at')
       .in('inquiry_id', ids)
       .order('created_at', { ascending: false });
-    setCrmDocs((data || []) as unknown as CrmDoc[]);
+    const docs = (data || []) as unknown as CrmDoc[];
+    setCrmDocs(docs);
+    if (mode === 'price' || mode === 'coa') {
+      setSelectedCrmDocs(new Set(docs.map(doc => doc.id)));
+    }
     setCrmDocsLoading(false);
+    return docs;
   };
 
   const loadTemplates = async () => {
@@ -226,37 +282,34 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
     }
   };
 
-  const generateBody = (emailMode: 'price' | 'coa' | 'general') => {
-    const salutation = `<p>${getSalutation(inquiry.contact_person)}</p>`;
-    const closing = `<p>Please note that prices are subject to change based on availability and market conditions.</p><p>Should you have any questions, please feel free to contact us.</p><p>Best regards,<br><strong>SA Pharma Jaya</strong></p>`;
+  const generateBody = (emailMode: 'price' | 'coa' | 'general', userName = currentUserName, docs: CrmDoc[] = crmDocs) => {
+    const salutation = `<p>${escapeHtml(getSalutation(inquiry.contact_person))}</p>`;
+    const signature = buildCompanySignature(userName);
 
     if (emailMode === 'price') {
       let html = salutation;
-      if (allInquiries.length > 1) {
-        html += `<p>Thank you for your inquiry. Please find our price quotation below:</p>`;
-        html += buildPriceTable(allInquiries);
-      } else {
-        const inq = allInquiries[0];
-        const cur = inq.offered_price_currency || 'USD';
-        html += `<p>Thank you for your inquiry. Please find our price quotation below:</p>`;
-        html += buildPriceTable([inq]);
-      }
-      html += closing;
+      html += `<p>Thank you for your inquiry.</p>`;
+      html += `<p>Please find our quotation below:</p>`;
+      html += buildPriceTable(allInquiries);
+      html += buildSupportingDocsHtml(docs);
+      html += `<p>Please let us know if you require additional information.</p>`;
+      html += signature;
       setBody(html);
     } else if (emailMode === 'coa') {
       let html = salutation;
-      const productList = allInquiries.map(i => `<strong>${i.product_name}</strong>`).join(', ');
+      const productList = allInquiries.map(i => `<strong>${escapeHtml(i.product_name)}</strong>`).join(', ');
       html += `<p>Further to your inquiry for ${productList}, please find attached the requested documents (COA / MSDS).</p>`;
+      html += buildSupportingDocsHtml(docs);
       html += `<p>Kindly review the documents and let us know if you require any further information or alternative grades.</p>`;
-      html += `<p>Best regards,<br><strong>SA Pharma Jaya</strong></p>`;
+      html += signature;
       setBody(html);
     } else {
       let html = salutation;
-      html += `<p>Thank you for your inquiry regarding <strong>${inquiry.product_name}</strong>.</p>`;
-      if (inquiry.specification) html += `<p><strong>Specification:</strong> ${inquiry.specification}</p>`;
-      html += `<p><strong>Quantity:</strong> ${inquiry.quantity}</p>`;
+      html += `<p>Thank you for your inquiry regarding <strong>${escapeHtml(inquiry.product_name)}</strong>.</p>`;
+      if (inquiry.specification) html += `<p><strong>Specification:</strong> ${escapeHtml(inquiry.specification)}</p>`;
+      html += `<p><strong>Quantity:</strong> ${escapeHtml(inquiry.quantity)}</p>`;
       html += `<p>Please find the attached documents for your reference.</p>`;
-      html += `<p>Best regards,<br><strong>SA Pharma Jaya</strong></p>`;
+      html += signature;
       setBody(html);
     }
   };
