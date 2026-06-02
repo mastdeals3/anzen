@@ -61,6 +61,16 @@ interface Inquiry {
   kunal_pricing_requested_at: string | null;
   kunal_pricing_note: string | null;
   remarks: string | null;
+  coa_required: boolean | null;
+  coa_sent_at: string | null;
+  sample_required: boolean | null;
+  sample_sent_at: string | null;
+  price_required: boolean | null;
+  price_sent_at: string | null;
+  agency_letter_required: boolean | null;
+  agency_letter_sent_at: string | null;
+  others_required: boolean | null;
+  others_sent_at: string | null;
   created_at: string;
 }
 
@@ -203,8 +213,19 @@ function isCompleted(row: Inquiry): boolean {
 
 function pendingLabel(row: Inquiry): string {
   const parts: string[] = [];
-  if (row.kunal_price_status === 'pending' || !row.purchase_price || !row.offered_price) parts.push('Price');
-  if (row.document_status === 'pending' || row.document_status === 'partial') parts.push('Docs');
+  // Price pending: kunal not entered, or no purchase/offered price
+  const priceNeeded = row.price_required !== false; // default true
+  if (priceNeeded && (row.kunal_price_status === 'pending' || !row.purchase_price || !row.offered_price)) parts.push('Price');
+  // COA pending
+  if (row.coa_required && !row.coa_sent_at) parts.push('COA');
+  // Sample pending
+  if (row.sample_required && !row.sample_sent_at) parts.push('Sample');
+  // Agency letter pending
+  if (row.agency_letter_required && !row.agency_letter_sent_at) parts.push('Agency Letter');
+  // Others pending
+  if (row.others_required && !row.others_sent_at) parts.push('Others');
+  // Document status (sourcing side)
+  if (!parts.length && (row.document_status === 'pending' || row.document_status === 'partial')) parts.push('Docs');
   if (row.source_status === 'partial_received') parts.push('Partial reply');
   return parts.join(' + ') || 'Reply';
 }
@@ -358,7 +379,7 @@ export function SourcingOutbox() {
     setLoading(true);
     const { data, error } = await supabase
       .from('crm_inquiries')
-      .select('id,inquiry_number,aceerp_no,company_name,product_name,specification,quantity,supplier_name,source_type,source_status,document_status,kunal_price_status,quote_status,pipeline_status,purchase_price,offered_price,price_ready,reminder_count,last_sourcing_sent_at,last_reminder_sent_at,kunal_pricing_requested_at,kunal_pricing_note,remarks,created_at')
+      .select('id,inquiry_number,aceerp_no,company_name,product_name,specification,quantity,supplier_name,source_type,source_status,document_status,kunal_price_status,quote_status,pipeline_status,purchase_price,offered_price,price_ready,reminder_count,last_sourcing_sent_at,last_reminder_sent_at,kunal_pricing_requested_at,kunal_pricing_note,remarks,coa_required,coa_sent_at,sample_required,sample_sent_at,price_required,price_sent_at,agency_letter_required,agency_letter_sent_at,others_required,others_sent_at,created_at')
       .order('created_at', { ascending: false })
       .limit(500);
 

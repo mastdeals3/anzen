@@ -8,10 +8,13 @@ import {
   Calculator,
   CheckCircle2,
   FileText,
+  Paperclip,
   Plus,
   RefreshCw,
   Save,
   Trash2,
+  Upload,
+  X,
 } from 'lucide-react';
 import { showToast } from '../components/ToastNotification';
 import { TableColumn, useColumnPreferences } from '../hooks/useColumnPreferences';
@@ -68,6 +71,28 @@ interface RowDraft {
   import_data_reference: string;
   selected_option_id: string | null;
 }
+
+interface CrmDoc {
+  id: string;
+  inquiry_id: string;
+  product_name: string | null;
+  make: string | null;
+  document_type: string;
+  original_file_name: string | null;
+  display_file_name: string | null;
+  storage_path: string;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+const CRM_DOC_TYPES = ['COA', 'MSDS', 'TDS', 'SPEC', 'MHD', 'COC', 'GMP', 'ISO', 'DMF', 'OTHER'] as const;
+const DOC_TYPE_COLOR: Record<string, string> = {
+  COA: 'bg-green-100 text-green-700',
+  MSDS: 'bg-red-100 text-red-700',
+  TDS: 'bg-blue-100 text-blue-700',
+  SPEC: 'bg-amber-100 text-amber-700',
+  OTHER: 'bg-gray-100 text-gray-600',
+};
 
 type TabKey = 'need' | 'source' | 'manual' | 'completed';
 
@@ -149,6 +174,12 @@ export function PricingWorksheet() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Document state per inquiry
+  const [docs, setDocs] = useState<Record<string, CrmDoc[]>>({});
+  const [docsLoading, setDocsLoading] = useState<Record<string, boolean>>({});
+  const [uploadQueue, setUploadQueue] = useState<Record<string, Array<{ file: File; doc_type: string }>>>({});
+  const [uploading, setUploading] = useState<Record<string, boolean>>({});
 
   // Toolbar filters
   const [search, setSearch] = useState('');
@@ -333,6 +364,86 @@ export function PricingWorksheet() {
     });
     setCurrentPage('price-calculator');
   };
+
+  const loadDocs = async (inquiryId: string) => {
+    setDocsLoading(cur => ({ ...cur, [inquiryId]: true }));
+    const { data } = await supabase
+      .from('crm_product_documents')
+      .select('id,inquiry_id,product_name,make,document_type,original_file_name,display_file_name,storage_path,uploaded_by,created_at')
+      .eq('inquiry_id', inquiryId)
+      .order('created_at', { ascending: false });
+    setDocs(cur => ({ ...cur, [inquiryId]: (data as CrmDoc[]) || [] }));
+    setDocsLoading(cur => ({ ...cur, [inquiryId]: false }));
+  };
+
+  const toggleExpanded = (inqId: string) => {
+    const next = expanded === inqId ? null : inqId;
+    setExpanded(next);
+    if (next && !docs[next]) loadDocs(next);
+  };
+
+  const queueDocFiles = (inquiryId: string, files: FileList | File[]) => {
+    const newItems = Array.from(files).map(f => ({ file: f, doc_type: 'COA' }));
+    setUploadQueue(cur => ({ ...cur, [inquiryId]: [...(cur[inquiryId] || []), ...newItems] }));
+  };
+
+  const setQueueItemType = (inquiryId: string, idx: number, doc_type: string) => {
+    setUploadQueue(cur => {
+      const q = [...(cur[inquiryId] || [])];
+      q[idx] = { ...q[idx], doc_type };
+      return { ...cur, [inquiryId]: q };
+    });
+  };
+
+  const removeQueueItem = (inquiryId: string, idx: number) => {
+    setUploadQueue(cur => ({ ...cur, [inquiryId]: (cur[inquiryId] || []).filter((_, i) => i !== idx) }));
+  };
+
+  const uploadDocs = async (inq: Inquiry) => {
+    const queue = uploadQueue[inq.id] || [];
+    if (!queue.length) return;
+    setUploading(cur => ({ ...cur, [inq.id]: true }));
+    const { data: { user } } = await supabase.auth.getUser();
+    let uploaded = 0;
+    for (const item of queue) {
+      const ext = item.file.name.split('.').pop() || 'bin';
+      const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${inq.id}/${item.doc_type}_${Date.now()}_${safeName}`;
+      const { error: upErr } = await supabase.storage.from('crm-documents').upload(path, item.file);
+      if (upErr) { showToast({ type: 'error', title: 'Upload failed', message: upErr.message }); continue; }
+      await supabase.from('crm_product_documents').insert({
+        inquiry_id: inq.id,
+        product_name: inq.product_name,
+        make: inq.supplier_name || null,
+        document_type: item.doc_type,
+        original_file_name: item.file.name,
+        display_file_name: `${inq.product_name}_${item.doc_type}.${ext}`,
+        storage_bucket: 'crm-documents',
+        storage_path: path,
+        uploaded_by: user?.id || null,
+      });
+      uploaded++;
+    }
+    setUploadQueue(cur => ({ ...cur, [inq.id]: [] }));
+    setUploading(cur => ({ ...cur, [inq.id]: false }));
+    if (uploaded > 0) {
+      showToast({ type: 'success', title: 'Uploaded', message: `${uploaded} document(s) saved to CRM.` });
+      loadDocs(inq.id);
+    }
+  };
+
+  const deleteDoc = async (doc: CrmDoc) => {
+    await supabase.storage.from('crm-documents').remove([doc.storage_path]);
+    await supabase.from('crm_product_documents').delete().eq('id', doc.id);
+    setDocs(cur => ({ ...cur, [doc.inquiry_id]: (cur[doc.inquiry_id] || []).filter(d => d.id !== doc.id) }));
+    showToast({ type: 'success', title: 'Deleted', message: 'Document removed.' });
+  };
+
+  const openDoc = async (doc: CrmDoc) => {
+    const { data } = await supabase.storage.from('crm-documents').createSignedUrl(doc.storage_path, 120);
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  };
+
 
   const submit = async (inq: Inquiry) => {
     if (!isManager) {
@@ -588,7 +699,7 @@ export function PricingWorksheet() {
                             <span className="text-[10px] text-gray-400">{inq.document_status}</span>
                           </td>}
                           {table.isVisible('options') && <td style={table.getCellStyle('options')} className="px-2 py-1 border-r border-gray-200">
-                            <button onClick={() => setExpanded(isOpen ? null : inq.id)}
+                            <button onClick={() => toggleExpanded(inq.id)}
                               className="text-[11px] text-blue-600 hover:underline">
                               {rowOptions.length === 0 ? 'Add option' : `${rowOptions.length} option${rowOptions.length !== 1 ? 's' : ''}`}
                             </button>
@@ -721,6 +832,69 @@ export function PricingWorksheet() {
                                   ))}
                                 </div>
                               )}
+
+                              {/* ── Documents Section ── */}
+                              <div className="mt-3 border-t border-blue-100 pt-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                                    <Paperclip className="w-3.5 h-3.5 text-gray-400" />
+                                    Documents / Certificates
+                                    {(docs[inq.id] || []).length > 0 && (
+                                      <span className="ml-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-semibold">{(docs[inq.id] || []).length}</span>
+                                    )}
+                                  </div>
+                                  <label className="flex items-center gap-1 text-[11px] text-blue-600 hover:underline cursor-pointer">
+                                    <Upload className="w-3 h-3" /> Upload
+                                    <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                                      className="hidden"
+                                      onChange={e => { if (e.target.files) { queueDocFiles(inq.id, e.target.files); e.target.value = ''; } }} />
+                                  </label>
+                                </div>
+
+                                {/* Upload queue */}
+                                {(uploadQueue[inq.id] || []).length > 0 && (
+                                  <div className="mb-2 space-y-1">
+                                    {(uploadQueue[inq.id] || []).map((item, idx) => (
+                                      <div key={idx} className="flex items-center gap-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-xs">
+                                        <FileText className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                                        <span className="flex-1 truncate text-gray-700">{item.file.name}</span>
+                                        <select value={item.doc_type} onChange={e => setQueueItemType(inq.id, idx, e.target.value)}
+                                          className="border border-gray-200 rounded px-1 py-0.5 text-[11px]">
+                                          {CRM_DOC_TYPES.map(t => <option key={t}>{t}</option>)}
+                                        </select>
+                                        <button onClick={() => removeQueueItem(inq.id, idx)} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
+                                      </div>
+                                    ))}
+                                    <button onClick={() => uploadDocs(inq)} disabled={uploading[inq.id]}
+                                      className="flex items-center gap-1 px-2 py-1 text-[11px] bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
+                                      <Upload className="w-3 h-3" /> {uploading[inq.id] ? 'Uploading…' : `Upload ${(uploadQueue[inq.id] || []).length} file(s)`}
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* Saved documents */}
+                                {docsLoading[inq.id] ? (
+                                  <p className="text-[11px] text-gray-400">Loading…</p>
+                                ) : (docs[inq.id] || []).length === 0 ? (
+                                  <p className="text-[11px] text-gray-400">No documents yet — upload COA, MSDS, TDS etc. here.</p>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {(docs[inq.id] || []).map(doc => (
+                                      <div key={doc.id} className="flex items-center gap-2 px-2 py-1 bg-white border border-gray-200 rounded text-xs">
+                                        <FileText className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${DOC_TYPE_COLOR[doc.document_type] || 'bg-gray-100 text-gray-600'}`}>{doc.document_type}</span>
+                                        <span className="flex-1 truncate text-gray-700">{doc.display_file_name || doc.original_file_name || doc.storage_path.split('/').pop()}</span>
+                                        <span className="text-gray-400 text-[10px]">{new Date(doc.created_at).toLocaleDateString()}</span>
+                                        <button onClick={() => openDoc(doc)} className="text-blue-500 hover:text-blue-700 underline text-[11px]">Open</button>
+                                        {isManager && (
+                                          <button onClick={() => deleteDoc(doc)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
                             </td>
                           </tr>
                         )}
