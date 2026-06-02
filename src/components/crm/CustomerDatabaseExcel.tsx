@@ -231,7 +231,7 @@ export function CustomerDatabaseExcel() {
       if (!user) throw new Error('Not authenticated');
       const { data, error } = await supabase
         .from('crm_contacts')
-        .insert({ company_name: 'New Customer', is_active: true, created_by: user.id })
+        .insert({ company_name: `New Customer ${Date.now()}`, is_active: true, created_by: user.id })
         .select()
         .single();
       if (error) throw error;
