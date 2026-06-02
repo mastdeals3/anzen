@@ -1206,6 +1206,14 @@ export function Sales() {
 
       await loadInvoices();
       await loadBatches();
+
+      // Notify warehouse staff on new invoice (non-blocking)
+      if (!editingInvoice && invoice?.id) {
+        supabase.functions.invoke('send-app-notifications', {
+          body: { type: 'invoice_created', data: { invoice_id: invoice.id } }
+        }).catch(() => {});
+      }
+
       setModalOpen(false);
       resetForm();
     } catch (error: any) {

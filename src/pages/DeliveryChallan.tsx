@@ -963,6 +963,11 @@ export function DeliveryChallan() {
       showToast({ type: 'success', title: 'Success', message: 'Delivery Challan approved successfully!' });
       delete approvalOperationIdsRef.current[challanId];
       loadChallans();
+
+      // Notify warehouse staff (non-blocking)
+      supabase.functions.invoke('send-app-notifications', {
+        body: { type: 'dc_approved', data: { dc_id: challanId } }
+      }).catch(() => {});
     } catch (error: any) {
       console.error('Error approving challan:', error);
       const errorMessage = error?.message || 'Unknown error';

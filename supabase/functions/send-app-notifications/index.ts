@@ -7,8 +7,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const WAREHOUSE_EMAIL = "accounts@sapharmajaya.co.id";
+
 interface NotificationPayload {
-  type: "so_approved" | "low_stock" | "overdue_invoices" | "payment_reminder";
+  type: "so_approved" | "dc_approved" | "invoice_created" | "low_stock" | "overdue_invoices" | "payment_reminder";
   data?: Record<string, unknown>;
   sender_user_id?: string;
 }
@@ -203,6 +205,17 @@ async function handleSOApproved(
   const recipients = admins ?? [];
   const seen = new Set<string>();
 
+  // Always include warehouse staff
+  seen.add(WAREHOUSE_EMAIL);
+  const warehouseOk = await sendViaGmail(
+    senderResult.token,
+    senderResult.email,
+    WAREHOUSE_EMAIL,
+    `SO Approved: ${so.so_number}`,
+    emailWrapper("Sales Order Approved", htmlContent)
+  );
+  if (warehouseOk) sent++;
+
   for (const user of recipients) {
     if (!user.email || seen.has(user.email)) continue;
     seen.add(user.email);
@@ -217,6 +230,88 @@ async function handleSOApproved(
   }
 
   return { sent };
+}
+
+async function handleDCApproved(
+  supabase: ReturnType<typeof createClient>,
+  data: Record<string, unknown>
+) {
+  const dcId = data.dc_id as string;
+  if (!dcId) return { sent: 0, error: "Missing dc_id" };
+
+  const { data: dc } = await supabase
+    .from("delivery_challans")
+    .select("*, customers(company_name)")
+    .eq("id", dcId)
+    .maybeSingle() as { data: Record<string, unknown> | null };
+
+  if (!dc) return { sent: 0, error: "DC not found" };
+
+  const senderResult = await findBestSenderForRole(supabase, ["admin", "accounts"]);
+  if (!senderResult) return { sent: 0, error: "No Gmail connection available." };
+
+  const customer = dc.customers as { company_name: string } | null;
+  const htmlContent = `
+    <p>Delivery Challan <strong>${dc.challan_number}</strong> has been approved and stock has been deducted.</p>
+    <table class="data">
+      <tr><th>Customer</th><td>${customer?.company_name ?? "N/A"}</td></tr>
+      <tr><th>DC Number</th><td>${dc.challan_number}</td></tr>
+      <tr><th>Challan Date</th><td>${dc.challan_date ?? "N/A"}</td></tr>
+      <tr><th>Status</th><td><span class="green">Approved</span></td></tr>
+    </table>
+    <p>Stock has been deducted from inventory. Please proceed with physical dispatch.</p>`;
+
+  const ok = await sendViaGmail(
+    senderResult.token,
+    senderResult.email,
+    WAREHOUSE_EMAIL,
+    `DC Approved: ${dc.challan_number}`,
+    emailWrapper("Delivery Challan Approved", htmlContent)
+  );
+
+  return { sent: ok ? 1 : 0, recipient: WAREHOUSE_EMAIL };
+}
+
+async function handleInvoiceCreated(
+  supabase: ReturnType<typeof createClient>,
+  data: Record<string, unknown>
+) {
+  const invoiceId = data.invoice_id as string;
+  if (!invoiceId) return { sent: 0, error: "Missing invoice_id" };
+
+  const { data: invoice } = await supabase
+    .from("sales_invoices")
+    .select("*, customers(company_name)")
+    .eq("id", invoiceId)
+    .maybeSingle() as { data: Record<string, unknown> | null };
+
+  if (!invoice) return { sent: 0, error: "Invoice not found" };
+
+  const senderResult = await findBestSenderForRole(supabase, ["admin", "accounts"]);
+  if (!senderResult) return { sent: 0, error: "No Gmail connection available." };
+
+  const customer = invoice.customers as { company_name: string } | null;
+  const htmlContent = `
+    <p>Sales Invoice <strong>${invoice.invoice_number}</strong> has been created.</p>
+    <table class="data">
+      <tr><th>Customer</th><td>${customer?.company_name ?? "N/A"}</td></tr>
+      <tr><th>Invoice Number</th><td>${invoice.invoice_number}</td></tr>
+      <tr><th>Invoice Date</th><td>${invoice.invoice_date ?? "N/A"}</td></tr>
+      <tr><th>Due Date</th><td>${invoice.due_date ?? "N/A"}</td></tr>
+      <tr><th>Total Amount</th><td>Rp ${Number(invoice.total_amount).toLocaleString("id-ID")}</td></tr>
+      <tr><th>Status</th><td><span class="yellow">Pending Payment</span></td></tr>
+    </table>
+    <p>Please ensure the invoice is dispatched to the customer and payment is tracked.</p>`;
+
+  const ok = await sendViaGmail(
+    senderResult.token,
+    senderResult.email,
+    WAREHOUSE_EMAIL,
+    `Invoice Created: ${invoice.invoice_number}`,
+    emailWrapper("Sales Invoice Created", htmlContent)
+  );
+
+  return { sent: ok ? 1 : 0, recipient: WAREHOUSE_EMAIL };
 }
 
 async function handleLowStock(supabase: ReturnType<typeof createClient>) {
@@ -390,6 +485,12 @@ Deno.serve(async (req: Request) => {
     switch (type) {
       case "so_approved":
         result = await handleSOApproved(supabase, data, sender_user_id);
+        break;
+      case "dc_approved":
+        result = await handleDCApproved(supabase, data);
+        break;
+      case "invoice_created":
+        result = await handleInvoiceCreated(supabase, data);
         break;
       case "low_stock":
         result = await handleLowStock(supabase);
