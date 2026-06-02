@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import {
   ChevronDown, X, Mail, Phone, FileText, Calendar,
   Flame, ArrowUp, Minus, Send, MessageSquare, CheckSquare,
-  Download, FileSpreadsheet, ArrowUpDown, ArrowDown, Check, XCircle, Plus, ChevronRight, Layers, Clock, CheckCircle2, Calculator
+  Download, FileSpreadsheet, ArrowUpDown, ArrowDown, Check, XCircle, Plus, ChevronRight, Layers, Clock, CheckCircle2, Calculator, Search
 } from 'lucide-react';
 import { Modal } from '../Modal';
 import { GmailLikeComposer } from './GmailLikeComposer';
@@ -138,6 +138,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
   const canSeeQuoteColumn = !isInternalRestrictedRole;
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<ColumnFilter[]>([]);
+  const [productSearch, setProductSearch] = useState('');
   const [quickFilter, setQuickFilter] = useState('all');
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [filteredData, setFilteredData] = useState<Inquiry[]>(inquiries);
@@ -255,7 +256,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
 
   useEffect(() => {
     applyFiltersAndSort();
-  }, [inquiries, filters, quickFilter, sortConfig]);
+  }, [inquiries, filters, productSearch, quickFilter, sortConfig]);
 
   useEffect(() => {
     try {
@@ -545,6 +546,14 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
 
     if (quickFilter !== 'all') {
       result = result.filter(matchesQuickFilter);
+    }
+
+    // Product name search
+    if (productSearch.trim()) {
+      const q = productSearch.trim().toLowerCase();
+      result = result.filter(r =>
+        r.product_name?.toLowerCase().includes(q)
+      );
     }
 
     // Apply filters
@@ -1575,6 +1584,26 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
             {filters.length > 0 && ' (filtered)'}
             {sortConfig.direction && ' (sorted)'}
           </div>
+        </div>
+
+        {/* Product search */}
+        <div className="relative mt-2">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={productSearch}
+            onChange={e => setProductSearch(e.target.value)}
+            placeholder="Search by product name..."
+            className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+          />
+          {productSearch && (
+            <button
+              onClick={() => setProductSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
