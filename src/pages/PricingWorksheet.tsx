@@ -38,6 +38,8 @@ interface Inquiry {
   offered_price_currency: string | null;
   kunal_pricing_requested_at: string | null;
   kunal_pricing_note: string | null;
+  remarks: string | null;
+  import_data_reference: string | null;
   created_at: string;
 }
 
@@ -160,7 +162,7 @@ export function PricingWorksheet() {
     setLoading(true);
     const { data: inqs, error } = await supabase
       .from('crm_inquiries')
-      .select('id,inquiry_number,aceerp_no,company_name,product_name,specification,quantity,supplier_name,source_status,document_status,kunal_price_status,quote_status,quote_sent_at,pipeline_status,price_ready,purchase_price,offered_price,purchase_price_currency,offered_price_currency,kunal_pricing_requested_at,kunal_pricing_note,created_at')
+      .select('id,inquiry_number,aceerp_no,company_name,product_name,specification,quantity,supplier_name,source_status,document_status,kunal_price_status,quote_status,quote_sent_at,pipeline_status,price_ready,purchase_price,offered_price,purchase_price_currency,offered_price_currency,kunal_pricing_requested_at,kunal_pricing_note,remarks,import_data_reference,created_at')
       .order('created_at', { ascending: false })
       .limit(500);
 
@@ -249,8 +251,8 @@ export function PricingWorksheet() {
       offered_currency: inq.offered_price_currency || 'USD',
       india_price: selectedOption?.source_price != null ? String(selectedOption.source_price) : (indiaOption?.source_price != null ? String(indiaOption.source_price) : ''),
       india_price_currency: selectedOption?.source_currency || indiaOption?.source_currency || 'INR',
-      kunal_remark: inq.kunal_pricing_note || '',
-      import_data_reference: '',
+      kunal_remark: inq.remarks || inq.kunal_pricing_note || '',
+      import_data_reference: inq.import_data_reference || '',
       selected_option_id: selectedOption?.id || null,
     };
     setDrafts(current => ({ ...current, [inq.id]: init }));
@@ -413,6 +415,8 @@ export function PricingWorksheet() {
       kunal_price_status: 'entered',
       price_ready: true,
       quote_status: 'not_sent',
+      remarks: draft.kunal_remark || null,
+      import_data_reference: draft.import_data_reference || null,
       updated_at: now,
       ...extraUpdates,
     }).eq('id', inq.id);
@@ -649,9 +653,9 @@ export function PricingWorksheet() {
                                 className="p-1 border border-gray-200 rounded hover:bg-gray-50 text-gray-500">
                                 <Calculator className="w-3.5 h-3.5" />
                               </button>
-                              <button onClick={() => submit(inq)} disabled={savingId === inq.id || !isManager || tab === 'completed'}
-                                className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-                                <Save className="w-3 h-3" /> {savingId === inq.id ? '...' : 'Submit'}
+                              <button onClick={() => submit(inq)} disabled={savingId === inq.id || !isManager}
+                                className={`flex items-center gap-1 px-2 py-1 text-xs rounded disabled:opacity-50 ${tab === 'completed' ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
+                                <Save className="w-3 h-3" /> {savingId === inq.id ? '...' : tab === 'completed' ? 'Re-submit' : 'Submit'}
                               </button>
                             </div>
                           </td>}
