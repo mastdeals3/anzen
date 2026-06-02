@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 const WAREHOUSE_EMAIL = "accounts@sapharmajaya.co.id";
-const APP_URL = (Deno.env.get("APP_URL") ?? "https://sapharmajaya.co.id").replace(/\/$/, "");
+const APP_URL = "https://sapharmajaya.co.id";
 
 function appLink(path: string, label: string): string {
   const url = `${APP_URL}/${path}`;
