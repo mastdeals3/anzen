@@ -1,9 +1,10 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Layout } from '../components/Layout';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { formatDate } from '../utils/dateFormat';
+import { buildUniqueDocumentNames } from '../utils/documentNaming';
 import {
   Calculator,
   CheckCircle2,
@@ -178,8 +179,9 @@ export function PricingWorksheet() {
   // Document state per inquiry
   const [docs, setDocs] = useState<Record<string, CrmDoc[]>>({});
   const [docsLoading, setDocsLoading] = useState<Record<string, boolean>>({});
-  const [uploadQueue, setUploadQueue] = useState<Record<string, Array<{ file: File; doc_type: string }>>>({});
+  const [uploadQueue, setUploadQueue] = useState<Record<string, Array<{ file: File; doc_type: string; make: string }>>>({});
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
+  const docDropRef = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Toolbar filters
   const [search, setSearch] = useState('');
@@ -382,15 +384,23 @@ export function PricingWorksheet() {
     if (next && !docs[next]) loadDocs(next);
   };
 
-  const queueDocFiles = (inquiryId: string, files: FileList | File[]) => {
-    const newItems = Array.from(files).map(f => ({ file: f, doc_type: 'COA' }));
-    setUploadQueue(cur => ({ ...cur, [inquiryId]: [...(cur[inquiryId] || []), ...newItems] }));
+  const queueDocFiles = (inq: Inquiry, files: FileList | File[]) => {
+    const newItems = Array.from(files).map(f => ({ file: f, doc_type: 'COA', make: inq.supplier_name || '' }));
+    setUploadQueue(cur => ({ ...cur, [inq.id]: [...(cur[inq.id] || []), ...newItems] }));
   };
 
   const setQueueItemType = (inquiryId: string, idx: number, doc_type: string) => {
     setUploadQueue(cur => {
       const q = [...(cur[inquiryId] || [])];
       q[idx] = { ...q[idx], doc_type };
+      return { ...cur, [inquiryId]: q };
+    });
+  };
+
+  const setQueueItemMake = (inquiryId: string, idx: number, make: string) => {
+    setUploadQueue(cur => {
+      const q = [...(cur[inquiryId] || [])];
+      q[idx] = { ...q[idx], make };
       return { ...cur, [inquiryId]: q };
     });
   };
@@ -404,24 +414,33 @@ export function PricingWorksheet() {
     if (!queue.length) return;
     setUploading(cur => ({ ...cur, [inq.id]: true }));
     const { data: { user } } = await supabase.auth.getUser();
+    // Collect existing paths for versioning
+    const existingPaths = (docs[inq.id] || []).map(d => d.storage_path);
     let uploaded = 0;
     for (const item of queue) {
-      const ext = item.file.name.split('.').pop() || 'bin';
-      const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const path = `${inq.id}/${item.doc_type}_${Date.now()}_${safeName}`;
+      const effectiveMake = item.make.trim() || 'unknown';
+      const naming = buildUniqueDocumentNames({
+        product: inq.product_name,
+        supplier: effectiveMake,
+        docType: item.doc_type,
+        originalFilename: item.file.name,
+        existingStoragePaths: existingPaths,
+      });
+      const path = `${inq.id}/${naming.fileName}`;
       const { error: upErr } = await supabase.storage.from('crm-documents').upload(path, item.file);
       if (upErr) { showToast({ type: 'error', title: 'Upload failed', message: upErr.message }); continue; }
       await supabase.from('crm_product_documents').insert({
         inquiry_id: inq.id,
         product_name: inq.product_name,
-        make: inq.supplier_name || null,
+        make: effectiveMake !== 'unknown' ? effectiveMake : null,
         document_type: item.doc_type,
         original_file_name: item.file.name,
-        display_file_name: `${inq.product_name}_${item.doc_type}.${ext}`,
+        display_file_name: naming.displayName,
         storage_bucket: 'crm-documents',
         storage_path: path,
         uploaded_by: user?.id || null,
       });
+      existingPaths.push(path);
       uploaded++;
     }
     setUploadQueue(cur => ({ ...cur, [inq.id]: [] }));
@@ -844,30 +863,50 @@ export function PricingWorksheet() {
                                     )}
                                   </div>
                                   <label className="flex items-center gap-1 text-[11px] text-blue-600 hover:underline cursor-pointer">
-                                    <Upload className="w-3 h-3" /> Upload
+                                    <Upload className="w-3 h-3" /> Browse
                                     <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
                                       className="hidden"
-                                      onChange={e => { if (e.target.files) { queueDocFiles(inq.id, e.target.files); e.target.value = ''; } }} />
+                                      onChange={e => { if (e.target.files) { queueDocFiles(inq, e.target.files); e.target.value = ''; } }} />
                                   </label>
+                                </div>
+
+                                {/* Paste / drop zone */}
+                                <div
+                                  className="mb-2 border-2 border-dashed border-gray-200 rounded px-3 py-2 text-[11px] text-gray-400 text-center cursor-default hover:border-blue-300 hover:text-blue-400 transition-colors"
+                                  onDragOver={e => e.preventDefault()}
+                                  onDrop={e => { e.preventDefault(); const files = Array.from(e.dataTransfer.files); if (files.length) queueDocFiles(inq, files); }}
+                                  onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); queueDocFiles(inq, files); } }}
+                                  tabIndex={0}
+                                >
+                                  Drag &amp; drop files here, or <kbd className="px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">Ctrl+V</kbd> to paste — COA, MSDS, TDS, SPEC etc.
                                 </div>
 
                                 {/* Upload queue */}
                                 {(uploadQueue[inq.id] || []).length > 0 && (
-                                  <div className="mb-2 space-y-1">
+                                  <div className="mb-2 space-y-1.5">
                                     {(uploadQueue[inq.id] || []).map((item, idx) => (
-                                      <div key={idx} className="flex items-center gap-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-xs">
+                                      <div key={idx} className="flex flex-wrap items-center gap-2 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded text-xs">
                                         <FileText className="w-3 h-3 text-amber-600 flex-shrink-0" />
-                                        <span className="flex-1 truncate text-gray-700">{item.file.name}</span>
+                                        <span className="flex-1 min-w-0 truncate text-gray-700" title={item.file.name}>{item.file.name}</span>
                                         <select value={item.doc_type} onChange={e => setQueueItemType(inq.id, idx, e.target.value)}
                                           className="border border-gray-200 rounded px-1 py-0.5 text-[11px]">
                                           {CRM_DOC_TYPES.map(t => <option key={t}>{t}</option>)}
                                         </select>
-                                        <button onClick={() => removeQueueItem(inq.id, idx)} className="text-red-500 hover:text-red-700"><X className="w-3 h-3" /></button>
+                                        <input
+                                          value={item.make}
+                                          onChange={e => setQueueItemMake(inq.id, idx, e.target.value)}
+                                          placeholder="Make / Supplier"
+                                          className="w-28 border border-gray-200 rounded px-1.5 py-0.5 text-[11px] focus:border-blue-400 focus:outline-none"
+                                        />
+                                        <span className="text-[10px] text-gray-400 italic">
+                                          → {[item.file.name.replace(/[^a-zA-Z0-9]/g, '_').slice(0,4), inq.product_name, item.make || '?', item.doc_type].filter(Boolean).join('_').replace(/_{2,}/g,'_').slice(0,32)}.{item.file.name.split('.').pop()}
+                                        </span>
+                                        <button onClick={() => removeQueueItem(inq.id, idx)} className="text-red-500 hover:text-red-700 ml-auto"><X className="w-3 h-3" /></button>
                                       </div>
                                     ))}
                                     <button onClick={() => uploadDocs(inq)} disabled={uploading[inq.id]}
                                       className="flex items-center gap-1 px-2 py-1 text-[11px] bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
-                                      <Upload className="w-3 h-3" /> {uploading[inq.id] ? 'Uploading…' : `Upload ${(uploadQueue[inq.id] || []).length} file(s)`}
+                                      <Upload className="w-3 h-3" /> {uploading[inq.id] ? 'Uploading…' : `Save ${(uploadQueue[inq.id] || []).length} file(s) to CRM`}
                                     </button>
                                   </div>
                                 )}
@@ -876,18 +915,18 @@ export function PricingWorksheet() {
                                 {docsLoading[inq.id] ? (
                                   <p className="text-[11px] text-gray-400">Loading…</p>
                                 ) : (docs[inq.id] || []).length === 0 ? (
-                                  <p className="text-[11px] text-gray-400">No documents yet — upload COA, MSDS, TDS etc. here.</p>
+                                  <p className="text-[11px] text-gray-400">No documents yet — upload COA, MSDS, TDS etc. above.</p>
                                 ) : (
                                   <div className="space-y-1">
                                     {(docs[inq.id] || []).map(doc => (
                                       <div key={doc.id} className="flex items-center gap-2 px-2 py-1 bg-white border border-gray-200 rounded text-xs">
                                         <FileText className="w-3 h-3 text-blue-500 flex-shrink-0" />
-                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${DOC_TYPE_COLOR[doc.document_type] || 'bg-gray-100 text-gray-600'}`}>{doc.document_type}</span>
-                                        <span className="flex-1 truncate text-gray-700">{doc.display_file_name || doc.original_file_name || doc.storage_path.split('/').pop()}</span>
-                                        <span className="text-gray-400 text-[10px]">{new Date(doc.created_at).toLocaleDateString()}</span>
-                                        <button onClick={() => openDoc(doc)} className="text-blue-500 hover:text-blue-700 underline text-[11px]">Open</button>
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 ${DOC_TYPE_COLOR[doc.document_type] || 'bg-gray-100 text-gray-600'}`}>{doc.document_type}</span>
+                                        <span className="flex-1 truncate text-gray-700 font-medium" title={doc.display_file_name || ''}>{doc.display_file_name || doc.original_file_name || doc.storage_path.split('/').pop()}</span>
+                                        <span className="text-gray-400 text-[10px] flex-shrink-0">{new Date(doc.created_at).toLocaleDateString()}</span>
+                                        <button onClick={() => openDoc(doc)} className="text-blue-500 hover:text-blue-700 underline text-[11px] flex-shrink-0">Open</button>
                                         {isManager && (
-                                          <button onClick={() => deleteDoc(doc)} className="text-red-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                                          <button onClick={() => deleteDoc(doc)} className="text-red-400 hover:text-red-600 flex-shrink-0"><Trash2 className="w-3 h-3" /></button>
                                         )}
                                       </div>
                                     ))}

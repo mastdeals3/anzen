@@ -1148,14 +1148,6 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
 
   const saveRequirementDocumentAndMarkSent = async () => {
     if (!inquiryForRequirementDocument || !requirementDocumentType) return;
-    if (requirementUploadFiles.length === 0) {
-      showToast({
-        type: 'error',
-        title: 'File required',
-        message: `Please upload at least one file before marking ${formatRequirementType(requirementDocumentType)} as sent.`
-      });
-      return;
-    }
 
     setSavingRequirementDocument(true);
     try {
@@ -1171,21 +1163,20 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
         uploadedPaths.push(filePath);
       }
 
-      if (uploadedPaths.length === 0) {
-        throw new Error('No files were uploaded');
+      // Log activity (notes or files)
+      if (requirementUploadNotes.trim() || uploadedPaths.length > 0) {
+        const { error: activityError } = await supabase.from('crm_activities').insert({
+          inquiry_id: inquiryForRequirementDocument.id,
+          activity_type: 'document',
+          subject: `${formatRequirementType(requirementDocumentType)} marked as sent`,
+          description: requirementUploadNotes.trim() || null,
+          attachment_urls: uploadedPaths.length > 0 ? uploadedPaths : null,
+          activity_date: new Date().toISOString().split('T')[0],
+          is_completed: true,
+          created_by: user.id,
+        });
+        if (activityError) throw activityError;
       }
-
-      const { error: activityError } = await supabase.from('crm_activities').insert({
-        inquiry_id: inquiryForRequirementDocument.id,
-        activity_type: 'document',
-        subject: `${formatRequirementType(requirementDocumentType)} marked as sent`,
-        description: requirementUploadNotes.trim() || null,
-        attachment_urls: uploadedPaths,
-        activity_date: new Date().toISOString().split('T')[0],
-        is_completed: true,
-        created_by: user.id,
-      });
-      if (activityError) throw activityError;
 
       const { error: markError } = await supabase.rpc('mark_requirement_sent', {
         inquiry_id: inquiryForRequirementDocument.id,
@@ -1198,7 +1189,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
       showToast({ type: 'success', title: 'Success', message: `${formatRequirementType(requirementDocumentType)} marked as sent.` });
     } catch (error) {
       console.error('Error uploading requirement document:', error);
-      showToast({ type: 'error', title: 'Error', message: 'Failed to upload and mark requirement as sent. Please try again.' });
+      showToast({ type: 'error', title: 'Error', message: 'Failed to mark requirement as sent. Please try again.' });
       setSavingRequirementDocument(false);
     }
   };
@@ -2835,7 +2826,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
       >
         <div className="space-y-4">
           <div className="text-sm text-gray-600">
-            Upload supporting document(s) before marking this requirement as sent.
+            Optionally attach supporting document(s). You can also mark as sent without a file — useful when already sent via email or in person.
           </div>
 
           <div>
@@ -2849,7 +2840,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Upload file(s) *
+              Attach file(s) <span className="text-gray-400 font-normal">(optional)</span>
             </label>
             <input
               type="file"
@@ -2877,7 +2868,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
                 ))}
               </div>
             ) : (
-              <p className="mt-1 text-xs text-gray-500">At least one file is required to mark as sent.</p>
+              <p className="mt-1 text-xs text-gray-500">No file selected — you can still mark as sent.</p>
             )}
           </div>
 
@@ -2904,10 +2895,10 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
             </button>
             <button
               onClick={saveRequirementDocumentAndMarkSent}
-              disabled={savingRequirementDocument || requirementUploadFiles.length === 0}
+              disabled={savingRequirementDocument}
               className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60"
             >
-              {savingRequirementDocument ? 'Uploading...' : 'Upload & Mark Sent'}
+              {savingRequirementDocument ? 'Saving...' : requirementUploadFiles.length > 0 ? 'Upload & Mark Sent' : 'Mark as Sent'}
             </button>
           </div>
         </div>
