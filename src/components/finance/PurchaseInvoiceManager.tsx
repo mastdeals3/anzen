@@ -456,35 +456,20 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
         asset_account_id: item.asset_account_id,
       }));
 
-      if (editingInvoice) {
-        const { error: updateError } = await supabase
-          .from('purchase_invoices')
-          .update(invoiceData)
-          .eq('id', editingInvoice.id);
-        if (updateError) throw updateError;
+      const { error: rpcError } = await supabase.rpc('save_purchase_invoice', {
+        p_invoice_id:   editingInvoice ? editingInvoice.id : null,
+        p_invoice_data: invoiceData,
+        p_items:        itemsData,
+      });
+      if (rpcError) throw rpcError;
 
-        await supabase.from('purchase_invoice_items').delete().eq('purchase_invoice_id', editingInvoice.id);
-        const { error: itemsError } = await supabase
-          .from('purchase_invoice_items')
-          .insert(itemsData.map(item => ({ ...item, purchase_invoice_id: editingInvoice.id })));
-        if (itemsError) throw itemsError;
-
-        showToast({ type: 'success', title: 'Updated', message: 'Purchase invoice updated successfully!' });
-      } else {
-        const { data: invoice, error: invoiceError } = await supabase
-          .from('purchase_invoices')
-          .insert([{ ...invoiceData, paid_amount: 0, status: 'unpaid', created_by: userData.user?.id }])
-          .select()
-          .single();
-        if (invoiceError) throw invoiceError;
-
-        const { error: itemsError } = await supabase
-          .from('purchase_invoice_items')
-          .insert(itemsData.map(item => ({ ...item, purchase_invoice_id: invoice.id })));
-        if (itemsError) throw itemsError;
-
-        showToast({ type: 'success', title: 'Success', message: 'Purchase invoice created successfully!' });
-      }
+      showToast({
+        type: 'success',
+        title: editingInvoice ? 'Updated' : 'Success',
+        message: editingInvoice
+          ? 'Purchase invoice updated successfully!'
+          : 'Purchase invoice created successfully!',
+      });
 
       resetForm();
       setEditingInvoice(null);
