@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Bell, X, CheckCheck, AlertTriangle, Clock, Package, FileText, CheckSquare, MessageSquare, AtSign, DollarSign } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -49,7 +49,7 @@ export function NotificationDropdown() {
   useEffect(() => {
     if (user) {
       loadNotifications();
-      const interval = setInterval(() => loadNotificationsPolling(), 60000);
+      const interval = setInterval(() => loadNotifications(), 60000);
       return () => clearInterval(interval);
     }
   }, [user]);
@@ -58,7 +58,7 @@ export function NotificationDropdown() {
     try {
       const { data, error } = await supabase
         .from('notifications')
-        .select('*')
+        .select('id,type,title,message,reference_id,reference_type,is_read,created_at')
         .eq('user_id', user?.id)
         .eq('is_read', false)
         .order('created_at', { ascending: false })
@@ -85,40 +85,6 @@ export function NotificationDropdown() {
       addToastedIds(user!.id, newIds);
     } catch (error) {
       console.error('Error loading notifications:', error);
-    }
-  };
-
-  const loadNotificationsPolling = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user?.id)
-        .eq('is_read', false)
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (error) throw error;
-
-      const newNotifications = data || [];
-      setNotifications(newNotifications);
-      setUnreadCount(newNotifications.length);
-
-      // Same logic: only toast IDs not yet seen
-      const toasted = getToastedIds(user!.id);
-      const newIds: string[] = [];
-      newNotifications.forEach(notif => {
-        if (toasted.has(notif.id)) return;
-        newIds.push(notif.id);
-        if (notif.type === 'appointment') {
-          showToast({ type: 'appointment', title: notif.title, message: notif.message, duration: 8000 });
-        } else {
-          showToast({ type: 'info', title: notif.title, message: notif.message, duration: 6000 });
-        }
-      });
-      addToastedIds(user!.id, newIds);
-    } catch (error) {
-      console.error('Error loading notifications (polling):', error);
     }
   };
 

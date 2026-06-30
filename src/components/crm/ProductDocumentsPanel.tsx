@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Download, ExternalLink, FileText, Search, Trash2, Upload, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { showToast } from '../ToastNotification';
+import { getSignedUrlCached, invalidateSignedUrl } from '../../utils/signedUrlCache';
 
 type CrmProductDocument = {
   id: string;
@@ -89,16 +90,18 @@ export function ProductDocumentsPanel() {
   }, [documents, productFilter, supplierFilter, documentTypeFilter]);
 
   const openDocument = async (doc: CrmProductDocument, download = false) => {
-    const { data, error } = await supabase.storage
-      .from('crm-documents')
-      .createSignedUrl(doc.storage_path, 120, { download: download ? (doc.display_file_name || undefined) : undefined });
-    if (error || !data?.signedUrl) { alert('Unable to open document.'); return; }
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    const downloadName = download ? (doc.display_file_name || undefined) : undefined;
+    const url = await getSignedUrlCached('crm-documents', doc.storage_path, 600, {
+      download: downloadName,
+    });
+    if (!url) { alert('Unable to open document.'); return; }
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const deleteDocument = async (doc: CrmProductDocument) => {
     if (!canUpload) return;
     if (!confirm('Delete this document?')) return;
+    invalidateSignedUrl('crm-documents', doc.storage_path);
     await supabase.storage.from('crm-documents').remove([doc.storage_path]);
     await supabase.from('crm_product_documents').delete().eq('id', doc.id);
     setDocuments(prev => prev.filter(d => d.id !== doc.id));
