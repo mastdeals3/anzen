@@ -13,6 +13,7 @@ import { OurSideChips } from './OurSideChips';
 import { PipelineStatusBadge, pipelineStatusOptions } from './PipelineStatusBadge';
 import { LostReasonModal } from './LostReasonModal';
 import { useAuth } from '../../contexts/AuthContext';
+import { getSignedUrlCached } from '../../utils/signedUrlCache';
 import { canSeeInternalPricing, canSeeFinalQuote } from '../../utils/permissions';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
@@ -532,9 +533,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
       setDocumentPreviewBlobUrl(null);
     }
     try {
-      const { data: signed, error } = await supabase.storage.from('crm-documents').createSignedUrl(firstDoc.storage_path, 3600);
-      if (error) throw error;
-      const signedUrl = signed?.signedUrl || null;
+      const signedUrl = await getSignedUrlCached('crm-documents', firstDoc.storage_path, 3600);
       setDocumentPreviewUrl(signedUrl);
       if (!signedUrl) return;
       const res = await fetch(signedUrl);

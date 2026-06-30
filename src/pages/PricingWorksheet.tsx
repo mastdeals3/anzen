@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { formatDate } from '../utils/dateFormat';
 import { buildUniqueDocumentNames } from '../utils/documentNaming';
+import { getSignedUrlCached, invalidateSignedUrl } from '../utils/signedUrlCache';
 import {
   Calculator,
   CheckCircle2,
@@ -480,6 +481,7 @@ export function PricingWorksheet() {
   };
 
   const deleteDoc = async (doc: CrmDoc) => {
+    invalidateSignedUrl('crm-documents', doc.storage_path);
     await supabase.storage.from('crm-documents').remove([doc.storage_path]);
     await supabase.from('crm_product_documents').delete().eq('id', doc.id);
     setDocs(cur => ({ ...cur, [doc.inquiry_id]: (cur[doc.inquiry_id] || []).filter(d => d.id !== doc.id) }));
@@ -487,8 +489,8 @@ export function PricingWorksheet() {
   };
 
   const openDoc = async (doc: CrmDoc) => {
-    const { data } = await supabase.storage.from('crm-documents').createSignedUrl(doc.storage_path, 120);
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    const url = await getSignedUrlCached('crm-documents', doc.storage_path, 600);
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
   };
 
 

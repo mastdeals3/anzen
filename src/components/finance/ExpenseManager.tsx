@@ -5,6 +5,7 @@ import { Modal } from '../Modal';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFinancialYear } from '../../utils/dateFormat';
+import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 
 interface FinanceExpense {
   id: string;
@@ -628,24 +629,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   };
 
 
-  const getSignedUrl = async (fileUrl: string): Promise<string> => {
-    try {
-      const match = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
-      if (!match) {
-        // Try authenticated path pattern
-        const authMatch = fileUrl.match(/\/storage\/v1\/object\/([^/]+)\/(.+)/);
-        if (!authMatch) return fileUrl;
-        const [, bucket, path] = authMatch;
-        const { data } = await supabase.storage.from(bucket).createSignedUrl(decodeURIComponent(path), 3600);
-        return data?.signedUrl || fileUrl;
-      }
-      const [, bucket, path] = match;
-      const { data } = await supabase.storage.from(bucket).createSignedUrl(decodeURIComponent(path), 3600);
-      return data?.signedUrl || fileUrl;
-    } catch {
-      return fileUrl;
-    }
-  };
+  const getSignedUrl = (fileUrl: string): Promise<string> =>
+    resolveStorageUrlCached(fileUrl, 3600);
 
   const openDocument = async (url: string) => {
     const signed = await getSignedUrl(url);

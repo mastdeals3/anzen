@@ -35,3 +35,24 @@ export function invalidateSignedUrl(bucket: string, path: string) {
     if (key.startsWith(`${bucket}::${path}::`)) cache.delete(key);
   }
 }
+
+// Resolves a stored Supabase Storage URL (public or signed) into a fresh
+// signed URL, caching the result. Returns the original URL on parse failure
+// so callers preserve existing behavior.
+export async function resolveStorageUrlCached(
+  fileUrl: string,
+  ttlSeconds: number,
+): Promise<string> {
+  try {
+    const match = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
+    const authMatch = match ? null : fileUrl.match(/\/storage\/v1\/object\/([^/]+)\/(.+)/);
+    const parts = match || authMatch;
+    if (!parts) return fileUrl;
+    const [, bucket, rawPath] = parts;
+    const path = decodeURIComponent(rawPath);
+    const signed = await getSignedUrlCached(bucket, path, ttlSeconds);
+    return signed || fileUrl;
+  } catch {
+    return fileUrl;
+  }
+}

@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { Plus, CreditCard as Edit, Trash2, Upload, X, ExternalLink, Download, FileText, Eye } from 'lucide-react';
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
+import { resolveStorageUrlCached } from '../utils/signedUrlCache';
 
 interface Product {
   id: string;
@@ -500,17 +501,8 @@ export function Products() {
     }
   };
 
-  const getSignedUrl = async (fileUrl: string): Promise<string> => {
-    try {
-      const match = fileUrl.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)/);
-      if (!match) return fileUrl;
-      const [, bucket, path] = match;
-      const { data } = await supabase.storage.from(bucket).createSignedUrl(decodeURIComponent(path), 3600);
-      return data?.signedUrl || fileUrl;
-    } catch {
-      return fileUrl;
-    }
-  };
+  const getSignedUrl = (fileUrl: string): Promise<string> =>
+    resolveStorageUrlCached(fileUrl, 3600);
 
   const viewDocument = async (fileUrl: string, filename = 'Document') => {
     setShowDocModal(true);

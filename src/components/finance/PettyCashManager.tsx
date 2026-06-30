@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { formatDate } from '../../utils/dateFormat';
+import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 
 interface PettyCashDocument {
   id: string;
@@ -625,18 +626,8 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     }
   };
 
-  const getSignedUrl = async (fileUrl: string): Promise<string> => {
-    try {
-      const match = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
-      const authMatch = !match ? fileUrl.match(/\/storage\/v1\/object\/([^/]+)\/(.+)/) : null;
-      const [, bucket, path] = match || authMatch || [];
-      if (!bucket) return fileUrl;
-      const { data } = await supabase.storage.from(bucket).createSignedUrl(decodeURIComponent(path), 3600);
-      return data?.signedUrl || fileUrl;
-    } catch {
-      return fileUrl;
-    }
-  };
+  const getSignedUrl = (fileUrl: string): Promise<string> =>
+    resolveStorageUrlCached(fileUrl, 3600);
 
   const openDocument = async (url: string) => {
     const signed = await getSignedUrl(url);
