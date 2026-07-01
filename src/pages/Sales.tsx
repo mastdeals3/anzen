@@ -1325,6 +1325,7 @@ export function Sales() {
       invoice_date: new Date().toISOString().split('T')[0],
       payment_terms: '30',
       discount: 0,
+      stamp_duty_amount: 0,
       delivery_challan_number: '',
       po_number: '',
       notes: '',

@@ -1165,7 +1165,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       setCancelPostingModalOpen(false);
       setCancelPostingTarget(null);
       setCancelPostingReason('');
-      loadExpenses();
+      loadData();
     } catch (err) {
       const msg = supabaseErrorMessage(err);
       alert(msg.includes('closed') ? `Period closed: ${msg}` : `Failed to cancel posting: ${msg}`);
