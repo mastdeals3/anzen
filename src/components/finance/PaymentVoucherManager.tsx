@@ -376,16 +376,11 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         }
         throw error;
       }
-      const cancelledId = cancelPostingTarget.id;
-      setVouchers(prev => prev.map(v =>
-        v.id === cancelledId ? { ...v, is_posted: false } : v
-      ));
-      if (viewingVoucher?.id === cancelledId) {
-        setViewingVoucher(prev => prev ? { ...prev, is_posted: false } : prev);
-      }
+      // Reload fresh data BEFORE closing the modal so the table already shows
+      // Draft state (Edit/Post/Delete buttons) the moment the modal disappears.
+      await loadVouchers();
       setCancelPostingTarget(null);
       setCancelPostingReason('');
-      loadVouchers();
     } catch (err) {
       alert('Failed to cancel posting: ' + supabaseErrorMessage(err));
     } finally {
