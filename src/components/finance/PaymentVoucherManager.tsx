@@ -342,11 +342,6 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         p_posted_by: profile.id,
       });
       if (error) throw error;
-      const postedId = v.id;
-      setVouchers(prev => prev.map(r => r.id === postedId ? { ...r, is_posted: true } : r));
-      if (viewingVoucher?.id === postedId) {
-        setViewingVoucher(prev => prev ? { ...prev, is_posted: true } : prev);
-      }
       loadVouchers();
     } catch (err) {
       alert('Failed to post: ' + supabaseErrorMessage(err));
@@ -376,11 +371,9 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         }
         throw error;
       }
-      // Reload fresh data BEFORE closing the modal so the table already shows
-      // Draft state (Edit/Post/Delete buttons) the moment the modal disappears.
-      await loadVouchers();
       setCancelPostingTarget(null);
       setCancelPostingReason('');
+      loadVouchers();
     } catch (err) {
       alert('Failed to cancel posting: ' + supabaseErrorMessage(err));
     } finally {
@@ -547,7 +540,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       loadVouchers();
     } catch (error: unknown) {
       console.error('Error saving voucher:', error);
-      alert('Failed to save: ' + supabaseErrorMessage(error));
+      alert('Failed to save: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -1121,20 +1114,12 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
                   </button>
                 )}
                 {!viewingVoucher.is_posted && canManage && (
-                  <>
-                    <button
-                      onClick={() => { const v = viewingVoucher; setViewingVoucher(null); handleEdit(v); }}
-                      className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
-                    >
-                      <Pencil className="w-3 h-3" /> Edit
-                    </button>
-                    <button
-                      onClick={() => { setViewingVoucher(null); handlePostVoucher(viewingVoucher); }}
-                      className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium border border-green-300 text-green-700 rounded hover:bg-green-50"
-                    >
-                      <CheckCircle className="w-3 h-3" /> Post to GL
-                    </button>
-                  </>
+                  <button
+                    onClick={() => { setViewingVoucher(null); handlePostVoucher(viewingVoucher); }}
+                    className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium border border-green-300 text-green-700 rounded hover:bg-green-50"
+                  >
+                    <CheckCircle className="w-3 h-3" /> Post to GL
+                  </button>
                 )}
                 <button
                   onClick={() => window.print()}
