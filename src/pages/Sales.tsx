@@ -28,6 +28,7 @@ interface SalesInvoice {
   due_date: string;
   subtotal: number;
   tax_amount: number;
+  stamp_duty_amount: number;
   discount_amount: number;
   total_amount: number;
   payment_status: 'pending' | 'partial' | 'paid';
@@ -202,6 +203,7 @@ export function Sales() {
     invoice_date: new Date().toISOString().split('T')[0],
     payment_terms: '30',
     discount: 0,
+    stamp_duty_amount: 0,
     delivery_challan_number: '',
     po_number: '',
     notes: '',
@@ -1034,8 +1036,9 @@ export function Sales() {
       const itemSubtotal = item.quantity * item.unit_price;
       return sum + (itemSubtotal * (item.tax_rate / 100));
     }, 0);
-    const total = subtotal + taxAmount - formData.discount;
-    return { subtotal, taxAmount, total };
+    const stampDuty = formData.stamp_duty_amount || 0;
+    const total = subtotal + taxAmount - formData.discount + stampDuty;
+    return { subtotal, taxAmount, stampDuty, total };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1105,6 +1108,7 @@ export function Sales() {
               customer_id: formData.customer_id,
               subtotal: totals.subtotal,
               tax_amount: totals.taxAmount,
+              stamp_duty_amount: totals.stampDuty,
               total_amount: totals.total,
               discount_amount: formData.discount,
               po_number: formData.po_number || null,
@@ -1155,6 +1159,7 @@ export function Sales() {
             notes: formData.notes || null,
             subtotal: totals.subtotal,
             tax_amount: totals.taxAmount,
+            stamp_duty_amount: totals.stampDuty,
             total_amount: totals.total,
             payment_status: 'pending',
             created_by: user.id,
@@ -1236,6 +1241,7 @@ export function Sales() {
       invoice_date: invoice.invoice_date,
       payment_terms: String(invoice.payment_terms_days || 30),
       discount: invoice.discount_amount,
+      stamp_duty_amount: Number(invoice.stamp_duty_amount) || 0,
       delivery_challan_number: invoice.delivery_challan_number || '',
       po_number: invoice.po_number || '',
       notes: invoice.notes || '',
@@ -1979,6 +1985,18 @@ export function Sales() {
                   <div className="flex justify-between">
                     <span>Discount:</span>
                     <span className="font-medium">-Rp {formData.discount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Bea Meterai:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={formData.stamp_duty_amount === 0 ? '' : formData.stamp_duty_amount}
+                      onChange={(e) => setFormData(prev => ({ ...prev, stamp_duty_amount: parseFloat(e.target.value) || 0 }))}
+                      placeholder="0"
+                      className="w-28 text-right px-1.5 py-0.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                    />
                   </div>
                   <div className="flex justify-between text-sm font-bold border-t pt-1">
                     <span>Total:</span>

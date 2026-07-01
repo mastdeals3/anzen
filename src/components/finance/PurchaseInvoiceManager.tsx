@@ -45,8 +45,6 @@ interface PurchaseInvoiceItem {
   line_total: number;
   expense_account_id: string | null;
   asset_account_id: string | null;
-  tax_percent: number;
-  tax_amount: number;
 }
 
 interface PurchaseInvoice {
@@ -59,6 +57,7 @@ interface PurchaseInvoice {
   exchange_rate: number;
   subtotal: number;
   tax_amount: number;
+  stamp_duty_amount: number;
   total_amount: number;
   paid_amount: number;
   balance_amount: number;
@@ -83,6 +82,8 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
   const [products, setProducts] = useState<Product[]>([]);
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ppnRate, setPpnRate] = useState(0); // 0 or 11
+  const [stampDutyAmount, setStampDutyAmount] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModal, setViewModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<PurchaseInvoice | null>(null);
@@ -118,8 +119,6 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
       line_total: 0,
       expense_account_id: null,
       asset_account_id: null,
-      tax_percent: 0,
-      tax_amount: 0,
     },
   ]);
 
@@ -242,8 +241,6 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
         line_total: 0,
         expense_account_id: null,
         asset_account_id: null,
-        tax_percent: 0,
-        tax_amount: 0,
       },
     ]);
   };
@@ -258,11 +255,9 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
     const newLines = [...lineItems];
     newLines[index] = { ...newLines[index], [field]: value };
 
-    // Auto-calculate line total and tax amount
-    if (field === 'quantity' || field === 'unit_price' || field === 'tax_percent') {
-      const subtotal = newLines[index].quantity * newLines[index].unit_price;
-      newLines[index].line_total = subtotal;
-      newLines[index].tax_amount = subtotal * (newLines[index].tax_percent / 100);
+    // Auto-calculate line total
+    if (field === 'quantity' || field === 'unit_price') {
+      newLines[index].line_total = newLines[index].quantity * newLines[index].unit_price;
     }
 
     // If item_type changes, clear product/account selections
@@ -288,10 +283,9 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
 
   const calculateTotals = () => {
     const subtotal = lineItems.reduce((sum, item) => sum + item.line_total, 0);
-    const taxTotal = lineItems.reduce((sum, item) => sum + item.tax_amount, 0);
-    const total = subtotal + taxTotal;
-
-    return { subtotal, taxTotal, total };
+    const ppnAmount = Math.round(subtotal * ppnRate / 100 * 100) / 100;
+    const total = subtotal + ppnAmount + stampDutyAmount;
+    return { subtotal, ppnAmount, stampDutyAmount, total };
   };
 
   const handleOpenEdit = async (invoice: PurchaseInvoice) => {
@@ -314,6 +308,15 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
       .eq('purchase_invoice_id', invoice.id)
       .order('created_at');
 
+    // Restore invoice-level PPN rate and stamp duty
+    if (invoice.subtotal > 0 && invoice.tax_amount > 0) {
+      const rate = Math.round((invoice.tax_amount / invoice.subtotal) * 100);
+      setPpnRate(rate === 11 ? 11 : 0);
+    } else {
+      setPpnRate(0);
+    }
+    setStampDutyAmount(Number(invoice.stamp_duty_amount) || 0);
+
     const items = (data || []).map((item: any) => ({
       id: item.id,
       item_type: item.item_type,
@@ -325,8 +328,6 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
       line_total: item.line_total,
       expense_account_id: item.expense_account_id,
       asset_account_id: item.asset_account_id,
-      tax_percent: item.line_total > 0 ? Math.round((item.tax_amount / item.line_total) * 1000) / 10 : 0,
-      tax_amount: item.tax_amount,
     }));
 
     setLineItems(items.length > 0 ? items : [{
@@ -339,8 +340,6 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
       line_total: 0,
       expense_account_id: null,
       asset_account_id: null,
-      tax_percent: 0,
-      tax_amount: 0,
     }]);
     setModalOpen(true);
   };
@@ -435,7 +434,8 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
         currency: formData.currency,
         exchange_rate: formData.exchange_rate,
         subtotal: totals.subtotal,
-        tax_amount: totals.taxTotal,
+        tax_amount: totals.ppnAmount,
+        stamp_duty_amount: totals.stampDutyAmount,
         total_amount: totals.total,
         faktur_pajak_number: formData.faktur_pajak_number.trim() || null,
         notes: formData.notes.trim() || null,
@@ -451,7 +451,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
         unit: item.unit,
         unit_price: item.unit_price,
         line_total: item.line_total,
-        tax_amount: item.tax_amount,
+        tax_amount: 0,
         expense_account_id: item.expense_account_id,
         asset_account_id: item.asset_account_id,
       }));
@@ -535,6 +535,8 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
       notes: '',
       document_urls: [],
     });
+    setPpnRate(0);
+    setStampDutyAmount(0);
     setLineItems([
       {
         item_type: 'inventory',
@@ -546,8 +548,6 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
         line_total: 0,
         expense_account_id: null,
         asset_account_id: null,
-        tax_percent: 0,
-        tax_amount: 0,
       },
     ]);
   };
@@ -1068,32 +1068,11 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Tax %
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={item.tax_percent}
-                          onChange={(e) => handleLineChange(index, 'tax_percent', parseFloat(e.target.value) || 0)}
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          placeholder="0"
-                          className="w-full px-2 py-1.5 pr-6 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">%</span>
-                      </div>
-                      {item.tax_amount > 0 && (
-                        <p className="text-xs text-gray-400 mt-0.5">{item.tax_amount.toLocaleString()}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Total (inc. tax)
+                        Amount
                       </label>
                       <input
                         type="text"
-                        value={(item.line_total + item.tax_amount).toLocaleString()}
+                        value={item.line_total.toLocaleString()}
                         readOnly
                         className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded bg-gray-50 font-medium"
                       />
@@ -1103,15 +1082,37 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
               ))}
             </div>
 
-            {/* Totals Summary */}
+            {/* Invoice-level Tax Footer */}
             <div className="mt-6 border-t pt-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Subtotal:</span>
                 <span className="font-medium">{formData.currency} {totals.subtotal.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Tax:</span>
-                <span className="font-medium">{formData.currency} {totals.taxTotal.toLocaleString()}</span>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600">PPN:</span>
+                  <select
+                    value={ppnRate}
+                    onChange={(e) => setPpnRate(Number(e.target.value))}
+                    className="text-xs border border-gray-300 rounded px-1.5 py-0.5 focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value={0}>None (0%)</option>
+                    <option value={11}>11%</option>
+                  </select>
+                </div>
+                <span className="font-medium">{formData.currency} {totals.ppnAmount.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Bea Meterai:</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={stampDutyAmount === 0 ? '' : stampDutyAmount}
+                  onChange={(e) => setStampDutyAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="0"
+                  className="w-32 text-right px-2 py-0.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                />
               </div>
               <div className="flex justify-between text-lg font-bold border-t pt-2">
                 <span>Total:</span>
@@ -1193,6 +1194,12 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Subtotal</p>
                 <p className="font-semibold text-gray-900">{selectedInvoice.currency} {Number(selectedInvoice.subtotal).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                {Number(selectedInvoice.tax_amount) > 0 && (
+                  <p className="text-xs text-gray-500 mt-0.5">PPN: {selectedInvoice.currency} {Number(selectedInvoice.tax_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                )}
+                {Number(selectedInvoice.stamp_duty_amount) > 0 && (
+                  <p className="text-xs text-gray-500 mt-0.5">Bea Meterai: {selectedInvoice.currency} {Number(selectedInvoice.stamp_duty_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Paid Amount</p>

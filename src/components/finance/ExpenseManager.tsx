@@ -32,6 +32,12 @@ interface FinanceExpense {
   pib_bm_amount?: number | null;
   pib_ppn_amount?: number | null;
   pib_pph_amount?: number | null;
+  // Tax fields for non-PIB expenses
+  ppn_amount?: number | null;
+  pph_amount?: number | null;
+  pph_code_id?: string | null;
+  stamp_duty_amount?: number | null;
+  fixed_asset_account_id?: string | null;
   batches?: { batch_number: string } | null;
   import_containers?: { container_ref: string } | null;
   delivery_challans?: { challan_number: string } | null;
@@ -72,6 +78,19 @@ interface BankAccount {
   account_number: string;
   alias: string | null;
   currency: string;
+}
+
+interface TaxCode {
+  id: string;
+  code: string;
+  name: string;
+  rate: number;
+}
+
+interface COAAccount {
+  id: string;
+  code: string;
+  name: string;
 }
 
 interface ExpenseManagerProps {
@@ -306,6 +325,15 @@ const expenseCategories = [
     requiresContainer: false,
     group: 'Administrative'
   },
+  {
+    value: 'fixed_asset',
+    label: 'Fixed Asset',
+    type: 'admin',
+    icon: Building2,
+    description: 'Purchase of fixed asset (equipment, vehicle, etc.) - CAPITALIZED to asset account',
+    requiresContainer: false,
+    group: 'Administrative'
+  },
 ];
 
 export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewHandled }: ExpenseManagerProps) {
@@ -341,6 +369,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
   const [showPasteHint, setShowPasteHint] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
+  const [coaAssets, setCoaAssets] = useState<COAAccount[]>([]);
 
   // Use master date range from Finance context
   const { dateRange } = useFinance();
@@ -363,6 +393,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     pib_bm_amount: 0,
     pib_ppn_amount: 0,
     pib_pph_amount: 0,
+    // Non-PIB tax fields
+    ppn_amount: 0,
+    pph_amount: 0,
+    pph_code_id: '',
+    stamp_duty_amount: 0,
+    fixed_asset_account_id: '',
   });
 
   useEffect(() => {
@@ -582,6 +618,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         });
       }
       setReconciledExpenseIds(reconciledIds);
+
+      // Load tax codes (withholding PPh) and asset COA accounts once
+      if (taxCodes.length === 0) {
+        const { data: tc } = await supabase.from('tax_codes').select('id, code, name, rate').eq('is_withholding', true).order('code');
+        setTaxCodes(tc || []);
+      }
+      if (coaAssets.length === 0) {
+        const { data: coa } = await supabase.from('chart_of_accounts').select('id, code, name').in('account_type', ['asset', 'Asset']).order('code');
+        setCoaAssets(coa || []);
+      }
     } catch (error: any) {
       console.error('Error loading data:', error.message);
       alert('Failed to load expenses');
@@ -730,6 +776,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       console.log('Combined document URLs:', allDocumentUrls);
 
       const isPib = formData.expense_category === 'pib_import';
+      const isFixedAsset = formData.expense_category === 'fixed_asset';
+      const isImportCategory = category?.type === 'import';
       const expenseData = {
         expense_category: formData.expense_category,
         expense_type: category?.type || 'admin',
@@ -748,6 +796,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         pib_bm_amount:  isPib ? (formData.pib_bm_amount  || 0) : null,
         pib_ppn_amount: isPib ? (formData.pib_ppn_amount || 0) : null,
         pib_pph_amount: isPib ? (formData.pib_pph_amount || 0) : null,
+        // Non-PIB tax fields — only for non-import non-pib categories
+        ppn_amount:             (!isPib && !isImportCategory) ? (formData.ppn_amount || 0) : 0,
+        pph_amount:             (!isPib && !isImportCategory) ? (formData.pph_amount || 0) : 0,
+        pph_code_id:            (!isPib && !isImportCategory && formData.pph_code_id) ? formData.pph_code_id : null,
+        stamp_duty_amount:      (!isPib && !isImportCategory) ? (formData.stamp_duty_amount || 0) : 0,
+        fixed_asset_account_id: isFixedAsset ? (formData.fixed_asset_account_id || null) : null,
       };
 
       console.log('=== EXPENSE DATA TO SAVE ===');
@@ -1022,6 +1076,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       pib_bm_amount:  expense.pib_bm_amount  ?? 0,
       pib_ppn_amount: expense.pib_ppn_amount ?? 0,
       pib_pph_amount: expense.pib_pph_amount ?? 0,
+      ppn_amount: expense.ppn_amount ?? 0,
+      pph_amount: expense.pph_amount ?? 0,
+      pph_code_id: expense.pph_code_id ?? '',
+      stamp_duty_amount: expense.stamp_duty_amount ?? 0,
+      fixed_asset_account_id: expense.fixed_asset_account_id ?? '',
     });
 
     // Set selected bank transaction if expense is already linked
@@ -1201,6 +1260,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       pib_bm_amount: 0,
       pib_ppn_amount: 0,
       pib_pph_amount: 0,
+      ppn_amount: 0,
+      pph_amount: 0,
+      pph_code_id: '',
+      stamp_duty_amount: 0,
+      fixed_asset_account_id: '',
     });
   };
 
@@ -2000,6 +2064,90 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 </div>
               );
             })()}
+
+            {/* ── Fixed Asset Account Selector ───────────────────────────── */}
+            {formData.expense_category === 'fixed_asset' && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="text-sm font-bold text-blue-900 mb-3">Fixed Asset Account</h3>
+                <select
+                  value={formData.fixed_asset_account_id}
+                  onChange={(e) => setFormData({ ...formData, fixed_asset_account_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm"
+                  required
+                >
+                  <option value="">Select Asset Account *</option>
+                  {coaAssets.map((a) => (
+                    <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-blue-700 mt-1">DR Asset Account, CR Bank/Cash</p>
+              </div>
+            )}
+
+            {/* ── PPN / PPh / Stamp Duty for standard non-import expenses ── */}
+            {formData.expense_category !== 'pib_import' && selectedCategory?.type !== 'import' && formData.expense_category !== 'fixed_asset' && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Tax (Optional)</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">PPN (Input VAT)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={formData.ppn_amount || ''}
+                      onChange={(e) => setFormData({ ...formData, ppn_amount: parseFloat(e.target.value) || 0 })}
+                      placeholder="0"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-0.5">DR PPN Masukan (1150)</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">PPh Withheld</label>
+                    <select
+                      value={formData.pph_code_id}
+                      onChange={(e) => setFormData({ ...formData, pph_code_id: e.target.value, pph_amount: 0 })}
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 mb-1"
+                    >
+                      <option value="">None</option>
+                      {taxCodes.map((tc) => (
+                        <option key={tc.id} value={tc.id}>{tc.code} — {tc.name} ({tc.rate}%)</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={formData.pph_amount || ''}
+                      onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
+                      placeholder="Amount"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-0.5">CR PPh Payable (2132)</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Bea Meterai</label>
+                    <input
+                      type="number"
+                      step="1000"
+                      min="0"
+                      value={formData.stamp_duty_amount || ''}
+                      onChange={(e) => setFormData({ ...formData, stamp_duty_amount: parseFloat(e.target.value) || 0 })}
+                      placeholder="0"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-0.5">DR Bea Meterai Expense (6950)</p>
+                  </div>
+                </div>
+                {(formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0) && (
+                  <div className="mt-2 text-xs text-gray-600 border-t pt-2">
+                    Net bank payment: Rp {(
+                      (formData.amount || 0) + (formData.ppn_amount || 0) - (formData.pph_amount || 0) + (formData.stamp_duty_amount || 0)
+                    ).toLocaleString('id-ID')}
+                  </div>
+                )}
+              </div>
+            )}
 
             {requiresDC && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
