@@ -1458,9 +1458,21 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     if (!importResult?.skippedEntries?.length) return;
     setForceImporting(true);
     try {
+      // Preserve the upload_id captured when the entry was first parsed.
+      // Each skippedEntries[i] already carries the bank_statement_uploads.id
+      // that was inserted moments earlier in the same import run (see the
+      // CSV import path where insertData is built with upload_id:
+      // uploadRecord.id and then split into finalInsertData + skippedEntries).
+      // The previous version overwrote this valid FK with crypto.randomUUID(),
+      // which does not reference any row in bank_statement_uploads and
+      // therefore violated bank_statement_lines_upload_id_fkey.
+      const missingUploadId = importResult.skippedEntries.some(e => !e?.upload_id);
+      if (missingUploadId) {
+        alert('❌ Force import cannot proceed: the original upload record is missing. Please re-run the import.');
+        return;
+      }
       const forceData = importResult.skippedEntries.map(entry => ({
         ...entry,
-        upload_id: crypto.randomUUID(),
         notes: 'Force imported (duplicate override)',
       }));
       const { data: inserted, error } = await supabase
