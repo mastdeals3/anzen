@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useState, useMemo, lazy, Suspense } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -35,6 +36,14 @@ type FinanceTab =
   | 'ledger' | 'journal_register' | 'bank_ledger' | 'party_ledger' | 'bank_recon'
   | 'trial_balance' | 'pnl' | 'balance_sheet' | 'receivables' | 'payables' | 'ageing' | 'tax' | 'ca_reports' | 'integrity_monitor'
   | 'coa' | 'customers' | 'suppliers' | 'products' | 'banks';
+
+const FINANCE_TABS: readonly FinanceTab[] = [
+  'purchase', 'receipt', 'payment', 'journal', 'contra', 'expenses', 'petty_cash',
+  'ledger', 'journal_register', 'bank_ledger', 'party_ledger', 'bank_recon',
+  'trial_balance', 'pnl', 'balance_sheet', 'receivables', 'payables', 'ageing', 'tax', 'ca_reports', 'integrity_monitor',
+  'coa', 'customers', 'suppliers', 'products', 'banks',
+];
+const DEFAULT_FINANCE_TAB: FinanceTab = 'purchase';
 
 interface MenuItem {
   id: FinanceTab;
@@ -102,7 +111,19 @@ function FinanceContent() {
   const { t } = useLanguage();
   const { dateRange } = useFinance();
   const { navigationData, clearNavigationData } = useNavigation();
-  const [activeTab, setActiveTab] = useState<FinanceTab>('purchase');
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Active Finance sub-page is derived from the URL so browser refresh and
+  // back/forward restore the exact tab the user was on.
+  const activeTab: FinanceTab = useMemo(() => {
+    const segment = location.pathname.split('/')[2];
+    return (segment && (FINANCE_TABS as readonly string[]).includes(segment))
+      ? (segment as FinanceTab)
+      : DEFAULT_FINANCE_TAB;
+  }, [location.pathname]);
+  const setActiveTab = useCallback((tab: FinanceTab) => {
+    navigate(`/finance/${tab}`);
+  }, [navigate]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(isMobile);
