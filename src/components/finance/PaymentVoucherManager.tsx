@@ -5,6 +5,7 @@ import { Search, ArrowUpCircle, Pencil, Trash2, Eye, Printer, Lock, RotateCcw, C
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
 import { getFinancialYear } from '../../utils/dateFormat';
+import { supabaseErrorMessage } from '../../utils/supabaseError';
 
 interface Supplier {
   id: string;
@@ -343,7 +344,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       if (error) throw error;
       loadVouchers();
     } catch (err) {
-      alert('Failed to post: ' + (err instanceof Error ? err.message : String(err)));
+      alert('Failed to post: ' + supabaseErrorMessage(err));
     } finally {
       setPostingLoading(null);
     }
@@ -366,16 +367,15 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       if (error) {
         if (error.message?.includes('period') && error.message?.includes('closed')) {
           alert('Cannot cancel posting: the accounting period for this voucher is closed.');
-        } else {
-          throw error;
+          return;
         }
-        return;
+        throw error;
       }
       setCancelPostingTarget(null);
       setCancelPostingReason('');
       loadVouchers();
     } catch (err) {
-      alert('Failed to cancel posting: ' + (err instanceof Error ? err.message : String(err)));
+      alert('Failed to cancel posting: ' + supabaseErrorMessage(err));
     } finally {
       setCancelPostingLoading(false);
     }
@@ -469,7 +469,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
 
       loadVouchers();
     } catch (err) {
-      alert('Delete failed: ' + (err instanceof Error ? err.message : String(err)));
+      alert('Delete failed: ' + supabaseErrorMessage(err));
     }
   };
 

@@ -8,6 +8,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
+import { supabaseErrorMessage } from '../../utils/supabaseError';
 
 interface Customer {
   id: string;
@@ -521,7 +522,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       if (error) throw error;
       loadVouchers();
     } catch (err) {
-      showToast({ type: 'error', title: 'Error', message: 'Failed to post: ' + (err instanceof Error ? err.message : String(err)) });
+      showToast({ type: 'error', title: 'Error', message: 'Failed to post: ' + supabaseErrorMessage(err) });
     } finally {
       setPostingLoading(null);
     }
@@ -544,16 +545,15 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       if (error) {
         if (error.message?.includes('period') && error.message?.includes('closed')) {
           showToast({ type: 'error', title: 'Period Closed', message: 'Cannot cancel posting: the accounting period for this voucher is closed.' });
-        } else {
-          throw error;
+          return;
         }
-        return;
+        throw error;
       }
       setCancelPostingTarget(null);
       setCancelPostingReason('');
       loadVouchers();
     } catch (err) {
-      showToast({ type: 'error', title: 'Error', message: 'Failed to cancel posting: ' + (err instanceof Error ? err.message : String(err)) });
+      showToast({ type: 'error', title: 'Error', message: 'Failed to cancel posting: ' + supabaseErrorMessage(err) });
     } finally {
       setCancelPostingLoading(false);
     }

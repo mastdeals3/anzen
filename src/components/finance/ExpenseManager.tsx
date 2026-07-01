@@ -6,6 +6,7 @@ import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
+import { supabaseErrorMessage } from '../../utils/supabaseError';
 
 interface FinanceExpense {
   id: string;
@@ -1106,9 +1107,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       setCancelPostingTarget(null);
       setCancelPostingReason('');
       loadExpenses();
-    } catch (err: any) {
-      const msg: string = err.message || '';
-      alert(msg.includes('closed') ? `Period closed: ${msg}` : `Error: ${msg}`);
+    } catch (err) {
+      const msg = supabaseErrorMessage(err);
+      alert(msg.includes('closed') ? `Period closed: ${msg}` : `Failed to cancel posting: ${msg}`);
     } finally {
       setCancelPostingLoading(false);
     }
