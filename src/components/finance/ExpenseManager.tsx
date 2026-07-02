@@ -363,6 +363,24 @@ const expenseCategories = [
     requiresContainer: false,
     group: 'Administrative'
   },
+  {
+    value: 'import_broker',
+    label: 'Customs Broker Invoice',
+    type: 'admin',
+    icon: FileText,
+    description: 'Invoice from customs broker for clearing, forwarding, DO charges, port fees — EXPENSED to P&L (COA 5300)',
+    requiresContainer: false,
+    group: 'Supplier Invoices'
+  },
+  {
+    value: 'professional_services',
+    label: 'Professional Services',
+    type: 'admin',
+    icon: DollarSign,
+    description: 'Legal, accounting, consulting, or other professional fees — EXPENSED to P&L (COA 6410)',
+    requiresContainer: false,
+    group: 'Supplier Invoices'
+  },
 ];
 
 export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewHandled }: ExpenseManagerProps) {
@@ -605,6 +623,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           .from('finance_expenses')
           .select(`
             *,
+            suppliers(id, company_name),
             batches(batch_number),
             import_containers(container_ref),
             delivery_challans(challan_number),
@@ -852,7 +871,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         payment_method: formData.payment_method || null,
         bank_account_id: formData.payment_method && formData.payment_method !== 'outstanding' ? (formData.bank_account_id || null) : null,
         payment_reference: formData.payment_reference || null,
-        paid_by: 'bank',
+        paid_by: formData.payment_method === null || formData.payment_method === 'outstanding' ? null : 'bank',
         document_urls: allDocumentUrls.length > 0 ? allDocumentUrls : null,
         // New supplier invoice fields
         supplier_id: formData.supplier_id || null,
@@ -1877,7 +1896,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       </div>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-center">
-                      {isReconciled && reconciledBankInfo ? (
+                      {expense.payment_method === null ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded">
+                          Outstanding (A/P)
+                        </span>
+                      ) : isReconciled && reconciledBankInfo ? (
                         <div className="text-xs">
                           <div className="font-medium text-blue-700">{reconciledBankInfo.alias || reconciledBankInfo.bank_name}</div>
                         </div>
@@ -1886,7 +1909,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           <div className="font-medium text-gray-700">{expense.bank_accounts.alias || expense.bank_accounts.bank_name}</div>
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-600">{expense.payment_method ? expense.payment_method.replace('_', ' ') : '—'}</span>
+                        <span className="text-xs text-gray-600">{expense.payment_method.replace('_', ' ')}</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-center">
@@ -1899,7 +1922,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       </span>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-center">
-                      {isReconciled ? (
+                      {expense.payment_method === null ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded">
+                          A/P Outstanding
+                        </span>
+                      ) : isReconciled ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded">
                           ✓ LINKED
                         </span>
@@ -2787,6 +2814,69 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           maxWidth="max-w-3xl"
         >
           <div className="space-y-6">
+            {/* Supplier & Invoice Section (shown when supplier or invoice data exists) */}
+            {(viewingExpense.suppliers || viewingExpense.invoice_number || viewingExpense.due_date) && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 pb-4">
+                <h4 className="text-xs font-semibold text-blue-700 uppercase mb-3">Supplier & Invoice</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  {viewingExpense.suppliers && (
+                    <div>
+                      <label className="text-xs text-gray-500 font-medium uppercase">Supplier</label>
+                      <p className="text-sm text-gray-900 mt-1 font-medium">{viewingExpense.suppliers.company_name}</p>
+                    </div>
+                  )}
+                  {viewingExpense.invoice_number && (
+                    <div>
+                      <label className="text-xs text-gray-500 font-medium uppercase">Invoice No.</label>
+                      <p className="text-sm text-gray-900 mt-1 font-mono">{viewingExpense.invoice_number}</p>
+                    </div>
+                  )}
+                  {viewingExpense.due_date && (
+                    <div>
+                      <label className="text-xs text-gray-500 font-medium uppercase">Due Date</label>
+                      <p className="text-sm text-gray-900 mt-1">{new Date(viewingExpense.due_date).toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  {viewingExpense.payment_method === null && (
+                    <div>
+                      <label className="text-xs text-gray-500 font-medium uppercase">Balance</label>
+                      <p className="text-sm font-bold mt-1">
+                        <span className={viewingExpense.amount - (viewingExpense.paid_amount ?? 0) > 0 ? 'text-red-600' : 'text-green-600'}>
+                          Rp {(viewingExpense.amount - (viewingExpense.paid_amount ?? 0)).toLocaleString('id-ID', { minimumFractionDigits: 0 })}
+                        </span>
+                        {(viewingExpense.paid_amount ?? 0) > 0 && (
+                          <span className="text-xs text-gray-500 ml-2">(Paid: Rp {(viewingExpense.paid_amount ?? 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })})</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Broker Items Table (for import_broker expenses) */}
+            {viewingExpense.broker_items && viewingExpense.broker_items.length > 0 && (
+              <div>
+                <h4 className="text-xs font-semibold text-gray-600 uppercase mb-2">Broker Invoice Breakdown</h4>
+                <table className="w-full text-xs border border-gray-200 rounded">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-1.5 text-left text-gray-600">Item</th>
+                      <th className="px-3 py-1.5 text-right text-gray-600">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewingExpense.broker_items.map((item, i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-3 py-1.5 text-gray-700">{item.type}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-gray-900">Rp {item.amount.toLocaleString('id-ID', { minimumFractionDigits: 0 })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {/* Basic Information */}
             <div className="grid grid-cols-2 gap-6 pb-4 border-b">
               <div>
@@ -2828,7 +2918,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               <div>
                 <label className="text-xs text-gray-500 font-medium uppercase">Payment Method</label>
                 <p className="text-sm text-gray-900 mt-1 capitalize">
-                  {viewingExpense.payment_method?.replace('_', ' ') || '-'}
+                  {viewingExpense.payment_method === null ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded">A/P Outstanding</span>
+                  ) : viewingExpense.payment_method?.replace('_', ' ')}
                 </p>
               </div>
               {viewingExpense.bank_accounts && (
