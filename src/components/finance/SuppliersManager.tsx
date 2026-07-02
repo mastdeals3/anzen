@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Edit, Trash2, Search, Building2 } from 'lucide-react';
 import { Modal } from '../Modal';
+import { SUPPLIER_TYPES } from '../../utils/taxCalculations';
 
 interface Supplier {
   id: string;
@@ -24,6 +25,8 @@ interface Supplier {
   default_expense_category: string | null;
   default_pph_code_id: string | null;
   tax_preference: 'none' | 'ppn_only' | 'ppn_pph' | 'pph_only' | null;
+  // Supplier type metadata (migration 20260702120000)
+  supplier_type: string | null;
 }
 
 interface TaxCode {
@@ -84,6 +87,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
     default_expense_category: '',
     default_pph_code_id: '',
     tax_preference: 'none' as 'none' | 'ppn_only' | 'ppn_pph' | 'pph_only',
+    supplier_type: 'General',
   });
 
   useEffect(() => {
@@ -114,6 +118,18 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
       .eq('is_withholding', true)
       .order('code');
     setTaxCodes(data || []);
+  };
+
+  const handleSupplierTypeChange = (value: string) => {
+    const cfg = SUPPLIER_TYPES.find(t => t.value === value);
+    if (!cfg) { setFormData(f => ({ ...f, supplier_type: value })); return; }
+    setFormData(f => ({
+      ...f,
+      supplier_type: value,
+      tax_preference: cfg.taxPreference,
+      default_expense_category: cfg.defaultCategory,
+      payment_terms_days: cfg.paymentTerms,
+    }));
   };
 
   const generateSupplierCode = async () => {
@@ -148,6 +164,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
         default_expense_category: formData.default_expense_category || null,
         default_pph_code_id: formData.default_pph_code_id || null,
         tax_preference: formData.tax_preference || 'none',
+        supplier_type: formData.supplier_type || null,
       };
 
       if (editingSupplier) {
@@ -192,6 +209,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
       default_expense_category: supplier.default_expense_category || '',
       default_pph_code_id: supplier.default_pph_code_id || '',
       tax_preference: supplier.tax_preference || 'none',
+      supplier_type: supplier.supplier_type || 'General',
     });
     setModalOpen(true);
   };
@@ -229,6 +247,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
       default_expense_category: '',
       default_pph_code_id: '',
       tax_preference: 'none',
+      supplier_type: 'General',
     });
   };
 
@@ -272,6 +291,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company Name</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">NPWP</th>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">PKP</th>
@@ -291,6 +311,13 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
                       {supplier.city && <div className="text-sm text-gray-500">{supplier.city}</div>}
                     </div>
                   </div>
+                </td>
+                <td className="px-4 py-3">
+                  {supplier.supplier_type ? (
+                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">{supplier.supplier_type}</span>
+                  ) : (
+                    <span className="text-gray-400 text-xs">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <div className="text-sm">{supplier.contact_person || '-'}</div>
@@ -319,7 +346,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
             ))}
             {filteredSuppliers.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
                   No suppliers found
                 </td>
               </tr>
@@ -484,13 +511,26 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
             />
           </div>
 
-          {/* ── Expense Defaults ─────────────────────────────────────────────── */}
+          {/* ── Supplier Type + Expense Defaults ─────────────────────────────── */}
           <div className="border-t pt-4">
             <h4 className="font-medium text-gray-700 mb-1">Expense Defaults</h4>
             <p className="text-xs text-gray-500 mb-3">
               These defaults auto-fill when this supplier is selected in the Expense / Bill entry form.
             </p>
             <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Type</label>
+                <select
+                  value={formData.supplier_type || 'General'}
+                  onChange={(e) => handleSupplierTypeChange(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  {SUPPLIER_TYPES.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-0.5">Selecting a type auto-fills tax preference, category, and payment terms</p>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Default Expense Category</label>
                 <select

@@ -1,0 +1,309 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║         ANZEN ERP FINANCE AUDIT - QUICK REFERENCE GUIDE                   ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. SUPPLIERS TABLE SCHEMA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Column Name             Type            Key Notes
+─────────────────────────────────────────────────────────────────────────────
+id                      UUID            PRIMARY KEY
+supplier_code           VARCHAR(50)     UNIQUE
+company_name            VARCHAR(255)    NOT NULL
+contact_person          VARCHAR(255)
+email                   VARCHAR(255)
+phone                   VARCHAR(50)
+address                 TEXT
+city                    VARCHAR(100)
+country                 VARCHAR(100)    DEFAULT 'Indonesia'
+npwp                    VARCHAR(30)     ← INDONESIAN TAX ID
+pkp_status              BOOLEAN         ← PKP STATUS (yes/no)
+payment_terms_days      INTEGER         DEFAULT 30
+bank_name               VARCHAR(100)
+bank_account_number     VARCHAR(50)
+bank_account_name       VARCHAR(255)
+notes                   TEXT
+is_active               BOOLEAN         DEFAULT true
+created_by              UUID            FK auth.users
+created_at              TIMESTAMPTZ
+updated_at              TIMESTAMPTZ
+
+⚠️ SCHEMA MISMATCH:
+   • UI form includes: postal_code
+   • DB table lacks: postal_code
+   → Either add column or remove from form
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. TAX CODES SEEDED DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Code        Name                          Tax Type    Rate    Withholding
+───────────────────────────────────────────────────────────────────────────
+PPN11       PPN 11%                       PPN         11.00%  NO
+PPN0        PPN 0% (Export)               PPN          0.00%  NO
+PPNFREE     Bebas PPN                     PPN          0.00%  NO
+PPH21       PPh 21 - Employee             PPh21        0.00%  YES
+PPH22       PPh 22 - Import 2.5%          PPh22        2.50%  YES
+PPH23-2     PPh 23 - Services 2%          PPh23        2.00%  YES
+PPH23-15    PPh 23 - Royalty 15%          PPh23       15.00%  YES
+PPH4(2)     PPh 4(2) - Final 10%          PPh4(2)     10.00%  YES
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. FINANCE EXPENSES - ALL 29 CATEGORIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Category                Status      Maps to COA?
+──────────────────────────────────────────────────────────────────────────────
+duty_customs           ✓           ❌ NO - returns NULL
+ppn_import             ✓           ❌ NO - returns NULL
+pph_import             ✓           ❌ NO - returns NULL
+freight_import         ✓           ✓ YES → 5300
+clearing_forwarding    ✓           ❌ NO - returns NULL
+port_charges           ✓           ❌ NO - returns NULL
+container_handling     ✓           ❌ NO - returns NULL
+transport_import       ✓           ❌ NO - returns NULL
+loading_import         ✓           ❌ NO - returns NULL
+bpom_ski_fees          ✓           ❌ NO - returns NULL
+other_import           ✓           ❌ NO - returns NULL
+pib_import             ✓           ❌ NO - returns NULL (handled in trigger)
+
+delivery_sales         ✓           ⚠️ WRONG → 6600 (should be 6610)
+loading_sales          ✓           ❌ NO - returns NULL
+other_sales            ✓           ❌ NO - returns NULL
+
+salary                 ✓           ✓ YES → 6100
+staff_overtime         ✓           ❌ NO - returns NULL
+staff_welfare          ✓           ❌ NO - returns NULL
+travel_conveyance      ✓           ❌ NO - returns NULL
+
+warehouse_rent         ✓           ✓ YES → 6210
+utilities              ✓           ✓ YES → 6400
+bank_charges           ✓           ✓ YES → 7100
+office_admin           ✓           ⚠️ WRONG → 6300 (should be 6400)
+office_shifting_reno   ✓           ⚠️ WRONG → 6320 (should be 6320)
+
+duty                   ✓ (legacy)  ✓ YES → 5200
+freight                ✓ (legacy)  ✓ YES → 5300
+office                 ✓ (legacy)  ⚠️ WRONG → 6400 (should be 6300)
+other                  ✓ (legacy)  ✓ YES → 6000 (default)
+fixed_asset            ✓ (new)     ❌ NO - returns NULL
+
+Summary: 9 mapped correctly, 5 incorrectly mapped, 15 NOT mapped = 53% coverage
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. CHART OF ACCOUNTS - KEY ACCOUNTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ASSETS
+  1101  Cash on Hand
+  1102  Petty Cash
+  1111  Bank BCA
+  1120  Accounts Receivable
+  1130  Inventory
+  1150  PPN Input (VAT Receivable)
+  1155  PPh 22 Dibayar Dimuka ★ NEW
+  1200  Fixed Assets
+  1201  Equipment
+
+LIABILITIES
+  2110  Accounts Payable
+  2130  PPN Output (VAT Payable)
+  2131  PPh 21 Payable
+  2132  PPh 23 Payable
+  2135  Bea Meterai Payable ★ NEW
+  2210  Bank Loans
+
+REVENUE
+  4100  Sales Revenue
+  4110  Sales - Local
+  4120  Sales - Export
+
+COGS & EXPENSES
+  5100  COGS - Materials
+  5200  Import Duty
+  5300  Freight In
+  5400  Other Import Costs
+  6100  Salaries & Wages
+  6110  Employee Benefits
+  6210  Warehouse Rent
+  6300  Utilities (WRONGLY MAPPED - should be 6400)
+  6400  Office Supplies
+  6500  Transportation
+  6600  Marketing & Advertising (WRONGLY MAPPED - used for delivery)
+  6800  Depreciation Expense
+  6950  Bea Meterai Expense ★ NEW
+  7100  Bank Charges
+  7200  Interest Expense
+
+MISSING ACCOUNTS (referenced but not seeded):
+  6150  Staff Welfare
+  6410  Electricity
+  6420  Water
+  6430  Telephone & Internet
+  6510  Fuel
+  6520  Vehicle Maintenance
+  6530  Vehicle Insurance
+  6540  Travel & Conveyance
+  6610  Delivery Sales
+  6620  Marketing Advertising (separate)
+  6710  Legal & Professional
+  6720  Consulting Fees
+  6730  Accounting & Audit
+  5410  BPOM/SKI Fees
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. PURCHASE INVOICES TABLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Column                  Type            Key Features
+────────────────────────────────────────────────────────────────────────────
+id                      UUID            PRIMARY KEY
+invoice_number          VARCHAR(100)    UNIQUE with supplier_id
+supplier_id             UUID            NOT NULL, FK suppliers
+invoice_date            DATE            NOT NULL
+due_date                DATE
+currency                VARCHAR(10)     DEFAULT 'IDR'
+exchange_rate           DECIMAL(18,6)   DEFAULT 1
+subtotal                DECIMAL(18,2)
+tax_amount              DECIMAL(18,2)
+stamp_duty_amount       NUMERIC(18,2)   ★ NEW in 20260701
+total_amount            DECIMAL(18,2)   = subtotal + tax + stamp_duty
+paid_amount             DECIMAL(18,2)
+balance_amount          GENERATED       = total_amount - paid_amount
+status                  VARCHAR(20)     draft|unpaid|partial|paid|cancelled
+faktur_pajak_number     VARCHAR(50)     Indonesian invoice number
+purchase_type           VARCHAR(20)     inventory|fixed_asset|expense|service
+requires_faktur_pajak   BOOLEAN
+journal_entry_id        UUID            Auto-created on insert/update
+
+Key Feature: Auto-creates double-entry journal on INSERT/UPDATE
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. FINANCE EXPENSES PIB BREAKDOWN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When expense_category = 'pib_import', must provide:
+
+  pib_bm_amount      ← Import duty, goes to inventory landed cost → Account 1130
+  pib_ppn_amount     ← PPN input tax, posted to PPN Masukan → Account 1150
+  pih_pph_amount     ← PPh 22 advance, posted to PPh 22 Prepaid → Account 1155
+
+Constraint: chk_pib_breakdown_sum
+  pib_bm_amount + pib_ppn_amount + pib_pph_amount ≈ amount (within ±1.00)
+
+Journal Entry Created (4 lines):
+  Line 1: DR 1130 (Inventory)      pib_bm_amount
+  Line 2: DR 1150 (PPN Input)      pib_ppn_amount
+  Line 3: DR 1155 (PPh 22 Prepaid) pib_pph_amount
+  Line 4: CR Bank/Cash             (total amount)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. REPORTING RPC FUNCTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Function                                   Purpose
+────────────────────────────────────────────────────────────────────────────
+get_trial_balance(start_date, end_date,    Period trial balance
+                  usd_rate)                Returns: code, name, debit, credit,
+                                          balance (9 columns per row)
+
+get_balance_sheet(as_of_date,              Cumulative balance
+                  usd_rate)                Returns: code, name, debit, credit,
+                                          balance (9 columns per row)
+                                          Includes net income calc
+
+get_reporting_usd_rate()                   Auto-discovers USD→IDR rate
+                                          Returns: NUMERIC (e.g., 16000)
+                                          Fallback: 16000
+
+Columns returned by all reporting functions:
+  • code (VARCHAR) - Account code like "1101"
+  • name (VARCHAR) - English account name
+  • name_id (VARCHAR) - Indonesian name
+  • account_type (VARCHAR) - asset|liability|equity|revenue|expense|contra
+  • account_group (VARCHAR) - For section grouping
+  • normal_balance (VARCHAR) - debit|credit
+  • total_debit (NUMERIC) - Sum of debits
+  • total_credit (NUMERIC) - Sum of credits
+  • balance (NUMERIC) - debit - credit (can be negative)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. UI COMPONENTS - FILE LOCATIONS & STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+File                                Status      Notes
+────────────────────────────────────────────────────────────────────────────
+FinancialReports.tsx                ✓ OK        Trial Balance, P&L, BS
+SuppliersManager.tsx                ⚠️ ISSUE    postal_code field mismatch
+TaxReports.tsx                       ✓ OK        Tax reporting
+CAReports.tsx                        ✓ OK        Chart of Accounts
+AgeingReport.tsx                     ✓ OK        AR/AP ageing
+SalesProfitReport.tsx                ✓ OK        Sales profitability
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. KEY MIGRATION FILES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+File                                            Date        What It Does
+─────────────────────────────────────────────────────────────────────────────
+20251216150000_complete_indonesian_accounting   Dec 16      Base: COA, taxes, suppliers,
+_system.sql                                                 journal system
+
+20260619120000_add_pib_import_category_and     Jun 19      Add PIB breakdown columns
+_breakdown.sql                                              (pib_bm/ppn/pph)
+
+20260625090000_add_balance_sheet_rpc_and_fix   Jun 25      Add balance sheet RPC
+_normal_balance.sql
+
+20260626100000_finance_multicurrency_reporting  Jun 26      Multi-currency support
+
+20260701100000_finance_tax_upgrade.sql          Jul 1       Add stamp duty, fixed asset
+                                                            account mapping
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. CRITICAL FIXES - PRIORITY ORDER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FIX #1 (1 hour)
+  Issue:   SuppliersManager.postal_code field not in DB
+  Impact:  HIGH - Silent save failures
+  File:    /src/components/settings/SuppliersManager.tsx
+  Action:  ADD COLUMN postal_code VARCHAR(50) to suppliers table
+           OR remove postal_code from UI form
+
+FIX #2 (2 hours)
+  Issue:   Incorrect expense→COA mappings
+  Impact:  MEDIUM - Wrong account posting
+  Mappings to fix:
+    office_admin → from 6300 (Utilities) to 6400 (Office Supplies)
+    delivery_sales → from 6600 (Marketing) to 6610 (Delivery)
+    office → from 6400 (Utilities) to 6300 (Office Admin)
+
+FIX #3 (1 hour)
+  Issue:   Missing COA accounts (not seeded)
+  Impact:  MEDIUM - Functions return NULL
+  Add to chart_of_accounts:
+    6150, 6410, 6420, 6430, 6510, 6520, 6530, 6540,
+    6610, 6620, 6710, 6720, 6730, 5410
+
+FIX #4 (2-4 hours)
+  Issue:   15 expense categories don't map to COA
+  Impact:  MEDIUM - Journal posting fails for PIB, import, etc
+  Update get_expense_account_id():
+    CASE 'duty_customs' THEN 5200
+    CASE 'ppn_import' THEN 1150
+    CASE 'pph_import' THEN 1155
+    [... complete all 15 ...]
+
+FIX #5 (1-2 days)
+  Issue:   No import_containers table exists
+  Impact:  HIGH - Can't track multi-batch containers
+  Action:  Design & create import_containers + container_batch_allocation
+           (See detailed report for SQL schema)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📍 Use this reference with the full FINANCE_AUDIT_REPORT_20260702.md for
+   complete technical details and implementation guidance.
+

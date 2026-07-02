@@ -183,8 +183,27 @@ export function categoryLabel(category: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Category → label map (for display in dropdowns)
+// Supplier Types — drives Quick Add defaults and Supplier Master categorisation
 // ---------------------------------------------------------------------------
+
+export interface SupplierTypeConfig {
+  readonly value: string;
+  readonly label: string;
+  readonly taxPreference: 'none' | 'ppn_only' | 'ppn_pph' | 'pph_only';
+  readonly defaultCategory: string;
+  readonly defaultDocType: DocumentType;
+  readonly paymentTerms: number;
+}
+
+export const SUPPLIER_TYPES: readonly SupplierTypeConfig[] = [
+  { value: 'Import Broker',         label: 'Import / Customs Broker',    taxPreference: 'ppn_pph',   defaultCategory: 'import_broker',        defaultDocType: 'Import / Customs Broker Invoice', paymentTerms: 30 },
+  { value: 'Utility',               label: 'Utility Provider',           taxPreference: 'ppn_only',  defaultCategory: 'utilities',            defaultDocType: 'Utility',                         paymentTerms: 15 },
+  { value: 'Transport',             label: 'Transport / Freight',        taxPreference: 'none',      defaultCategory: 'transport_import',     defaultDocType: 'Import / Customs Broker Invoice', paymentTerms: 14 },
+  { value: 'Employee',              label: 'Employee / Staff',           taxPreference: 'pph_only',  defaultCategory: 'salary',               defaultDocType: 'Staff Expense',                   paymentTerms: 0  },
+  { value: 'Government',            label: 'Government Agency',          taxPreference: 'none',      defaultCategory: 'duty_customs',         defaultDocType: 'PIB',                             paymentTerms: 0  },
+  { value: 'Professional Services', label: 'Professional Services',      taxPreference: 'ppn_pph',   defaultCategory: 'professional_services', defaultDocType: 'Professional Services',          paymentTerms: 14 },
+  { value: 'General',              label: 'General Supplier',           taxPreference: 'none',      defaultCategory: 'other',                defaultDocType: 'Operating Expense',               paymentTerms: 30 },
+] as const;
 export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   duty_customs:               'Import Duty / Bea Masuk',
   ppn_import:                 'PPN Import (PIB only)',

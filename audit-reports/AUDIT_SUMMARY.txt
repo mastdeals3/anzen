@@ -1,0 +1,237 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║             ANZEN ERP FINANCE ARCHITECTURE AUDIT - SUMMARY                ║
+║                          July 2, 2026                                      ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+AUDIT SCOPE:
+  • 528 SQL migration files analyzed
+  • Full source code in /src/ component search
+  • All finance-related tables and functions documented
+  • Status: ✅ COMPREHENSIVE AUDIT COMPLETED
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. SUPPLIER MASTER
+  Table: suppliers (22 columns)
+  Status: ✅ COMPLETE with NPWP & PKP status
+  
+  ISSUE FOUND:
+  ❌ UI form (SuppliersManager.tsx) references postal_code field
+     BUT this column does NOT exist in DB table
+     → Will cause silent save failures
+  
+  Missing Fields:
+  - default_category (not in schema)
+  - default_tax (not in schema)
+  - pph_type (not in schema)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2. TAX CODES TABLE
+  Table: tax_codes (9 columns)
+  Status: ✅ COMPLETE AND FUNCTIONAL
+  
+  Types Supported: PPN, PPh21, PPh22, PPh23, PPh25, PPh4(2), other
+  Seeded Codes: 8 tax codes (PPN11, PPH22, PPH23-2, PPH23-15, etc.)
+  
+  Usage:
+  ✓ journal_entry_lines.tax_code_id
+  ✓ payment_vouchers.pph_code_id (PPh withholding)
+  ✓ finance_expenses.pph_code_id
+  ✓ purchase_invoice_items.tax_code_id
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3. IMPORT CONTAINERS
+  Status: 🔴 CRITICAL GAP - TABLE NOT FOUND
+  
+  What IS implemented:
+  ✓ PIB (Pemberitahuan Impor Barang) system via finance_expenses
+  ✓ PIB tax breakdown: pib_bm_amount, pib_ppn_amount, pib_pph_amount
+  ✓ Journal posting for PIB imports (4-line debit to 1130/1150/1155)
+  
+  What's MISSING:
+  ❌ No dedicated import_containers table
+  ❌ No container number tracking
+  ❌ No container-to-batch allocation table
+  ❌ No per-container cost tracking
+  ❌ No landed cost allocation by container
+  
+  Impact: HIGH - Cannot track multi-batch containers
+  Recommendation: Create import_containers + container_batch_allocation tables
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4. FINANCE EXPENSES TABLE
+  Table: finance_expenses (22 columns)
+  Status: ✅ FULLY FEATURED
+  
+  Core Fields:
+  ✓ expense_category (29 valid categories via CHECK constraint)
+  ✓ amount, expense_date, description
+  ✓ batch_id (link to import batches)
+  ✓ payment_method, bank_account_id
+  
+  Tax Fields (new):
+  ✓ ppn_amount, pph_amount, pph_code_id
+  ✓ stamp_duty_amount (added 20260701)
+  ✓ fixed_asset_account_id (added 20260701)
+  
+  PIB Breakdown (new):
+  ✓ pib_bm_amount (import duty → landed cost)
+  ✓ pib_ppn_amount (PPN input VAT)
+  ✓ pib_pph_amount (PPh 22 advance tax)
+  ✓ Constraint: chk_pib_breakdown_sum (±1 cent tolerance)
+  
+  ISSUE: Missing expense_account_id denormalization
+  Impact: Slower reporting queries requiring expensive lookups
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5. EXPENSE CATEGORIES (29 total)
+  
+  ✓ Mapped to COA:
+    - salary → 6100
+    - bank_charges → 7100
+    - interest_expense → 7200
+    - freight_import → 5300
+    - duty_import → 5200
+    
+  ⚠️ Incorrectly Mapped:
+    - office_admin → 6300 (should be 6400: Office Supplies)
+    - delivery_sales → 6600 (should be dedicated account)
+  
+  ❌ Unmapped (return NULL):
+    - duty_customs
+    - ppn_import
+    - pph_import
+    - clearing_forwarding
+    - port_charges
+    - container_handling
+    - transport_import
+    - loading_import
+    - pib_import (handled separately in trigger)
+    - fixed_asset
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+6. CHART OF ACCOUNTS
+  Table: chart_of_accounts (70+ accounts)
+  Status: ✅ COMPLETE FOR SME PHARMA TRADING
+  
+  Structure:
+  • 1xxx ASSETS (Cash, Bank, A/R, Inventory, Fixed Assets)
+  • 2xxx LIABILITIES (A/P, Payroll, Taxes, Loans)
+  • 3xxx EQUITY (Owner Capital, Retained Earnings)
+  • 4xxx REVENUE (Sales Local/Export, Misc Income)
+  • 5xxx COGS (Materials, Duty, Freight)
+  • 6xxx OPERATING EXPENSES (Salaries, Rent, Utilities)
+  • 7xxx OTHER EXPENSES (Bank Charges, Interest)
+  
+  Recent Additions:
+  • 1155 PPh 22 Dibayar Dimuka (Prepaid advance tax)
+  • 2135 Bea Meterai Payable (Stamp duty)
+  • 2220 Loan from Vijay Lunkad
+  • 3110 Owner Drawings
+  • 4910 Miscellaneous Income
+  • 6950 Bea Meterai Expense (Stamp duty)
+  
+  Missing Accounts (referenced in get_expense_account_id but not seeded):
+  • 6150 Staff Welfare
+  • 6410-6430 Utility subaccounts
+  • 6510-6530 Vehicle expenses
+  • 6610 Delivery Sales
+  • 6620 Marketing
+  • 6710-6730 Professional Fees
+  • 5410 BPOM/SKI Fees
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+7. REPORTING FUNCTIONS
+  
+  ✅ get_trial_balance(start_date, end_date, usd_rate)
+     Period-based, includes opening/closing balances
+     Multi-currency support via exchange rate
+  
+  ✅ get_balance_sheet(as_of_date, usd_rate)
+     Cumulative balance all history → date
+     Includes net income calculation
+  
+  ✅ get_reporting_usd_rate()
+     Auto-discovers USD→IDR rate from payment_vouchers, batches
+     Fallback: 16000
+  
+  UI Reports:
+  ✅ FinancialReports.tsx → Trial Balance, P&L, Balance Sheet
+  ✅ TaxReports.tsx → Tax reporting
+  ✅ CAReports.tsx → Chart of Accounts
+  ✅ AgeingReport.tsx → A/R & A/P ageing
+  ✅ SalesProfitReport.tsx → Sales profitability
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+8. PURCHASE INVOICES
+  Table: purchase_invoices (18 columns)
+  Status: ✅ COMPLETE WITH STAMP DUTY
+  
+  Key Fields:
+  ✓ supplier_id (FK)
+  ✓ invoice_date, due_date
+  ✓ currency, exchange_rate (multi-currency)
+  ✓ subtotal, tax_amount, stamp_duty_amount (new)
+  ✓ total_amount, paid_amount, balance_amount (calculated)
+  ✓ status (draft|unpaid|partial|paid|cancelled)
+  ✓ faktur_pajak_number (Indonesian invoice numbering)
+  ✓ journal_entry_id (auto-posts journal)
+  ✓ purchase_type (inventory|fixed_asset|expense|service)
+  
+  Related: purchase_invoice_items (supports landed cost allocation)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CRITICAL ISSUES SUMMARY
+
+Issue                               Severity    Impact
+─────────────────────────────────────────────────────────
+No import_containers table          🔴 HIGH     Can't track multi-batch containers
+SuppliersManager postal_code        🔴 HIGH     Silent save failures
+Incomplete expense→COA mapping       🟡 MEDIUM   PIB categories unmapped
+Missing seeded accounts             🟡 MEDIUM   6410-6730 not in DB
+Incorrect expense mappings          🟡 MEDIUM   office_admin→6300 wrong account
+No expense_account_id field         🟡 MEDIUM   Slower reporting queries
+Missing ledger detail RPC           🟡 MEDIUM   No transaction drill-down
+PIB logic split across code         🟡 MEDIUM   Hard to maintain
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RECOMMENDATIONS (Priority Order)
+
+IMMEDIATE (Before next release):
+  1. Fix SuppliersManager postal_code mismatch
+  2. Complete expense→COA mapping in get_expense_account_id()
+  3. Seed missing accounts (6410-6730)
+  4. Test all 29 expense categories end-to-end
+
+SHORT TERM (Next 2 weeks):
+  5. Create import_containers table + allocation
+  6. Add expense_account_id FK to finance_expenses
+  7. Create get_expense_ledger() RPC for drill-down
+  8. Fix incorrect account mappings
+
+MEDIUM TERM (Next month):
+  9. Bank reconciliation RPC & UI
+  10. AP/AR aging reports
+  11. Expense allocation by cost center
+  12. Supplier payment forecasting
+
+LONG TERM (Next quarter):
+  13. Intercompany support (if multi-entity)
+  14. Cost center tracking
+  15. Budget vs actual variance reporting
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FULL REPORT LOCATION:
+/Users/Kunal/Documents/anzen-main/audit-reports/FINANCE_AUDIT_REPORT_20260702.md
+
+AUDIT STATUS: ✅ COMPLETE
