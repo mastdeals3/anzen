@@ -319,7 +319,7 @@ export default function ImportRequirements() {
           ) : (
             <ImportRequirementsProductSummary
               summaryRows={filteredSummary}
-              detailRows={requirements}
+              detailRows={requirements.filter(r => r.status !== 'cancelled' && r.status !== 'received')}
               containers={containers}
               loading={summaryLoading || loading}
               onRefresh={() => { fetchRequirements(); fetchProductSummary(); }}
