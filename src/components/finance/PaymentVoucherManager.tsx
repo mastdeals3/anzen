@@ -81,12 +81,30 @@ interface PaymentAllocationRow {
   payment_voucher_id: string | null;
   allocated_currency: string | null;
   purchase_invoices?: { id: string; invoice_number: string } | null;
+  finance_expenses?: { id: string; voucher_number: string | null } | null;
 }
 
 interface ViewAllocationRow {
   allocated_amount: number | null;
   allocated_currency: string | null;
   purchase_invoices?: { id: string; invoice_number: string; invoice_date: string } | null;
+  finance_expenses?: { id: string; voucher_number: string | null; invoice_number: string | null } | null;
+}
+
+// Outstanding expense bill for allocation in PV
+interface OutstandingExpenseBillForPV {
+  id: string;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  invoice_number: string | null;
+  invoice_date: string;
+  due_date: string | null;
+  expense_category: string;
+  description: string | null;
+  amount: number;
+  paid_amount: number;
+  balance_amount: number;
+  days_overdue: number;
 }
 
 function fmt(amount: number, currency: string) {
@@ -113,10 +131,12 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   const [modalOpen, setModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [allocations, setAllocations] = useState<{ invoiceId: string; amount: number; currency: string }[]>([]);
+  const [expenseBillAllocations, setExpenseBillAllocations] = useState<{ expenseId: string; amount: number }[]>([]);
+  const [outstandingExpenseBills, setOutstandingExpenseBills] = useState<OutstandingExpenseBillForPV[]>([]);
   const [selectedBank, setSelectedBank] = useState<BankAccount | null>(null);
   const [editingVoucher, setEditingVoucher] = useState<PaymentVoucher | null>(null);
   const [viewingVoucher, setViewingVoucher] = useState<PaymentVoucher | null>(null);
-  const [viewAllocations, setViewAllocations] = useState<Array<{ invoice_id: string; invoice_number: string; invoice_date: string; allocated_amount: number; allocated_currency: string }>>([]);
+  const [viewAllocations, setViewAllocations] = useState<Array<{ invoice_id: string; invoice_number: string; invoice_date: string; allocated_amount: number; allocated_currency: string; is_expense_bill?: boolean; expense_id?: string }>>([]);
 
   const [formData, setFormData] = useState({
     voucher_date: new Date().toISOString().split('T')[0],
@@ -264,6 +284,36 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     } else {
       setAllocations([]);
     }
+
+    // Also load outstanding expense bills for this supplier
+    await loadOutstandingExpenseBillsForSupplier(supplierId);
+    setExpenseBillAllocations([]);
+  };
+
+  const loadOutstandingExpenseBillsForSupplier = async (supplierId: string) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await supabase.rpc('get_outstanding_expense_bills', { p_as_of_date: today });
+      // Filter to this supplier only (or show all if no supplier)
+      const filtered = (data || []).filter((b: OutstandingExpenseBillForPV) =>
+        !supplierId || b.supplier_id === supplierId
+      );
+      setOutstandingExpenseBills(filtered);
+    } catch (err) {
+      console.error('Error loading outstanding expense bills:', err);
+    }
+  };
+
+  const handleExpenseBillAllocationChange = (bill: OutstandingExpenseBillForPV, amount: number) => {
+    setExpenseBillAllocations(prev => {
+      const existing = prev.find(a => a.expenseId === bill.id);
+      if (existing) {
+        if (amount <= 0) return prev.filter(a => a.expenseId !== bill.id);
+        return prev.map(a => a.expenseId === bill.id ? { ...a, amount } : a);
+      }
+      if (amount > 0) return [...prev, { expenseId: bill.id, amount }];
+      return prev;
+    });
   };
 
   /** Format: PV/YY-YY/NNN  e.g. PV/25-26/001 */
@@ -311,6 +361,8 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     ? netInvoiceAmount * formData.exchange_rate + bankCharge
     : netInvoiceAmount + bankCharge;
   const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
+  const totalExpenseBillAllocated = expenseBillAllocations.reduce((sum, a) => sum + a.amount, 0);
+  const totalAllAllocated = totalAllocated + totalExpenseBillAllocated;
 
   const resetForm = () => {
     setFormData({
@@ -328,6 +380,8 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       exchange_rate: 1,
     });
     setAllocations([]);
+    setExpenseBillAllocations([]);
+    setOutstandingExpenseBills([]);
     setPendingInvoices([]);
     setSelectedBank(null);
     setEditingVoucher(null);
@@ -527,11 +581,20 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         p_bank_amount: payload.bank_amount,
         p_bank_charge: payload.bank_charge,
         p_created_by: user.id,
-        p_allocations: allocations.map(alloc => ({
-          invoice_id: alloc.invoiceId,
-          amount: alloc.amount,
-          currency: alloc.currency,
-        })),
+        p_allocations: [
+          // Purchase invoice allocations
+          ...allocations.map(alloc => ({
+            invoice_id: alloc.invoiceId,
+            amount: alloc.amount,
+            currency: alloc.currency,
+          })),
+          // Expense bill allocations (finance_expense_id key, handled by extended RPC)
+          ...expenseBillAllocations.map(alloc => ({
+            finance_expense_id: alloc.expenseId,
+            amount: alloc.amount,
+            currency: 'IDR',
+          })),
+        ],
       });
       if (saveError) throw saveError;
 
@@ -963,6 +1026,72 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
               rows={2}
             />
           </div>
+
+          {/* ── Expense Bill Allocations ──────────────────────────────── */}
+          {outstandingExpenseBills.length > 0 && (
+            <div className="border-t pt-3">
+              <h4 className="text-xs font-semibold text-purple-700 mb-2 uppercase tracking-wide flex items-center gap-1">
+                Allocate to Expense Bills (A/P)
+                <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded font-normal">
+                  {outstandingExpenseBills.length} outstanding
+                </span>
+              </h4>
+              <div className="max-h-40 overflow-y-auto border border-purple-200 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-purple-50 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-1.5 text-left font-medium text-purple-700">Expense / Invoice #</th>
+                      <th className="px-3 py-1.5 text-left font-medium text-purple-700">Category</th>
+                      <th className="px-3 py-1.5 text-right font-medium text-purple-700">Balance</th>
+                      <th className="px-3 py-1.5 text-right font-medium text-purple-700">Allocate</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-purple-100">
+                    {outstandingExpenseBills.map(bill => {
+                      const thisAlloc = expenseBillAllocations.find(a => a.expenseId === bill.id)?.amount || 0;
+                      return (
+                        <tr key={bill.id} className={bill.days_overdue > 0 ? 'bg-red-50/50' : ''}>
+                          <td className="px-3 py-1.5">
+                            <div className="font-mono">{bill.invoice_number || bill.id.slice(0, 8)}</div>
+                            <div className="text-gray-400">{new Date(bill.invoice_date).toLocaleDateString('id-ID')}</div>
+                          </td>
+                          <td className="px-3 py-1.5 text-gray-600">
+                            {bill.expense_category.replace(/_/g, ' ')}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-medium text-red-600">
+                            Rp {bill.balance_amount.toLocaleString('id-ID')}
+                            {bill.days_overdue > 0 && (
+                              <div className="text-[10px] text-red-500">{bill.days_overdue}d overdue</div>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5 text-right">
+                            <input
+                              type="number"
+                              min={0}
+                              max={bill.balance_amount}
+                              step="1"
+                              value={thisAlloc || ''}
+                              onChange={(e) => handleExpenseBillAllocationChange(bill, parseFloat(e.target.value) || 0)}
+                              className="w-24 px-2 py-1 border border-purple-200 rounded text-right focus:border-purple-400 outline-none"
+                              placeholder="0"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {totalExpenseBillAllocated > 0 && (
+                <div className="mt-1.5 flex justify-between text-xs font-medium">
+                  <span className="text-purple-600">Expense Bill Allocated (IDR):</span>
+                  <span className="text-purple-700">
+                    Rp {totalExpenseBillAllocated.toLocaleString('id-ID')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {pendingInvoices.length > 0 && (
             <div className="border-t pt-3">

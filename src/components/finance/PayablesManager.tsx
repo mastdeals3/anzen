@@ -51,18 +51,35 @@ interface BankAccount {
   currency: string;
 }
 
+// Outstanding expense bill from get_outstanding_expense_bills() RPC
+interface OutstandingExpenseBill {
+  id: string;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  invoice_number: string | null;
+  invoice_date: string;
+  due_date: string | null;
+  expense_category: string;
+  description: string | null;
+  amount: number;
+  paid_amount: number;
+  balance_amount: number;
+  days_overdue: number;
+}
+
 interface PayablesManagerProps {
   canManage: boolean;
 }
 
-type ViewMode = 'bills' | 'payments';
+type ViewMode = 'bills' | 'payments' | 'expense_bills';
 
 export function PayablesManager({ canManage }: PayablesManagerProps) {
   const { profile } = useAuth();
-  const [viewMode, setViewMode] = useState<ViewMode>('bills');
+  const [viewMode, setViewMode] = useState<ViewMode>('expense_bills');
   const [bills, setBills] = useState<VendorBill[]>([]);
   const [payments, setPayments] = useState<VendorPayment[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [outstandingExpenseBills, setOutstandingExpenseBills] = useState<OutstandingExpenseBill[]>([]);
   const [loading, setLoading] = useState(true);
   const [billModalOpen, setBillModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -95,8 +112,19 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
 
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([loadBills(), loadPayments(), loadBankAccounts()]);
+    await Promise.all([loadBills(), loadPayments(), loadBankAccounts(), loadOutstandingExpenseBills()]);
     setLoading(false);
+  };
+
+  const loadOutstandingExpenseBills = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase.rpc('get_outstanding_expense_bills', { p_as_of_date: today });
+      if (error) throw error;
+      setOutstandingExpenseBills(data || []);
+    } catch (error) {
+      console.error('Error loading outstanding expense bills:', error);
+    }
   };
 
   const loadBills = async () => {
@@ -432,10 +460,19 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
     .filter(b => b.payment_status !== 'paid')
     .reduce((sum, b) => sum + b.total_amount, 0);
 
+  const totalExpenseBillsPayable = outstandingExpenseBills.reduce((sum, b) => sum + b.balance_amount, 0);
+
+  const totalCombinedPayable = totalPayable + totalExpenseBillsPayable;
+
   const overdueBills = bills.filter(b => {
     if (!b.due_date || b.payment_status === 'paid') return false;
     return new Date(b.due_date) < new Date();
   });
+
+  const overdueExpenseBills = outstandingExpenseBills.filter(b => b.days_overdue > 0);
+
+  const categoryLabel = (cat: string) =>
+    cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   const billColumns = [
     {
@@ -546,34 +583,48 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow p-6 text-white">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow p-4 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-red-100">Total Payable</p>
-              <p className="text-2xl font-bold mt-1">Rp {totalPayable.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-xs text-red-100">Total AP Outstanding</p>
+              <p className="text-xl font-bold mt-1">Rp {totalCombinedPayable.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+              <p className="text-[10px] text-red-200 mt-0.5">Bills + Expense Bills</p>
             </div>
-            <DollarSign className="w-8 h-8 text-red-200" />
+            <DollarSign className="w-7 h-7 text-red-200" />
           </div>
         </div>
 
-        <div className="bg-orange-50 rounded-lg shadow p-6">
+        <div className="bg-orange-50 rounded-lg shadow p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-orange-600">Overdue Bills</p>
-              <p className="text-2xl font-bold text-orange-600 mt-1">{overdueBills.length}</p>
+              <p className="text-xs text-orange-600">Overdue</p>
+              <p className="text-xl font-bold text-orange-600 mt-1">{overdueBills.length + overdueExpenseBills.length}</p>
+              <p className="text-[10px] text-orange-500 mt-0.5">{overdueBills.length} bills + {overdueExpenseBills.length} expense bills</p>
             </div>
-            <AlertCircle className="w-8 h-8 text-orange-400" />
+            <AlertCircle className="w-7 h-7 text-orange-400" />
           </div>
         </div>
 
-        <div className="bg-blue-50 rounded-lg shadow p-6">
+        <div className="bg-purple-50 rounded-lg shadow p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-blue-600">Total Bills</p>
-              <p className="text-2xl font-bold text-blue-600 mt-1">{bills.length}</p>
+              <p className="text-xs text-purple-600">Expense Bills (AP)</p>
+              <p className="text-xl font-bold text-purple-600 mt-1">Rp {totalExpenseBillsPayable.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+              <p className="text-[10px] text-purple-500 mt-0.5">{outstandingExpenseBills.length} outstanding</p>
             </div>
-            <FileText className="w-8 h-8 text-blue-400" />
+            <FileText className="w-7 h-7 text-purple-400" />
+          </div>
+        </div>
+
+        <div className="bg-blue-50 rounded-lg shadow p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-blue-600">Legacy Bills</p>
+              <p className="text-xl font-bold text-blue-600 mt-1">Rp {totalPayable.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+              <p className="text-[10px] text-blue-500 mt-0.5">{bills.filter(b => b.payment_status !== 'paid').length} pending</p>
+            </div>
+            <FileText className="w-7 h-7 text-blue-400" />
           </div>
         </div>
       </div>
@@ -581,19 +632,35 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
           <button
+            onClick={() => setViewMode('expense_bills')}
+            className={`px-4 py-2 rounded-lg transition text-sm ${
+              viewMode === 'expense_bills'
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <FileText className="w-4 h-4 inline mr-2" />
+            Expense Bills (AP)
+            {outstandingExpenseBills.length > 0 && (
+              <span className="ml-2 px-1.5 py-0.5 bg-purple-200 text-purple-800 text-xs rounded-full">
+                {outstandingExpenseBills.length}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setViewMode('bills')}
-            className={`px-4 py-2 rounded-lg transition ${
+            className={`px-4 py-2 rounded-lg transition text-sm ${
               viewMode === 'bills'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
             <FileText className="w-4 h-4 inline mr-2" />
-            Bills
+            Legacy Bills
           </button>
           <button
             onClick={() => setViewMode('payments')}
-            className={`px-4 py-2 rounded-lg transition ${
+            className={`px-4 py-2 rounded-lg transition text-sm ${
               viewMode === 'payments'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -634,7 +701,116 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
         )}
       </div>
 
-      {viewMode === 'bills' ? (
+      {viewMode === 'expense_bills' ? (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+          {loading ? (
+            <div className="px-6 py-8 text-center text-gray-500">Loading...</div>
+          ) : outstandingExpenseBills.length === 0 ? (
+            <div className="px-6 py-8 text-center text-gray-500">
+              <FileText className="w-10 h-10 mx-auto text-gray-300 mb-3" />
+              <p className="text-sm font-medium text-gray-600">No outstanding expense bills</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Expense bills recorded as "Outstanding (A/P)" in the Expense module will appear here.
+              </p>
+            </div>
+          ) : (
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Supplier</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Invoice #</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Category</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Description</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Invoice Date</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Due Date</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">Amount</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">Paid</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">Balance</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600">Aging</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {outstandingExpenseBills.map(bill => {
+                  const isOverdue = bill.days_overdue > 0;
+                  return (
+                    <tr key={bill.id} className={`hover:bg-purple-50/40 ${isOverdue ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-4 py-2.5">
+                        <span className="font-medium text-gray-900 text-xs">
+                          {bill.supplier_name || <span className="text-gray-400 italic">No Supplier</span>}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="font-mono text-xs text-gray-600">
+                          {bill.invoice_number || '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="text-xs text-gray-700">{categoryLabel(bill.expense_category)}</span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="text-xs text-gray-600 line-clamp-1">{bill.description || '—'}</span>
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <span className="text-xs text-gray-700">
+                          {new Date(bill.invoice_date).toLocaleDateString('en-GB')}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        {bill.due_date ? (
+                          <span className={`text-xs font-medium ${isOverdue ? 'text-red-600' : 'text-gray-700'}`}>
+                            {new Date(bill.due_date).toLocaleDateString('en-GB')}
+                            {isOverdue && <AlertCircle className="w-3 h-3 inline ml-1" />}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        <span className="text-xs text-gray-700">Rp {bill.amount.toLocaleString('id-ID')}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        <span className="text-xs text-green-700">Rp {bill.paid_amount.toLocaleString('id-ID')}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        <span className="text-xs font-semibold text-red-600">Rp {bill.balance_amount.toLocaleString('id-ID')}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {isOverdue ? (
+                          <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 rounded">
+                            {bill.days_overdue}d overdue
+                          </span>
+                        ) : bill.due_date ? (
+                          <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 rounded">
+                            Current
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">No due date</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {/* Totals row */}
+                <tr className="bg-purple-50 border-t-2 border-purple-200 font-bold">
+                  <td colSpan={6} className="px-4 py-2.5 text-right text-xs text-gray-700">
+                    TOTAL ({outstandingExpenseBills.length} bills):
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-xs text-gray-700">
+                    Rp {outstandingExpenseBills.reduce((s, b) => s + b.amount, 0).toLocaleString('id-ID')}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-xs text-green-700">
+                    Rp {outstandingExpenseBills.reduce((s, b) => s + b.paid_amount, 0).toLocaleString('id-ID')}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-sm text-red-700 font-bold">
+                    Rp {totalExpenseBillsPayable.toLocaleString('id-ID')}
+                  </td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : viewMode === 'bills' ? (
         <DataTable
           columns={billColumns}
           data={bills}

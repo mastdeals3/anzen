@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Download, Calendar, TrendingUp, TrendingDown, ShieldCheck } from 'lucide-react';
+import { Download, Calendar, TrendingUp, TrendingDown, ShieldCheck, FileText, Building2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { formatDate } from '../../utils/dateFormat';
 
@@ -43,14 +43,56 @@ interface MonthlySummary {
   net_ppn_payable: number;
 }
 
+// Expense VAT / PPh records (from finance_expenses)
+interface ExpenseVATRecord {
+  id: string;
+  expense_date: string;
+  voucher_number: string | null;
+  invoice_number: string | null;
+  supplier_name: string | null;
+  expense_category: string;
+  description: string | null;
+  amount: number;
+  ppn_amount: number;
+}
+
+interface ExpensePPhRecord {
+  id: string;
+  expense_date: string;
+  voucher_number: string | null;
+  invoice_number: string | null;
+  supplier_name: string | null;
+  expense_category: string;
+  description: string | null;
+  amount: number;
+  pph_amount: number;
+  pph_code: string | null;
+  pph_name: string | null;
+}
+
+// Asset register (from get_asset_register() RPC)
+interface AssetRegisterRecord {
+  id: string;
+  supplier_name: string | null;
+  invoice_number: string | null;
+  purchase_date: string;
+  asset_account: string | null;
+  asset_account_code: string | null;
+  cost: number;
+  description: string | null;
+}
+
 export function TaxReports() {
   const { t } = useLanguage();
   const [inputPPN, setInputPPN] = useState<InputPPNRecord[]>([]);
   const [outputPPN, setOutputPPN] = useState<OutputPPNRecord[]>([]);
   const [monthlySummary, setMonthlySummary] = useState<MonthlySummary[]>([]);
   const [pph22Records, setPph22Records] = useState<PPh22Record[]>([]);
+  const [expenseVAT, setExpenseVAT] = useState<ExpenseVATRecord[]>([]);
+  const [expensePPh, setExpensePPh] = useState<ExpensePPhRecord[]>([]);
+  const [assetRegister, setAssetRegister] = useState<AssetRegisterRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'summary' | 'input' | 'output' | 'pph22'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'input' | 'output' | 'pph22' | 'expense_vat' | 'expense_pph' | 'assets'>('summary');
   const [selectedMonth, setSelectedMonth] = useState<string>('');
 
   useEffect(() => {
@@ -78,6 +120,60 @@ export function TaxReports() {
       setInputPPN(inputRes.data || []);
       setOutputPPN(outputRes.data || []);
       setPph22Records(pph22Res.data || []);
+
+      // Load expense VAT register (expenses with ppn_amount > 0, excluding PIB/import)
+      const { data: expVatData } = await supabase
+        .from('finance_expenses')
+        .select(`
+          id, expense_date, voucher_number, invoice_number,
+          expense_category, description, amount, ppn_amount,
+          suppliers(company_name)
+        `)
+        .gt('ppn_amount', 0)
+        .not('expense_category', 'in', '(pib_import,ppn_import,pph_import)')
+        .order('expense_date', { ascending: false });
+
+      setExpenseVAT((expVatData || []).map((r: any) => ({
+        id: r.id,
+        expense_date: r.expense_date,
+        voucher_number: r.voucher_number,
+        invoice_number: r.invoice_number,
+        supplier_name: r.suppliers?.company_name || null,
+        expense_category: r.expense_category,
+        description: r.description,
+        amount: r.amount,
+        ppn_amount: r.ppn_amount,
+      })));
+
+      // Load expense PPh register (expenses with pph_amount > 0)
+      const { data: expPphData } = await supabase
+        .from('finance_expenses')
+        .select(`
+          id, expense_date, voucher_number, invoice_number,
+          expense_category, description, amount, pph_amount,
+          suppliers(company_name),
+          tax_codes(code, name)
+        `)
+        .gt('pph_amount', 0)
+        .order('expense_date', { ascending: false });
+
+      setExpensePPh((expPphData || []).map((r: any) => ({
+        id: r.id,
+        expense_date: r.expense_date,
+        voucher_number: r.voucher_number,
+        invoice_number: r.invoice_number,
+        supplier_name: r.suppliers?.company_name || null,
+        expense_category: r.expense_category,
+        description: r.description,
+        amount: r.amount,
+        pph_amount: r.pph_amount,
+        pph_code: r.tax_codes?.code || null,
+        pph_name: r.tax_codes?.name || null,
+      })));
+
+      // Load asset register
+      const { data: assetData } = await supabase.rpc('get_asset_register');
+      setAssetRegister(assetData || []);
     } catch (error: any) {
       console.error('Error loading tax reports:', error.message);
       alert('Failed to load tax reports');
@@ -122,10 +218,13 @@ export function TaxReports() {
 
       <div className="flex gap-1.5 border-b border-gray-200 bg-white">
         {[
-          { value: 'summary', label: t('finance.monthlySummary') || 'Monthly Summary', icon: Calendar },
-          { value: 'input',   label: t('finance.inputPPN')       || 'Input PPN',       icon: TrendingDown },
-          { value: 'output',  label: t('finance.outputPPN')      || 'Output PPN',      icon: TrendingUp },
-          { value: 'pph22',   label: 'PPh 22 Advance Tax',                             icon: ShieldCheck },
+          { value: 'summary',     label: t('finance.monthlySummary') || 'Monthly Summary', icon: Calendar },
+          { value: 'input',       label: t('finance.inputPPN')       || 'Input PPN',       icon: TrendingDown },
+          { value: 'output',      label: t('finance.outputPPN')      || 'Output PPN',      icon: TrendingUp },
+          { value: 'pph22',       label: 'PPh 22 Advance Tax',                             icon: ShieldCheck },
+          { value: 'expense_vat', label: 'Expense VAT Register',                           icon: FileText },
+          { value: 'expense_pph', label: 'Expense PPh Register',                           icon: ShieldCheck },
+          { value: 'assets',      label: 'Asset Register',                                 icon: Building2 },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
@@ -438,6 +537,153 @@ export function TaxReports() {
                   During annual tax filing, this asset is applied against the corporate tax payable (SPT Tahunan Badan).
                 </p>
               </div>
+            </div>
+          )}
+          {/* ── Expense VAT Register ─────────────────────────────────────── */}
+          {activeTab === 'expense_vat' && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+              <div className="px-3 py-2 bg-blue-50 border-b border-blue-200">
+                <p className="text-xs text-blue-800 font-medium">
+                  Input VAT recorded on expense bills (non-PIB). Includes Operating Expenses, Professional Services,
+                  Broker Invoices, and Fixed Assets with PPN.
+                </p>
+              </div>
+              <table className="min-w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Date</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Voucher #</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Invoice #</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Supplier</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Category</th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-600">DPP</th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-600">PPN (11%)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {expenseVAT.length === 0 ? (
+                    <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">No expense VAT records found</td></tr>
+                  ) : expenseVAT.map(r => (
+                    <tr key={r.id} className="hover:bg-blue-50/30">
+                      <td className="px-3 py-2">{formatDate(r.expense_date)}</td>
+                      <td className="px-3 py-2 font-mono text-gray-600">{r.voucher_number || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-gray-600">{r.invoice_number || '—'}</td>
+                      <td className="px-3 py-2 text-gray-700">{r.supplier_name || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600">{r.expense_category.replace(/_/g, ' ')}</td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(r.amount)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-blue-700">{formatCurrency(r.ppn_amount)}</td>
+                    </tr>
+                  ))}
+                  {expenseVAT.length > 0 && (
+                    <tr className="bg-blue-50 font-bold border-t-2 border-blue-200">
+                      <td colSpan={5} className="px-3 py-2 text-right text-gray-700">TOTAL ({expenseVAT.length} records):</td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(expenseVAT.reduce((s, r) => s + r.amount, 0))}</td>
+                      <td className="px-3 py-2 text-right text-blue-700">{formatCurrency(expenseVAT.reduce((s, r) => s + r.ppn_amount, 0))}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── Expense PPh Register ─────────────────────────────────────── */}
+          {activeTab === 'expense_pph' && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+              <div className="px-3 py-2 bg-orange-50 border-b border-orange-200">
+                <p className="text-xs text-orange-800 font-medium">
+                  PPh withholding recorded on expense bills. Use this to prepare SPT Masa PPh reports.
+                  All amounts are credited to Account 2132 (PPh Payable).
+                </p>
+              </div>
+              <table className="min-w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Date</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Voucher #</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Invoice #</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Supplier</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">PPh Type</th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-600">DPP</th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-600">PPh Withheld</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {expensePPh.length === 0 ? (
+                    <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">No expense PPh records found</td></tr>
+                  ) : expensePPh.map(r => (
+                    <tr key={r.id} className="hover:bg-orange-50/30">
+                      <td className="px-3 py-2">{formatDate(r.expense_date)}</td>
+                      <td className="px-3 py-2 font-mono text-gray-600">{r.voucher_number || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-gray-600">{r.invoice_number || '—'}</td>
+                      <td className="px-3 py-2 text-gray-700">{r.supplier_name || '—'}</td>
+                      <td className="px-3 py-2">
+                        {r.pph_code ? (
+                          <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded font-medium">
+                            {r.pph_code}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(r.amount)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-orange-700">{formatCurrency(r.pph_amount)}</td>
+                    </tr>
+                  ))}
+                  {expensePPh.length > 0 && (
+                    <tr className="bg-orange-50 font-bold border-t-2 border-orange-200">
+                      <td colSpan={5} className="px-3 py-2 text-right text-gray-700">TOTAL ({expensePPh.length} records):</td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(expensePPh.reduce((s, r) => s + r.amount, 0))}</td>
+                      <td className="px-3 py-2 text-right text-orange-700">{formatCurrency(expensePPh.reduce((s, r) => s + r.pph_amount, 0))}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── Asset Register ───────────────────────────────────────────── */}
+          {activeTab === 'assets' && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+              <div className="px-3 py-2 bg-green-50 border-b border-green-200">
+                <p className="text-xs text-green-800 font-medium">
+                  All fixed asset purchases recorded in the Expense module. Useful for depreciation schedule preparation.
+                </p>
+              </div>
+              <table className="min-w-full text-xs">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Purchase Date</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Supplier</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Invoice #</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Asset Account</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Description</th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-600">Cost</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {assetRegister.length === 0 ? (
+                    <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">No fixed asset purchases found</td></tr>
+                  ) : assetRegister.map(r => (
+                    <tr key={r.id} className="hover:bg-green-50/30">
+                      <td className="px-3 py-2">{formatDate(r.purchase_date)}</td>
+                      <td className="px-3 py-2 text-gray-700">{r.supplier_name || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-gray-600">{r.invoice_number || '—'}</td>
+                      <td className="px-3 py-2">
+                        {r.asset_account_code && (
+                          <span className="text-green-700 font-medium">{r.asset_account_code} — </span>
+                        )}
+                        {r.asset_account || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600">{r.description || '—'}</td>
+                      <td className="px-3 py-2 text-right font-semibold">{formatCurrency(r.cost)}</td>
+                    </tr>
+                  ))}
+                  {assetRegister.length > 0 && (
+                    <tr className="bg-green-50 font-bold border-t-2 border-green-200">
+                      <td colSpan={5} className="px-3 py-2 text-right text-gray-700">TOTAL ASSET COST ({assetRegister.length} assets):</td>
+                      <td className="px-3 py-2 text-right text-green-700">{formatCurrency(assetRegister.reduce((s, r) => s + r.cost, 0))}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
         </>

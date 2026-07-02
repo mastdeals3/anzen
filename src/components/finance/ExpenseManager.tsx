@@ -1,12 +1,24 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, DollarSign, Package, Truck, Building2, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, Lock, RotateCcw } from 'lucide-react';
+import { Plus, DollarSign, Package, Truck, Building2, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, Lock, RotateCcw, UserPlus, AlertCircle } from 'lucide-react';
 import { Modal } from '../Modal';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
+import {
+  DOCUMENT_TYPES,
+  DOCUMENT_TYPE_GROUPS,
+  DOCUMENT_TYPE_TAX_CONFIG,
+  BROKER_ITEM_TYPES,
+  type BrokerItem,
+  type DocumentType,
+  calculatePPN,
+  getDueDateFromTerms,
+  getSingleCategoryForDocType,
+  EXPENSE_CATEGORY_LABELS,
+} from '../../utils/taxCalculations';
 
 interface FinanceExpense {
   id: string;
@@ -19,7 +31,7 @@ interface FinanceExpense {
   delivery_challan_id: string | null;
   expense_type: string | null;
   document_urls: string[] | null;
-  payment_method: string;
+  payment_method: string | null;
   bank_account_id: string | null;
   payment_reference: string | null;
   voucher_number: string | null;
@@ -28,6 +40,12 @@ interface FinanceExpense {
   approved_at: string | null;
   rejection_reason: string | null;
   created_at: string;
+  // New supplier invoice fields
+  supplier_id?: string | null;
+  invoice_number?: string | null;
+  due_date?: string | null;
+  paid_amount?: number | null;
+  broker_items?: BrokerItem[] | null;
   // PIB Import breakdown columns (non-null only when expense_category = 'pib_import')
   pib_bm_amount?: number | null;
   pib_ppn_amount?: number | null;
@@ -51,6 +69,17 @@ interface FinanceExpense {
     bank_account_id: string;
     bank_accounts?: { bank_name: string; account_number: string; alias: string | null; currency: string } | null;
   }> | null;
+  suppliers?: { id: string; company_name: string } | null;
+}
+
+interface Supplier {
+  id: string;
+  company_name: string;
+  pkp_status: boolean;
+  payment_terms_days: number | null;
+  default_expense_category: string | null;
+  default_pph_code_id: string | null;
+  tax_preference: 'none' | 'ppn_only' | 'ppn_pph' | 'pph_only' | null;
 }
 
 interface Batch {
@@ -371,6 +400,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
   const [coaAssets, setCoaAssets] = useState<COAAccount[]>([]);
+  // Supplier state
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  const [selectedDocType, setSelectedDocType] = useState<DocumentType | ''>('');
+  const [brokerItems, setBrokerItems] = useState<BrokerItem[]>([]);
+  const [supplierFilter, setSupplierFilter] = useState<string>('all');
+  // Quick Add Supplier modal
+  const [showQuickAddSupplier, setShowQuickAddSupplier] = useState(false);
+  const [quickAddSupplierName, setQuickAddSupplierName] = useState('');
+  const [quickAddSupplierLoading, setQuickAddSupplierLoading] = useState(false);
 
   // Use master date range from Finance context
   const { dateRange } = useFinance();
@@ -385,10 +424,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     batch_id: '',
     import_container_id: '',
     delivery_challan_id: '',
-    payment_method: 'bank_transfer',
+    payment_method: 'bank_transfer' as string | null,
     bank_account_id: '',
     payment_reference: '',
     document_urls: [] as string[],
+    // New supplier invoice fields
+    supplier_id: '',
+    invoice_number: '',
+    due_date: '',
     // PIB Import breakdown (only used when expense_category = 'pib_import')
     pib_bm_amount: 0,
     pib_ppn_amount: 0,
@@ -628,6 +671,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         const { data: coa } = await supabase.from('chart_of_accounts').select('id, code, name').in('account_type', ['asset', 'Asset']).order('code');
         setCoaAssets(coa || []);
       }
+      if (suppliers.length === 0) {
+        const { data: sup } = await supabase
+          .from('suppliers')
+          .select('id, company_name, pkp_status, payment_terms_days, default_expense_category, default_pph_code_id, tax_preference')
+          .order('company_name');
+        setSuppliers((sup as Supplier[]) || []);
+      }
     } catch (error: any) {
       console.error('Error loading data:', error.message);
       alert('Failed to load expenses');
@@ -775,6 +825,18 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       const allDocumentUrls = [...formData.document_urls, ...uploadedUrls];
       console.log('Combined document URLs:', allDocumentUrls);
 
+      // Broker items validation: for import_broker, items must sum to amount
+      const isBrokerInvoice = formData.expense_category === 'import_broker';
+      if (isBrokerInvoice && brokerItems.length > 0) {
+        const itemsSum = brokerItems.reduce((s, i) => s + (i.amount || 0), 0);
+        if (Math.abs(itemsSum - (formData.amount || 0)) > 1) {
+          alert(
+            `❌ Broker Items Mismatch\n\nItems Total = Rp ${itemsSum.toLocaleString('id-ID')}\nInvoice Amount = Rp ${(formData.amount || 0).toLocaleString('id-ID')}\n\nThe sum of all line items must equal the invoice amount.`
+          );
+          return;
+        }
+      }
+
       const isPib = formData.expense_category === 'pib_import';
       const isFixedAsset = formData.expense_category === 'fixed_asset';
       const isImportCategory = category?.type === 'import';
@@ -787,11 +849,17 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         batch_id: formData.batch_id || null,
         import_container_id: formData.import_container_id || null,
         delivery_challan_id: formData.delivery_challan_id || null,
-        payment_method: formData.payment_method,
-        bank_account_id: formData.bank_account_id || null,
+        payment_method: formData.payment_method || null,
+        bank_account_id: formData.payment_method && formData.payment_method !== 'outstanding' ? (formData.bank_account_id || null) : null,
         payment_reference: formData.payment_reference || null,
         paid_by: 'bank',
         document_urls: allDocumentUrls.length > 0 ? allDocumentUrls : null,
+        // New supplier invoice fields
+        supplier_id: formData.supplier_id || null,
+        invoice_number: formData.invoice_number || null,
+        due_date: formData.due_date || null,
+        // Broker items (only for import_broker)
+        broker_items: isBrokerInvoice && brokerItems.length > 0 ? brokerItems : null,
         // PIB breakdown — only persisted for pib_import category
         pib_bm_amount:  isPib ? (formData.pib_bm_amount  || 0) : null,
         pib_ppn_amount: isPib ? (formData.pib_ppn_amount || 0) : null,
@@ -1061,6 +1129,18 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       ? 'bank_transfer'
       : (expense.payment_method || 'bank_transfer');
 
+    // Determine document type from category
+    const docType = (Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][])
+      .find(([, cats]) => cats.includes(expense.expense_category))?.[0] ?? '' as DocumentType | '';
+    setSelectedDocType(docType);
+
+    // Set supplier
+    const sup = expense.supplier_id ? suppliers.find(s => s.id === expense.supplier_id) ?? null : null;
+    setSelectedSupplier(sup);
+
+    // Set broker items
+    setBrokerItems(expense.broker_items ?? []);
+
     setFormData({
       expense_category: expense.expense_category,
       amount: expense.amount,
@@ -1073,6 +1153,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       bank_account_id: effectiveBankAccountId,
       payment_reference: expense.payment_reference || '',
       document_urls: expense.document_urls || [],
+      supplier_id: expense.supplier_id ?? '',
+      invoice_number: expense.invoice_number ?? '',
+      due_date: expense.due_date ?? '',
       pib_bm_amount:  expense.pib_bm_amount  ?? 0,
       pib_ppn_amount: expense.pib_ppn_amount ?? 0,
       pib_pph_amount: expense.pib_pph_amount ?? 0,
@@ -1245,6 +1328,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const resetForm = () => {
     setEditingExpense(null);
     setUploadingFiles([]);
+    setSelectedSupplier(null);
+    setSelectedDocType('');
+    setBrokerItems([]);
     setFormData({
       expense_category: 'other',
       amount: 0,
@@ -1257,6 +1343,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       bank_account_id: '',
       payment_reference: '',
       document_urls: [],
+      supplier_id: '',
+      invoice_number: '',
+      due_date: '',
       pib_bm_amount: 0,
       pib_ppn_amount: 0,
       pib_pph_amount: 0,
@@ -1266,6 +1355,62 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       stamp_duty_amount: 0,
       fixed_asset_account_id: '',
     });
+  };
+
+  // Handle supplier selection — auto-fills category, due_date, tax fields
+  const handleSupplierSelect = (supplierId: string) => {
+    const sup = suppliers.find(s => s.id === supplierId) ?? null;
+    setSelectedSupplier(sup);
+    setFormData(prev => {
+      const updates: Partial<typeof prev> = { supplier_id: supplierId };
+      if (sup) {
+        // Auto-fill category if supplier has a default
+        if (sup.default_expense_category) {
+          updates.expense_category = sup.default_expense_category;
+          // Also update docType
+          const docType = (Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][])
+            .find(([, cats]) => cats.includes(sup.default_expense_category!))?.[0];
+          if (docType) setSelectedDocType(docType);
+        }
+        // Auto-fill PPh code
+        if (sup.default_pph_code_id && (sup.tax_preference === 'pph_only' || sup.tax_preference === 'ppn_pph')) {
+          updates.pph_code_id = sup.default_pph_code_id;
+        }
+        // Auto-fill PPN if PKP
+        if (sup.pkp_status && (sup.tax_preference === 'ppn_only' || sup.tax_preference === 'ppn_pph')) {
+          updates.ppn_amount = calculatePPN(prev.amount, true);
+        }
+        // Auto-fill due_date from payment terms
+        if (prev.expense_date && sup.payment_terms_days) {
+          updates.due_date = getDueDateFromTerms(prev.expense_date, sup.payment_terms_days);
+        }
+      }
+      return { ...prev, ...updates };
+    });
+  };
+
+  // Quick Add Supplier handler
+  const handleQuickAddSupplier = async () => {
+    if (!quickAddSupplierName.trim()) return;
+    setQuickAddSupplierLoading(true);
+    try {
+      const { data: newSupplier, error } = await supabase
+        .from('suppliers')
+        .insert([{ company_name: quickAddSupplierName.trim() }])
+        .select('id, company_name, pkp_status, payment_terms_days, default_expense_category, default_pph_code_id, tax_preference')
+        .single();
+      if (error) throw error;
+      const sup = newSupplier as Supplier;
+      setSuppliers(prev => [...prev, sup].sort((a, b) => a.company_name.localeCompare(b.company_name)));
+      setShowQuickAddSupplier(false);
+      setQuickAddSupplierName('');
+      // Auto-select the new supplier
+      handleSupplierSelect(sup.id);
+    } catch (err: any) {
+      alert('Failed to add supplier: ' + err.message);
+    } finally {
+      setQuickAddSupplierLoading(false);
+    }
   };
 
   const selectedCategory = expenseCategories.find(c => c.value === formData.expense_category);
@@ -1282,6 +1427,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     // Filter by specific category
     if (categoryFilter !== 'all' && exp.expense_category !== categoryFilter) {
       return false;
+    }
+
+    // Filter by supplier
+    if (supplierFilter !== 'all') {
+      if (supplierFilter === 'no_supplier') {
+        if (exp.supplier_id) return false;
+      } else {
+        if (exp.supplier_id !== supplierFilter) return false;
+      }
     }
 
     // Filter by reconciliation status
@@ -1544,6 +1698,21 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 </option>
               ))}
           </select>
+
+          {/* Supplier Filter */}
+          {suppliers.length > 0 && (
+            <select
+              value={supplierFilter}
+              onChange={(e) => setSupplierFilter(e.target.value)}
+              className="px-2 py-1 border border-gray-300 rounded-md text-xs"
+            >
+              <option value="all">All Suppliers</option>
+              <option value="no_supplier">— No Supplier —</option>
+              {suppliers.map(s => (
+                <option key={s.id} value={s.id}>{s.company_name}</option>
+              ))}
+            </select>
+          )}
 
           {/* Export Button */}
           <button
@@ -1852,632 +2021,757 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             resetForm();
           }}
           title={editingExpense ? 'Edit Expense' : 'Record New Expense'}
-          maxWidth="max-w-2xl"
+          maxWidth="max-w-3xl"
         >
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Expense Category <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={formData.expense_category}
-                onChange={(e) => {
-                  const newCategory = e.target.value;
-                  const cat = expenseCategories.find(c => c.value === newCategory);
-                  // Clear container/DC when changing categories
-                  setFormData({
-                    ...formData,
-                    expense_category: newCategory,
-                    import_container_id: cat?.type === 'import' ? formData.import_container_id : '',
-                    delivery_challan_id: cat?.type === 'sales' ? formData.delivery_challan_id : ''
-                  });
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                required
-              >
-                <option value="">Select Category</option>
+          <form onSubmit={handleSubmit} className="space-y-5">
 
-                {/* Import Costs - Capitalized to Inventory */}
-                <optgroup label="═══ IMPORT COSTS (Capitalized to Inventory) ═══">
-                  {expenseCategories.filter(c => c.group === 'Import Costs').map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label} [Requires Container]
-                    </option>
-                  ))}
-                </optgroup>
+            {/* ══ SECTION 1: Supplier Information ══════════════════════════════ */}
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">§1 — Supplier Information</h3>
 
-                {/* Sales & Distribution - P&L Expense */}
-                <optgroup label="═══ SALES & DISTRIBUTION (P&L Expense) ═══">
-                  {expenseCategories.filter(c => c.group === 'Sales & Distribution').map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </optgroup>
-
-                {/* Staff Costs - P&L Expense */}
-                <optgroup label="═══ STAFF COSTS (P&L Expense) ═══">
-                  {expenseCategories.filter(c => c.group === 'Staff Costs').map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </optgroup>
-
-                {/* Operations - P&L Expense */}
-                <optgroup label="═══ OPERATIONS (P&L Expense) ═══">
-                  {expenseCategories.filter(c => c.group === 'Operations').map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </optgroup>
-
-                {/* Administrative - P&L Expense */}
-                <optgroup label="═══ ADMINISTRATIVE (P&L Expense) ═══">
-                  {expenseCategories.filter(c => c.group === 'Administrative').map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-              {selectedCategory && (
-                <div className={`mt-2 p-3 rounded-lg border ${getTypeColor(selectedCategory.type)}`}>
-                  <p className="text-sm font-medium">{selectedCategory.description}</p>
-                  {selectedCategory.requiresContainer && (
-                    <p className="text-xs font-semibold text-red-600 mt-1">
-                      ⚠️ Must be linked to Import Container
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {requiresContainer && (
-              <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
-                <label className="block text-sm font-medium text-blue-900 mb-2">
-                  <Package className="w-4 h-4 inline mr-1" />
-                  Import Container <span className="text-red-500">* REQUIRED</span>
+              {/* Supplier selector */}
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Supplier
+                  <span className="ml-1 text-xs text-gray-400 font-normal">(required for invoices; leave blank for petty-cash-type entries)</span>
                 </label>
-                <select
-                  value={formData.import_container_id}
-                  onChange={(e) => setFormData({ ...formData, import_container_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-blue-300 rounded-lg bg-white"
-                  required={requiresContainer}
-                >
-                  <option value="">Select Container (Required)</option>
-                  {containers.map((container) => (
-                    <option key={container.id} value={container.id}>
-                      {container.container_ref}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-2 text-xs text-blue-800 font-medium">
-                  ✓ This expense will be CAPITALIZED to inventory and allocated to batches
-                </p>
-                <p className="mt-1 text-xs text-red-700 font-semibold">
-                  ⚠️ Backend will block saving without a container selection
-                </p>
-              </div>
-            )}
-
-            {/* ── PIB Import Breakdown ─────────────────────────────────────────── */}
-            {formData.expense_category === 'pib_import' && (() => {
-              const pibSum = (formData.pib_bm_amount || 0) + (formData.pib_ppn_amount || 0) + (formData.pib_pph_amount || 0);
-              const pibOk  = Math.abs(pibSum - (formData.amount || 0)) < 1 && pibSum > 0;
-              return (
-                <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <FileText className="w-4 h-4 text-amber-700" />
-                    <h3 className="text-sm font-bold text-amber-900">PIB Tax Breakdown — Required</h3>
-                    <span className="ml-auto text-xs text-amber-700">Must sum to payment amount</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-amber-900 mb-1">
-                        Import Duty — BM <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={formData.pib_bm_amount || ''}
-                        onChange={e => setFormData({ ...formData, pib_bm_amount: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none bg-white"
-                        placeholder="0"
-                      />
-                      <p className="text-[10px] text-amber-700 mt-0.5">Goes to landed cost → inventory</p>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-amber-900 mb-1">
-                        PPN Import <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={formData.pib_ppn_amount || ''}
-                        onChange={e => setFormData({ ...formData, pib_ppn_amount: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none bg-white"
-                        placeholder="0"
-                      />
-                      <p className="text-[10px] text-amber-700 mt-0.5">Input VAT (PPN Masukan 1150)</p>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-amber-900 mb-1">
-                        PPh 22 Import <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={formData.pib_pph_amount || ''}
-                        onChange={e => setFormData({ ...formData, pib_pph_amount: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none bg-white"
-                        placeholder="0"
-                      />
-                      <p className="text-[10px] text-amber-700 mt-0.5">Advance Income Tax (PPh 22 Prepaid 1155)</p>
-                    </div>
-                  </div>
-
-                  {/* Running total validation */}
-                  <div className={`flex items-center justify-between px-3 py-2 rounded-lg border text-sm font-medium ${
-                    pibOk
-                      ? 'bg-green-50 border-green-300 text-green-800'
-                      : pibSum > 0
-                      ? 'bg-red-50 border-red-300 text-red-800'
-                      : 'bg-amber-100 border-amber-300 text-amber-800'
-                  }`}>
-                    <span>
-                      BM + PPN + PPh = Rp {pibSum.toLocaleString('id-ID')}
-                    </span>
-                    <span>
-                      {pibOk
-                        ? '✓ Matches payment amount'
-                        : formData.amount > 0
-                        ? `Difference: Rp ${Math.abs(pibSum - formData.amount).toLocaleString('id-ID')}`
-                        : 'Enter payment amount above'}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] text-amber-800">
-                    <div className="bg-white border border-amber-200 rounded p-1.5 text-center">
-                      <div className="font-bold">BM → Dr 5200</div>
-                      <div>Import Duty Expense</div>
-                      <div className="text-green-700 font-semibold">Landed Cost ✓</div>
-                    </div>
-                    <div className="bg-white border border-amber-200 rounded p-1.5 text-center">
-                      <div className="font-bold">PPN → Dr 1150</div>
-                      <div>PPN Masukan</div>
-                      <div className="text-blue-700 font-semibold">Input VAT (claimable)</div>
-                    </div>
-                    <div className="bg-white border border-amber-200 rounded p-1.5 text-center">
-                      <div className="font-bold">PPh → Dr 1155</div>
-                      <div>PPh 22 Dibayar Dimuka</div>
-                      <div className="text-purple-700 font-semibold">Advance Tax Asset</div>
-                    </div>
-                  </div>
+                <div className="flex gap-2">
+                  <select
+                    value={formData.supplier_id}
+                    onChange={(e) => handleSupplierSelect(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="">— No Supplier (petty cash / misc) —</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.company_name}{s.pkp_status ? ' ✓PKP' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickAddSupplier(true)}
+                    className="flex items-center gap-1 px-3 py-2 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 whitespace-nowrap"
+                    title="Quick Add Supplier"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    New
+                  </button>
                 </div>
-              );
-            })()}
-
-            {/* ── Fixed Asset Account Selector ───────────────────────────── */}
-            {formData.expense_category === 'fixed_asset' && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h3 className="text-sm font-bold text-blue-900 mb-3">Fixed Asset Account</h3>
-                <select
-                  value={formData.fixed_asset_account_id}
-                  onChange={(e) => setFormData({ ...formData, fixed_asset_account_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm"
-                  required
-                >
-                  <option value="">Select Asset Account *</option>
-                  {coaAssets.map((a) => (
-                    <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-blue-700 mt-1">DR Asset Account, CR Bank/Cash</p>
-              </div>
-            )}
-
-            {/* ── PPN / PPh / Stamp Duty for standard non-import expenses ── */}
-            {formData.expense_category !== 'pib_import' && selectedCategory?.type !== 'import' && formData.expense_category !== 'fixed_asset' && (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Tax (Optional)</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">PPN (Input VAT)</label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={formData.ppn_amount || ''}
-                      onChange={(e) => setFormData({ ...formData, ppn_amount: parseFloat(e.target.value) || 0 })}
-                      placeholder="0"
-                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                    />
-                    <p className="text-[10px] text-gray-500 mt-0.5">DR PPN Masukan (1150)</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">PPh Withheld</label>
-                    <select
-                      value={formData.pph_code_id}
-                      onChange={(e) => setFormData({ ...formData, pph_code_id: e.target.value, pph_amount: 0 })}
-                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 mb-1"
-                    >
-                      <option value="">None</option>
-                      {taxCodes.map((tc) => (
-                        <option key={tc.id} value={tc.id}>{tc.code} — {tc.name} ({tc.rate}%)</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={formData.pph_amount || ''}
-                      onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
-                      placeholder="Amount"
-                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                    />
-                    <p className="text-[10px] text-gray-500 mt-0.5">CR PPh Payable (2132)</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Bea Meterai</label>
-                    <input
-                      type="number"
-                      step="1000"
-                      min="0"
-                      value={formData.stamp_duty_amount || ''}
-                      onChange={(e) => setFormData({ ...formData, stamp_duty_amount: parseFloat(e.target.value) || 0 })}
-                      placeholder="0"
-                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                    />
-                    <p className="text-[10px] text-gray-500 mt-0.5">DR Bea Meterai Expense (6950)</p>
-                  </div>
-                </div>
-                {(formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0) && (
-                  <div className="mt-2 text-xs text-gray-600 border-t pt-2">
-                    Net bank payment: Rp {(
-                      (formData.amount || 0) + (formData.ppn_amount || 0) - (formData.pph_amount || 0) + (formData.stamp_duty_amount || 0)
-                    ).toLocaleString('id-ID')}
+                {selectedSupplier && (
+                  <div className="mt-1.5 flex flex-wrap gap-2 text-[10px]">
+                    {selectedSupplier.pkp_status && (
+                      <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded font-medium">PKP — PPN 11%</span>
+                    )}
+                    {selectedSupplier.payment_terms_days && (
+                      <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">Terms: {selectedSupplier.payment_terms_days}d</span>
+                    )}
+                    {selectedSupplier.tax_preference && selectedSupplier.tax_preference !== 'none' && (
+                      <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium capitalize">{selectedSupplier.tax_preference?.replace(/_/g,' ')}</span>
+                    )}
                   </div>
                 )}
               </div>
-            )}
 
-            {requiresDC && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <label className="block text-sm font-medium text-green-900 mb-2">
-                  Delivery Challan (Optional)
-                </label>
-                <select
-                  value={formData.delivery_challan_id}
-                  onChange={(e) => setFormData({ ...formData, delivery_challan_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-green-300 rounded-lg"
-                >
-                  <option value="">Select DC (Optional)</option>
-                  {challans.map((challan) => (
-                    <option key={challan.id} value={challan.id}>
-                      {challan.challan_number} - {new Date(challan.challan_date).toLocaleDateString('en-GB')} - {challan.customers?.company_name || 'No Customer'}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-2 text-xs text-green-700">
-                  This expense will be EXPENSED to P&L (not capitalized)
-                </p>
+              {/* Invoice Number + Invoice Date + Due Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Number</label>
+                  <input
+                    type="text"
+                    value={formData.invoice_number}
+                    onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="Supplier's invoice #"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Invoice Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.expense_date}
+                    onChange={(e) => {
+                      const newDate = e.target.value;
+                      setFormData(prev => ({
+                        ...prev,
+                        expense_date: newDate,
+                        due_date: selectedSupplier?.payment_terms_days
+                          ? getDueDateFromTerms(newDate, selectedSupplier.payment_terms_days)
+                          : prev.due_date,
+                      }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                  <input
+                    type="date"
+                    value={formData.due_date}
+                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  {formData.due_date && (
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      {formData.due_date < new Date().toISOString().split('T')[0]
+                        ? <span className="text-red-600 font-semibold">⚠ Overdue</span>
+                        : ''}
+                    </p>
+                  )}
+                </div>
               </div>
-            )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Date <span className="text-red-500">*</span>
-                </label>
+              {/* Reference */}
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Payment Reference</label>
                 <input
-                  type="date"
-                  value={formData.expense_date}
-                  onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Amount (Rp) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  required
+                  type="text"
+                  value={formData.payment_reference}
+                  onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  placeholder="TT ref, cheque no., etc."
                 />
               </div>
             </div>
 
-            {/* Payment Method Section */}
-            <div className="border-2 border-blue-200 rounded-lg p-4 bg-blue-50">
-              <h3 className="text-sm font-semibold text-blue-900 mb-3">Payment Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* ══ SECTION 2: Classification ════════════════════════════════════ */}
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">§2 — Classification</h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Document Type */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Payment Method <span className="text-red-500">*</span>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Document Type <span className="text-red-500">*</span>
                   </label>
                   <select
-                    value={formData.payment_method}
-                    onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={selectedDocType}
+                    onChange={(e) => {
+                      const dt = e.target.value as DocumentType | '';
+                      setSelectedDocType(dt);
+                      if (dt) {
+                        const singleCat = getSingleCategoryForDocType(dt as DocumentType);
+                        if (singleCat) {
+                          setFormData(prev => ({ ...prev, expense_category: singleCat }));
+                        } else {
+                          setFormData(prev => ({ ...prev, expense_category: '' }));
+                        }
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     required
                   >
-                    <option value="bank_transfer">🏦 Bank Transfer</option>
-                    <option value="check">📝 Check</option>
-                    <option value="giro">📋 Giro</option>
-                    <option value="other">📌 Other</option>
+                    <option value="">Select Document Type</option>
+                    {DOCUMENT_TYPES.map((dt) => (
+                      <option key={dt} value={dt}>{dt}</option>
+                    ))}
                   </select>
-                  <p className="text-xs text-gray-600 mt-1">
-                    ✓ Will appear in Bank Reconciliation
-                  </p>
-                  <p className="text-xs text-blue-600 mt-1">
-                    💡 For cash expenses, use Petty Cash Manager
-                  </p>
                 </div>
 
+                {/* Category (filtered by Document Type) */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Bank Account <span className="text-red-500">*</span>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                  {selectedDocType && DOCUMENT_TYPE_GROUPS[selectedDocType as DocumentType]?.length === 1 ? (
+                    <div className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-600">
+                      {EXPENSE_CATEGORY_LABELS[DOCUMENT_TYPE_GROUPS[selectedDocType as DocumentType][0]] || DOCUMENT_TYPE_GROUPS[selectedDocType as DocumentType][0]}
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.expense_category}
+                      onChange={(e) => setFormData({ ...formData, expense_category: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      required
+                    >
+                      <option value="">Select Category</option>
+                      {(selectedDocType ? DOCUMENT_TYPE_GROUPS[selectedDocType as DocumentType] ?? [] : []).map((cat) => (
+                        <option key={cat} value={cat}>
+                          {EXPENSE_CATEGORY_LABELS[cat] || cat}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Invoice Amount (IDR) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={formData.amount || ''}
+                  onChange={(e) => {
+                    const amt = parseFloat(e.target.value) || 0;
+                    setFormData(prev => ({
+                      ...prev,
+                      amount: amt,
+                      // Auto-recalculate PPN if supplier is PKP
+                      ppn_amount: selectedSupplier?.pkp_status
+                        ? calculatePPN(amt, true)
+                        : prev.ppn_amount,
+                    }));
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium"
+                  placeholder="0"
+                  required
+                />
+              </div>
+
+              {/* Import Container (for legacy import cost categories) */}
+              {requiresContainer && (
+                <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <label className="block text-xs font-medium text-blue-900 mb-1">
+                    <Package className="w-3.5 h-3.5 inline mr-1" />
+                    Import Container <span className="text-red-500">*</span>
                   </label>
                   <select
-                    value={formData.bank_account_id}
-                    onChange={(e) => {
-                      setFormData({ ...formData, bank_account_id: e.target.value });
-                      if (e.target.value) {
-                        loadUnlinkedBankTransactions(e.target.value, editingExpense?.id);
-                      } else {
-                        setUnlinkedBankTransactions([]);
-                      }
-                      setSelectedBankTransactionId('');
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={formData.import_container_id}
+                    onChange={(e) => setFormData({ ...formData, import_container_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white"
                     required
                   >
-                    <option value="">Select Bank Account</option>
-                    {bankAccounts.map((bank) => (
-                      <option key={bank.id} value={bank.id}>
-                        {bank.bank_name} - {bank.alias || bank.account_number}
+                    <option value="">Select Container</option>
+                    {containers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.container_ref}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Delivery Challan (for sales categories) */}
+              {requiresDC && (
+                <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3">
+                  <label className="block text-xs font-medium text-green-900 mb-1">
+                    Delivery Challan (Optional)
+                  </label>
+                  <select
+                    value={formData.delivery_challan_id}
+                    onChange={(e) => setFormData({ ...formData, delivery_challan_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-green-300 rounded-lg text-sm"
+                  >
+                    <option value="">None</option>
+                    {challans.map((ch) => (
+                      <option key={ch.id} value={ch.id}>
+                        {ch.challan_number} — {new Date(ch.challan_date).toLocaleDateString('en-GB')} — {ch.customers?.company_name || ''}
                       </option>
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Link to Bank Transaction
-                  </label>
-                  {formData.bank_account_id && unlinkedBankTransactions.length > 0 ? (
-                    <>
-                      <select
-                        value={selectedBankTransactionId}
-                        onChange={(e) => setSelectedBankTransactionId(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                      >
-                        <option value="">Choose a transaction...</option>
-                        {unlinkedBankTransactions.map((txn) => {
-                          // Format date as DD/MM/YY
-                          const date = new Date(txn.transaction_date);
-                          const dd = String(date.getDate()).padStart(2, '0');
-                          const mm = String(date.getMonth() + 1).padStart(2, '0');
-                          const yy = String(date.getFullYear()).slice(-2);
-                          const formattedDate = `${dd}/${mm}/${yy}`;
+              )}
 
-                          return (
-                            <option key={txn.id} value={txn.id}>
-                              {formattedDate} - {txn.description?.substring(0, 50) || 'No description'} - Rp {txn.debit_amount?.toLocaleString()}
-                            </option>
-                          );
-                        })}
-                      </select>
-                      <p className="text-xs text-gray-600 mt-1">
-                        {unlinkedBankTransactions.length} unreconciled transaction{unlinkedBankTransactions.length !== 1 ? 's' : ''}
-                      </p>
-                    </>
-                  ) : formData.bank_account_id ? (
-                    <div className="text-sm text-gray-500 italic py-2 px-3 bg-gray-50 rounded-lg border border-gray-200">
-                      No unreconciled transactions
-                    </div>
-                  ) : (
-                    <input
-                      type="text"
-                      value={formData.payment_reference}
-                      onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                      placeholder="Enter reference number"
-                    />
-                  )}
+              {/* Fixed Asset Account */}
+              {formData.expense_category === 'fixed_asset' && (
+                <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <label className="block text-xs font-medium text-blue-900 mb-1">
+                    Asset Account <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.fixed_asset_account_id}
+                    onChange={(e) => setFormData({ ...formData, fixed_asset_account_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white"
+                    required
+                  >
+                    <option value="">Select Asset Account</option>
+                    {coaAssets.map((a) => (
+                      <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                    ))}
+                  </select>
                 </div>
+              )}
+
+              {/* Description */}
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Description / Notes</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  placeholder="Invoice description, goods/services received..."
+                />
               </div>
             </div>
 
-            {/* Linked Bank Statement Section */}
-            {editingExpense && editingExpense.bank_statement_lines && editingExpense.bank_statement_lines.length > 0 && (
-              <div className="p-4 bg-green-50 border border-green-300 rounded-lg">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-green-600" />
-                    <h4 className="font-semibold text-green-900">Linked Bank Transaction</h4>
-                  </div>
-                  {canManage && (
-                    <button
-                      type="button"
-                      onClick={() => handleUnlinkFromBankStatement(editingExpense.id)}
-                      className="text-sm text-red-600 hover:text-red-700 font-medium"
-                    >
-                      Unlink
-                    </button>
+            {/* ══ SECTION 3: Tax ═══════════════════════════════════════════════ */}
+            {selectedDocType && (() => {
+              const taxCfg = DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType];
+              if (!taxCfg) return null;
+              if (!taxCfg.ppn && !taxCfg.pph23 && !taxCfg.pph21 && !taxCfg.stamp && !taxCfg.pib && !taxCfg.brokerItems) return null;
+              return (
+                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">§3 — Tax</h3>
+
+                  {/* PIB Breakdown */}
+                  {taxCfg.pib && (() => {
+                    const pibSum = (formData.pib_bm_amount || 0) + (formData.pib_ppn_amount || 0) + (formData.pib_pph_amount || 0);
+                    const pibOk = Math.abs(pibSum - (formData.amount || 0)) < 1 && pibSum > 0;
+                    return (
+                      <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="w-4 h-4 text-amber-700" />
+                          <span className="text-xs font-bold text-amber-900">PIB Tax Breakdown — must sum to invoice amount</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 mb-2">
+                          {[
+                            { key: 'pib_bm_amount' as const, label: 'Import Duty (BM)', hint: 'Dr 5200 — Landed Cost' },
+                            { key: 'pib_ppn_amount' as const, label: 'PPN Import', hint: 'Dr 1150 — Input VAT' },
+                            { key: 'pib_pph_amount' as const, label: 'PPh 22 Import', hint: 'Dr 1155 — Prepaid Tax' },
+                          ].map(({ key, label, hint }) => (
+                            <div key={key}>
+                              <label className="block text-[10px] font-semibold text-amber-900 mb-1">{label}</label>
+                              <input
+                                type="number" step="1" min="0"
+                                value={formData[key] || ''}
+                                onChange={e => setFormData({ ...formData, [key]: parseFloat(e.target.value) || 0 })}
+                                className="w-full px-2 py-1.5 border border-amber-300 rounded text-sm bg-white"
+                                placeholder="0"
+                              />
+                              <p className="text-[9px] text-amber-700 mt-0.5">{hint}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className={`flex items-center justify-between px-2.5 py-1.5 rounded border text-xs font-medium ${
+                          pibOk ? 'bg-green-50 border-green-300 text-green-800'
+                            : pibSum > 0 ? 'bg-red-50 border-red-300 text-red-800'
+                            : 'bg-amber-100 border-amber-300 text-amber-800'
+                        }`}>
+                          <span>BM + PPN + PPh = Rp {pibSum.toLocaleString('id-ID')}</span>
+                          <span>{pibOk ? '✓ Matches' : formData.amount > 0 ? `Diff: Rp ${Math.abs(pibSum - formData.amount).toLocaleString('id-ID')}` : ''}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Broker Items (Import / Customs Broker Invoice) */}
+                  {taxCfg.brokerItems && (
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-gray-700">Cost Breakdown (optional)</span>
+                        <button
+                          type="button"
+                          onClick={() => setBrokerItems(prev => [...prev, { type: 'other', description: '', amount: 0 }])}
+                          className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" /> Add Line
+                        </button>
+                      </div>
+                      {brokerItems.length > 0 && (
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                          <table className="min-w-full text-xs">
+                            <thead className="bg-gray-100">
+                              <tr>
+                                <th className="px-2 py-1.5 text-left font-semibold text-gray-600 w-32">Type</th>
+                                <th className="px-2 py-1.5 text-left font-semibold text-gray-600">Description</th>
+                                <th className="px-2 py-1.5 text-right font-semibold text-gray-600 w-28">Amount (IDR)</th>
+                                <th className="w-8"></th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {brokerItems.map((item, idx) => (
+                                <tr key={idx}>
+                                  <td className="px-1 py-1">
+                                    <select
+                                      value={item.type}
+                                      onChange={(e) => {
+                                        const updated = [...brokerItems];
+                                        updated[idx] = { ...updated[idx], type: e.target.value as BrokerItem['type'] };
+                                        setBrokerItems(updated);
+                                      }}
+                                      className="w-full px-1 py-1 border border-gray-200 rounded text-xs"
+                                    >
+                                      {BROKER_ITEM_TYPES.map(bt => (
+                                        <option key={bt.value} value={bt.value}>{bt.label}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="px-1 py-1">
+                                    <input
+                                      type="text"
+                                      value={item.description}
+                                      onChange={(e) => {
+                                        const updated = [...brokerItems];
+                                        updated[idx] = { ...updated[idx], description: e.target.value };
+                                        setBrokerItems(updated);
+                                      }}
+                                      className="w-full px-1 py-1 border border-gray-200 rounded text-xs"
+                                      placeholder="details..."
+                                    />
+                                  </td>
+                                  <td className="px-1 py-1">
+                                    <input
+                                      type="number"
+                                      step="1"
+                                      min="0"
+                                      value={item.amount || ''}
+                                      onChange={(e) => {
+                                        const updated = [...brokerItems];
+                                        updated[idx] = { ...updated[idx], amount: parseFloat(e.target.value) || 0 };
+                                        setBrokerItems(updated);
+                                      }}
+                                      className="w-full px-1 py-1 border border-gray-200 rounded text-xs text-right"
+                                      placeholder="0"
+                                    />
+                                  </td>
+                                  <td className="px-1 py-1 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => setBrokerItems(prev => prev.filter((_, i) => i !== idx))}
+                                      className="text-red-500 hover:text-red-700"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                              <tr className="bg-gray-50 font-semibold">
+                                <td colSpan={2} className="px-2 py-1.5 text-right text-gray-700">Items Total:</td>
+                                <td className="px-2 py-1.5 text-right text-gray-900">
+                                  Rp {brokerItems.reduce((s, i) => s + (i.amount || 0), 0).toLocaleString('id-ID')}
+                                </td>
+                                <td></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                          {brokerItems.length > 0 && Math.abs(brokerItems.reduce((s, i) => s + (i.amount || 0), 0) - (formData.amount || 0)) > 1 && (
+                            <div className="px-3 py-1.5 bg-orange-50 border-t border-orange-200 text-xs text-orange-700 flex items-center gap-1">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Items total does not match invoice amount (Rp {(formData.amount || 0).toLocaleString('id-ID')})
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <p className="text-[10px] text-gray-500 mt-1">PPN / PPh / Stamp Duty are entered separately below. Items sum must equal invoice amount if entered.</p>
+                    </div>
                   )}
-                </div>
-                {editingExpense.bank_statement_lines.map((line) => (
-                  <div key={line.id} className="space-y-2 text-sm bg-white p-3 rounded border border-green-200">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Bank:</span>
-                      <span className="font-medium text-gray-900">
-                        {line.bank_accounts?.alias || line.bank_accounts?.bank_name} - {line.bank_accounts?.account_number}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Transaction Date:</span>
-                      <span className="font-medium text-gray-900">
-                        {new Date(line.transaction_date).toLocaleDateString('id-ID')}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Amount:</span>
-                      <span className="font-medium text-gray-900">
-                        Rp {(line.debit_amount || line.credit_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                    {line.description && (
-                      <div className="pt-2 border-t border-green-200">
-                        <div className="text-gray-600 mb-1">Bank Description:</div>
-                        <div className="text-gray-900 font-medium">{line.description}</div>
+
+                  {/* Standard Tax Fields */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {taxCfg.ppn && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          PPN Input VAT
+                          {selectedSupplier?.pkp_status && (
+                            <button
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, ppn_amount: calculatePPN(prev.amount, true) }))}
+                              className="ml-2 text-[10px] text-blue-600 hover:text-blue-800 underline"
+                            >
+                              Auto (11%)
+                            </button>
+                          )}
+                        </label>
+                        <input
+                          type="number" step="1" min="0"
+                          value={formData.ppn_amount || ''}
+                          onChange={(e) => setFormData({ ...formData, ppn_amount: parseFloat(e.target.value) || 0 })}
+                          placeholder="0"
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                        <p className="text-[10px] text-gray-500 mt-0.5">DR PPN Masukan 1150</p>
+                      </div>
+                    )}
+                    {(taxCfg.pph23 || taxCfg.pph21) && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          {taxCfg.pph23 ? 'PPh 23' : 'PPh 21'} Withholding
+                        </label>
+                        <select
+                          value={formData.pph_code_id}
+                          onChange={(e) => {
+                            const tc = taxCodes.find(t => t.id === e.target.value);
+                            setFormData(prev => ({
+                              ...prev,
+                              pph_code_id: e.target.value,
+                              pph_amount: tc ? Math.round(prev.amount * tc.rate / 100) : 0,
+                            }));
+                          }}
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 mb-1"
+                        >
+                          <option value="">None</option>
+                          {taxCodes.map((tc) => (
+                            <option key={tc.id} value={tc.id}>{tc.code} — {tc.name} ({tc.rate}%)</option>
+                          ))}
+                        </select>
+                        <input
+                          type="number" step="1" min="0"
+                          value={formData.pph_amount || ''}
+                          onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
+                          placeholder="Amount"
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                        <p className="text-[10px] text-gray-500 mt-0.5">CR PPh Payable 2132</p>
+                      </div>
+                    )}
+                    {taxCfg.stamp && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Bea Meterai (Stamp)</label>
+                        <input
+                          type="number" step="1000" min="0"
+                          value={formData.stamp_duty_amount || ''}
+                          onChange={(e) => setFormData({ ...formData, stamp_duty_amount: parseFloat(e.target.value) || 0 })}
+                          placeholder="0"
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        />
+                        <p className="text-[10px] text-gray-500 mt-0.5">DR Bea Meterai 6950</p>
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
+                  {/* Tax summary */}
+                  {(formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0) && (
+                    <div className="mt-2 text-xs text-gray-600 border-t pt-2 flex gap-4">
+                      <span>DPP: Rp {(formData.amount || 0).toLocaleString('id-ID')}</span>
+                      {formData.ppn_amount > 0 && <span>+ PPN: Rp {formData.ppn_amount.toLocaleString('id-ID')}</span>}
+                      {formData.pph_amount > 0 && <span>− PPh: Rp {formData.pph_amount.toLocaleString('id-ID')}</span>}
+                      {formData.stamp_duty_amount > 0 && <span>+ Meterai: Rp {formData.stamp_duty_amount.toLocaleString('id-ID')}</span>}
+                      <span className="font-semibold text-gray-800">
+                        Net payment: Rp {((formData.amount || 0) + (formData.ppn_amount || 0) - (formData.pph_amount || 0) + (formData.stamp_duty_amount || 0)).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* ══ SECTION 4: Payment ═══════════════════════════════════════════ */}
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">§4 — Payment</h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Payment Method <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.payment_method ?? 'outstanding'}
+                    onChange={(e) => {
+                      const val = e.target.value === 'outstanding' ? null : e.target.value;
+                      setFormData(prev => ({ ...prev, payment_method: val, bank_account_id: val ? prev.bank_account_id : '' }));
+                      if (!e.target.value || e.target.value === 'outstanding') {
+                        setUnlinkedBankTransactions([]);
+                        setSelectedBankTransactionId('');
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    required
+                  >
+                    <option value="bank_transfer">🏦 Bank Transfer</option>
+                    <option value="check">📝 Cheque</option>
+                    <option value="giro">📋 Giro</option>
+                    <option value="other">📌 Other</option>
+                    <option value="outstanding">📋 Outstanding (A/P — settle via Payment Voucher)</option>
+                  </select>
+                  {formData.payment_method === null && (
+                    <p className="text-[10px] text-amber-700 mt-0.5 font-medium">
+                      ⚠ Will be posted as A/P — appears in Payables Manager
+                    </p>
+                  )}
+                  {formData.payment_method && formData.payment_method !== 'outstanding' && (
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      💡 For cash: use Petty Cash Manager
+                    </p>
+                  )}
+                </div>
+
+                {formData.payment_method !== null && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Bank Account {formData.payment_method !== null ? <span className="text-red-500">*</span> : null}
+                    </label>
+                    <select
+                      value={formData.bank_account_id}
+                      onChange={(e) => {
+                        setFormData({ ...formData, bank_account_id: e.target.value });
+                        if (e.target.value) {
+                          loadUnlinkedBankTransactions(e.target.value, editingExpense?.id);
+                        } else {
+                          setUnlinkedBankTransactions([]);
+                        }
+                        setSelectedBankTransactionId('');
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      required={formData.payment_method !== null}
+                    >
+                      <option value="">Select Bank Account</option>
+                      {bankAccounts.map((bank) => (
+                        <option key={bank.id} value={bank.id}>
+                          {bank.bank_name} - {bank.alias || bank.account_number}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {formData.payment_method !== null && formData.bank_account_id && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Link to Bank Transaction</label>
+                    {unlinkedBankTransactions.length > 0 ? (
+                      <>
+                        <select
+                          value={selectedBankTransactionId}
+                          onChange={(e) => setSelectedBankTransactionId(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        >
+                          <option value="">Choose a transaction...</option>
+                          {unlinkedBankTransactions.map((txn) => {
+                            const date = new Date(txn.transaction_date);
+                            const dd = String(date.getDate()).padStart(2, '0');
+                            const mm = String(date.getMonth() + 1).padStart(2, '0');
+                            const yy = String(date.getFullYear()).slice(-2);
+                            return (
+                              <option key={txn.id} value={txn.id}>
+                                {dd}/{mm}/{yy} — {txn.description?.substring(0, 40) || 'No desc'} — Rp {txn.debit_amount?.toLocaleString()}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <p className="text-[10px] text-gray-500 mt-0.5">{unlinkedBankTransactions.length} unreconciled</p>
+                      </>
+                    ) : (
+                      <div className="text-sm text-gray-400 italic py-2 px-3 bg-gray-50 rounded border border-gray-200">
+                        No unreconciled transactions
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Outstanding — show due date prominently */}
+              {formData.payment_method === null && formData.due_date && (
+                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                  <span className="font-semibold text-amber-800">Due: </span>
+                  <span className="text-amber-900">{new Date(formData.due_date + 'T00:00:00').toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                  <span className="ml-2 text-xs text-amber-600">A Payment Voucher will settle this bill</span>
+                </div>
+              )}
+
+              {/* Linked Bank Statement (edit mode) */}
+              {editingExpense?.bank_statement_lines && editingExpense.bank_statement_lines.length > 0 && (
+                <div className="mt-3 p-3 bg-green-50 border border-green-300 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-semibold text-green-900">Linked Bank Transaction</span>
+                    </div>
+                    {canManage && (
+                      <button type="button" onClick={() => handleUnlinkFromBankStatement(editingExpense.id)} className="text-xs text-red-600 hover:text-red-700 font-medium">Unlink</button>
+                    )}
+                  </div>
+                  {editingExpense.bank_statement_lines.map((line) => (
+                    <div key={line.id} className="text-xs text-gray-700 space-y-0.5">
+                      <div>{line.bank_accounts?.alias || line.bank_accounts?.bank_name} — Rp {(line.debit_amount || line.credit_amount || 0).toLocaleString('id-ID')}</div>
+                      <div>{new Date(line.transaction_date).toLocaleDateString('id-ID')} {line.description ? `— ${line.description}` : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
+            {/* Attachments */}
             <div className="border-t pt-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 <FileText className="w-4 h-4 inline mr-1" />
-                Supporting Documents (Invoices, Receipts, Bills)
+                Supporting Documents
               </label>
 
-              {/* Existing documents */}
               {formData.document_urls.length > 0 && (
                 <div className="mb-3 space-y-2">
-                  <p className="text-xs text-gray-600 font-medium">Uploaded Documents:</p>
                   {formData.document_urls.map((url, index) => (
                     <div key={index} className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded">
                       <FileText className="w-4 h-4 text-green-600 flex-shrink-0" />
-                      <button
-                        type="button"
-                        onClick={() => openDocument(url)}
-                        className="flex-1 text-sm text-green-700 hover:text-green-900 truncate text-left"
-                      >
-                        Document {index + 1}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openDocument(url)}
-                        className="p-1 text-green-600 hover:bg-green-100 rounded"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveDocument(url)}
-                        className="p-1 text-red-600 hover:bg-red-100 rounded"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                      <button type="button" onClick={() => openDocument(url)} className="flex-1 text-sm text-green-700 hover:text-green-900 truncate text-left">Document {index + 1}</button>
+                      <button type="button" onClick={() => openDocument(url)} className="p-1 text-green-600 hover:bg-green-100 rounded"><ExternalLink className="w-3 h-3" /></button>
+                      <button type="button" onClick={() => handleRemoveDocument(url)} className="p-1 text-red-600 hover:bg-red-100 rounded"><X className="w-3 h-3" /></button>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Files being uploaded */}
               {uploadingFiles.length > 0 && (
                 <div className="mb-3 space-y-2">
-                  <p className="text-xs text-gray-600 font-medium">Files to Upload:</p>
                   {uploadingFiles.map((file, index) => (
                     <div key={index} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded">
                       <Upload className="w-4 h-4 text-blue-600 flex-shrink-0" />
                       <span className="flex-1 text-sm text-blue-700 truncate">{file.name}</span>
                       <span className="text-xs text-blue-600">{(file.size / 1024).toFixed(1)} KB</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveUploadingFile(index)}
-                        className="p-1 text-red-600 hover:bg-red-100 rounded"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                      <button type="button" onClick={() => handleRemoveUploadingFile(index)} className="p-1 text-red-600 hover:bg-red-100 rounded"><X className="w-3 h-3" /></button>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Simple file input */}
               <div
                 className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors"
                 onMouseEnter={() => setShowPasteHint(true)}
                 onMouseLeave={() => setShowPasteHint(false)}
               >
                 <input
-                  type="file"
-                  multiple
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-                  onChange={(e) => {
-                    const files = e.target.files;
-                    if (files && files.length > 0) {
-                      setUploadingFiles([...uploadingFiles, ...Array.from(files)]);
-                    }
-                  }}
-                  className="hidden"
-                  id="expense-file-upload"
+                  type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => { if (e.target.files?.length) setUploadingFiles([...uploadingFiles, ...Array.from(e.target.files)]); }}
+                  className="hidden" id="expense-file-upload"
                 />
-                <label
-                  htmlFor="expense-file-upload"
-                  className="cursor-pointer flex flex-col items-center"
-                >
+                <label htmlFor="expense-file-upload" className="cursor-pointer flex flex-col items-center">
                   <Upload className="w-8 h-8 text-gray-400 mb-2" />
                   <span className="text-sm text-blue-600 font-medium">Click to upload files</span>
-                  <span className="text-xs text-gray-500 mt-1">
-                    PDF, images, or documents (max 10MB each)
-                  </span>
+                  <span className="text-xs text-gray-500 mt-1">PDF, images, or documents</span>
                 </label>
-
                 {showPasteHint && (
                   <div className="flex items-center justify-center gap-2 text-xs text-green-600 font-medium animate-pulse mt-2">
                     <Clipboard className="w-4 h-4" />
-                    <span>Press Ctrl+V to paste images from clipboard</span>
+                    <span>Ctrl+V to paste from clipboard</span>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setModalOpen(false);
-                  resetForm();
-                }}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                {editingExpense ? 'Update' : 'Record'} Expense
+              <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+                {editingExpense ? 'Update' : 'Save'} Expense
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* Quick Add Supplier Modal */}
+      {showQuickAddSupplier && (
+        <Modal isOpen={showQuickAddSupplier} onClose={() => { setShowQuickAddSupplier(false); setQuickAddSupplierName(''); }} title="Quick Add Supplier" maxWidth="max-w-sm">
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">Add a new supplier. You can fill in full details later from Suppliers Manager.</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Company Name <span className="text-red-500">*</span></label>
+              <input
+                type="text"
+                value={quickAddSupplierName}
+                onChange={(e) => setQuickAddSupplierName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAddSupplier(); } }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                placeholder="e.g. PT. Mitra Logistik Indonesia"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => { setShowQuickAddSupplier(false); setQuickAddSupplierName(''); }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button
+                type="button"
+                onClick={handleQuickAddSupplier}
+                disabled={!quickAddSupplierName.trim() || quickAddSupplierLoading}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <UserPlus className="w-4 h-4" />
+                {quickAddSupplierLoading ? 'Adding...' : 'Add Supplier'}
+              </button>
+            </div>
+          </div>
         </Modal>
       )}
 

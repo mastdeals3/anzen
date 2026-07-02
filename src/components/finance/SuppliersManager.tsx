@@ -20,14 +20,47 @@ interface Supplier {
   bank_account_number: string | null;
   bank_account_name: string | null;
   is_active: boolean;
+  // Expense defaults (added by migration 20260702100000)
+  default_expense_category: string | null;
+  default_pph_code_id: string | null;
+  tax_preference: 'none' | 'ppn_only' | 'ppn_pph' | 'pph_only' | null;
+}
+
+interface TaxCode {
+  id: string;
+  code: string;
+  name: string;
+  rate: number;
 }
 
 interface SuppliersManagerProps {
   canManage: boolean;
 }
 
+// Expense categories available for supplier defaults (mirrors DOCUMENT_TYPE_GROUPS in taxCalculations.ts)
+const DEFAULT_CATEGORY_OPTIONS = [
+  { value: '', label: 'No default' },
+  { value: 'warehouse_rent',             label: 'Warehouse Rent' },
+  { value: 'bank_charges',               label: 'Bank Charges' },
+  { value: 'office_admin',               label: 'Office & Admin' },
+  { value: 'office_shifting_renovation', label: 'Office Shifting/Renovation' },
+  { value: 'other',                      label: 'Other' },
+  { value: 'utilities',                  label: 'Utilities' },
+  { value: 'salary',                     label: 'Salary' },
+  { value: 'staff_overtime',             label: 'Staff Overtime' },
+  { value: 'staff_welfare',              label: 'Staff Welfare' },
+  { value: 'travel_conveyance',          label: 'Travel & Conveyance' },
+  { value: 'delivery_sales',             label: 'Delivery (Sales)' },
+  { value: 'loading_sales',              label: 'Loading (Sales)' },
+  { value: 'other_sales',               label: 'Other (Sales)' },
+  { value: 'professional_services',      label: 'Professional Services' },
+  { value: 'import_broker',             label: 'Customs Broker Invoice' },
+  { value: 'fixed_asset',               label: 'Fixed Asset' },
+];
+
 export function SuppliersManager({ canManage }: SuppliersManagerProps) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
@@ -47,10 +80,15 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
     bank_name: '',
     bank_account_number: '',
     bank_account_name: '',
+    // Expense defaults
+    default_expense_category: '',
+    default_pph_code_id: '',
+    tax_preference: 'none' as 'none' | 'ppn_only' | 'ppn_pph' | 'pph_only',
   });
 
   useEffect(() => {
     loadSuppliers();
+    loadTaxCodes();
   }, []);
 
   const loadSuppliers = async () => {
@@ -67,6 +105,15 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadTaxCodes = async () => {
+    const { data } = await supabase
+      .from('tax_codes')
+      .select('id, code, name, rate')
+      .eq('is_withholding', true)
+      .order('code');
+    setTaxCodes(data || []);
   };
 
   const generateSupplierCode = async () => {
@@ -97,6 +144,10 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
         bank_name: formData.bank_name || null,
         bank_account_number: formData.bank_account_number || null,
         bank_account_name: formData.bank_account_name || null,
+        // Expense defaults — null means "no default"
+        default_expense_category: formData.default_expense_category || null,
+        default_pph_code_id: formData.default_pph_code_id || null,
+        tax_preference: formData.tax_preference || 'none',
       };
 
       if (editingSupplier) {
@@ -138,6 +189,9 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
       bank_name: supplier.bank_name || '',
       bank_account_number: supplier.bank_account_number || '',
       bank_account_name: supplier.bank_account_name || '',
+      default_expense_category: supplier.default_expense_category || '',
+      default_pph_code_id: supplier.default_pph_code_id || '',
+      tax_preference: supplier.tax_preference || 'none',
     });
     setModalOpen(true);
   };
@@ -172,6 +226,9 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
       bank_name: '',
       bank_account_number: '',
       bank_account_name: '',
+      default_expense_category: '',
+      default_pph_code_id: '',
+      tax_preference: 'none',
     });
   };
 
@@ -425,6 +482,68 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
               onChange={(e) => setFormData({ ...formData, payment_terms_days: parseInt(e.target.value) || 30 })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             />
+          </div>
+
+          {/* ── Expense Defaults ─────────────────────────────────────────────── */}
+          <div className="border-t pt-4">
+            <h4 className="font-medium text-gray-700 mb-1">Expense Defaults</h4>
+            <p className="text-xs text-gray-500 mb-3">
+              These defaults auto-fill when this supplier is selected in the Expense / Bill entry form.
+            </p>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Default Expense Category</label>
+                <select
+                  value={formData.default_expense_category}
+                  onChange={(e) => setFormData({ ...formData, default_expense_category: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  {DEFAULT_CATEGORY_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-0.5">Auto-selects this category when supplier is chosen</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tax Preference</label>
+                <select
+                  value={formData.tax_preference}
+                  onChange={(e) => setFormData({ ...formData, tax_preference: e.target.value as 'none' | 'ppn_only' | 'ppn_pph' | 'pph_only' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="none">None (no auto-tax)</option>
+                  <option value="ppn_only">PPN Only (11% VAT)</option>
+                  <option value="ppn_pph">PPN + PPh (VAT + Withholding)</option>
+                  <option value="pph_only">PPh Only (Withholding, no VAT)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Controls which tax fields are auto-filled in Expense entry
+                  {formData.pkp_status && formData.tax_preference !== 'none' && (
+                    <span className="text-green-600 font-medium"> · PKP supplier — PPN will auto-calculate</span>
+                  )}
+                </p>
+              </div>
+
+              {(formData.tax_preference === 'ppn_pph' || formData.tax_preference === 'pph_only') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Default PPh Type</label>
+                  <select
+                    value={formData.default_pph_code_id}
+                    onChange={(e) => setFormData({ ...formData, default_pph_code_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="">None</option>
+                    {taxCodes.map(tc => (
+                      <option key={tc.id} value={tc.id}>
+                        {tc.code} — {tc.name} ({tc.rate}%)
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-0.5">Auto-selects PPh type in Expense entry</p>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
