@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Package, Box } from 'lucide-react';
+import { Package, ExternalLink } from 'lucide-react';
 import { formatDate } from '../utils/dateFormat';
+import { SearchableSelect } from './SearchableSelect';
+import { useNavigation } from '../contexts/NavigationContext';
+import { type ImportContainer } from '../pages/ImportRequirements';
 
 export interface ImportRequirement {
   id: string;
@@ -25,7 +28,7 @@ export interface ImportRequirement {
   products?: { product_name: string; product_code: string };
   sales_orders?: { so_number: string };
   customers?: { company_name: string };
-  import_containers?: { container_ref: string } | null;
+  import_containers?: { id: string; container_ref: string } | null;
 }
 
 export type ImportStatus =
@@ -44,6 +47,7 @@ export type ImportStatus =
 
 interface ImportRequirementsTableProps {
   requirements: ImportRequirement[];
+  containers: ImportContainer[];
   onRefresh: () => void;
   canEdit: boolean;
 }
@@ -69,7 +73,8 @@ const PRIORITY_OPTIONS = [
   { value: 'low',    label: 'Low',    color: 'text-green-700',  bgColor: 'bg-green-100'  },
 ];
 
-export function ImportRequirementsTable({ requirements, onRefresh, canEdit }: ImportRequirementsTableProps) {
+export function ImportRequirementsTable({ requirements, containers, onRefresh, canEdit }: ImportRequirementsTableProps) {
+  const { setCurrentPage } = useNavigation();
   const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const inputRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(null);
@@ -255,16 +260,44 @@ export function ImportRequirementsTable({ requirements, onRefresh, canEdit }: Im
                   </span>
                 </td>
 
-                {/* Container */}
-                <td className="px-3 py-2">
-                  {req.import_containers?.container_ref ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 text-teal-700 text-xs rounded-full font-medium">
-                      <Box className="w-3 h-3" />
-                      {req.import_containers.container_ref}
-                    </span>
-                  ) : (
-                    <span className="text-gray-300 text-xs">—</span>
-                  )}
+                {/* Container — searchable dropdown + link */}
+                <td className="px-3 py-2 min-w-[180px]">
+                  <div className="flex items-center gap-1.5">
+                    {canEdit ? (
+                      <div className="w-40">
+                        <SearchableSelect
+                          value={req.import_container_id ?? ''}
+                          onChange={(val) => {
+                            supabase
+                              .from('import_requirements')
+                              .update({ import_container_id: val || null })
+                              .eq('id', req.id)
+                              .then(({ error }) => { if (!error) onRefresh(); });
+                          }}
+                          options={[
+                            { value: '', label: '— None —' },
+                            ...containers.map(c => ({ value: c.id, label: c.container_ref })),
+                          ]}
+                          placeholder="Assign…"
+                          className="text-xs py-0"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-500">
+                        {req.import_containers?.container_ref ?? '—'}
+                      </span>
+                    )}
+                    {req.import_container_id && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage('import-containers')}
+                        className="text-teal-600 hover:text-teal-800 flex-shrink-0"
+                        title="Open Import Containers"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </td>
 
                 {/* Delivery Date */}

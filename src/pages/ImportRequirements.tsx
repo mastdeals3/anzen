@@ -7,6 +7,11 @@ import { ImportRequirementsTable, type ImportRequirement, type ImportStatus, STA
 import { ImportRequirementsProductSummary } from '../components/ImportRequirementsProductSummary';
 import { showToast } from '../components/ToastNotification';
 
+export interface ImportContainer {
+  id: string;
+  container_ref: string;
+}
+
 interface ProductSummaryRow {
   product_id: string;
   product_name: string;
@@ -28,9 +33,10 @@ export default function ImportRequirements() {
   const { t } = useLanguage();
   const [requirements, setRequirements] = useState<ImportRequirement[]>([]);
   const [productSummary, setProductSummary] = useState<ProductSummaryRow[]>([]);
+  const [containers, setContainers] = useState<ImportContainer[]>([]);
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('so_view');
+  const [viewMode, setViewMode] = useState<ViewMode>('product_summary');
   const [statusFilter, setStatusFilter] = useState<string>('active');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [productSearch, setProductSearch] = useState<string>('');
@@ -49,6 +55,7 @@ export default function ImportRequirements() {
   useEffect(() => {
     fetchRequirements();
     fetchCustomers();
+    fetchContainers();
   }, [statusFilter]);
 
   useEffect(() => {
@@ -56,6 +63,11 @@ export default function ImportRequirements() {
       fetchProductSummary();
     }
   }, [viewMode]);
+
+  // Also fetch summary on initial load since default view is product_summary
+  useEffect(() => {
+    fetchProductSummary();
+  }, []);
 
   const fetchRequirements = async () => {
     try {
@@ -67,7 +79,7 @@ export default function ImportRequirements() {
           products(product_name, product_code),
           sales_orders(so_number),
           customers(company_name),
-          import_containers(container_ref)
+          import_containers(id, container_ref)
         `)
         .order('priority', { ascending: true })
         .order('required_delivery_date', { ascending: true });
@@ -113,6 +125,14 @@ export default function ImportRequirements() {
     setCustomers(data || []);
   };
 
+  const fetchContainers = async () => {
+    const { data } = await supabase
+      .from('import_containers')
+      .select('id, container_ref')
+      .order('container_ref');
+    setContainers(data || []);
+  };
+
   // Apply client-side filters
   const filteredRequirements = requirements.filter(req => {
     if (priorityFilter !== 'all' && req.priority !== priorityFilter) return false;
@@ -128,7 +148,7 @@ export default function ImportRequirements() {
     return true;
   });
 
-  // Stats
+  // Stats (based on active requirements — always uses full requirements list regardless of status filter)
   const stats = {
     products: new Set(requirements.map(r => r.product_id)).size,
     totalRequired: requirements.reduce((sum, r) => sum + r.required_quantity, 0),
@@ -149,19 +169,8 @@ export default function ImportRequirements() {
           {/* View Toggle */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden">
             <button
-              onClick={() => setViewMode('so_view')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
-                viewMode === 'so_view'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <List className="w-4 h-4" />
-              By Sales Order
-            </button>
-            <button
               onClick={() => setViewMode('product_summary')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-gray-200 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
                 viewMode === 'product_summary'
                   ? 'bg-blue-600 text-white'
                   : 'bg-white text-gray-600 hover:bg-gray-50'
@@ -169,6 +178,17 @@ export default function ImportRequirements() {
             >
               <Layers className="w-4 h-4" />
               Product Summary
+            </button>
+            <button
+              onClick={() => setViewMode('so_view')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-gray-200 ${
+                viewMode === 'so_view'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <List className="w-4 h-4" />
+              By Sales Order
             </button>
           </div>
         </div>
@@ -291,6 +311,7 @@ export default function ImportRequirements() {
             ) : (
               <ImportRequirementsTable
                 requirements={filteredRequirements}
+                containers={containers}
                 onRefresh={fetchRequirements}
                 canEdit={canEdit}
               />
@@ -299,21 +320,11 @@ export default function ImportRequirements() {
             <ImportRequirementsProductSummary
               summaryRows={filteredSummary}
               detailRows={requirements}
-              loading={summaryLoading}
+              containers={containers}
+              loading={summaryLoading || loading}
+              onRefresh={() => { fetchRequirements(); fetchProductSummary(); }}
             />
           )}
-        </div>
-
-        {/* Info panel */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-xs text-blue-700">
-              <span className="font-semibold">About Import Requirements: </span>
-              {t('importRequirements.aboutText')}
-              {' '}Requirements are auto-generated from Sales Order stock shortages. Click any field to edit inline. Status progresses: Pending → RFQ Sent → PO Created → Supplier Confirmed → In Production → Ready to Ship → In Transit → Customs Clearance → Received.
-            </div>
-          </div>
         </div>
       </div>
     </Layout>
