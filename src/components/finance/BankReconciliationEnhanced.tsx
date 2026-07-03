@@ -1895,23 +1895,47 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     try {
       const amount = line.debit;
       const lineDate = new Date(line.date);
-      const from = new Date(lineDate);
-      from.setDate(from.getDate() - 10);
-      const to = new Date(lineDate);
-      to.setDate(to.getDate() + 10);
+      // Bank reconciliation matches the bank statement to the Payment Voucher
+      // (not to individual supplier invoices — those are already linked to the
+      // voucher via voucher_allocations). Bank settlement can lag the voucher
+      // date by weeks (cheque clearing, giro, cross-bank wires), so a tight
+      // ±10-day window used to hide vouchers like PV/26-26/005. Widen to ±90d
+      // and bound with .limit() to keep the query cheap.
+      const from = new Date(lineDate); from.setDate(from.getDate() - 90);
+      const to   = new Date(lineDate); to.setDate(to.getDate()   + 90);
 
-      const { data } = await supabase
+      // Fetch candidate vouchers in the window.
+      const { data: vouchers } = await supabase
         .from('payment_vouchers')
-        .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, suppliers(company_name)')
+        .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, journal_entry_id, bank_account_id, payment_method, suppliers(company_name)')
         .gte('voucher_date', from.toISOString().split('T')[0])
         .lte('voucher_date', to.toISOString().split('T')[0])
-        .order('voucher_date', { ascending: false });
+        .order('voucher_date', { ascending: false })
+        .limit(500);
 
-      const filtered = (data || []).filter((pv: any) => {
-        return Math.abs(pv.net_amount - amount) < amount * 0.05 || Math.abs(pv.amount - amount) < amount * 0.05;
+      // Derive "already reconciled" from bank_statement_lines (the single
+      // source of truth — payment_vouchers has no reconciliation columns).
+      const { data: takenLines } = await supabase
+        .from('bank_statement_lines')
+        .select('matched_entry_id')
+        .not('matched_entry_id', 'is', null);
+      const takenJeIds = new Set((takenLines || []).map((l: any) => l.matched_entry_id));
+
+      const available = (vouchers || []).filter((pv: any) => {
+        // Exclude vouchers whose journal entry is already matched to a bank line.
+        if (pv.journal_entry_id && takenJeIds.has(pv.journal_entry_id)) return false;
+        // If the voucher pinned a specific bank account, restrict to matches on that account.
+        if (pv.bank_account_id && selectedBank && pv.bank_account_id !== selectedBank) return false;
+        return true;
       });
 
-      setSupplierPayments(filtered.length > 0 ? filtered : (data || []).slice(0, 20));
+      // Prefer amount matches within 5% tolerance (gross OR net-of-PPh);
+      // fall back to top 20 available candidates when nothing matches.
+      const filtered = available.filter((pv: any) =>
+        Math.abs((pv.net_amount ?? pv.amount) - amount) < amount * 0.05 ||
+        Math.abs(pv.amount - amount) < amount * 0.05,
+      );
+      setSupplierPayments(filtered.length > 0 ? filtered : available.slice(0, 20));
     } catch (err) {
       console.error('Error loading supplier payments:', err);
       setSupplierPayments([]);
