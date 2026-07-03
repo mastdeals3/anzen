@@ -290,9 +290,16 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
   // Refs let the stable-deps realtime effect below read latest state/loaders
   // without resubscribing on every render.
+  //
+  // NB: loadStatementLines / loadExpenses are `const` declarations further
+  // down in the component body, so referencing them here (during the render
+  // pass) hits the Temporal Dead Zone. We seed the refs with no-op stubs
+  // and let the effects on the next two lines populate them post-commit,
+  // before any realtime subscription (also post-commit) can fire.
   const selectedBankRef = useRef(selectedBank);
-  const loadStatementLinesRef = useRef(loadStatementLines);
-  const loadExpensesRef = useRef(loadExpenses);
+  const noopAsync = useRef<() => Promise<void> | void>(() => {});
+  const loadStatementLinesRef = useRef<() => Promise<void> | void>(noopAsync.current);
+  const loadExpensesRef = useRef<() => Promise<void> | void>(noopAsync.current);
   useEffect(() => { selectedBankRef.current = selectedBank; }, [selectedBank]);
   useEffect(() => { loadStatementLinesRef.current = loadStatementLines; });
   useEffect(() => { loadExpensesRef.current = loadExpenses; });
