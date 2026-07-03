@@ -2587,16 +2587,56 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                   <td className="px-3 py-2">
                     <div className="flex flex-col gap-1">
                       {(line.status === 'matched' || line.status === 'recorded') && (() => {
-                        const hasResolvedLink = !!(line.matchedExpense || line.matchedReceipt || line.matchedFundTransfer || line.matchedPettyCash || line.matchedEntryRecord);
-                        if (!hasResolvedLink) {
-                          // Auto-Repair hint: log once per session so ops can spot orphans.
+                        // Two separate concepts:
+                        //  - hasAnyFk        : row carries a link in the DB
+                        //  - hasResolvedLink : the batch fetch resolved that link to a display object
+                        // "No link found" must ONLY fire when hasAnyFk is false. If hasAnyFk is
+                        // true but hasResolvedLink is false, the target row is temporarily
+                        // unresolvable (RLS masking / deleted-between-queries race / permission
+                        // drift). Treat that as "Reference unresolved" — not as an orphan.
+                        const hasAnyFk = !!(
+                          line.matchedExpenseId ||
+                          line.matchedReceiptId ||
+                          line.matchedFundTransferId ||
+                          line.matchedPettyCashId ||
+                          line.matchedEntry
+                        );
+                        const hasResolvedLink = !!(
+                          line.matchedExpense ||
+                          line.matchedReceipt ||
+                          line.matchedFundTransfer ||
+                          line.matchedPettyCash ||
+                          line.matchedEntryRecord
+                        );
+                        if (hasAnyFk && !hasResolvedLink) {
+                          // Instrumentation for ops: log the raw row + all lookup results so we
+                          // can see WHY a live FK failed to resolve (RLS, race, etc.). Once per
+                          // session per row.
                           if (typeof window !== 'undefined') {
-                            const key = `bre_orphan_warned_${line.id}`;
+                            const key = `bre_unresolved_warned_${line.id}`;
                             const w = (window as any);
-                            w.__bre_orphan_warned = w.__bre_orphan_warned || new Set();
-                            if (!w.__bre_orphan_warned.has(key)) {
-                              w.__bre_orphan_warned.add(key);
-                              console.warn('[BRE] Row shows Recorded/Matched but no FK resolves:', line.id, line.description);
+                            w.__bre_unresolved_warned = w.__bre_unresolved_warned || new Set();
+                            if (!w.__bre_unresolved_warned.has(key)) {
+                              w.__bre_unresolved_warned.add(key);
+                              console.warn('[BRE] Link present but not resolved:', {
+                                id: line.id,
+                                description: line.description,
+                                status: line.status,
+                                fks: {
+                                  matched_entry_id: line.matchedEntry,
+                                  matched_expense_id: line.matchedExpenseId,
+                                  matched_receipt_id: line.matchedReceiptId,
+                                  matched_fund_transfer_id: line.matchedFundTransferId,
+                                  matched_petty_cash_id: line.matchedPettyCashId,
+                                },
+                                resolved: {
+                                  matchedExpense: line.matchedExpense,
+                                  matchedReceipt: line.matchedReceipt,
+                                  matchedFundTransfer: line.matchedFundTransfer,
+                                  matchedPettyCash: line.matchedPettyCash,
+                                  matchedEntryRecord: line.matchedEntryRecord,
+                                },
+                              });
                             }
                           }
                         }
@@ -2632,8 +2672,14 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                                 → Journal: {line.matchedEntryRecord.entry_number}
                               </span>
                             )}
-                            {/* Warn if no actual link resolved */}
-                            {!hasResolvedLink && (
+                            {/*
+                              Warning states — split cleanly:
+                                (a) No FK at all → genuine orphan → "No link found" + Reset action.
+                                (b) FK present but not resolved → data is intact, the fetch
+                                    just didn't return it (RLS, race, etc.). Show which FK
+                                    is unresolved so ops can act, but never claim it's missing.
+                            */}
+                            {!hasResolvedLink && !hasAnyFk && (
                               <>
                                 <span className="text-xs text-orange-600 font-medium">
                                   ⚠️ No link found
@@ -2648,6 +2694,20 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                                   </button>
                                 )}
                               </>
+                            )}
+                            {!hasResolvedLink && hasAnyFk && (
+                              <span
+                                className="text-xs text-gray-500"
+                                title={`Link exists but could not be loaded. FK: ${
+                                  line.matchedFundTransferId ? 'fund_transfer:' + line.matchedFundTransferId :
+                                  line.matchedExpenseId      ? 'expense:'      + line.matchedExpenseId :
+                                  line.matchedReceiptId      ? 'receipt:'      + line.matchedReceiptId :
+                                  line.matchedPettyCashId    ? 'petty_cash:'   + line.matchedPettyCashId :
+                                  line.matchedEntry          ? 'journal:'      + line.matchedEntry : 'unknown'
+                                }`}
+                              >
+                                → Linked (reference unresolved)
+                              </span>
                             )}
                           </>
                         );
