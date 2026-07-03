@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { CheckSquare, Calendar, AlertTriangle, Package, TrendingUp, Edit2 } from 'lucide-react';
+import { CheckSquare, Calendar, AlertTriangle, Package, TrendingUp, CreditCard as Edit2 } from 'lucide-react';
 import { formatDate } from '../utils/dateFormat';
 
-interface ImportRequirement {
+export interface ImportRequirement {
   id: string;
   product_id: string;
   sales_order_id: string;
@@ -19,6 +19,14 @@ interface ImportRequirement {
   sales_orders?: { so_number: string };
   customers?: { company_name: string };
 }
+
+export const STATUS_OPTIONS = [
+  { value: 'pending', label: 'Pending', color: 'text-gray-600', bgColor: 'bg-gray-50' },
+  { value: 'ordered', label: 'Ordered', color: 'text-blue-600', bgColor: 'bg-blue-50' },
+  { value: 'partially_received', label: 'Partially Received', color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
+  { value: 'received', label: 'Received', color: 'text-green-600', bgColor: 'bg-green-50' },
+  { value: 'cancelled', label: 'Cancelled', color: 'text-red-600', bgColor: 'bg-red-50' },
+];
 
 interface ImportRequirementsTableProps {
   requirements: ImportRequirement[];
