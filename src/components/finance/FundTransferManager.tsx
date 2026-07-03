@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw } from 'lucide-react';
+import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye } from 'lucide-react';
 import { Modal } from '../Modal';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
@@ -69,6 +69,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransfer, setEditingTransfer] = useState<FundTransfer | null>(null);
+  const [viewOnly, setViewOnly] = useState(false);
   const [formData, setFormData] = useState({
     transfer_date: new Date().toISOString().split('T')[0],
     from_amount: 0,
@@ -345,10 +346,12 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
     setFromBankStatements([]);
     setToBankStatements([]);
     setEditingTransfer(null);
+    setViewOnly(false);
   };
 
   const handleEdit = async (transfer: FundTransfer) => {
     setEditingTransfer(transfer);
+    setViewOnly(false);
 
     // Populate form with existing data
     setFormData({
@@ -375,38 +378,83 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
     setModalOpen(true);
   };
 
+  const handleView = async (transfer: FundTransfer) => {
+    setEditingTransfer(transfer);
+    setViewOnly(true);
+
+    setFormData({
+      transfer_date: transfer.transfer_date,
+      from_amount: transfer.from_amount,
+      to_amount: transfer.to_amount,
+      from_account_type: transfer.from_account_type as any,
+      to_account_type: transfer.to_account_type as any,
+      from_bank_account_id: transfer.from_bank_account_id || '',
+      to_bank_account_id: transfer.to_bank_account_id || '',
+      from_bank_statement_line_id: transfer.from_bank_statement_line_id || '',
+      to_bank_statement_line_id: transfer.to_bank_statement_line_id || '',
+      description: transfer.description || '',
+    });
+
+    if (transfer.from_bank_account_id) {
+      loadBankStatements(transfer.from_bank_account_id, 'from', transfer.from_bank_statement_line_id || undefined);
+    }
+    if (transfer.to_bank_account_id) {
+      loadBankStatements(transfer.to_bank_account_id, 'to', transfer.to_bank_statement_line_id || undefined);
+    }
+
+    setModalOpen(true);
+  };
+
   const handleDelete = async (transferId: string) => {
     const transfer = transfers.find(t => t.id === transferId);
     if (!transfer) return;
 
-    const isPosted = transfer.status === 'posted';
     const confirmed = await showConfirm({
-      title: isPosted ? 'Reverse Fund Transfer' : 'Delete Fund Transfer',
-      message: isPosted
-        ? `Reverse posted fund transfer ${transfer.transfer_number}? This will post a reversing journal entry and mark the transfer as reversed. The original record will be preserved for audit.`
-        : `Delete fund transfer ${transfer.transfer_number}? This will remove all linked journal entries, unlink bank matches, and delete the associated petty cash transaction. This cannot be undone.`,
+      title: 'Delete Fund Transfer',
+      message: `Delete fund transfer ${transfer.transfer_number} permanently? This will remove all linked journal entries (including any reversal), unlink bank matches, and delete the associated petty cash transaction. This cannot be undone.`,
       variant: 'danger',
-      confirmLabel: isPosted ? 'Reverse' : 'Delete',
+      confirmLabel: 'Delete',
     });
     if (!confirmed) return;
 
     try {
-      if (isPosted) {
-        const { error } = await supabase.rpc('reverse_fund_transfer', { p_id: transferId });
-        if (error) throw error;
-        showToast({ type: 'success', title: 'Success', message: 'Fund transfer reversed successfully!' });
-      } else {
-        const { error } = await supabase.rpc('delete_fund_transfer', { p_id: transferId });
-        if (error) throw error;
-        showToast({ type: 'success', title: 'Success', message: 'Fund transfer deleted successfully!' });
-      }
+      const { error } = await supabase.rpc('delete_fund_transfer', { p_id: transferId });
+      if (error) throw error;
+      showToast({ type: 'success', title: 'Success', message: 'Fund transfer deleted successfully!' });
       loadData();
     } catch (error: any) {
-      console.error('Error processing fund transfer:', error.message);
+      console.error('Error deleting fund transfer:', error.message);
       showToast({
         type: 'error',
         title: 'Error',
-        message: (isPosted ? 'Failed to reverse fund transfer: ' : 'Failed to delete fund transfer: ') + error.message,
+        message: 'Failed to delete fund transfer: ' + error.message,
+      });
+    }
+  };
+
+  const handleReverse = async (transferId: string) => {
+    const transfer = transfers.find(t => t.id === transferId);
+    if (!transfer) return;
+
+    const confirmed = await showConfirm({
+      title: 'Reverse Fund Transfer',
+      message: `Reverse this posted fund transfer ${transfer.transfer_number}? This will post a reversing journal entry and mark the transfer as reversed. The original record will be preserved for audit.`,
+      variant: 'danger',
+      confirmLabel: 'Reverse',
+    });
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase.rpc('reverse_fund_transfer', { p_id: transferId });
+      if (error) throw error;
+      showToast({ type: 'success', title: 'Success', message: 'Fund transfer reversed successfully!' });
+      loadData();
+    } catch (error: any) {
+      console.error('Error reversing fund transfer:', error.message);
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to reverse fund transfer: ' + error.message,
       });
     }
   };
@@ -436,6 +484,19 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
             Pending
           </span>
         );
+      case 'reversed':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded">
+            <RotateCcw className="w-3 h-3" />
+            Reversed
+          </span>
+        );
+      case 'cancelled':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded">
+            Cancelled
+          </span>
+        );
       default:
         return <span className="text-xs text-gray-500">{status}</span>;
     }
@@ -462,7 +523,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -474,7 +535,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-              {canManage && <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>}
+              {canManage && <th className="sticky right-0 bg-gray-50 z-10 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -492,7 +553,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
               </tr>
             ) : (
               transfers.map((transfer) => (
-                <tr key={transfer.id} className="hover:bg-gray-50">
+                <tr key={transfer.id} className="group hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {formatDateDDMMYY(transfer.transfer_date)}
                   </td>
@@ -539,25 +600,71 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                     {getStatusBadge(transfer.status)}
                   </td>
                   {canManage && (
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <td className="sticky right-0 bg-white group-hover:bg-gray-50 z-10 px-6 py-4 whitespace-nowrap text-center">
                       <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleEdit(transfer)}
-                          className="text-blue-600 hover:text-blue-800"
-                          title="Edit Transfer"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(transfer.id)}
-                          className={transfer.status === 'posted' ? 'text-amber-600 hover:text-amber-800' : 'text-red-600 hover:text-red-800'}
-                          title={transfer.status === 'posted' ? 'Reverse Transfer' : 'Delete Transfer'}
-                          disabled={transfer.status === 'reversed'}
-                        >
-                          {transfer.status === 'posted'
-                            ? <RotateCcw className="w-4 h-4" />
-                            : <Trash2 className="w-4 h-4" />}
-                        </button>
+                        {transfer.status === 'pending' && (
+                          <>
+                            <button
+                              onClick={() => handleEdit(transfer)}
+                              className="text-blue-600 hover:text-blue-800"
+                              title="Edit Transfer"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(transfer.id)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Delete permanently"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        {transfer.status === 'posted' && (
+                          <>
+                            <button
+                              onClick={() => handleEdit(transfer)}
+                              className="text-blue-600 hover:text-blue-800"
+                              title="Edit Transfer"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleReverse(transfer.id)}
+                              className="text-amber-600 hover:text-amber-800"
+                              title="Reverse this posted transfer"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        {transfer.status === 'reversed' && (
+                          <>
+                            <button
+                              onClick={() => handleView(transfer)}
+                              className="text-gray-600 hover:text-gray-800"
+                              title="View Transfer"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(transfer.id)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Delete permanently"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        {transfer.status === 'cancelled' && (
+                          <button
+                            onClick={() => handleDelete(transfer.id)}
+                            className="text-red-600 hover:text-red-800"
+                            title="Delete permanently"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   )}
@@ -575,10 +682,11 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
             setModalOpen(false);
             resetForm();
           }}
-          title={editingTransfer ? "Edit Fund Transfer" : "New Fund Transfer"}
+          title={viewOnly ? "View Fund Transfer" : editingTransfer ? "Edit Fund Transfer" : "New Fund Transfer"}
           maxWidth="max-w-2xl"
         >
           <form onSubmit={handleSubmit} className="space-y-4">
+          <fieldset disabled={viewOnly} className="contents">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Transfer Date <span className="text-red-500">*</span>
@@ -809,12 +917,15 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
               />
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-sm text-blue-800">
-                <strong>Note:</strong> The journal entry will be posted automatically when you create this transfer.
-                Both accounts will be updated immediately.
-              </p>
-            </div>
+            {!viewOnly && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> The journal entry will be posted automatically when you create this transfer.
+                  Both accounts will be updated immediately.
+                </p>
+              </div>
+            )}
+          </fieldset>
 
             <div className="flex justify-end gap-3 pt-4">
               <button
@@ -825,14 +936,16 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                 }}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                {viewOnly ? 'Close' : 'Cancel'}
               </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Create Transfer
-              </button>
+              {!viewOnly && (
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  {editingTransfer ? 'Update Transfer' : 'Create Transfer'}
+                </button>
+              )}
             </div>
           </form>
         </Modal>
