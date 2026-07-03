@@ -5,6 +5,7 @@ import { Modal } from '../Modal';
 import { TrendingUp, RefreshCw, BarChart2 } from 'lucide-react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { formatDate } from '../../utils/dateFormat';
+import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 
 interface SalesInvoice {
   id: string;
@@ -65,13 +66,23 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       const [invoicesRes, paymentsRes, banksRes] = await Promise.all([
         supabase
           .from('sales_invoices')
-          .select('*, customers(company_name)')
+          // perf: projected columns (was select('*'))
+          .select('id, invoice_number, customer_id, invoice_date, due_date, total_amount, payment_status, customers(company_name)')
           .in('payment_status', ['pending', 'partial'])
           .order('due_date', { ascending: true }),
         supabase
           .from('receipt_vouchers')
+          // perf: projected columns (was select('*'))
           .select(`
-            *,
+            id,
+            voucher_number,
+            voucher_date,
+            amount,
+            payment_method,
+            reference_number,
+            description,
+            customer_id,
+            bank_account_id,
             customers(company_name),
             bank_accounts(account_name, alias)
           `)
@@ -172,30 +183,33 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
     loadDataRef.current();
   }, [loadData]);
 
-  // Realtime subscriptions replace the 30s polling. Stable-deps ([]) so React
-  // StrictMode's double-mount doesn't spawn ghost channels.
-  useEffect(() => {
-    let scheduled = false;
-    const scheduleRefresh = () => {
-      if (scheduled) return;
-      scheduled = true;
-      setTimeout(() => {
-        scheduled = false;
-        loadDataRef.current();
-      }, 400);
-    };
+  // Realtime subscriptions replace the 30s polling. Coalesce refreshes shared
+  // across the three hooks below via a module-scoped scheduler ref.
+  const receivablesScheduledRef = useRef(false);
+  const scheduleReceivablesRefresh = () => {
+    if (receivablesScheduledRef.current) return;
+    receivablesScheduledRef.current = true;
+    setTimeout(() => {
+      receivablesScheduledRef.current = false;
+      loadDataRef.current();
+    }, 400);
+  };
 
-    const channel = supabase
-      .channel('receivables_manager')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_invoices' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voucher_allocations' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipt_vouchers' }, scheduleRefresh)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  useSupabaseRealtimeChannel({
+    channelName: 'receivables_sales_invoices',
+    table: 'sales_invoices',
+    onEvent: scheduleReceivablesRefresh,
+  });
+  useSupabaseRealtimeChannel({
+    channelName: 'receivables_voucher_allocations',
+    table: 'voucher_allocations',
+    onEvent: scheduleReceivablesRefresh,
+  });
+  useSupabaseRealtimeChannel({
+    channelName: 'receivables_receipt_vouchers',
+    table: 'receipt_vouchers',
+    onEvent: scheduleReceivablesRefresh,
+  });
 
   const handleRefresh = () => {
     setRefreshing(true);

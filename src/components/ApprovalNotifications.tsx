@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { X, FileText, Truck, DollarSign, Wallet } from 'lucide-react';
 import { formatCurrency } from '../utils/currency';
+import { useSupabaseRealtimeChannel } from '../hooks/useSupabaseRealtimeChannel';
 
 interface PendingApproval {
   id: string;
@@ -126,19 +127,37 @@ export function ApprovalNotifications() {
     const onFocus = () => loadPendingApprovals();
     window.addEventListener('focus', onFocus);
 
-    const channel = supabase
-      .channel('approval_popup_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => loadPendingApprovals())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_challans' }, () => loadPendingApprovals())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_expenses' }, () => loadPendingApprovals())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'petty_cash_transactions' }, () => loadPendingApprovals())
-      .subscribe();
-
     return () => {
       window.removeEventListener('focus', onFocus);
-      supabase.removeChannel(channel);
     };
   }, [getDismissKey, loadPendingApprovals, profile?.role]);
+
+  const approvalEnabled = profile?.role === 'admin';
+  const onApprovalEvent = () => { loadPendingApprovals(); };
+  useSupabaseRealtimeChannel({
+    channelName: 'approval_popup_sales_orders',
+    table: 'sales_orders',
+    enabled: approvalEnabled,
+    onEvent: onApprovalEvent,
+  });
+  useSupabaseRealtimeChannel({
+    channelName: 'approval_popup_delivery_challans',
+    table: 'delivery_challans',
+    enabled: approvalEnabled,
+    onEvent: onApprovalEvent,
+  });
+  useSupabaseRealtimeChannel({
+    channelName: 'approval_popup_finance_expenses',
+    table: 'finance_expenses',
+    enabled: approvalEnabled,
+    onEvent: onApprovalEvent,
+  });
+  useSupabaseRealtimeChannel({
+    channelName: 'approval_popup_petty_cash',
+    table: 'petty_cash_transactions',
+    enabled: approvalEnabled,
+    onEvent: onApprovalEvent,
+  });
 
   const handleViewItem = (item: PendingApproval) => {
     setShowNotification(false);

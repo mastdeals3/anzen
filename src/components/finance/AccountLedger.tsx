@@ -67,7 +67,8 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
     try {
       const { data, error } = await supabase
         .from('chart_of_accounts')
-        .select('*')
+        // perf: projected columns (was select('*'))
+        .select('id, code, name, name_id, account_type, account_group, normal_balance, is_header, is_active, parent_id')
         .eq('is_active', true)
         .eq('is_header', false)
         .order('code');

@@ -4,6 +4,7 @@ import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw } fro
 import { Modal } from '../Modal';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
+import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 
 interface FundTransfer {
   id: string;
@@ -102,29 +103,24 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
     };
   }, [formData.from_bank_account_id, formData.to_bank_account_id, editingTransfer]);
 
-  useEffect(() => {
-    const patchBankLine = (payload: any) => {
-      const refs = fundTransferRefsRef.current;
-      const row = payload.new || payload.old;
-      const affectedAccount = row?.bank_account_id;
-      // Only refresh loaders that actually match the changed row's account.
-      if (refs.from && affectedAccount === refs.from) {
-        loadBankStatements(refs.from, 'from', refs.editingFromLine);
-      }
-      if (refs.to && affectedAccount === refs.to) {
-        loadBankStatements(refs.to, 'to', refs.editingToLine);
-      }
-    };
+  const patchBankLineFundTransfer = (payload: any) => {
+    const refs = fundTransferRefsRef.current;
+    const row = payload.new || payload.old;
+    const affectedAccount = row?.bank_account_id;
+    // Only refresh loaders that actually match the changed row's account.
+    if (refs.from && affectedAccount === refs.from) {
+      loadBankStatements(refs.from, 'from', refs.editingFromLine);
+    }
+    if (refs.to && affectedAccount === refs.to) {
+      loadBankStatements(refs.to, 'to', refs.editingToLine);
+    }
+  };
 
-    const channel = supabase
-      .channel('bank_lines_fund_transfer')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bank_statement_lines' }, patchBankLine)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  useSupabaseRealtimeChannel({
+    channelName: 'bank_lines_fund_transfer',
+    table: 'bank_statement_lines',
+    onEvent: patchBankLineFundTransfer,
+  });
 
   const loadData = async () => {
     try {
@@ -133,7 +129,8 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
       const [transfersRes, banksRes] = await Promise.all([
         supabase
           .from('vw_fund_transfers_detailed')
-          .select('*')
+          // perf: projected columns (was select('*'))
+          .select('id, transfer_number, transfer_date, amount, from_amount, to_amount, exchange_rate, from_account_type, to_account_type, from_account_name, to_account_name, from_currency, to_currency, from_bank_account_id, to_bank_account_id, from_bank_statement_line_id, to_bank_statement_line_id, description, status, posted_at, created_at, created_by_name')
           .order('transfer_date', { ascending: false })
           .order('created_at', { ascending: false })
           .limit(100),

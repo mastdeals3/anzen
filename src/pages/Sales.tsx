@@ -382,29 +382,44 @@ export function Sales() {
         };
       });
 
-      // Fetch product names for all invoices so search by product name works
-      const invoiceIds = invoicesWithLinked.map((inv: any) => inv.id);
-      let productNamesMap = new Map<string, string>();
-      if (invoiceIds.length > 0) {
-        const { data: itemsData } = await supabase
-          .from('sales_invoice_items')
-          .select('invoice_id, products(product_name)')
-          .in('invoice_id', invoiceIds);
-        (itemsData || []).forEach((item: any) => {
-          const existing = productNamesMap.get(item.invoice_id) || '';
-          const name = item.products?.product_name || '';
-          if (name && !existing.includes(name)) {
-            productNamesMap.set(item.invoice_id, existing ? `${existing}, ${name}` : name);
-          }
-        });
-      }
-
+      // perf: render list immediately without the sales_invoice_items+products
+      // join. Product-name search hydrates in the background so search UX is
+      // preserved without blocking initial render.
       const invoicesWithProducts = invoicesWithLinked.map((inv: any) => ({
         ...inv,
-        product_names: productNamesMap.get(inv.id) || ''
+        product_names: '',
       }));
-
       setInvoices(invoicesWithProducts);
+
+      const invoiceIds = invoicesWithLinked.map((inv: any) => inv.id);
+      if (invoiceIds.length > 0) {
+        // Fire-and-forget: hydrate product_names for search after list is shown.
+        (async () => {
+          try {
+            const { data: itemsData } = await supabase
+              .from('sales_invoice_items')
+              .select('invoice_id, products(product_name)')
+              .in('invoice_id', invoiceIds);
+            if (!itemsData) return;
+            const productNamesMap = new Map<string, string>();
+            (itemsData as any[]).forEach((item) => {
+              const existing = productNamesMap.get(item.invoice_id) || '';
+              const name = item.products?.product_name || '';
+              if (name && !existing.includes(name)) {
+                productNamesMap.set(item.invoice_id, existing ? `${existing}, ${name}` : name);
+              }
+            });
+            setInvoices((prev) =>
+              prev.map((inv: any) => ({
+                ...inv,
+                product_names: productNamesMap.get(inv.id) || inv.product_names || '',
+              })),
+            );
+          } catch (err) {
+            console.error('Error hydrating product names:', err);
+          }
+        })();
+      }
 
     } catch (error) {
       console.error('Error loading invoices:', error);

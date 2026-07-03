@@ -8,6 +8,7 @@ import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { formatDate } from '../../utils/dateFormat';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
+import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 
 interface PettyCashDocument {
   id: string;
@@ -399,7 +400,8 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
         supabase
           .from('bank_accounts')
-          .select('*')
+          // perf: projected columns (was select('*'))
+          .select('id, account_number, bank_name, alias, currency')
           .order('bank_name', { ascending: true })
       ]);
 
@@ -444,31 +446,26 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
   const loadDataRef = useRef(loadData);
   useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
 
-  useEffect(() => {
-    const patchRow = (payload: any) => {
-      const evt = payload.eventType;
-      if (evt === 'INSERT') {
-        // Row lacks joined relations (bank_accounts, documents); do a targeted refresh
-        // to keep the list shape identical to loadData's shape.
-        loadDataRef.current();
-      } else if (evt === 'UPDATE') {
-        setTransactions((prev: any[]) =>
-          prev.map((t) => (t.id === payload.new.id ? { ...t, ...payload.new } : t)),
-        );
-      } else if (evt === 'DELETE') {
-        setTransactions((prev: any[]) => prev.filter((t) => t.id !== payload.old.id));
-      }
-    };
+  const patchPettyCashRow = (payload: any) => {
+    const evt = payload.eventType;
+    if (evt === 'INSERT') {
+      // Row lacks joined relations (bank_accounts, documents); do a targeted refresh
+      // to keep the list shape identical to loadData's shape.
+      loadDataRef.current();
+    } else if (evt === 'UPDATE') {
+      setTransactions((prev: any[]) =>
+        prev.map((t) => (t.id === payload.new.id ? { ...t, ...payload.new } : t)),
+      );
+    } else if (evt === 'DELETE') {
+      setTransactions((prev: any[]) => prev.filter((t) => t.id !== payload.old.id));
+    }
+  };
 
-    const channel = supabase
-      .channel('petty_cash_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'petty_cash_transactions' }, patchRow)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  useSupabaseRealtimeChannel({
+    channelName: 'petty_cash_changes',
+    table: 'petty_cash_transactions',
+    onEvent: patchPettyCashRow,
+  });
 
   useEffect(() => {
     if (!initialViewTransactionId) return;

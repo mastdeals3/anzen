@@ -9,6 +9,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
+import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 import {
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_GROUPS,
@@ -548,75 +549,58 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     loadData();
   }, [dateRange]);
 
-  // Realtime subscriptions live in a separate stable-deps effect so they don't
-  // resubscribe on every dateRange change. Patch state from payload instead of
+  // Realtime subscriptions via shared hook. Patch state from payload instead of
   // reloading the entire list.
-  const expenseChannelSetupRef = useRef(false);
-  useEffect(() => {
-    if (expenseChannelSetupRef.current) return;
-    expenseChannelSetupRef.current = true;
+  const patchExpense = (payload: any) => {
+    const evt = payload.eventType;
+    if (evt === 'INSERT') {
+      // Row is missing joined relations; fall back to a targeted refetch of the row.
+      const id = payload.new?.id;
+      if (!id) return;
+      supabase
+        .from('finance_expenses')
+        .select(`
+          *,
+          suppliers(id, company_name),
+          batches(batch_number),
+          import_containers(container_ref),
+          delivery_challans(challan_number),
+          bank_accounts(bank_name, account_number, alias, currency),
+          bank_statement_lines(
+            id,
+            transaction_date,
+            description,
+            debit_amount,
+            credit_amount,
+            bank_account_id,
+            bank_accounts(bank_name, account_number, alias, currency)
+          )
+        `)
+        .eq('id', id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!data) return;
+          setExpenses(prev => (prev.some(e => e.id === id) ? prev : [data as any, ...prev]));
+        });
+    } else if (evt === 'UPDATE') {
+      setExpenses(prev => prev.map(e => (e.id === payload.new.id ? { ...e, ...payload.new } : e)));
+    } else if (evt === 'DELETE') {
+      setExpenses(prev => prev.filter(e => e.id !== payload.old.id));
+    }
+  };
 
-    const patchExpense = (payload: any) => {
-      const evt = payload.eventType;
-      if (evt === 'INSERT') {
-        // Row is missing joined relations; fall back to a targeted refetch of the row.
-        const id = payload.new?.id;
-        if (!id) return;
-        supabase
-          .from('finance_expenses')
-          .select(`
-            *,
-            suppliers(id, company_name),
-            batches(batch_number),
-            import_containers(container_ref),
-            delivery_challans(challan_number),
-            bank_accounts(bank_name, account_number, alias, currency),
-            bank_statement_lines(
-              id,
-              transaction_date,
-              description,
-              debit_amount,
-              credit_amount,
-              bank_account_id,
-              bank_accounts(bank_name, account_number, alias, currency)
-            )
-          `)
-          .eq('id', id)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (!data) return;
-            setExpenses(prev => (prev.some(e => e.id === id) ? prev : [data as any, ...prev]));
-          });
-      } else if (evt === 'UPDATE') {
-        setExpenses(prev => prev.map(e => (e.id === payload.new.id ? { ...e, ...payload.new } : e)));
-      } else if (evt === 'DELETE') {
-        setExpenses(prev => prev.filter(e => e.id !== payload.old.id));
-      }
-    };
-
-    const patchBankLine = (payload: any) => {
-      // Reconciled expense-id set only tracks presence — patch the Set accordingly.
-      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-        const meid = payload.new?.matched_expense_id;
-        if (meid) {
-          setReconciledExpenseIds(prev => {
-            if (prev.has(meid)) return prev;
-            const next = new Set(prev);
-            next.add(meid);
-            return next;
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          const oldId = payload.old?.matched_expense_id;
-          if (oldId) {
-            setReconciledExpenseIds(prev => {
-              if (!prev.has(oldId)) return prev;
-              const next = new Set(prev);
-              next.delete(oldId);
-              return next;
-            });
-          }
-        }
-      } else if (payload.eventType === 'DELETE') {
+  const patchBankLine = (payload: any) => {
+    // Reconciled expense-id set only tracks presence — patch the Set accordingly.
+    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+      const meid = payload.new?.matched_expense_id;
+      if (meid) {
+        setReconciledExpenseIds(prev => {
+          if (prev.has(meid)) return prev;
+          const next = new Set(prev);
+          next.add(meid);
+          return next;
+        });
+      } else if (payload.eventType === 'UPDATE') {
         const oldId = payload.old?.matched_expense_id;
         if (oldId) {
           setReconciledExpenseIds(prev => {
@@ -627,24 +611,29 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           });
         }
       }
-    };
+    } else if (payload.eventType === 'DELETE') {
+      const oldId = payload.old?.matched_expense_id;
+      if (oldId) {
+        setReconciledExpenseIds(prev => {
+          if (!prev.has(oldId)) return prev;
+          const next = new Set(prev);
+          next.delete(oldId);
+          return next;
+        });
+      }
+    }
+  };
 
-    const expenseChannel = supabase
-      .channel('expense_changes_expmgr')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_expenses' }, patchExpense)
-      .subscribe();
-
-    const bankChannel = supabase
-      .channel('bank_lines_expmgr')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bank_statement_lines' }, patchBankLine)
-      .subscribe();
-
-    return () => {
-      expenseChannelSetupRef.current = false;
-      supabase.removeChannel(expenseChannel);
-      supabase.removeChannel(bankChannel);
-    };
-  }, []);
+  useSupabaseRealtimeChannel({
+    channelName: 'expense_changes_expmgr',
+    table: 'finance_expenses',
+    onEvent: patchExpense,
+  });
+  useSupabaseRealtimeChannel({
+    channelName: 'bank_lines_expmgr',
+    table: 'bank_statement_lines',
+    onEvent: patchBankLine,
+  });
 
   // Paste handler for images
   useEffect(() => {
@@ -727,28 +716,33 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const loadData = async () => {
     try {
       setLoading(true);
+      // perf: server-side date filter (was client-side .filter in filteredExpenses).
+      let expensesQuery = supabase
+        .from('finance_expenses')
+        .select(`
+          *,
+          suppliers(id, company_name),
+          batches(batch_number),
+          import_containers(container_ref),
+          delivery_challans(challan_number),
+          bank_accounts(bank_name, account_number, alias, currency),
+          bank_statement_lines(
+            id,
+            transaction_date,
+            description,
+            debit_amount,
+            credit_amount,
+            bank_account_id,
+            bank_accounts(bank_name, account_number, alias, currency)
+          )
+        `)
+        .order('expense_date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (startDate) expensesQuery = expensesQuery.gte('expense_date', startDate);
+      if (endDate) expensesQuery = expensesQuery.lte('expense_date', endDate);
+
       const [expensesRes, batchesRes, containersRes, challansRes, banksRes, bankStmtRes] = await Promise.all([
-        supabase
-          .from('finance_expenses')
-          .select(`
-            *,
-            suppliers(id, company_name),
-            batches(batch_number),
-            import_containers(container_ref),
-            delivery_challans(challan_number),
-            bank_accounts(bank_name, account_number, alias, currency),
-            bank_statement_lines(
-              id,
-              transaction_date,
-              description,
-              debit_amount,
-              credit_amount,
-              bank_account_id,
-              bank_accounts(bank_name, account_number, alias, currency)
-            )
-          `)
-          .order('expense_date', { ascending: false })
-          .order('created_at', { ascending: false }),
+        expensesQuery,
         supabase
           .from('batches')
           .select('id, batch_number')
@@ -1617,9 +1611,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       if (reconciledExpenseIds.has(exp.id)) return false;
     }
 
-    // Filter by date range
-    if (startDate && exp.expense_date < startDate) return false;
-    if (endDate && exp.expense_date > endDate) return false;
+    // perf: date range filtered server-side in loadData().
 
     return true;
   });

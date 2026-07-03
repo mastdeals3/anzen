@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
 import { useFinance } from '../../contexts/FinanceContext';
+import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 
 interface BankAccount {
   id: string;
@@ -302,46 +303,41 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     loadCustomers();
   }, []);
 
-  useEffect(() => {
-    let statementScheduled = false;
-    const scheduleStatement = () => {
-      if (statementScheduled) return;
-      statementScheduled = true;
-      setTimeout(() => {
-        statementScheduled = false;
-        if (selectedBankRef.current) loadStatementLinesRef.current();
-      }, 400);
-    };
+  // Shared "coalesce statement refresh" scheduler across the two realtime hooks below.
+  const statementScheduledRef = useRef(false);
+  const scheduleStatement = () => {
+    if (statementScheduledRef.current) return;
+    statementScheduledRef.current = true;
+    setTimeout(() => {
+      statementScheduledRef.current = false;
+      if (selectedBankRef.current) loadStatementLinesRef.current();
+    }, 400);
+  };
 
-    const patchBankLine = (payload: any) => {
-      const bankId = selectedBankRef.current;
-      if (!bankId) return;
-      const row = payload.new || payload.old;
-      // Only react to lines relevant to the active bank account.
-      if (row?.bank_account_id && row.bank_account_id !== bankId) return;
-      scheduleStatement();
-    };
+  const patchBankLine = (payload: any) => {
+    const bankId = selectedBankRef.current;
+    if (!bankId) return;
+    const row = payload.new || payload.old;
+    // Only react to lines relevant to the active bank account.
+    if (row?.bank_account_id && row.bank_account_id !== bankId) return;
+    scheduleStatement();
+  };
 
-    const patchExpense = () => {
-      loadExpensesRef.current();
-      scheduleStatement();
-    };
+  const patchExpense = () => {
+    loadExpensesRef.current();
+    scheduleStatement();
+  };
 
-    const bankChannel = supabase
-      .channel('bank_lines_recon')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bank_statement_lines' }, patchBankLine)
-      .subscribe();
-
-    const expenseChannel = supabase
-      .channel('expense_recon')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_expenses' }, patchExpense)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(bankChannel);
-      supabase.removeChannel(expenseChannel);
-    };
-  }, []);
+  useSupabaseRealtimeChannel({
+    channelName: 'bank_lines_recon',
+    table: 'bank_statement_lines',
+    onEvent: patchBankLine,
+  });
+  useSupabaseRealtimeChannel({
+    channelName: 'expense_recon',
+    table: 'finance_expenses',
+    onEvent: patchExpense,
+  });
 
   const loadCustomers = async () => {
     const { data } = await supabase
@@ -425,7 +421,8 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
       const { data, error } = await supabase
         .from('bank_statement_lines')
-        .select('*')
+        // perf: projected columns (was select('*'))
+        .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id')
         .eq('bank_account_id', selectedBank)
         .gte('transaction_date', dateRange.start)
         .lt('transaction_date', endDateStr)

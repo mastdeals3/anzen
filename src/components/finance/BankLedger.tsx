@@ -97,7 +97,8 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
   const loadBanks = async () => {
     const { data } = await supabase
       .from('bank_accounts')
-      .select('*')
+      // perf: projected columns (was select('*'))
+      .select('id, bank_name, account_number, currency, opening_balance, opening_balance_date')
       .order('bank_name');
     if (data) setBanks(data);
   };

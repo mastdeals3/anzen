@@ -601,7 +601,8 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     // THEN load existing allocations (after targets are loaded)
     const { data: allocs } = await supabase
       .from('voucher_allocations')
-      .select('*')
+      // perf: projected columns (was select('*'))
+      .select('id, sales_invoice_id, sales_order_id, allocated_amount')
       .eq('receipt_voucher_id', voucher.id);
 
     if (allocs) {

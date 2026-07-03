@@ -57,7 +57,8 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
     try {
       const { data, error } = await supabase
         .from('chart_of_accounts')
-        .select('*')
+        // perf: projected columns (was select('*'))
+        .select('id, code, name, name_id, description, account_type, account_group, normal_balance, is_header, is_active, parent_id')
         .order('code');
 
       if (error) throw error;
