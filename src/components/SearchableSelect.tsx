@@ -18,9 +18,17 @@ interface SearchableSelectProps {
 }
 
 const STRIP_PREFIXES = /^(PT\.?\s*|CV\.?\s*|UD\.?\s*|TBK\.?\s*|LTD\.?\s*|CO\.?\s*)/i;
+// Also strip common company-form tokens ANYWHERE in the label so a query like
+// "house of heer" still matches "PT. House of Heer".
+const STRIP_TOKENS = /\b(pt|cv|ud|tbk|ltd|co)\.?\b/gi;
 
 function normalize(text: string): string {
-  return text.replace(STRIP_PREFIXES, '').trim().toLowerCase();
+  return text
+    .replace(STRIP_PREFIXES, '')
+    .replace(STRIP_TOKENS, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 export function SearchableSelect({
@@ -45,10 +53,16 @@ export function SearchableSelect({
     if (!debouncedFilter) return options;
     const q = debouncedFilter.toLowerCase().trim();
     const normalizedQ = normalize(debouncedFilter);
+    const qTokens = normalizedQ.split(/\s+/).filter(Boolean);
     return options.filter(opt => {
       const raw = opt.label.toLowerCase();
+      // Fallback: pre-normalized raw substring match keeps legacy behaviour.
+      if (raw.includes(q)) return true;
       const stripped = normalize(opt.label);
-      return raw.includes(q) || stripped.includes(normalizedQ);
+      if (stripped.includes(normalizedQ)) return true;
+      if (qTokens.length === 0) return false;
+      const optTokens = stripped.split(/\s+/).filter(Boolean);
+      return qTokens.every(qt => optTokens.some(ot => ot.includes(qt)));
     });
   }, [options, debouncedFilter]);
 

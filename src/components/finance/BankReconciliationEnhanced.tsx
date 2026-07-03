@@ -82,6 +82,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   const [recordModal, setRecordModal] = useState(false);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [linkToExpense, setLinkToExpense] = useState(false);
+  const [linkPaymentKind, setLinkPaymentKind] = useState<'supplier' | 'pph23'>('supplier');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [ocrError, setOcrError] = useState<{message: string; canUseOCR: boolean; suggestions: string[]} | null>(null);
   const [ocrPreview, setOcrPreview] = useState<any | null>(null);
@@ -385,23 +386,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
       if (error) throw error;
 
-      // Then get all bank statement lines that have matched expenses
-      const { data: linkedStatements } = await supabase
-        .from('bank_statement_lines')
-        .select('matched_expense_id')
-        .not('matched_expense_id', 'is', null);
-
-      // Create a Set of linked expense IDs for fast lookup
-      const linkedExpenseIds = new Set(
-        (linkedStatements || []).map(stmt => stmt.matched_expense_id)
-      );
-
-      // Filter to only show unlinked expenses
-      const unlinkedExpenses = (allExpenses || []).filter(
-        expense => !linkedExpenseIds.has(expense.id)
-      );
-
-      setExpenses(unlinkedExpenses);
+      // Previously we excluded any expense that already had a matched bank line.
+      // Since finance expenses can now receive multiple payments (supplier + PPh23),
+      // we keep them all in the pool and let the operator link additional lines.
+      setExpenses(allExpenses || []);
     } catch (err) {
       console.error('Error loading expenses:', err);
     }
@@ -1548,6 +1536,32 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Soft-guard: warn if this link would exceed the target for its payment_kind.
+      // Non-blocking — operator can override.
+      try {
+        const { data: exp } = await supabase
+          .from('finance_expenses')
+          .select('amount, ppn_amount, pph_amount, stamp_duty_amount, paid_amount, pph_paid_amount')
+          .eq('id', expenseId)
+          .single();
+        if (exp) {
+          const thisAmount = (line.debit || 0) + (line.credit || 0);
+          if (linkPaymentKind === 'supplier') {
+            const target = (exp.amount || 0) + (exp.ppn_amount || 0) - (exp.pph_amount || 0) + (exp.stamp_duty_amount || 0);
+            if ((exp.paid_amount || 0) + thisAmount > target + 1) {
+              const proceed = confirm(`Warning: supplier paid amount (${((exp.paid_amount||0)+thisAmount).toLocaleString('id-ID')}) would exceed target (${target.toLocaleString('id-ID')}). Link anyway?`);
+              if (!proceed) return;
+            }
+          } else {
+            const target = exp.pph_amount || 0;
+            if ((exp.pph_paid_amount || 0) + thisAmount > target + 1) {
+              const proceed = confirm(`Warning: PPh23 paid (${((exp.pph_paid_amount||0)+thisAmount).toLocaleString('id-ID')}) would exceed PPh23 target (${target.toLocaleString('id-ID')}). Link anyway?`);
+              if (!proceed) return;
+            }
+          }
+        }
+      } catch { /* soft guard only */ }
+
       const { error: updateError } = await supabase
         .from('bank_statement_lines')
         .update({
@@ -1556,6 +1570,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           matched_at: new Date().toISOString(),
           matched_by: user.id,
           manually_unlinked: false,
+          payment_kind: linkPaymentKind,
         })
         .eq('id', line.id)
         .select()
@@ -1563,9 +1578,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
       if (updateError) throw updateError;
 
+      // Recompute expense supplier/pph paid state.
+      await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: expenseId });
+
       setRecordModal(false);
       setRecordingLine(null);
       setLinkToExpense(false);
+      setLinkPaymentKind('supplier');
       await loadStatementLines();
       alert('✅ Linked to expense successfully');
     } catch (error: any) {
@@ -2030,6 +2049,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
     if (!confirmUnlink) return;
 
+    // Capture the previously-matched expense id (if any) so we can recompute
+    // its supplier/pph paid totals AFTER the row is cleared.
+    const previouslyMatchedExpenseId = editingLine.matchedExpenseId || null;
+
     try {
       const { error } = await supabase
         .from('bank_statement_lines')
@@ -2044,10 +2067,15 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           matched_by: null,
           notes: null,
           manually_unlinked: true,
+          payment_kind: 'supplier',
         })
         .eq('id', editingLine.id);
 
       if (error) throw error;
+
+      if (previouslyMatchedExpenseId) {
+        await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: previouslyMatchedExpenseId });
+      }
 
       // Update in local state
       setStatementLines(prev => prev.map(line =>
@@ -2681,7 +2709,21 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                         })}
                       </select>
                       <p className="text-xs text-gray-500 mt-1">
-                        Showing {expenses.length} unlinked expense{expenses.length !== 1 ? 's' : ''}. Match by voucher number or amount.
+                        Showing {expenses.length} expense{expenses.length !== 1 ? 's' : ''}. Match by voucher number or amount.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Payment Kind *</label>
+                      <select
+                        value={linkPaymentKind}
+                        onChange={(e) => setLinkPaymentKind(e.target.value as 'supplier' | 'pph23')}
+                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                      >
+                        <option value="supplier">Supplier Payment</option>
+                        <option value="pph23">PPh23 Remittance to Government</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Choose <b>PPh23</b> only when this bank line is the withholding tax being remitted to the government.
                       </p>
                     </div>
                     <button

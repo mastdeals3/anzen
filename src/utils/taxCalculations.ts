@@ -107,10 +107,38 @@ export const BROKER_ITEM_TYPES = [
 
 export type BrokerItemType = typeof BROKER_ITEM_TYPES[number]['value'];
 
+export type BrokerPpnTreatment = 'none' | 'excluded' | 'included';
+
 export interface BrokerItem {
   type: BrokerItemType;
   description: string;
   amount: number;
+  // ── Optional multi-supplier / PPN fields (added 2026-07-03) ──
+  supplier_id?: string | null;
+  invoice_number?: string | null;
+  invoice_date?: string | null;
+  ppn_treatment?: BrokerPpnTreatment;
+  ppn_amount?: number;
+  npwp?: string | null;
+  container_reference?: string | null;
+  attachment_path?: string | null;
+}
+
+/** For an amount that ALREADY includes 11% PPN, return {dpp, ppn}. */
+export function extractPpnFromInclusive(amountInclusive: number): { dpp: number; ppn: number } {
+  const dpp = Math.round(amountInclusive / 1.11);
+  return { dpp, ppn: amountInclusive - dpp };
+}
+
+/** Compute per-line PPN based on treatment (excluded/included/none). */
+export function computeBrokerLinePpn(
+  amount: number,
+  treatment: BrokerPpnTreatment | undefined,
+): number {
+  if (!amount || amount <= 0) return 0;
+  if (treatment === 'excluded') return Math.round(amount * 0.11);
+  if (treatment === 'included') return extractPpnFromInclusive(amount).ppn;
+  return 0;
 }
 
 /** Returns the sum of all broker item amounts. */
