@@ -587,6 +587,30 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       });
 
       setStatementLines(lines);
+
+      // Auto-diagnose unresolved links: for each affected row, ask the SECURITY
+      // DEFINER RPC why the batch fetch didn't return the target. Print once
+      // per session per line. Fires only when there IS an FK on the row.
+      try {
+        const unresolved = lines.filter(l =>
+          (l.matchedExpenseId && !l.matchedExpense) ||
+          (l.matchedReceiptId && !l.matchedReceipt) ||
+          (l.matchedFundTransferId && !l.matchedFundTransfer) ||
+          (l.matchedPettyCashId && !l.matchedPettyCash) ||
+          (l.matchedEntry && !l.matchedEntryRecord)
+        );
+        const w = (window as any);
+        w.__bre_diag_done = w.__bre_diag_done || new Set();
+        for (const l of unresolved) {
+          if (w.__bre_diag_done.has(l.id)) continue;
+          w.__bre_diag_done.add(l.id);
+          supabase.rpc('diagnose_bank_line_link', { p_bank_line_id: l.id })
+            .then(({ data, error }) => {
+              if (error) console.warn('[BRE-DIAG] rpc error', l.id, error);
+              else console.warn('[BRE-DIAG]', data);
+            });
+        }
+      } catch { /* diag is best-effort */ }
     } catch (err) {
       console.error('Error loading statement lines:', err);
       setStatementLines([]);
