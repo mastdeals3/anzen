@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2 } from 'lucide-react';
+import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw } from 'lucide-react';
 import { Modal } from '../Modal';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
@@ -359,47 +359,38 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
   };
 
   const handleDelete = async (transferId: string) => {
-    if (!await showConfirm({ title: 'Confirm', message: 'Are you sure you want to delete this fund transfer? This will also delete the associated petty cash transaction and journal entry.', variant: 'danger', confirmLabel: 'Delete' })) {
-      return;
-    }
+    const transfer = transfers.find(t => t.id === transferId);
+    if (!transfer) return;
+
+    const isPosted = transfer.status === 'posted';
+    const confirmed = await showConfirm({
+      title: isPosted ? 'Reverse Fund Transfer' : 'Delete Fund Transfer',
+      message: isPosted
+        ? `Reverse posted fund transfer ${transfer.transfer_number}? This will post a reversing journal entry and mark the transfer as reversed. The original record will be preserved for audit.`
+        : `Delete fund transfer ${transfer.transfer_number}? This will remove all linked journal entries, unlink bank matches, and delete the associated petty cash transaction. This cannot be undone.`,
+      variant: 'danger',
+      confirmLabel: isPosted ? 'Reverse' : 'Delete',
+    });
+    if (!confirmed) return;
 
     try {
-      // First, delete any associated petty cash transaction
-      const { error: pettyCashDeleteError } = await supabase
-        .from('petty_cash_transactions')
-        .delete()
-        .eq('fund_transfer_id', transferId);
-
-      if (pettyCashDeleteError) {
-        console.error('Error deleting petty cash transaction:', pettyCashDeleteError);
-        // Continue anyway - the petty cash transaction might not exist
+      if (isPosted) {
+        const { error } = await supabase.rpc('reverse_fund_transfer', { p_id: transferId });
+        if (error) throw error;
+        showToast({ type: 'success', title: 'Success', message: 'Fund transfer reversed successfully!' });
+      } else {
+        const { error } = await supabase.rpc('delete_fund_transfer', { p_id: transferId });
+        if (error) throw error;
+        showToast({ type: 'success', title: 'Success', message: 'Fund transfer deleted successfully!' });
       }
-
-      // Unlink any matched bank statement lines
-      await supabase
-        .from('bank_statement_lines')
-        .update({
-          matched_fund_transfer_id: null,
-          reconciliation_status: 'unmatched',
-          matched_at: null,
-          matched_by: null,
-          notes: null
-        })
-        .eq('matched_fund_transfer_id', transferId);
-
-      // Then delete the fund transfer
-      const { error } = await supabase
-        .from('fund_transfers')
-        .delete()
-        .eq('id', transferId);
-
-      if (error) throw error;
-
-      showToast({ type: 'success', title: 'Success', message: 'Fund transfer deleted successfully!' });
       loadData();
     } catch (error: any) {
-      console.error('Error deleting fund transfer:', error.message);
-      showToast({ type: 'error', title: 'Error', message: 'Failed to delete fund transfer: ' + error.message });
+      console.error('Error processing fund transfer:', error.message);
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: (isPosted ? 'Failed to reverse fund transfer: ' : 'Failed to delete fund transfer: ') + error.message,
+      });
     }
   };
 
@@ -542,10 +533,13 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                         </button>
                         <button
                           onClick={() => handleDelete(transfer.id)}
-                          className="text-red-600 hover:text-red-800"
-                          title="Delete Transfer"
+                          className={transfer.status === 'posted' ? 'text-amber-600 hover:text-amber-800' : 'text-red-600 hover:text-red-800'}
+                          title={transfer.status === 'posted' ? 'Reverse Transfer' : 'Delete Transfer'}
+                          disabled={transfer.status === 'reversed'}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {transfer.status === 'posted'
+                            ? <RotateCcw className="w-4 h-4" />
+                            : <Trash2 className="w-4 h-4" />}
                         </button>
                       </div>
                     </td>
