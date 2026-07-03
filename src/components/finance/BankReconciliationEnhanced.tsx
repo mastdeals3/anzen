@@ -472,6 +472,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           .select('id, expense_category, amount, description, expense_date, voucher_number')
           .in('id', expenseIds);
         expenses?.forEach(e => expenseMap.set(e.id, e));
+        // ── TEMP DIAG for expense batch (paired with the block below) ───
+        if (expenses && expenseIds.length !== new Set(expenses.map(e => e.id)).size) {
+          const returnedIds = new Set(expenses.map(e => e.id));
+          const missing = expenseIds.filter(id => !returnedIds.has(id));
+          // eslint-disable-next-line no-console
+          console.warn('[BRE-DIAG] finance_expenses missing:', { requested: expenseIds, returned: [...returnedIds], missing });
+        }
       }
 
       // Batch load all receipts with customers
@@ -490,7 +497,35 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             customer_name: (r.customers as any)?.company_name
           });
         });
+        if (receipts && receiptIds.length !== new Set(receipts.map(r => r.id)).size) {
+          const returnedIds = new Set(receipts.map(r => r.id));
+          const missing = receiptIds.filter(id => !returnedIds.has(id));
+          // eslint-disable-next-line no-console
+          console.warn('[BRE-DIAG] receipt_vouchers missing:', { requested: receiptIds, returned: [...returnedIds], missing });
+        }
       }
+
+      // ── TEMP DIAG (bank-recon orphan investigation) ─────────────────────────
+      // Prints requested vs returned vs missing IDs for every batch fetch so we
+      // can see whether an unresolved link is (a) RLS-masked, (b) truly gone,
+      // or (c) something else. Remove once the "TARIKAN TUNAI" row is resolved.
+      const logMissing = (
+        table: string,
+        requested: string[],
+        returned: { id: string }[] | null | undefined,
+      ) => {
+        if (!requested.length) return;
+        const returnedIds = new Set((returned || []).map(r => r.id));
+        const missing = requested.filter(id => !returnedIds.has(id));
+        if (missing.length === 0) return;
+        // eslint-disable-next-line no-console
+        console.warn(`[BRE-DIAG] ${table}: requested=${requested.length}, returned=${returnedIds.size}, missing=${missing.length}`, {
+          table,
+          requestedIds: requested,
+          returnedIds: [...returnedIds],
+          missingIds: missing,
+        });
+      };
 
       // Batch load all fund transfers
       const fundTransferMap = new Map();
@@ -500,6 +535,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           .select('id, transfer_number, amount, description, transfer_date, from_account_type, to_account_type')
           .in('id', fundTransferIds);
         fundTransfers?.forEach(f => fundTransferMap.set(f.id, f));
+        logMissing('fund_transfers', fundTransferIds, fundTransfers as any);
       }
 
       // Batch load all petty cash transactions
@@ -510,6 +546,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           .select('id, description, amount, transaction_date, transaction_type')
           .in('id', pettyCashIds);
         pettyCash?.forEach(p => pettyCashMap.set(p.id, p));
+        logMissing('petty_cash_transactions', pettyCashIds, pettyCash as any);
       }
 
       // Batch load all journal entries (canonical link fallback for display)
@@ -520,6 +557,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           .select('id, source_module, reference_id, reference_number, description, entry_date, entry_number')
           .in('id', entryIds);
         entries?.forEach(e => entryMap.set(e.id, e));
+        logMissing('journal_entries', entryIds, entries as any);
       }
 
       // Map lines with pre-loaded data (NO MORE QUERIES!)
