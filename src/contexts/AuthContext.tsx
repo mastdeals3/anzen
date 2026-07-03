@@ -133,10 +133,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!usernameOrEmail.includes('@')) {
       const { data, error } = await supabase
-        .from('user_profiles')
-        .select('email, username, is_active')
-        .eq('username', usernameOrEmail.toLowerCase())
-        .maybeSingle();
+        .rpc('lookup_login_email', { p_username: usernameOrEmail.toLowerCase() })
+        .maybeSingle<{ email: string; is_active: boolean }>();
 
       if (error) throw new Error('Invalid username or password');
       if (!data) throw new Error('Invalid username or password');
