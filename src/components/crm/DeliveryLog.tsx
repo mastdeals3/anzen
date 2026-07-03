@@ -221,6 +221,10 @@ export function DeliveryLog() {
     const tick = async () => {
       if (pauseAutoRefreshRef.current) return;
 
+      // Only tick when the user is actively watching an expanded campaign.
+      // Cuts realtime egress dramatically when the tab is idle.
+      if (!expandedIdRef.current) return;
+
       const allCampaigns = campaignsRef.current;
       const activeCampaignIds = allCampaigns
         .filter(c => c.status === 'in_progress' || c.status === 'paused')
@@ -266,7 +270,7 @@ export function DeliveryLog() {
       }
     };
 
-    const id = window.setInterval(tick, 15_000);
+    const id = window.setInterval(tick, 30_000);
     return () => window.clearInterval(id);
   }, []); // intentionally empty — state is accessed via refs
 

@@ -18,8 +18,9 @@ export async function getSignedUrlCached(
   const key = keyFor(bucket, path, downloadKey);
   const now = Date.now();
   const hit = cache.get(key);
-  // Reuse a cached URL until the last 10% of its TTL to avoid expiry-at-click.
-  if (hit && hit.expiresAt - now > ttlSeconds * 100) {
+  // Reuse a cached URL while it has at least SAFETY_MARGIN_MS remaining to avoid expiry-at-click.
+  const SAFETY_MARGIN_MS = 30_000;
+  if (hit && hit.expiresAt > now + SAFETY_MARGIN_MS) {
     return hit.url;
   }
   const { data, error } = await supabase.storage

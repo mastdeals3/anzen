@@ -259,22 +259,36 @@ export function CAReports() {
 
     if (error) throw error;
 
-    // Fetch payment dates for each invoice
-    const invoicesWithPaymentData = await Promise.all((data || []).map(async (inv) => {
-      const { data: latestPaymentDate } = await supabase
-        .rpc('get_invoice_latest_payment_date', { p_invoice_id: inv.id });
+    // Bulk fetch payment dates: replicate get_invoice_latest_payment_date =
+    // MAX(receipt_vouchers.voucher_date) for voucher_allocations where sales_invoice_id in (...) AND voucher_type='receipt'.
+    const invoiceIds = (data || []).map((inv) => inv.id);
+    const latestByInvoice = new Map<string, string>();
+    if (invoiceIds.length > 0) {
+      const { data: allocs } = await supabase
+        .from('voucher_allocations')
+        .select('sales_invoice_id, receipt_vouchers(voucher_date)')
+        .in('sales_invoice_id', invoiceIds)
+        .eq('voucher_type', 'receipt');
+      for (const a of (allocs || []) as any[]) {
+        const d = a.receipt_vouchers?.voucher_date;
+        if (!d) continue;
+        const prev = latestByInvoice.get(a.sales_invoice_id);
+        if (!prev || d > prev) {
+          latestByInvoice.set(a.sales_invoice_id, d);
+        }
+      }
+    }
 
-      return {
-        invoice_date: inv.invoice_date,
-        invoice_number: inv.invoice_number,
-        customer_name: (inv.customers as any)?.company_name,
-        due_date: inv.due_date,
-        payment_receipt: latestPaymentDate,
-        payment_status: inv.payment_status,
-        net_amount: inv.subtotal,
-        ppn: inv.tax_amount,
-        total_amount: inv.total_amount
-      };
+    const invoicesWithPaymentData = (data || []).map((inv) => ({
+      invoice_date: inv.invoice_date,
+      invoice_number: inv.invoice_number,
+      customer_name: (inv.customers as any)?.company_name,
+      due_date: inv.due_date,
+      payment_receipt: latestByInvoice.get(inv.id) || null,
+      payment_status: inv.payment_status,
+      net_amount: inv.subtotal,
+      ppn: inv.tax_amount,
+      total_amount: inv.total_amount,
     }));
 
     return invoicesWithPaymentData;

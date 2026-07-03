@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw } from 'lucide-react';
 import { Modal } from '../Modal';
@@ -83,28 +83,48 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
 
   useEffect(() => {
     loadData();
+  }, []);
 
-    // Set up realtime subscription for bank statement changes
-    const bankStatementSubscription = supabase
-      .channel('bank-statement-fund-transfer-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'bank_statement_lines' },
-        () => {
-          // Reload bank statements when changes occur
-          if (formData.from_bank_account_id) {
-            loadBankStatements(formData.from_bank_account_id, 'from', editingTransfer?.from_bank_statement_line_id || undefined);
-          }
-          if (formData.to_bank_account_id) {
-            loadBankStatements(formData.to_bank_account_id, 'to', editingTransfer?.to_bank_statement_line_id || undefined);
-          }
-        }
-      )
+  // Read from/to account IDs and editingTransfer via ref so the realtime channel
+  // stays stable-deps ([]) and does not resubscribe on every account change.
+  const fundTransferRefsRef = useRef({
+    from: '' as string,
+    to: '' as string,
+    editingFromLine: undefined as string | undefined,
+    editingToLine: undefined as string | undefined,
+  });
+  useEffect(() => {
+    fundTransferRefsRef.current = {
+      from: formData.from_bank_account_id,
+      to: formData.to_bank_account_id,
+      editingFromLine: editingTransfer?.from_bank_statement_line_id || undefined,
+      editingToLine: editingTransfer?.to_bank_statement_line_id || undefined,
+    };
+  }, [formData.from_bank_account_id, formData.to_bank_account_id, editingTransfer]);
+
+  useEffect(() => {
+    const patchBankLine = (payload: any) => {
+      const refs = fundTransferRefsRef.current;
+      const row = payload.new || payload.old;
+      const affectedAccount = row?.bank_account_id;
+      // Only refresh loaders that actually match the changed row's account.
+      if (refs.from && affectedAccount === refs.from) {
+        loadBankStatements(refs.from, 'from', refs.editingFromLine);
+      }
+      if (refs.to && affectedAccount === refs.to) {
+        loadBankStatements(refs.to, 'to', refs.editingToLine);
+      }
+    };
+
+    const channel = supabase
+      .channel('bank_lines_fund_transfer')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bank_statement_lines' }, patchBankLine)
       .subscribe();
 
     return () => {
-      bankStatementSubscription.unsubscribe();
+      supabase.removeChannel(channel);
     };
-  }, [formData.from_bank_account_id, formData.to_bank_account_id]);
+  }, []);
 
   const loadData = async () => {
     try {

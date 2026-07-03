@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Upload, X, FileText, Image, Eye, CreditCard as Edit2, Trash2, ExternalLink, Download, Clipboard, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw } from 'lucide-react';
 import { Modal } from '../Modal';
@@ -436,21 +436,39 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
   useEffect(() => {
     loadData();
+  }, [loadData]);
 
-    const subscription = supabase
-      .channel('petty-cash-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'petty_cash_transactions' },
-        () => {
-          loadData();
-        }
-      )
+  // Realtime subscription lives in a stable-deps effect so it does not
+  // resubscribe on every date-range/loadData identity change. Patch state
+  // from the payload row instead of reloading everything.
+  const loadDataRef = useRef(loadData);
+  useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
+
+  useEffect(() => {
+    const patchRow = (payload: any) => {
+      const evt = payload.eventType;
+      if (evt === 'INSERT') {
+        // Row lacks joined relations (bank_accounts, documents); do a targeted refresh
+        // to keep the list shape identical to loadData's shape.
+        loadDataRef.current();
+      } else if (evt === 'UPDATE') {
+        setTransactions((prev: any[]) =>
+          prev.map((t) => (t.id === payload.new.id ? { ...t, ...payload.new } : t)),
+        );
+      } else if (evt === 'DELETE') {
+        setTransactions((prev: any[]) => prev.filter((t) => t.id !== payload.old.id));
+      }
+    };
+
+    const channel = supabase
+      .channel('petty_cash_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'petty_cash_transactions' }, patchRow)
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      supabase.removeChannel(channel);
     };
-  }, [loadData]);
+  }, []);
 
   useEffect(() => {
     if (!initialViewTransactionId) return;

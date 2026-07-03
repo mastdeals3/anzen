@@ -122,12 +122,12 @@ export function ApprovalNotifications() {
 
     loadPendingApprovals();
 
-    const interval = setInterval(() => {
-      loadPendingApprovals();
-    }, 60000);
+    // Realtime + on-focus refresh replaces the 60s polling.
+    const onFocus = () => loadPendingApprovals();
+    window.addEventListener('focus', onFocus);
 
     const channel = supabase
-      .channel('approval-popup-changes')
+      .channel('approval_popup_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_orders' }, () => loadPendingApprovals())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_challans' }, () => loadPendingApprovals())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_expenses' }, () => loadPendingApprovals())
@@ -135,8 +135,8 @@ export function ApprovalNotifications() {
       .subscribe();
 
     return () => {
-      clearInterval(interval);
-      channel.unsubscribe();
+      window.removeEventListener('focus', onFocus);
+      supabase.removeChannel(channel);
     };
   }, [getDismissKey, loadPendingApprovals, profile?.role]);
 

@@ -336,16 +336,40 @@ export function Sales() {
 
       if (error) throw error;
 
-      // Calculate paid amount and balance for each invoice
-      const invoicesWithPayments = await Promise.all((data || []).map(async (inv) => {
-        const { data: paidData } = await supabase
-          .rpc('get_invoice_paid_amount', { p_invoice_id: inv.id });
-
-        const paidAmount = paidData || 0;
+      // Calculate paid amount and balance for each invoice (bulk aggregation
+      // replicates get_invoice_paid_amount = voucher_allocations(receipt) + invoice_rounding_adjustments).
+      const invoiceIdsForPaid = (data || []).map((inv) => inv.id);
+      const paidById = new Map<string, number>();
+      if (invoiceIdsForPaid.length > 0) {
+        const [{ data: allocs }, { data: adjs }] = await Promise.all([
+          supabase
+            .from('voucher_allocations')
+            .select('sales_invoice_id, allocated_amount')
+            .in('sales_invoice_id', invoiceIdsForPaid)
+            .eq('voucher_type', 'receipt'),
+          supabase
+            .from('invoice_rounding_adjustments')
+            .select('sales_invoice_id, adjustment_amount')
+            .in('sales_invoice_id', invoiceIdsForPaid),
+        ]);
+        for (const a of allocs || []) {
+          paidById.set(
+            a.sales_invoice_id,
+            (paidById.get(a.sales_invoice_id) || 0) + Number(a.allocated_amount || 0),
+          );
+        }
+        for (const a of adjs || []) {
+          paidById.set(
+            a.sales_invoice_id,
+            (paidById.get(a.sales_invoice_id) || 0) + Number(a.adjustment_amount || 0),
+          );
+        }
+      }
+      const invoicesWithPayments = (data || []).map((inv) => {
+        const paidAmount = paidById.get(inv.id) || 0;
         const balance = inv.total_amount - paidAmount;
-
         return { ...inv, paid_amount: paidAmount, balance_amount: balance };
-      }));
+      });
 
 
       const bundle = await fetchLinkedDocumentsBundle();

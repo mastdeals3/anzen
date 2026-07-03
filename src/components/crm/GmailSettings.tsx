@@ -21,12 +21,10 @@ export function GmailSettings() {
 
   useEffect(() => {
     loadConnection();
-
-    const interval = setInterval(() => {
-      loadConnection();
-    }, 30000);
-
-    return () => clearInterval(interval);
+    // Replaces 30s polling with an on-focus refresh (Settings tab is opened rarely).
+    const onFocus = () => loadConnection();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, []);
 
   const loadConnection = async () => {

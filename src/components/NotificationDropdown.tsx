@@ -47,11 +47,26 @@ export function NotificationDropdown() {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user) {
-      loadNotifications();
-      const interval = setInterval(() => loadNotifications(), 60000);
-      return () => clearInterval(interval);
-    }
+    if (!user) return;
+    loadNotifications();
+
+    // Realtime replaces the 60s polling; refresh on window focus for a lightweight top-up.
+    const channel = supabase
+      .channel(`notif_dropdown_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        () => loadNotifications(),
+      )
+      .subscribe();
+
+    const onFocus = () => loadNotifications();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [user]);
 
   const loadNotifications = async () => {

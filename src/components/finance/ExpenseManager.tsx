@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, DollarSign, Package, Truck, Building2, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, Lock, RotateCcw, UserPlus, AlertCircle } from 'lucide-react';
 import { Modal } from '../Modal';
@@ -541,35 +541,110 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     }
   };
 
+  // Initial load + reload when date range changes (loadData itself has no server-side
+  // date filter, so reload is only meaningful when other loaders depend on state,
+  // but we preserve the original behavior).
   useEffect(() => {
     loadData();
+  }, [dateRange]);
 
-    // Set up realtime subscriptions for expenses and bank statements
-    const expenseSubscription = supabase
-      .channel('expense-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'finance_expenses' },
-        () => {
-          loadData();
+  // Realtime subscriptions live in a separate stable-deps effect so they don't
+  // resubscribe on every dateRange change. Patch state from payload instead of
+  // reloading the entire list.
+  const expenseChannelSetupRef = useRef(false);
+  useEffect(() => {
+    if (expenseChannelSetupRef.current) return;
+    expenseChannelSetupRef.current = true;
+
+    const patchExpense = (payload: any) => {
+      const evt = payload.eventType;
+      if (evt === 'INSERT') {
+        // Row is missing joined relations; fall back to a targeted refetch of the row.
+        const id = payload.new?.id;
+        if (!id) return;
+        supabase
+          .from('finance_expenses')
+          .select(`
+            *,
+            suppliers(id, company_name),
+            batches(batch_number),
+            import_containers(container_ref),
+            delivery_challans(challan_number),
+            bank_accounts(bank_name, account_number, alias, currency),
+            bank_statement_lines(
+              id,
+              transaction_date,
+              description,
+              debit_amount,
+              credit_amount,
+              bank_account_id,
+              bank_accounts(bank_name, account_number, alias, currency)
+            )
+          `)
+          .eq('id', id)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (!data) return;
+            setExpenses(prev => (prev.some(e => e.id === id) ? prev : [data as any, ...prev]));
+          });
+      } else if (evt === 'UPDATE') {
+        setExpenses(prev => prev.map(e => (e.id === payload.new.id ? { ...e, ...payload.new } : e)));
+      } else if (evt === 'DELETE') {
+        setExpenses(prev => prev.filter(e => e.id !== payload.old.id));
+      }
+    };
+
+    const patchBankLine = (payload: any) => {
+      // Reconciled expense-id set only tracks presence — patch the Set accordingly.
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        const meid = payload.new?.matched_expense_id;
+        if (meid) {
+          setReconciledExpenseIds(prev => {
+            if (prev.has(meid)) return prev;
+            const next = new Set(prev);
+            next.add(meid);
+            return next;
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const oldId = payload.old?.matched_expense_id;
+          if (oldId) {
+            setReconciledExpenseIds(prev => {
+              if (!prev.has(oldId)) return prev;
+              const next = new Set(prev);
+              next.delete(oldId);
+              return next;
+            });
+          }
         }
-      )
+      } else if (payload.eventType === 'DELETE') {
+        const oldId = payload.old?.matched_expense_id;
+        if (oldId) {
+          setReconciledExpenseIds(prev => {
+            if (!prev.has(oldId)) return prev;
+            const next = new Set(prev);
+            next.delete(oldId);
+            return next;
+          });
+        }
+      }
+    };
+
+    const expenseChannel = supabase
+      .channel('expense_changes_expmgr')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_expenses' }, patchExpense)
       .subscribe();
 
-    const bankStatementSubscription = supabase
-      .channel('bank-statement-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'bank_statement_lines' },
-        () => {
-          loadData();
-        }
-      )
+    const bankChannel = supabase
+      .channel('bank_lines_expmgr')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bank_statement_lines' }, patchBankLine)
       .subscribe();
 
     return () => {
-      expenseSubscription.unsubscribe();
-      bankStatementSubscription.unsubscribe();
+      expenseChannelSetupRef.current = false;
+      supabase.removeChannel(expenseChannel);
+      supabase.removeChannel(bankChannel);
     };
-  }, [dateRange]);
+  }, []);
 
   // Paste handler for images
   useEffect(() => {

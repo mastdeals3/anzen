@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DataTable } from '../DataTable';
 import { Modal } from '../Modal';
@@ -97,63 +97,59 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
         throw banksRes.error;
       }
 
-      // Calculate paid_amount for each invoice
-      const invoicesWithPaidAmount = await Promise.all((invoicesRes.data || []).map(async (invoice) => {
-        try {
-          const { data: allocations, error: allocError } = await supabase
-            .from('voucher_allocations')
-            .select('allocated_amount')
-            .eq('sales_invoice_id', invoice.id)
-            .eq('voucher_type', 'receipt');
+      // Bulk fetch allocations for both invoices and vouchers, then aggregate client-side.
+      const invoiceIds = (invoicesRes.data || []).map((inv) => inv.id);
+      const voucherIds = (paymentsRes.data || []).map((v) => v.id);
 
-          if (allocError) {
-            console.error('Error loading allocations for invoice:', invoice.id, allocError);
-          }
-
-          const paid_amount = allocations?.reduce((sum, alloc) => sum + (Number(alloc.allocated_amount) || 0), 0) || 0;
-          return {
-            ...invoice,
-            paid_amount,
-            customers: invoice.customers || null
-          };
-        } catch (err) {
-          console.error('Error processing invoice:', invoice.id, err);
-          return {
-            ...invoice,
-            paid_amount: 0,
-            customers: invoice.customers || null
-          };
+      const paidByInvoice = new Map<string, number>();
+      if (invoiceIds.length > 0) {
+        const { data: invAllocs, error: invAllocErr } = await supabase
+          .from('voucher_allocations')
+          .select('sales_invoice_id, allocated_amount')
+          .in('sales_invoice_id', invoiceIds)
+          .eq('voucher_type', 'receipt');
+        if (invAllocErr) {
+          console.error('Error loading invoice allocations:', invAllocErr);
         }
+        for (const a of invAllocs || []) {
+          paidByInvoice.set(
+            a.sales_invoice_id,
+            (paidByInvoice.get(a.sales_invoice_id) || 0) + (Number(a.allocated_amount) || 0),
+          );
+        }
+      }
+
+      const allocationsByVoucher = new Map<string, { allocated_amount: number; sales_invoices: { invoice_number: string } | null }[]>();
+      if (voucherIds.length > 0) {
+        const { data: vAllocs, error: vAllocErr } = await supabase
+          .from('voucher_allocations')
+          .select('receipt_voucher_id, allocated_amount, sales_invoices(invoice_number)')
+          .in('receipt_voucher_id', voucherIds)
+          .eq('voucher_type', 'receipt');
+        if (vAllocErr) {
+          console.error('Error loading voucher allocations:', vAllocErr);
+        }
+        for (const a of (vAllocs || []) as any[]) {
+          const list = allocationsByVoucher.get(a.receipt_voucher_id) || [];
+          list.push({
+            allocated_amount: a.allocated_amount,
+            sales_invoices: a.sales_invoices || null,
+          });
+          allocationsByVoucher.set(a.receipt_voucher_id, list);
+        }
+      }
+
+      const invoicesWithPaidAmount = (invoicesRes.data || []).map((invoice) => ({
+        ...invoice,
+        paid_amount: paidByInvoice.get(invoice.id) || 0,
+        customers: invoice.customers || null,
       }));
 
-      // Get allocations for each receipt voucher
-      const paymentsWithAllocations = await Promise.all((paymentsRes.data || []).map(async (voucher) => {
-        try {
-          const { data: allocations, error: allocError } = await supabase
-            .from('voucher_allocations')
-            .select('allocated_amount, sales_invoices(invoice_number)')
-            .eq('receipt_voucher_id', voucher.id)
-            .eq('voucher_type', 'receipt');
-
-          if (allocError) {
-            console.error('Error loading allocations for voucher:', voucher.id, allocError);
-          }
-
-          return {
-            ...voucher,
-            allocations: allocations || [],
-            customers: voucher.customers || null,
-            bank_accounts: voucher.bank_accounts || null
-          };
-        } catch (err) {
-          console.error('Error processing voucher:', voucher.id, err);
-          return {
-            ...voucher,
-            allocations: [],
-            customers: voucher.customers || null,
-            bank_accounts: voucher.bank_accounts || null
-          };
-        }
+      const paymentsWithAllocations = (paymentsRes.data || []).map((voucher) => ({
+        ...voucher,
+        allocations: allocationsByVoucher.get(voucher.id) || [],
+        customers: voucher.customers || null,
+        bank_accounts: voucher.bank_accounts || null,
       }));
 
       setInvoices(invoicesWithPaidAmount);
@@ -167,12 +163,39 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
     }
   }, []);
 
+  const loadDataRef = useRef(loadData);
   useEffect(() => {
-    loadData();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(loadData, 30000);
-    return () => clearInterval(interval);
+    loadDataRef.current = loadData;
   }, [loadData]);
+
+  useEffect(() => {
+    loadDataRef.current();
+  }, [loadData]);
+
+  // Realtime subscriptions replace the 30s polling. Stable-deps ([]) so React
+  // StrictMode's double-mount doesn't spawn ghost channels.
+  useEffect(() => {
+    let scheduled = false;
+    const scheduleRefresh = () => {
+      if (scheduled) return;
+      scheduled = true;
+      setTimeout(() => {
+        scheduled = false;
+        loadDataRef.current();
+      }, 400);
+    };
+
+    const channel = supabase
+      .channel('receivables_manager')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_invoices' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voucher_allocations' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receipt_vouchers' }, scheduleRefresh)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const handleRefresh = () => {
     setRefreshing(true);

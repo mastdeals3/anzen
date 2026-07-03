@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { BookOpen, Download, RefreshCw } from 'lucide-react';
 import { Modal } from '../Modal';
 import { useFinance } from '../../contexts/FinanceContext';
+import { getPublicUrlCached } from '../../utils/publicUrlCache';
 
 interface BankAccount {
   id: string;
@@ -78,12 +79,9 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
         .list(`${selectedEntry.id}/`);
 
       if (files && files.length > 0) {
-        const publicUrls = files.map(file => {
-          const { data } = supabase.storage
-            .from('expense-documents')
-            .getPublicUrl(`${selectedEntry.id}/${file.name}`);
-          return data.publicUrl;
-        });
+        const publicUrls = files.map(file =>
+          getPublicUrlCached('expense-documents', `${selectedEntry.id}/${file.name}`)
+        );
         setExpenseDocuments(publicUrls);
       } else {
         setExpenseDocuments([]);

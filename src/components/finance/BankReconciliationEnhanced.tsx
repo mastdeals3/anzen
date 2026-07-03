@@ -287,40 +287,59 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     },
   ];
 
+  // Refs let the stable-deps realtime effect below read latest state/loaders
+  // without resubscribing on every render.
+  const selectedBankRef = useRef(selectedBank);
+  const loadStatementLinesRef = useRef(loadStatementLines);
+  const loadExpensesRef = useRef(loadExpenses);
+  useEffect(() => { selectedBankRef.current = selectedBank; }, [selectedBank]);
+  useEffect(() => { loadStatementLinesRef.current = loadStatementLines; });
+  useEffect(() => { loadExpensesRef.current = loadExpenses; });
+
   useEffect(() => {
     loadBankAccounts();
     loadExpenses();
     loadCustomers();
+  }, []);
 
-    // Set up realtime subscriptions for bank statements and related changes
-    const bankStatementSubscription = supabase
-      .channel('bank-statement-recon-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'bank_statement_lines' },
-        () => {
-          if (selectedBank) {
-            loadStatementLines();
-          }
-        }
-      )
+  useEffect(() => {
+    let statementScheduled = false;
+    const scheduleStatement = () => {
+      if (statementScheduled) return;
+      statementScheduled = true;
+      setTimeout(() => {
+        statementScheduled = false;
+        if (selectedBankRef.current) loadStatementLinesRef.current();
+      }, 400);
+    };
+
+    const patchBankLine = (payload: any) => {
+      const bankId = selectedBankRef.current;
+      if (!bankId) return;
+      const row = payload.new || payload.old;
+      // Only react to lines relevant to the active bank account.
+      if (row?.bank_account_id && row.bank_account_id !== bankId) return;
+      scheduleStatement();
+    };
+
+    const patchExpense = () => {
+      loadExpensesRef.current();
+      scheduleStatement();
+    };
+
+    const bankChannel = supabase
+      .channel('bank_lines_recon')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bank_statement_lines' }, patchBankLine)
       .subscribe();
 
-    const expenseSubscription = supabase
-      .channel('expense-recon-changes')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'finance_expenses' },
-        () => {
-          loadExpenses();
-          if (selectedBank) {
-            loadStatementLines();
-          }
-        }
-      )
+    const expenseChannel = supabase
+      .channel('expense_recon')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_expenses' }, patchExpense)
       .subscribe();
 
     return () => {
-      bankStatementSubscription.unsubscribe();
-      expenseSubscription.unsubscribe();
+      supabase.removeChannel(bankChannel);
+      supabase.removeChannel(expenseChannel);
     };
   }, []);
 
