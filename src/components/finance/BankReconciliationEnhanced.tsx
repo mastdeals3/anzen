@@ -30,6 +30,7 @@ interface StatementLine {
   matchedExpenseId?: string;
   matchedReceiptId?: string;
   matchedFundTransferId?: string;
+  matchedPettyCashId?: string;
   matchedExpense?: {
     id: string;
     expense_category: string;
@@ -53,6 +54,22 @@ interface StatementLine {
     transfer_date: string;
     from_account_type: string;
     to_account_type: string;
+  } | null;
+  matchedPettyCash?: {
+    id: string;
+    description: string;
+    amount: number;
+    transaction_date: string;
+    transaction_type?: string;
+  } | null;
+  matchedEntryRecord?: {
+    id: string;
+    entry_number: string;
+    entry_date: string;
+    description: string;
+    source_module?: string;
+    reference_id?: string;
+    reference_number?: string;
   } | null;
   notes?: string;
 }
@@ -438,10 +455,14 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       if (error) throw error;
 
       // HARDENING FIX #5: Batch load all matched records to eliminate N+1 queries
-      // Collect all IDs (Note: Petty cash is NOT reconciled with bank - per user's finance rules)
+      // Collect all IDs. Petty cash IS a valid recon target (petty_cash_transactions
+      // linked via matched_petty_cash_id). Journal entry is the canonical link
+      // (matched_entry_id) resolved for display fallback.
       const expenseIds = (data || []).map(r => r.matched_expense_id).filter(Boolean);
       const receiptIds = (data || []).map(r => r.matched_receipt_id).filter(Boolean);
       const fundTransferIds = (data || []).map(r => r.matched_fund_transfer_id).filter(Boolean);
+      const pettyCashIds = (data || []).map(r => r.matched_petty_cash_id).filter(Boolean);
+      const entryIds = (data || []).map(r => r.matched_entry_id).filter(Boolean);
 
       // Batch load all expenses
       const expenseMap = new Map();
@@ -481,6 +502,26 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         fundTransfers?.forEach(f => fundTransferMap.set(f.id, f));
       }
 
+      // Batch load all petty cash transactions
+      const pettyCashMap = new Map();
+      if (pettyCashIds.length > 0) {
+        const { data: pettyCash } = await supabase
+          .from('petty_cash_transactions')
+          .select('id, description, amount, transaction_date, transaction_type')
+          .in('id', pettyCashIds);
+        pettyCash?.forEach(p => pettyCashMap.set(p.id, p));
+      }
+
+      // Batch load all journal entries (canonical link fallback for display)
+      const entryMap = new Map();
+      if (entryIds.length > 0) {
+        const { data: entries } = await supabase
+          .from('journal_entries')
+          .select('id, source_module, reference_id, reference_number, description, entry_date, entry_number')
+          .in('id', entryIds);
+        entries?.forEach(e => entryMap.set(e.id, e));
+      }
+
       // Map lines with pre-loaded data (NO MORE QUERIES!)
       const lines: StatementLine[] = (data || []).map(row => {
         return {
@@ -497,9 +538,12 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           matchedExpenseId: row.matched_expense_id,
           matchedReceiptId: row.matched_receipt_id,
           matchedFundTransferId: row.matched_fund_transfer_id,
+          matchedPettyCashId: row.matched_petty_cash_id,
           matchedExpense: row.matched_expense_id ? expenseMap.get(row.matched_expense_id) : null,
           matchedReceipt: row.matched_receipt_id ? receiptMap.get(row.matched_receipt_id) : null,
           matchedFundTransfer: row.matched_fund_transfer_id ? fundTransferMap.get(row.matched_fund_transfer_id) : null,
+          matchedPettyCash: row.matched_petty_cash_id ? pettyCashMap.get(row.matched_petty_cash_id) : null,
+          matchedEntryRecord: row.matched_entry_id ? entryMap.get(row.matched_entry_id) : null,
           notes: row.notes,
         };
       });
@@ -1432,17 +1476,63 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
   const confirmMatch = async (lineId: string) => {
     try {
+      // A suggested row was populated by auto_match_smart with one typed FK.
+      // Enforce the invariant: refuse to confirm a "suggested" row that carries
+      // no typed FK, and back-fill matched_entry_id from the suggested doc so
+      // both canonical + typed links land in the same transition.
+      const { data: bsl } = await supabase
+        .from('bank_statement_lines')
+        .select('id, matched_expense_id, matched_receipt_id, matched_petty_cash_id, matched_fund_transfer_id, matched_entry_id')
+        .eq('id', lineId)
+        .maybeSingle();
+
+      if (!bsl) throw new Error('Row not found');
+
+      const hasFk = !!(bsl.matched_expense_id || bsl.matched_receipt_id || bsl.matched_petty_cash_id || bsl.matched_fund_transfer_id || bsl.matched_entry_id);
+      if (!hasFk) {
+        alert('❌ Cannot confirm: no suggested link found on this row.');
+        return;
+      }
+
+      let entryId: string | null = bsl.matched_entry_id ?? null;
+      if (!entryId) {
+        if (bsl.matched_expense_id) {
+          const { data: je } = await supabase.from('journal_entries')
+            .select('id').eq('source_module', 'expenses')
+            .eq('reference_number', `EXP-${bsl.matched_expense_id}`).maybeSingle();
+          entryId = je?.id ?? null;
+        } else if (bsl.matched_receipt_id) {
+          const { data: rv } = await supabase.from('receipt_vouchers')
+            .select('journal_entry_id').eq('id', bsl.matched_receipt_id).maybeSingle();
+          entryId = rv?.journal_entry_id ?? null;
+        } else if (bsl.matched_fund_transfer_id) {
+          const { data: ft } = await supabase.from('fund_transfers')
+            .select('journal_entry_id').eq('id', bsl.matched_fund_transfer_id).maybeSingle();
+          entryId = ft?.journal_entry_id ?? null;
+        } else if (bsl.matched_petty_cash_id) {
+          const { data: je } = await supabase.from('journal_entries')
+            .select('id').eq('source_module', 'petty_cash')
+            .eq('reference_id', bsl.matched_petty_cash_id).maybeSingle();
+          entryId = je?.id ?? null;
+        }
+      }
+
       await supabase
         .from('bank_statement_lines')
-        .update({ reconciliation_status: 'matched', manually_unlinked: false })
+        .update({
+          reconciliation_status: 'matched',
+          manually_unlinked: false,
+          matched_entry_id: entryId,
+        })
         .eq('id', lineId);
 
       // Update in local state
       setStatementLines(prev => prev.map(line =>
         line.id === lineId ? { ...line, status: 'matched' } : line
       ));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error confirming match:', err);
+      alert('❌ ' + (err?.message || 'Failed to confirm match'));
     }
   };
 
@@ -1530,11 +1620,27 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
       if (expenseError) throw expenseError;
 
+      // Resolve the JE that the finance_expenses auto-post trigger just created
+      // (finance_expenses has no journal_entry_id column; JEs link via
+      // source_module='expenses' + reference_number='EXP-<id>'). Best-effort:
+      // if the trigger hasn't landed the JE yet, we fall back to the typed FK.
+      let matchedEntryId: string | null = null;
+      try {
+        const { data: je } = await supabase
+          .from('journal_entries')
+          .select('id')
+          .eq('source_module', 'expenses')
+          .eq('reference_number', `EXP-${expense.id}`)
+          .maybeSingle();
+        matchedEntryId = je?.id ?? null;
+      } catch { /* soft */ }
+
       const { error: updateError } = await supabase
         .from('bank_statement_lines')
         .update({
           reconciliation_status: 'recorded',
           matched_expense_id: expense.id,
+          matched_entry_id: matchedEntryId,
           matched_at: new Date().toISOString(),
           matched_by: user.id,
         })
@@ -1585,11 +1691,27 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         }
       } catch { /* soft guard only */ }
 
+      // Resolve the expense's journal entry (via source_module + reference_number,
+      // since finance_expenses has no journal_entry_id column). Abort if missing —
+      // the expense should already be auto-posted; a missing JE indicates the
+      // expense is not yet posted and this link would be an orphan.
+      const { data: je } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('source_module', 'expenses')
+        .eq('reference_number', `EXP-${expenseId}`)
+        .maybeSingle();
+      if (!je?.id) {
+        alert('❌ Expense not yet posted (no journal entry). Please post the expense first, then link.');
+        return;
+      }
+
       const { error: updateError } = await supabase
         .from('bank_statement_lines')
         .update({
           reconciliation_status: 'matched',
           matched_expense_id: expenseId,
+          matched_entry_id: je.id,
           matched_at: new Date().toISOString(),
           matched_by: user.id,
           manually_unlinked: false,
@@ -1693,11 +1815,24 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           });
         }
 
+        // Read back the JE the receipt-voucher post trigger just created.
+        // Best-effort: if the trigger hasn't run yet we still have the typed FK.
+        let matchedEntryId: string | null = null;
+        try {
+          const { data: rv } = await supabase
+            .from('receipt_vouchers')
+            .select('journal_entry_id')
+            .eq('id', receipt.id)
+            .maybeSingle();
+          matchedEntryId = rv?.journal_entry_id ?? null;
+        } catch { /* soft */ }
+
         const { error: updateError } = await supabase
           .from('bank_statement_lines')
           .update({
             reconciliation_status: 'recorded',
             matched_receipt_id: receipt.id,
+            matched_entry_id: matchedEntryId,
             matched_at: new Date().toISOString(),
             matched_by: user.id,
             manually_unlinked: false,
@@ -1709,20 +1844,12 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         const allocCount = Object.values(receiptAllocations).filter(a => a > 0).length;
         alert(`Receipt Voucher ${voucherNum} created${allocCount > 0 ? ` and allocated to ${allocCount} invoice(s)` : ''}`);
       } else {
-        const { error: updateError } = await supabase
-          .from('bank_statement_lines')
-          .update({
-            reconciliation_status: 'recorded',
-            notes: `${type}: ${description}`,
-            matched_at: new Date().toISOString(),
-            matched_by: user.id,
-            manually_unlinked: false,
-          })
-          .eq('id', line.id);
-
-        if (updateError) throw updateError;
-
-        alert('Receipt recorded successfully');
+        // "Other" receipt path used to write status='recorded' with only a
+        // freeform note and no FK — producing orphaned "Recorded" rows that
+        // display as "⚠️ No link found". A row cannot be recorded without a
+        // real document link (canonical rule: matched_entry_id + typed FK).
+        alert('❌ Cannot record: please create a customer receipt voucher so a journal entry exists to link to.');
+        return;
       }
 
       setRecordModal(false);
@@ -1743,11 +1870,19 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Resolve the RV's journal entry so both FKs are persisted.
+      const { data: rv } = await supabase
+        .from('receipt_vouchers')
+        .select('journal_entry_id')
+        .eq('id', receiptId)
+        .maybeSingle();
+
       const { error } = await supabase
         .from('bank_statement_lines')
         .update({
           reconciliation_status: 'recorded',
           matched_receipt_id: receiptId,
+          matched_entry_id: rv?.journal_entry_id ?? null,
           matched_at: new Date().toISOString(),
           matched_by: user.id,
           manually_unlinked: false,
@@ -1865,15 +2000,38 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // Best-effort: also populate the typed FK so display can resolve directly
+      // without needing to re-hop through journal_entries.
+      const updateData: any = {
+        reconciliation_status: 'matched',
+        matched_entry_id: journalId,
+        matched_at: new Date().toISOString(),
+        matched_by: user.id,
+        manually_unlinked: false,
+      };
+      try {
+        const { data: je } = await supabase
+          .from('journal_entries')
+          .select('source_module, reference_id, reference_number')
+          .eq('id', journalId)
+          .maybeSingle();
+        if (je?.source_module === 'expenses' && je.reference_number) {
+          updateData.matched_expense_id = je.reference_number.replace('EXP-', '');
+        } else if (je?.source_module === 'receipt') {
+          const { data: rv } = await supabase
+            .from('receipt_vouchers')
+            .select('id').eq('journal_entry_id', journalId).maybeSingle();
+          if (rv?.id) updateData.matched_receipt_id = rv.id;
+        } else if (je?.source_module === 'fund_transfers' && je.reference_id) {
+          updateData.matched_fund_transfer_id = je.reference_id;
+        } else if (je?.source_module === 'petty_cash' && je.reference_id) {
+          updateData.matched_petty_cash_id = je.reference_id;
+        }
+      } catch { /* best-effort typed FK enrichment */ }
+
       const { error } = await supabase
         .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'matched',
-          matched_entry_id: journalId,
-          matched_at: new Date().toISOString(),
-          matched_by: user.id,
-          manually_unlinked: false,
-        })
+        .update(updateData)
         .eq('id', line.id);
 
       if (error) throw error;
@@ -1955,17 +2113,19 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         .eq('id', paymentVoucherId)
         .maybeSingle();
 
+      if (!pv?.journal_entry_id) {
+        alert('❌ Payment voucher not yet posted (no journal entry). Please post the voucher first, then link.');
+        return;
+      }
+
       const updateData: any = {
         reconciliation_status: 'matched',
+        matched_entry_id: pv.journal_entry_id,
         matched_at: new Date().toISOString(),
         matched_by: user.id,
         manually_unlinked: false,
         notes: `Linked to supplier payment ${paymentVoucherId}`,
       };
-
-      if (pv?.journal_entry_id) {
-        updateData.matched_entry_id = pv.journal_entry_id;
-      }
 
       const { error } = await supabase
         .from('bank_statement_lines')
@@ -2086,6 +2246,40 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     }
   };
 
+  // Reset a row that shows Recorded/Matched but resolves to no linked document.
+  // Reuses the same clear-all-FKs pattern as handleUnlinkTransaction, but keyed
+  // to the given line so it works directly from the row action bar.
+  const resetOrphanToUnmatched = async (line: StatementLine) => {
+    const ok = window.confirm(
+      'This row shows Recorded/Matched but no linked document was found.\n\n' +
+      'Reset its status to "Unmatched"?'
+    );
+    if (!ok) return;
+    try {
+      const { error } = await supabase
+        .from('bank_statement_lines')
+        .update({
+          matched_expense_id: null,
+          matched_receipt_id: null,
+          matched_fund_transfer_id: null,
+          matched_entry_id: null,
+          matched_petty_cash_id: null,
+          reconciliation_status: 'unmatched',
+          matched_at: null,
+          matched_by: null,
+          notes: null,
+          manually_unlinked: true,
+        })
+        .eq('id', line.id);
+      if (error) throw error;
+      await loadStatementLines();
+      alert('✅ Row reset to Unmatched');
+    } catch (err: any) {
+      console.error('Error resetting orphan:', err);
+      alert('❌ ' + err.message);
+    }
+  };
+
   const handleUnlinkTransaction = async () => {
     if (!editingLine) return;
 
@@ -2132,9 +2326,12 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           matchedExpenseId: undefined,
           matchedReceiptId: undefined,
           matchedFundTransferId: undefined,
+          matchedPettyCashId: undefined,
           matchedExpense: null,
           matchedReceipt: null,
           matchedFundTransfer: null,
+          matchedPettyCash: null,
+          matchedEntryRecord: null,
           notes: undefined
         } : line
       ));
@@ -2389,35 +2586,72 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-col gap-1">
-                      {(line.status === 'matched' || line.status === 'recorded') && (
-                        <>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                            <CheckCircle2 className="w-3 h-3" /> Recorded
-                          </span>
-                          {/* Show what it's linked to */}
-                          {line.matchedExpense && (
-                            <span className="text-xs text-gray-600">
-                              → Expense: {line.matchedExpense.expense_category}
+                      {(line.status === 'matched' || line.status === 'recorded') && (() => {
+                        const hasResolvedLink = !!(line.matchedExpense || line.matchedReceipt || line.matchedFundTransfer || line.matchedPettyCash || line.matchedEntryRecord);
+                        if (!hasResolvedLink) {
+                          // Auto-Repair hint: log once per session so ops can spot orphans.
+                          if (typeof window !== 'undefined') {
+                            const key = `bre_orphan_warned_${line.id}`;
+                            const w = (window as any);
+                            w.__bre_orphan_warned = w.__bre_orphan_warned || new Set();
+                            if (!w.__bre_orphan_warned.has(key)) {
+                              w.__bre_orphan_warned.add(key);
+                              console.warn('[BRE] Row shows Recorded/Matched but no FK resolves:', line.id, line.description);
+                            }
+                          }
+                        }
+                        return (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                              <CheckCircle2 className="w-3 h-3" /> Recorded
                             </span>
-                          )}
-                          {line.matchedReceipt && (
-                            <span className="text-xs text-gray-600">
-                              → Receipt: {line.matchedReceipt.customer_name || 'Customer'}
-                            </span>
-                          )}
-                          {line.matchedFundTransfer && (
-                            <span className="text-xs text-gray-600">
-                              → Fund Transfer: {line.matchedFundTransfer.from_account_type} → {line.matchedFundTransfer.to_account_type}
-                            </span>
-                          )}
-                          {/* Warn if no actual link */}
-                          {!line.matchedExpense && !line.matchedReceipt && !line.matchedFundTransfer && !line.matchedEntry && (
-                            <span className="text-xs text-orange-600 font-medium">
-                              ⚠️ No link found
-                            </span>
-                          )}
-                        </>
-                      )}
+                            {/* Show what it's linked to */}
+                            {line.matchedExpense && (
+                              <span className="text-xs text-gray-600">
+                                → Expense: {line.matchedExpense.expense_category}
+                              </span>
+                            )}
+                            {line.matchedReceipt && (
+                              <span className="text-xs text-gray-600">
+                                → Receipt: {line.matchedReceipt.customer_name || 'Customer'}
+                              </span>
+                            )}
+                            {line.matchedFundTransfer && (
+                              <span className="text-xs text-gray-600">
+                                → Fund Transfer: {line.matchedFundTransfer.from_account_type} → {line.matchedFundTransfer.to_account_type}
+                              </span>
+                            )}
+                            {line.matchedPettyCash && (
+                              <span className="text-xs text-gray-600">
+                                → Petty Cash: {line.matchedPettyCash.description}
+                              </span>
+                            )}
+                            {/* Only show JE fallback chip if no typed FK produced a chip above */}
+                            {!line.matchedExpense && !line.matchedReceipt && !line.matchedFundTransfer && !line.matchedPettyCash && line.matchedEntryRecord && (
+                              <span className="text-xs text-gray-600">
+                                → Journal: {line.matchedEntryRecord.entry_number}
+                              </span>
+                            )}
+                            {/* Warn if no actual link resolved */}
+                            {!hasResolvedLink && (
+                              <>
+                                <span className="text-xs text-orange-600 font-medium">
+                                  ⚠️ No link found
+                                </span>
+                                {canManage && (
+                                  <button
+                                    onClick={() => resetOrphanToUnmatched(line)}
+                                    className="text-xs text-blue-600 hover:underline text-left"
+                                    title="Reset this row's status to Unmatched"
+                                  >
+                                    Reset to Unmatched
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
                       {line.status === 'suggested' && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
                           <AlertCircle className="w-3 h-3" /> Review
