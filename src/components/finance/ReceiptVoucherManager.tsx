@@ -632,32 +632,21 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         .delete()
         .eq('receipt_voucher_id', voucher.id);
 
-      // Reset bank_statement_lines linked via the typed FK AND via matched_entry_id.
-      // The is_posted guard above blocks posted receipts, so voucher.journal_entry_id
-      // is normally null here — but reset defensively in case the FK ever gets set
-      // on an unposted row.
-      await supabase
+      const { data: linkedBankLines } = await supabase
         .from('bank_statement_lines')
-        .update({
-          matched_receipt_id: null,
-          reconciliation_status: 'unmatched',
-          matched_at: null,
-          matched_by: null,
-          notes: null,
-        })
+        .select('id')
         .eq('matched_receipt_id', voucher.id);
 
-      if (voucher.journal_entry_id) {
+      if (linkedBankLines && linkedBankLines.length > 0) {
         await supabase
           .from('bank_statement_lines')
           .update({
-            matched_entry_id: null,
+            matched_receipt_id: null,
             reconciliation_status: 'unmatched',
             matched_at: null,
             matched_by: null,
-            notes: null,
           })
-          .eq('matched_entry_id', voucher.journal_entry_id);
+          .eq('matched_receipt_id', voucher.id);
       }
 
       const { error } = await supabase
