@@ -566,7 +566,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           import_containers(container_ref),
           delivery_challans(challan_number),
           bank_accounts(bank_name, account_number, alias, currency),
-          bank_statement_lines(
+          bank_statement_lines!bsl_matched_expense_fk(
             id,
             transaction_date,
             description,
@@ -690,7 +690,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           import_containers(container_ref),
           delivery_challans(challan_number),
           bank_accounts(bank_name, account_number, alias, currency),
-          bank_statement_lines(
+          bank_statement_lines!bsl_matched_expense_fk(
             id,
             transaction_date,
             description,
@@ -726,7 +726,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           import_containers(container_ref),
           delivery_challans(challan_number),
           bank_accounts(bank_name, account_number, alias, currency),
-          bank_statement_lines(
+          bank_statement_lines!bsl_matched_expense_fk(
             id,
             transaction_date,
             description,
@@ -1024,7 +1024,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             import_containers (container_ref),
             delivery_challans (challan_number),
             bank_accounts (bank_name, account_number),
-            bank_statement_lines (
+            bank_statement_lines!bsl_matched_expense_fk (
               id,
               transaction_date,
               description,
@@ -1077,7 +1077,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 import_containers (container_ref),
                 delivery_challans (challan_number),
                 bank_accounts (bank_name, account_number),
-                bank_statement_lines (
+                bank_statement_lines!bsl_matched_expense_fk (
                   id,
                   transaction_date,
                   description,
@@ -1137,7 +1137,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             import_containers (container_ref),
             delivery_challans (challan_number),
             bank_accounts (bank_name, account_number),
-            bank_statement_lines (
+            bank_statement_lines!bsl_matched_expense_fk (
               id,
               transaction_date,
               description,
@@ -1186,7 +1186,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 import_containers (container_ref),
                 delivery_challans (challan_number),
                 bank_accounts (bank_name, account_number),
-                bank_statement_lines (
+                bank_statement_lines!bsl_matched_expense_fk (
                   id,
                   transaction_date,
                   description,
@@ -1438,7 +1438,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           import_containers (container_ref),
           delivery_challans (challan_number),
           bank_accounts (bank_name, account_number),
-          bank_statement_lines (
+          bank_statement_lines!bsl_matched_expense_fk (
             id,
             transaction_date,
             description,
