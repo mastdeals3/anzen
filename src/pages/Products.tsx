@@ -319,6 +319,54 @@ export function Products() {
       }
 
       if (batches && batches.length > 0) {
+        // Collect every finance_expense row that would be swept so we can reset
+        // any bank_statement_lines linked to them (or to their JEs) BEFORE the
+        // delete. Otherwise the ON DELETE SET NULL cascade nulls the typed FK
+        // but leaves reconciliation_status='matched'/'recorded' behind — the
+        // "Linked (reference unresolved)" bug.
+        const batchIds = batches.map(b => b.id);
+        const { data: expensesToDelete } = await supabase
+          .from('finance_expenses')
+          .select('id')
+          .in('batch_id', batchIds);
+
+        const expenseIds = (expensesToDelete || []).map(e => e.id);
+
+        if (expenseIds.length > 0) {
+          await supabase
+            .from('bank_statement_lines')
+            .update({
+              matched_expense_id: null,
+              reconciliation_status: 'unmatched',
+              matched_at: null,
+              matched_by: null,
+              notes: null,
+            })
+            .in('matched_expense_id', expenseIds);
+
+          // finance_expenses has no journal_entry_id column; JEs link via
+          // source_module='expenses' AND reference_number='EXP-<id>'.
+          const { data: linkedJEs } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('source_module', 'expenses')
+            .in('reference_number', expenseIds.map(id => `EXP-${id}`));
+
+          const journalIds = (linkedJEs || []).map(j => j.id);
+          if (journalIds.length > 0) {
+            await supabase
+              .from('bank_statement_lines')
+              .update({
+                matched_entry_id: null,
+                reconciliation_status: 'unmatched',
+                matched_at: null,
+                matched_by: null,
+                notes: null,
+              })
+              .in('matched_entry_id', journalIds);
+          }
+        }
+
         for (const batch of batches) {
           await supabase.from('batch_documents').delete().eq('batch_id', batch.id);
           await supabase.from('inventory_transactions').delete().eq('batch_id', batch.id);
