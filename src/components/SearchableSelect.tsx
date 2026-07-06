@@ -15,6 +15,8 @@ interface SearchableSelectProps {
   className?: string;
   disabled?: boolean;
   required?: boolean;
+  /** When provided, shows a "Create X" option when no results match. Called with the current search text. */
+  onCreateNew?: (searchText: string) => void;
 }
 
 const STRIP_PREFIXES = /^(PT\.?\s*|CV\.?\s*|UD\.?\s*|TBK\.?\s*|LTD\.?\s*|CO\.?\s*)/i;
@@ -38,6 +40,7 @@ export function SearchableSelect({
   placeholder = 'Select...',
   className = '',
   disabled = false,
+  onCreateNew,
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -158,9 +161,9 @@ export function SearchableSelect({
           }
         }}
         disabled={disabled}
-        className={`w-full px-3 py-2 border rounded-lg text-left flex items-center justify-between ${
-          disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:border-blue-500'
-        } ${className}`}
+        className={`w-full px-3 border rounded-lg text-left flex items-center justify-between ${
+          /\bpy-/.test(className) ? '' : 'py-2'
+        } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:border-blue-500'} ${className}`}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
@@ -197,25 +200,56 @@ export function SearchableSelect({
             role="listbox"
           >
             {filtered.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-gray-400 text-center">No results found</div>
-            ) : (
-              filtered.map((option, index) => (
+              onCreateNew && filter.trim() ? (
                 <div
-                  key={option.value}
-                  onClick={() => handleSelect(option.value)}
-                  className={`px-3 py-2 cursor-pointer text-sm ${
-                    index === highlightedIndex
-                      ? 'bg-blue-500 text-white'
-                      : option.value === value
-                      ? 'bg-blue-50 text-blue-900'
-                      : 'text-gray-800 hover:bg-gray-50'
-                  }`}
+                  onClick={() => {
+                    onCreateNew(filter.trim());
+                    setIsOpen(false);
+                    setFilter('');
+                  }}
+                  className="px-3 py-2.5 cursor-pointer text-sm text-blue-700 hover:bg-blue-50 flex items-center gap-1.5 font-medium"
                   role="option"
-                  aria-selected={option.value === value}
                 >
-                  {option.label}
+                  <span className="text-base leading-none">+</span>
+                  Create &ldquo;{filter.trim()}&rdquo;
                 </div>
-              ))
+              ) : (
+                <div className="px-3 py-3 text-sm text-gray-400 text-center">No results found</div>
+              )
+            ) : (
+              <>
+                {filtered.map((option, index) => (
+                  <div
+                    key={option.value}
+                    onClick={() => handleSelect(option.value)}
+                    className={`px-3 py-2 cursor-pointer text-sm ${
+                      index === highlightedIndex
+                        ? 'bg-blue-500 text-white'
+                        : option.value === value
+                        ? 'bg-blue-50 text-blue-900'
+                        : 'text-gray-800 hover:bg-gray-50'
+                    }`}
+                    role="option"
+                    aria-selected={option.value === value}
+                  >
+                    {option.label}
+                  </div>
+                ))}
+                {onCreateNew && filter.trim() && (
+                  <div
+                    onClick={() => {
+                      onCreateNew(filter.trim());
+                      setIsOpen(false);
+                      setFilter('');
+                    }}
+                    className="px-3 py-2 cursor-pointer text-sm text-blue-700 hover:bg-blue-50 flex items-center gap-1.5 font-medium border-t border-gray-100"
+                    role="option"
+                  >
+                    <span className="text-base leading-none">+</span>
+                    Create &ldquo;{filter.trim()}&rdquo;
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
