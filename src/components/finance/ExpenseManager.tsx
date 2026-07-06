@@ -2301,19 +2301,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           isOpen={modalOpen}
           onClose={() => { setModalOpen(false); resetForm(); }}
           title={editingExpense ? 'Edit Expense' : 'Record New Expense'}
-          maxWidth="max-w-5xl"
+          maxWidth="max-w-6xl"
         >
           <form onSubmit={handleSubmit}>
-            {/* ── Top two-column grid: Supplier (L) + Document (R) ── */}
-            <div className="grid grid-cols-2 gap-x-6 pb-4 border-b">
-              {/* LEFT: Supplier */}
-              <div className="space-y-2.5">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Supplier</p>
+            {/* ── Horizontal header rows (matches the mockup layout) ── */}
+            <div className="pb-3 border-b space-y-2.5">
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Supplier</label>
+              {/* Row 1: Supplier | Inv No | Inv Date | Due Date | Category */}
+              <div className="grid grid-cols-12 gap-2.5">
+                {/* Supplier + New button (4 cols) */}
+                <div className="col-span-4">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Supplier{selectedDocType === 'Import / Customs Broker Invoice' ? ' (Broker)' : ''}</label>
                   <div className="flex gap-1.5">
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <SearchableSelect
                         value={formData.supplier_id}
                         onChange={(val) => handleSupplierSelect(val)}
@@ -2324,13 +2324,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             label: `${s.company_name}${s.pkp_status ? ' ✓PKP' : ''}`,
                           })),
                         ]}
-                        placeholder="Select Supplier"
-                        className="text-xs"
+                        placeholder="Search supplier..."
                       />
                     </div>
                     <button type="button" onClick={() => setShowQuickAddSupplier(true)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-green-600 text-white rounded hover:bg-green-700 whitespace-nowrap" title="Quick Add Supplier">
-                      <UserPlus className="w-3 h-3" /> New
+                      className="flex items-center gap-1 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 whitespace-nowrap" title="Quick Add Supplier">
+                      <Plus className="w-3.5 h-3.5" /> New
                     </button>
                   </div>
                   {selectedSupplier && (
@@ -2344,155 +2343,223 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Invoice #</label>
-                    <input type="text" value={formData.invoice_number}
-                      onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" placeholder="Supplier's inv #" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Date <span className="text-red-500">*</span></label>
-                    <input type="date" value={formData.expense_date}
-                      onChange={(e) => {
-                        const d = e.target.value;
-                        setFormData(prev => ({
-                          ...prev, expense_date: d,
-                          due_date: selectedSupplier?.payment_terms_days ? getDueDateFromTerms(d, selectedSupplier.payment_terms_days) : prev.due_date,
-                        }));
-                      }}
-                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" required />
-                  </div>
+                {/* Inv No (2 cols) */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Inv. No.</label>
+                  <input type="text" value={formData.invoice_number}
+                    onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm" placeholder="—" />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
-                    <input type="date" value={formData.due_date}
-                      onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                      className={`w-full px-2.5 py-1.5 border rounded text-xs ${formData.due_date && formData.due_date < new Date().toISOString().split('T')[0] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
-                    {formData.due_date && formData.due_date < new Date().toISOString().split('T')[0] && (
-                      <p className="text-[9px] text-red-600 mt-0.5 font-semibold">⚠ Overdue</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Reference</label>
-                    <input type="text" value={formData.payment_reference}
-                      onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" placeholder="TT ref / cheque #" />
-                  </div>
-                </div>
-              </div>
-
-              {/* RIGHT: Document */}
-              <div className="space-y-2.5">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Document</p>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Document Type <span className="text-red-500">*</span></label>
-                    <select value={selectedDocType}
-                      onChange={(e) => {
-                        const dt = e.target.value as DocumentType | '';
-                        setSelectedDocType(dt);
-                        if (dt) {
-                          const sc = getSingleCategoryForDocType(dt as DocumentType);
-                          setFormData(prev => ({ ...prev, expense_category: sc ?? '' }));
-                        }
-                      }}
-                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" required>
-                      <option value="">Select type</option>
-                      {DOCUMENT_TYPES.map(dt => <option key={dt} value={dt}>{dt}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
-                    {selectedDocType && DOCUMENT_TYPE_GROUPS[selectedDocType as DocumentType]?.length === 1 ? (
-                      <div className="px-2.5 py-1.5 border border-gray-200 rounded text-xs bg-white text-gray-600 h-[30px] flex items-center">
-                        {EXPENSE_CATEGORY_LABELS[DOCUMENT_TYPE_GROUPS[selectedDocType as DocumentType][0]] || DOCUMENT_TYPE_GROUPS[selectedDocType as DocumentType][0]}
-                      </div>
-                    ) : (
-                      <select value={formData.expense_category}
-                        onChange={(e) => setFormData({ ...formData, expense_category: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" required>
-                        <option value="">Select category</option>
-                        {(selectedDocType ? DOCUMENT_TYPE_GROUPS[selectedDocType as DocumentType] ?? [] : []).map(cat => (
-                          <option key={cat} value={cat}>{EXPENSE_CATEGORY_LABELS[cat] || cat}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Amount (IDR) <span className="text-red-500">*</span></label>
-                  <input type="number" step="1" min="0" value={formData.amount || ''}
+                {/* Inv Date (2 cols) */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Inv. Date <span className="text-red-500">*</span></label>
+                  <input type="date" value={formData.expense_date}
                     onChange={(e) => {
-                      const amt = parseFloat(e.target.value) || 0;
+                      const d = e.target.value;
                       setFormData(prev => ({
-                        ...prev, amount: amt,
-                        // Preserve manual PPN edits — only auto-recompute when the
-                        // user hasn't overridden the value.
-                        ppn_amount: selectedSupplier?.pkp_status && !prev.ppn_manual_override
-                          ? calculatePPN(amt, true)
-                          : prev.ppn_amount,
+                        ...prev, expense_date: d,
+                        due_date: selectedSupplier?.payment_terms_days ? getDueDateFromTerms(d, selectedSupplier.payment_terms_days) : prev.due_date,
                       }));
                     }}
-                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs font-semibold" placeholder="0" required />
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm" required />
                 </div>
 
-                {/* Container — required for import categories, optional for broker */}
-                {(requiresContainer || formData.expense_category === 'import_broker') && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      <Package className="w-3 h-3 inline mr-1" />
-                      Import Container{requiresContainer ? <span className="text-red-500"> *</span> : <span className="text-gray-400"> (optional)</span>}
-                    </label>
-                    <select value={formData.import_container_id}
-                      onChange={(e) => setFormData({ ...formData, import_container_id: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" required={requiresContainer}>
-                      <option value="">Select Container</option>
-                      {containers.map(c => <option key={c.id} value={c.id}>{c.container_ref}</option>)}
-                    </select>
-                  </div>
-                )}
+                {/* Due Date (2 cols) */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                  <input type="date" value={formData.due_date}
+                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                    className={`w-full px-2.5 py-2 border rounded-lg text-sm ${formData.due_date && formData.due_date < new Date().toISOString().split('T')[0] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
+                  {formData.due_date && formData.due_date < new Date().toISOString().split('T')[0] && (
+                    <p className="text-[9px] text-red-600 mt-0.5 font-semibold">⚠ Overdue</p>
+                  )}
+                </div>
 
-                {/* Delivery Challan */}
-                {requiresDC && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Challan (optional)</label>
-                    <select value={formData.delivery_challan_id}
-                      onChange={(e) => setFormData({ ...formData, delivery_challan_id: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs">
-                      <option value="">None</option>
-                      {challans.map(ch => (
-                        <option key={ch.id} value={ch.id}>{ch.challan_number} — {new Date(ch.challan_date).toLocaleDateString('en-GB')} — {ch.customers?.company_name || ''}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Fixed Asset Account */}
-                {formData.expense_category === 'fixed_asset' && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Asset Account <span className="text-red-500">*</span></label>
-                    <select value={formData.fixed_asset_account_id}
-                      onChange={(e) => setFormData({ ...formData, fixed_asset_account_id: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" required>
-                      <option value="">Select account</option>
-                      {coaAssets.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
-                  <textarea value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={2} className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs resize-none"
-                    placeholder="Invoice description / goods received..." />
+                {/* Category (2 cols) — grouped by Doc Type, sets both on change */}
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Category <span className="text-red-500">*</span></label>
+                  <select value={formData.expense_category}
+                    onChange={(e) => {
+                      const cat = e.target.value;
+                      // Infer Doc Type from the chosen category
+                      let dt: DocumentType | '' = '';
+                      for (const [docType, cats] of Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]) {
+                        if (cats.includes(cat)) { dt = docType; break; }
+                      }
+                      setSelectedDocType(dt);
+                      setFormData(prev => ({ ...prev, expense_category: cat }));
+                    }}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white" required>
+                    <option value="">Select category</option>
+                    {(Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]).map(([docType, cats]) => (
+                      <optgroup key={docType} label={docType}>
+                        {cats.map(cat => (
+                          <option key={cat} value={cat}>{EXPENSE_CATEGORY_LABELS[cat] || cat}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
                 </div>
               </div>
+
+              {/* Row 2: Invoice Amount | PPN | PPh Withheld | PPh Code | Stamp Duty | Reference | Description */}
+              {(() => {
+                const taxCfg = selectedDocType ? DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType] : null;
+                const isBrokerRow = formData.expense_category === 'import_broker';
+                return (
+                  <div className="grid grid-cols-12 gap-2.5">
+                    {/* Invoice Amount */}
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Amount (IDR) <span className="text-red-500">*</span></label>
+                      <input type="number" step="1" min="0" value={formData.amount || ''}
+                        onChange={(e) => {
+                          const amt = parseFloat(e.target.value) || 0;
+                          setFormData(prev => ({
+                            ...prev, amount: amt,
+                            ppn_amount: selectedSupplier?.pkp_status && !prev.ppn_manual_override
+                              ? calculatePPN(amt, true)
+                              : prev.ppn_amount,
+                          }));
+                        }}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-right font-mono" placeholder="0" required />
+                    </div>
+
+                    {/* PPN */}
+                    {taxCfg?.ppn && (
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
+                          PPN{isBrokerRow ? ' (from Broker)' : ''}
+                          {!isBrokerRow && (
+                            <span className={`text-[9px] font-semibold px-1 rounded ${formData.ppn_manual_override ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                              {formData.ppn_manual_override ? 'MAN' : 'AUTO'}
+                            </span>
+                          )}
+                          {!isBrokerRow && selectedSupplier?.pkp_status && (
+                            <button type="button" title="Recalculate 11% & clear manual override"
+                              onClick={() => setFormData(prev => ({ ...prev, ppn_amount: calculatePPN(prev.amount, true), ppn_manual_override: false }))}
+                              className="text-blue-600 hover:text-blue-800 text-[10px]">↻</button>
+                          )}
+                        </label>
+                        <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            ppn_amount: parseFloat(e.target.value) || 0,
+                            ppn_manual_override: prev.expense_category !== 'import_broker',
+                          }))}
+                          readOnly={isBrokerRow}
+                          className={`w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm text-right font-mono ${isBrokerRow ? 'bg-gray-100 text-gray-600' : ''}`} placeholder="0" />
+                      </div>
+                    )}
+
+                    {/* PPh Withheld (amount) + PPh Code (side by side) */}
+                    {(taxCfg?.pph23 || taxCfg?.pph21) && (
+                      <>
+                        <div className="col-span-1">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            {taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'}
+                          </label>
+                          <input type="number" step="1" min="0" value={formData.pph_amount || ''}
+                            onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
+                            className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm text-right font-mono" placeholder="0" />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">PPh Code</label>
+                          <select value={formData.pph_code_id}
+                            onChange={(e) => {
+                              const tc = taxCodes.find(t => t.id === e.target.value);
+                              setFormData(prev => ({ ...prev, pph_code_id: e.target.value, pph_amount: tc ? Math.round(prev.amount * tc.rate / 100) : 0 }));
+                            }}
+                            className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                            <option value="">None</option>
+                            {taxCodes.map(tc => <option key={tc.id} value={tc.id}>{tc.code} — {tc.rate}%</option>)}
+                          </select>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Stamp Duty */}
+                    {taxCfg?.stamp && (
+                      <div className="col-span-1">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Stamp Duty</label>
+                        <input type="number" step="1000" min="0" value={formData.stamp_duty_amount || ''}
+                          onChange={(e) => setFormData({ ...formData, stamp_duty_amount: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm text-right font-mono" placeholder="0" />
+                      </div>
+                    )}
+
+                    {/* Bank Charges (Utility only) */}
+                    {formData.expense_category === 'utilities' && (
+                      <div className="col-span-1">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Bank Chg</label>
+                        <input type="number" step="1" min="0" value={formData.bank_charges_amount || ''}
+                          onChange={(e) => setFormData({ ...formData, bank_charges_amount: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm text-right font-mono" placeholder="0" />
+                      </div>
+                    )}
+
+                    {/* Reference — fills remaining */}
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Reference</label>
+                      <input type="text" value={formData.payment_reference}
+                        onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm" placeholder="TT ref / cheque #" />
+                    </div>
+
+                    {/* Description — fills remaining */}
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                      <input type="text" value={formData.description}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm" placeholder="Invoice description..." />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Row 3: contextual — Container / DC / Fixed Asset */}
+              {((requiresContainer || formData.expense_category === 'import_broker') || requiresDC || formData.expense_category === 'fixed_asset') && (
+                <div className="grid grid-cols-12 gap-2.5">
+                  {(requiresContainer || formData.expense_category === 'import_broker') && (
+                    <div className="col-span-6">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <Package className="w-3 h-3 inline mr-1" />
+                        Import Container{requiresContainer ? <span className="text-red-500"> *</span> : <span className="text-gray-400"> (optional)</span>}
+                      </label>
+                      <select value={formData.import_container_id}
+                        onChange={(e) => setFormData({ ...formData, import_container_id: e.target.value })}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white" required={requiresContainer}>
+                        <option value="">Select Container</option>
+                        {containers.map(c => <option key={c.id} value={c.id}>{c.container_ref}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {requiresDC && (
+                    <div className="col-span-6">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Challan (optional)</label>
+                      <select value={formData.delivery_challan_id}
+                        onChange={(e) => setFormData({ ...formData, delivery_challan_id: e.target.value })}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                        <option value="">None</option>
+                        {challans.map(ch => (
+                          <option key={ch.id} value={ch.id}>{ch.challan_number} — {new Date(ch.challan_date).toLocaleDateString('en-GB')} — {ch.customers?.company_name || ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {formData.expense_category === 'fixed_asset' && (
+                    <div className="col-span-6">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Asset Account <span className="text-red-500">*</span></label>
+                      <select value={formData.fixed_asset_account_id}
+                        onChange={(e) => setFormData({ ...formData, fixed_asset_account_id: e.target.value })}
+                        className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white" required>
+                        <option value="">Select account</option>
+                        {coaAssets.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* ── Tax Section (conditional, full width) ── */}
@@ -2589,39 +2656,50 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     const parentStamp = formData.stamp_duty_amount || 0;
                     const grandPayable = brokerInvoiceAmount + totalLinePpn - parentPph + parentStamp;
                     const fmt = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
-                    // Excel/Tally-density reimbursement grid. Row = 36-40px, inputs borderless
-                    // inside cells with visible cell borders. SearchableSelect uses the same
-                    // component & size as the header Supplier picker (default text-sm py-2).
+                    // Excel/Tally-density reimbursement grid with # column, Invoice Date and PPN %
+                    // dropdown. Row = 36px. Inputs sit flush inside cells with visible borders.
                     const cellInputCls = 'w-full h-[34px] px-2 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none rounded-none text-sm bg-transparent';
+                    const grid = 'grid grid-cols-[28px_minmax(0,4fr)_minmax(0,1.8fr)_minmax(0,1.8fr)_minmax(0,1.8fr)_60px_minmax(0,1.6fr)_minmax(0,1.6fr)_36px]';
                     return (
                       <div className="mb-2">
-                        <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center justify-between mb-1.5">
                           <div className="text-[11px] text-gray-500">
-                            <span className="font-semibold text-gray-800 text-xs">Reimbursement Lines</span>
-                            <span className="ml-2">Sub-supplier affects Input PPN only. Parent supplier stays as the payable.</span>
+                            <span className="font-semibold text-gray-800 text-sm">Reimbursement Lines</span>
+                            <span className="ml-2">Sub-suppliers only affect the Input PPN report — parent supplier stays as the payable.</span>
                           </div>
                           <button type="button" onClick={addLine}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-blue-700 border border-blue-300 bg-blue-50 hover:bg-blue-100 rounded">
-                            <Plus className="w-3 h-3" /> Add Line
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:text-blue-900">
+                            <Plus className="w-3.5 h-3.5" /> Add Line
                           </button>
                         </div>
 
                         {brokerItems.length > 0 && (
-                          <div className="border border-gray-300 rounded overflow-hidden bg-white shadow-sm">
-                            {/* Header row — Excel-style */}
-                            <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_28px] bg-gray-100 border-b border-gray-300 text-[10px] font-semibold text-gray-600 uppercase tracking-wide">
-                              <div className="px-2 py-1 border-r border-gray-300">Sub-Supplier</div>
-                              <div className="px-2 py-1 border-r border-gray-300">Invoice #</div>
-                              <div className="px-2 py-1 border-r border-gray-300 text-right">Amount</div>
-                              <div className="px-2 py-1 border-r border-gray-300 text-right">PPN</div>
-                              <div className="px-2 py-1 border-r border-gray-300 text-right">Total</div>
-                              <div></div>
+                          <div className="border border-gray-300 rounded-md overflow-hidden bg-white shadow-sm">
+                            {/* Header row */}
+                            <div className={`${grid} bg-gray-100 border-b border-gray-300 text-[10px] font-semibold text-gray-600 uppercase tracking-wide`}>
+                              <div className="px-2 py-1.5 border-r border-gray-300 text-center">#</div>
+                              <div className="px-2 py-1.5 border-r border-gray-300">Sub-supplier <span className="normal-case font-normal text-gray-400">(Type to search)</span></div>
+                              <div className="px-2 py-1.5 border-r border-gray-300">Invoice No.</div>
+                              <div className="px-2 py-1.5 border-r border-gray-300">Invoice Date</div>
+                              <div className="px-2 py-1.5 border-r border-gray-300 text-right">Amount (IDR)</div>
+                              <div className="px-2 py-1.5 border-r border-gray-300 text-center">PPN %</div>
+                              <div className="px-2 py-1.5 border-r border-gray-300 text-right">PPN Amount</div>
+                              <div className="px-2 py-1.5 border-r border-gray-300 text-right">Total (IDR)</div>
+                              <div className="px-2 py-1.5 text-center">Action</div>
                             </div>
                             {brokerItems.map((item, idx) => {
                               const lineTotal = (item.amount || 0) + (item.ppn_amount || 0);
+                              const currentPct = (item.amount || 0) > 0
+                                ? Math.round(((item.ppn_amount || 0) / (item.amount || 1)) * 100)
+                                : 0;
+                              // Snap common percentages so the dropdown reflects reality.
+                              const displayPct = currentPct === 11 || currentPct === 0 ? currentPct : (item.ppn_amount || 0) > 0 ? currentPct : 0;
                               return (
                                 <div key={idx}
-                                  className="grid grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_28px] items-stretch border-b border-gray-200 last:border-b-0 hover:bg-blue-50/40 group">
+                                  className={`${grid} items-stretch border-b border-gray-200 last:border-b-0 hover:bg-blue-50/40 group`}>
+                                  <div className="border-r border-gray-200 flex items-center justify-center h-[36px] text-xs text-gray-500 font-medium">
+                                    {idx + 1}
+                                  </div>
                                   {/* Sub-supplier — SearchableSelect flush inside cell */}
                                   <div className="border-r border-gray-200 [&_button]:!rounded-none [&_button]:!border-0 [&_button]:!shadow-none [&_button]:!bg-transparent [&_button]:!h-[36px] [&_button]:!py-0 [&_button]:!px-2">
                                     <SearchableSelect
@@ -2646,156 +2724,138 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                       className={cellInputCls} placeholder="—" />
                                   </div>
                                   <div className="border-r border-gray-200">
+                                    <input type="date" value={item.invoice_date || ''}
+                                      onChange={(e) => updateLine(idx, { invoice_date: e.target.value })}
+                                      className={cellInputCls} />
+                                  </div>
+                                  <div className="border-r border-gray-200">
                                     <input type="number" step="1" min="0" value={item.amount || ''}
                                       onChange={(e) => {
                                         const amt = parseFloat(e.target.value) || 0;
-                                        const sup = suppliers.find(s => s.id === (item.supplier_id || '')) ?? null;
-                                        const seedPpn = sup?.pkp_status ? Math.round(amt * 0.11) : 0;
+                                        const pct = displayPct || (suppliers.find(s => s.id === (item.supplier_id || ''))?.pkp_status ? 11 : 0);
+                                        const seedPpn = Math.round(amt * pct / 100);
                                         updateLine(idx, { amount: amt, ppn_treatment: 'excluded', ppn_amount: seedPpn });
                                       }}
                                       className={cellInputCls + ' text-right font-mono'} placeholder="0" />
                                   </div>
+                                  <div className="border-r border-gray-200 flex items-center">
+                                    <select value={displayPct === 11 ? '11' : displayPct === 0 ? '0' : ''}
+                                      onChange={(e) => {
+                                        const pct = parseFloat(e.target.value) || 0;
+                                        const amt = item.amount || 0;
+                                        updateLine(idx, { ppn_treatment: 'excluded', ppn_amount: Math.round(amt * pct / 100) });
+                                      }}
+                                      className="w-full h-[34px] px-1 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none text-sm bg-transparent text-center">
+                                      <option value="0">0%</option>
+                                      <option value="11">11%</option>
+                                      {displayPct !== 0 && displayPct !== 11 && <option value="">{displayPct}%</option>}
+                                    </select>
+                                  </div>
                                   <div className="border-r border-gray-200">
                                     <input type="number" step="1" min="0" value={item.ppn_amount || ''}
                                       onChange={(e) => updateLine(idx, { ppn_treatment: 'excluded', ppn_amount: parseFloat(e.target.value) || 0 })}
-                                      className={cellInputCls + ' text-right font-mono'} placeholder="0" />
+                                      className={cellInputCls + ' text-right font-mono text-blue-700'} placeholder="0" />
                                   </div>
                                   <div className="border-r border-gray-200 flex items-center justify-end px-2 h-[36px] font-mono text-sm text-gray-800">
                                     {lineTotal ? lineTotal.toLocaleString('id-ID') : ''}
                                   </div>
                                   <div className="flex items-center justify-center h-[36px]">
                                     <button type="button" onClick={() => removeLine(idx)}
-                                      className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity p-1" title="Remove line" tabIndex={-1}>
-                                      <X className="w-3.5 h-3.5" />
+                                      className="text-red-500 hover:text-red-700 p-1" title="Remove line" tabIndex={-1}>
+                                      <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
                                 </div>
                               );
                             })}
+                            {/* Footer totals row */}
+                            <div className={`${grid} bg-gray-50 border-t border-gray-300 text-xs font-semibold text-gray-700`}>
+                              <div className="border-r border-gray-300 px-2 py-1.5 text-center"></div>
+                              <div className="border-r border-gray-300 px-2 py-1.5">Total ({brokerItems.length} Lines)</div>
+                              <div className="border-r border-gray-300 px-2 py-1.5"></div>
+                              <div className="border-r border-gray-300 px-2 py-1.5"></div>
+                              <div className="border-r border-gray-300 px-2 py-1.5 text-right font-mono text-gray-900">{reimbTotal.toLocaleString('id-ID')}</div>
+                              <div className="border-r border-gray-300 px-2 py-1.5"></div>
+                              <div className="border-r border-gray-300 px-2 py-1.5 text-right font-mono text-blue-700">{totalLinePpn.toLocaleString('id-ID')}</div>
+                              <div className="border-r border-gray-300 px-2 py-1.5 text-right font-mono text-gray-900">{(reimbTotal + totalLinePpn).toLocaleString('id-ID')}</div>
+                              <div></div>
+                            </div>
                           </div>
                         )}
 
-                        {/* Live Payment Summary — single-line compact card */}
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 px-2.5 py-1.5 border border-blue-200 bg-blue-50/70 rounded text-xs">
-                          <span className="text-gray-600"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">Broker Inv</span><span className="font-mono">{fmt(brokerInvoiceAmount)}</span></span>
-                          <span className="text-gray-400">·</span>
-                          <span className="text-gray-600"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">Reimb</span><span className="font-mono">{fmt(reimbTotal)}</span></span>
-                          <span className="text-gray-400">·</span>
-                          <span className="text-blue-700"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">PPN</span><span className="font-mono">{fmt(totalLinePpn)}</span></span>
-                          <span className="text-gray-400">·</span>
-                          <span className="text-orange-700"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">PPh</span><span className="font-mono">−{fmt(parentPph)}</span></span>
-                          <span className="text-gray-400">·</span>
-                          <span className="ml-auto text-gray-900 font-bold"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">Payable</span><span className="font-mono text-sm">{fmt(grandPayable)}</span></span>
-                          {brokerItems.length > 0 && Math.abs(linesSumAmt - brokerInvoiceAmount) > 1 && (
-                            <span className="w-full flex items-center gap-1 mt-0.5 pt-1 border-t border-orange-200 text-[10px] text-orange-700">
-                              <AlertCircle className="w-3 h-3 shrink-0" />
-                              Reimb total ≠ Broker Invoice (diff Rp {Math.abs(linesSumAmt - brokerInvoiceAmount).toLocaleString('id-ID')}) — invoice amount will be replaced with line total on save.
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Compact single-row tax bar: PPN | PPh | Bank Charges | Stamp */}
-                  {(() => {
-                    const showBankCharges = formData.expense_category === 'utilities';
-                    const showPPh = taxCfg.pph23 || taxCfg.pph21;
-                    const cells = [taxCfg.ppn, showPPh, showBankCharges, taxCfg.stamp].filter(Boolean).length;
-                    if (cells === 0) return null;
-                    const gridCls = cells === 4 ? 'grid-cols-4' : cells === 3 ? 'grid-cols-3' : cells === 2 ? 'grid-cols-2' : 'grid-cols-1';
-                    return (
-                      <div className={`grid ${gridCls} gap-3 items-start`}>
-                        {taxCfg.ppn && (
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-xs font-medium text-gray-700">PPN</label>
-                              {formData.expense_category === 'import_broker' ? (
-                                <span className="text-[9px] text-gray-500 italic">Σ broker lines</span>
-                              ) : (
-                                <span className="flex items-center gap-1">
-                                  <span className={`text-[9px] font-semibold px-1 rounded ${formData.ppn_manual_override ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
-                                    {formData.ppn_manual_override ? 'MANUAL' : 'AUTO'}
-                                  </span>
-                                  {selectedSupplier?.pkp_status && (
-                                    <button
-                                      type="button"
-                                      title="Recalculate PPN 11% and clear manual override"
-                                      onClick={() => setFormData(prev => ({ ...prev, ppn_amount: calculatePPN(prev.amount, true), ppn_manual_override: false }))}
-                                      className="text-[9px] text-blue-600 hover:text-blue-800 underline"
-                                    >↻</button>
-                                  )}
-                                </span>
+                        {/* Payment Summary — horizontal formula bar matching mockup */}
+                        {(() => {
+                          const brokerPpnDirect = Math.max(0, brokerInvoiceAmount - reimbTotal) > 0 ? formData.ppn_amount || 0 : 0;
+                          const totalPpn = totalLinePpn + Math.max(0, (formData.ppn_amount || 0) - totalLinePpn);
+                          return (
+                            <div className="mt-2 border border-gray-200 rounded-lg bg-white">
+                              <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr_auto_1fr_auto_auto] items-stretch text-sm">
+                                <div className="px-3 py-2 flex flex-col items-center border-r border-gray-100">
+                                  <span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">Broker Invoice</span>
+                                  <span className="font-mono text-gray-800">{fmt(brokerInvoiceAmount)}</span>
+                                </div>
+                                <span className="flex items-center px-1 text-gray-400 text-lg font-light">+</span>
+                                <div className="px-3 py-2 flex flex-col items-center border-r border-gray-100">
+                                  <span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">Reimb. Total</span>
+                                  <span className="font-mono text-gray-800">{fmt(reimbTotal)}</span>
+                                </div>
+                                <span className="flex items-center px-1 text-gray-300 text-lg font-light">|</span>
+                                <div className="px-3 py-2 flex flex-col items-center border-r border-gray-100">
+                                  <span className="text-[9px] font-semibold text-blue-600 uppercase tracking-wide">PPN (Broker + Lines)</span>
+                                  <span className="font-mono text-blue-700">{fmt(totalPpn)}</span>
+                                </div>
+                                <span className="flex items-center px-1 text-gray-400 text-lg font-light">−</span>
+                                <div className="px-3 py-2 flex flex-col items-center border-r border-gray-100">
+                                  <span className="text-[9px] font-semibold text-orange-600 uppercase tracking-wide">PPh Withheld</span>
+                                  <span className="font-mono text-orange-700">{fmt(parentPph)}</span>
+                                </div>
+                                <span className="flex items-center px-1 text-gray-400 text-lg font-light">+</span>
+                                <div className="px-3 py-2 flex flex-col items-center border-r border-gray-100">
+                                  <span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">Stamp Duty</span>
+                                  <span className="font-mono text-gray-800">{fmt(parentStamp)}</span>
+                                </div>
+                                <span className="flex items-center px-1 text-gray-400 text-lg font-light">=</span>
+                                <div className="px-3 py-2 flex flex-col items-center border-2 border-emerald-400 bg-emerald-50 rounded-lg m-1">
+                                  <span className="text-[9px] font-semibold text-emerald-700 uppercase tracking-wide">Total Payable</span>
+                                  <span className="font-mono font-bold text-emerald-900 text-base">{fmt(grandPayable)}</span>
+                                </div>
+                              </div>
+                              <div className="px-3 pb-1.5 text-[10px] text-gray-500 italic">
+                                (Total Payable = Broker Invoice + PPN + Stamp Duty − PPh Withheld)
+                              </div>
+                              {brokerItems.length > 0 && Math.abs(linesSumAmt - brokerInvoiceAmount) > 1 && (
+                                <div className="px-3 py-1 bg-orange-50 border-t border-orange-200 text-[10px] text-orange-700 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3 shrink-0" />
+                                  Reimb. total ≠ Broker Invoice (diff Rp {Math.abs(linesSumAmt - brokerInvoiceAmount).toLocaleString('id-ID')}) — invoice amount will be replaced with line total on save.
+                                </div>
                               )}
                             </div>
-                            <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
-                              onChange={(e) => setFormData(prev => ({
-                                ...prev,
-                                ppn_amount: parseFloat(e.target.value) || 0,
-                                ppn_manual_override: prev.expense_category !== 'import_broker',
-                              }))}
-                              readOnly={formData.expense_category === 'import_broker'}
-                              placeholder="0" className={`w-full px-2 py-1.5 text-xs border border-gray-300 rounded ${formData.expense_category === 'import_broker' ? 'bg-gray-100 text-gray-600' : ''}`} />
-                          </div>
-                        )}
-                        {showPPh && (
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-xs font-medium text-gray-700">{taxCfg.pph23 ? 'PPh 23' : 'PPh 21'}</label>
-                              <select value={formData.pph_code_id}
-                                onChange={(e) => {
-                                  const tc = taxCodes.find(t => t.id === e.target.value);
-                                  setFormData(prev => ({ ...prev, pph_code_id: e.target.value, pph_amount: tc ? Math.round(prev.amount * tc.rate / 100) : 0 }));
-                                }}
-                                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 max-w-[110px]">
-                                <option value="">None</option>
-                                {taxCodes.map(tc => <option key={tc.id} value={tc.id}>{tc.code} {tc.rate}%</option>)}
-                              </select>
-                            </div>
-                            <input type="number" step="1" min="0" value={formData.pph_amount || ''}
-                              onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
-                              placeholder="0" className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded" />
-                          </div>
-                        )}
-                        {showBankCharges && (
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-xs font-medium text-gray-700">Bank Charges</label>
-                              <span className="text-[9px] text-gray-400">optional</span>
-                            </div>
-                            <input type="number" step="1" min="0" value={formData.bank_charges_amount || ''}
-                              onChange={(e) => setFormData({ ...formData, bank_charges_amount: parseFloat(e.target.value) || 0 })}
-                              placeholder="0" className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded" />
-                          </div>
-                        )}
-                        {taxCfg.stamp && (
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <label className="text-xs font-medium text-gray-700">Bea Meterai</label>
-                              <span className="text-[9px] text-gray-400">optional</span>
-                            </div>
-                            <input type="number" step="1000" min="0" value={formData.stamp_duty_amount || ''}
-                              onChange={(e) => setFormData({ ...formData, stamp_duty_amount: parseFloat(e.target.value) || 0 })}
-                              placeholder="0" className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded" />
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     );
                   })()}
 
-                  {/* Tax summary line */}
-                  {(formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0 || (formData.expense_category === 'utilities' && formData.bank_charges_amount > 0)) && (
-                    <div className="mt-2 pt-2 border-t text-[10px] text-gray-500 flex flex-wrap gap-3">
-                      <span>DPP: Rp {(formData.amount || 0).toLocaleString('id-ID')}</span>
-                      {formData.ppn_amount > 0 && <span className="text-blue-600">+PPN Rp {formData.ppn_amount.toLocaleString('id-ID')}</span>}
-                      {formData.pph_amount > 0 && <span className="text-orange-600">−PPh Rp {formData.pph_amount.toLocaleString('id-ID')}</span>}
-                      {formData.stamp_duty_amount > 0 && <span>+Meterai Rp {formData.stamp_duty_amount.toLocaleString('id-ID')}</span>}
-                      {formData.expense_category === 'utilities' && formData.bank_charges_amount > 0 && (
-                        <span className="text-purple-700">+Bank Charges Rp {formData.bank_charges_amount.toLocaleString('id-ID')}</span>
-                      )}
-                      <span className="font-semibold text-gray-800">= Net Rp {((formData.amount || 0) + (formData.ppn_amount || 0) - (formData.pph_amount || 0) + (formData.stamp_duty_amount || 0) + (formData.expense_category === 'utilities' ? (formData.bank_charges_amount || 0) : 0)).toLocaleString('id-ID')}</span>
-                    </div>
-                  )}
+                  {/* Non-broker totals recap — for broker the reimbursement Payment Summary card handles this. */}
+                  {formData.expense_category !== 'import_broker' && !taxCfg.pib && (formData.amount > 0 || formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0) && (() => {
+                    const bc = formData.expense_category === 'utilities' ? (formData.bank_charges_amount || 0) : 0;
+                    const payable = (formData.amount || 0) + (formData.ppn_amount || 0) - (formData.pph_amount || 0) + (formData.stamp_duty_amount || 0) + bc;
+                    const fmt = (n: number) => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
+                    return (
+                      <div className="border border-gray-200 rounded-lg bg-gray-50 px-3 py-2 flex items-center flex-wrap gap-x-3 gap-y-1 text-sm">
+                        <span className="flex flex-col"><span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">Invoice</span><span className="font-mono text-gray-800">{fmt(formData.amount)}</span></span>
+                        {(formData.ppn_amount || 0) > 0 && (<><span className="text-gray-400 text-lg font-light">+</span><span className="flex flex-col"><span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">PPN</span><span className="font-mono text-blue-700">{fmt(formData.ppn_amount)}</span></span></>)}
+                        {(formData.pph_amount || 0) > 0 && (<><span className="text-gray-400 text-lg font-light">−</span><span className="flex flex-col"><span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">PPh</span><span className="font-mono text-orange-700">{fmt(formData.pph_amount)}</span></span></>)}
+                        {(formData.stamp_duty_amount || 0) > 0 && (<><span className="text-gray-400 text-lg font-light">+</span><span className="flex flex-col"><span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">Stamp</span><span className="font-mono text-gray-800">{fmt(formData.stamp_duty_amount)}</span></span></>)}
+                        {bc > 0 && (<><span className="text-gray-400 text-lg font-light">+</span><span className="flex flex-col"><span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">Bank Chg</span><span className="font-mono text-purple-700">{fmt(bc)}</span></span></>)}
+                        <span className="text-gray-400 text-lg font-light">=</span>
+                        <span className="ml-auto flex flex-col items-end px-3 py-1 border border-emerald-300 bg-emerald-50 rounded-lg">
+                          <span className="text-[9px] font-semibold text-emerald-700 uppercase tracking-wide">Total Payable</span>
+                          <span className="font-mono font-bold text-emerald-900 text-base">{fmt(payable)}</span>
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
