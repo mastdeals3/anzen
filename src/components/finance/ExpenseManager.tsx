@@ -2493,8 +2493,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         const next = prev.map((it, i) => {
                           if (i !== idx) return it;
                           const merged = { ...it, ...patch };
-                          // Recompute per-line PPN whenever amount or treatment changed.
-                          if ('amount' in patch || 'ppn_treatment' in patch) {
+                          // Recompute per-line PPN only when amount / treatment changed AND
+                          // the caller did not pass an explicit ppn_amount override. This lets
+                          // a non-PKP supplier stay at 0 and preserves a user's manual PPN edit.
+                          if (('amount' in patch || 'ppn_treatment' in patch) && !('ppn_amount' in patch)) {
                             merged.ppn_amount = computeBrokerLinePpn(merged.amount, merged.ppn_treatment);
                           }
                           return merged;
