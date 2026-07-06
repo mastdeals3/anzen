@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, DollarSign, Package, Truck, Building2, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, Lock, RotateCcw, UserPlus, AlertCircle } from 'lucide-react';
 import { Modal } from '../Modal';
+import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -2435,12 +2436,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     {/* Invoice Amount */}
                     <div className="col-span-2">
                       <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Amount (IDR) <span className="text-red-500">*</span></label>
-                      <input type="number" step="1" min="0" value={formData.amount || ''}
-                        onChange={(e) => {
-                          const amt = parseFloat(e.target.value) || 0;
+                      <MoneyInput value={formData.amount} required placeholder="0"
+                        onChange={(amt) => {
                           setFormData(prev => {
-                            // Recompute PPN only in STANDARD mode. DPP mode reads dpp_amount;
-                            // MANUAL mode never recalculates from the invoice amount.
                             const mode = prev.ppn_calc_mode || 'standard';
                             const rate = prev.ppn_rate || 11;
                             const ppn = mode === 'standard' && selectedSupplier?.pkp_status
@@ -2449,7 +2447,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             return { ...prev, amount: amt, ppn_amount: ppn };
                           });
                         }}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold text-right font-mono" placeholder="0" required />
+                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold text-right font-mono" />
                     </div>
 
                     {/* PPN with mode selector */}
@@ -2493,33 +2491,28 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         </div>
                         {formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBrokerRow ? (
                           <div className="grid grid-cols-2 gap-1">
-                            <input type="number" step="1" min="0" value={formData.dpp_amount || ''}
-                              onChange={(e) => {
-                                const dpp = parseFloat(e.target.value) || 0;
+                            <MoneyInput value={formData.dpp_amount} placeholder="DPP" title="DPP Nilai Lain"
+                              onChange={(dpp) => {
                                 setFormData(prev => ({
                                   ...prev,
                                   dpp_amount: dpp,
                                   ppn_amount: Math.round(dpp * (prev.ppn_rate || 11) / 100),
                                 }));
                               }}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono"
-                              placeholder="DPP" title="DPP Nilai Lain" />
-                            <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
-                              onChange={(e) => setFormData(prev => ({ ...prev, ppn_amount: parseFloat(e.target.value) || 0 }))}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono text-blue-700"
-                              placeholder="PPN" title="PPN Amount (auto from DPP)" />
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" />
+                            <MoneyInput value={formData.ppn_amount} placeholder="PPN" title="PPN Amount (auto from DPP)"
+                              onChange={(v) => setFormData(prev => ({ ...prev, ppn_amount: v }))}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono text-blue-700" />
                           </div>
                         ) : (
-                          <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
-                            onChange={(e) => setFormData(prev => ({
+                          <MoneyInput value={formData.ppn_amount} placeholder="0" readOnly={isBrokerRow}
+                            onChange={(v) => setFormData(prev => ({
                               ...prev,
-                              ppn_amount: parseFloat(e.target.value) || 0,
-                              // Typing directly in PPN flips to manual so amount edits don't overwrite it.
+                              ppn_amount: v,
                               ppn_calc_mode: prev.expense_category === 'import_broker' ? prev.ppn_calc_mode : 'manual',
                               ppn_manual_override: prev.expense_category !== 'import_broker',
                             }))}
-                            readOnly={isBrokerRow}
-                            className={`w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono ${isBrokerRow ? 'bg-gray-100 text-gray-600' : ''}`} placeholder="0" />
+                            className={`w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono ${isBrokerRow ? 'bg-gray-100 text-gray-600' : ''}`} />
                         )}
                         {formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBrokerRow && (
                           <p className="text-[9px] text-gray-500 mt-0.5">DPP × {formData.ppn_rate || 11}% → PPN</p>
@@ -2534,9 +2527,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           <label className="block text-xs font-medium text-gray-700 mb-1">
                             {taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'}
                           </label>
-                          <input type="number" step="1" min="0" value={formData.pph_amount || ''}
-                            onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
-                            className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" placeholder="0" />
+                          <MoneyInput value={formData.pph_amount} placeholder="0"
+                            onChange={(v) => setFormData({ ...formData, pph_amount: v })}
+                            className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" />
                         </div>
                         <div className="col-span-2">
                           <label className="block text-xs font-medium text-gray-700 mb-1">PPh Code</label>
@@ -2558,9 +2551,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     {taxCfg?.stamp && (
                       <div className="col-span-1">
                         <label className="block text-xs font-medium text-gray-700 mb-1">Stamp Duty</label>
-                        <input type="number" step="1000" min="0" value={formData.stamp_duty_amount || ''}
-                          onChange={(e) => setFormData({ ...formData, stamp_duty_amount: parseFloat(e.target.value) || 0 })}
-                          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" placeholder="0" />
+                        <MoneyInput value={formData.stamp_duty_amount} placeholder="0"
+                          onChange={(v) => setFormData({ ...formData, stamp_duty_amount: v })}
+                          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" />
                       </div>
                     )}
 
@@ -2568,9 +2561,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     {formData.expense_category === 'utilities' && (
                       <div className="col-span-1">
                         <label className="block text-xs font-medium text-gray-700 mb-1">Bank Chg</label>
-                        <input type="number" step="1" min="0" value={formData.bank_charges_amount || ''}
-                          onChange={(e) => setFormData({ ...formData, bank_charges_amount: parseFloat(e.target.value) || 0 })}
-                          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" placeholder="0" />
+                        <MoneyInput value={formData.bank_charges_amount} placeholder="0"
+                          onChange={(v) => setFormData({ ...formData, bank_charges_amount: v })}
+                          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" />
                       </div>
                     )}
 
@@ -2662,9 +2655,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           ] as const).map(({ key, label, hint }) => (
                             <div key={key}>
                               <label className="block text-[10px] font-semibold text-amber-900 mb-0.5">{label}</label>
-                              <input type="number" step="1" min="0" value={formData[key] || ''}
-                                onChange={e => setFormData({ ...formData, [key]: parseFloat(e.target.value) || 0 })}
-                                className="w-full px-2 py-1 border border-amber-300 rounded text-xs bg-white" placeholder="0" />
+                              <MoneyInput value={formData[key]} placeholder="0"
+                                onChange={(v) => setFormData({ ...formData, [key]: v })}
+                                className="w-full px-2 py-1 border border-amber-300 rounded text-xs bg-white text-right font-mono" />
                               <p className="text-[9px] text-amber-700 mt-0.5">{hint}</p>
                             </div>
                           ))}
@@ -2794,20 +2787,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                       className={cellInputCls} placeholder="—" />
                                   </div>
                                   <div className="border-r border-gray-200">
-                                    <input type="number" step="1" min="0" value={item.amount || ''}
-                                      onChange={(e) => {
-                                        const amt = parseFloat(e.target.value) || 0;
+                                    <MoneyInput value={item.amount} placeholder="0"
+                                      onChange={(amt) => {
                                         const sup = suppliers.find(s => s.id === (item.supplier_id || ''));
                                         const pct = sup?.pkp_status ? 11 : 0;
                                         const seedPpn = Math.round(amt * pct / 100);
                                         updateLine(idx, { amount: amt, ppn_treatment: 'excluded', ppn_amount: seedPpn });
                                       }}
-                                      className={cellInputCls + ' text-right font-mono'} placeholder="0" />
+                                      className={cellInputCls + ' text-right font-mono'} />
                                   </div>
                                   <div className="border-r border-gray-200">
-                                    <input type="number" step="1" min="0" value={item.ppn_amount || ''}
-                                      onChange={(e) => updateLine(idx, { ppn_treatment: 'excluded', ppn_amount: parseFloat(e.target.value) || 0 })}
-                                      className={cellInputCls + ' text-right font-mono text-blue-700'} placeholder="0" />
+                                    <MoneyInput value={item.ppn_amount} placeholder="0"
+                                      onChange={(v) => updateLine(idx, { ppn_treatment: 'excluded', ppn_amount: v })}
+                                      className={cellInputCls + ' text-right font-mono text-blue-700'} />
                                   </div>
                                   <div className="border-r border-gray-200 flex items-center justify-end px-2 h-[36px] font-mono text-sm text-gray-800">
                                     {lineTotal ? lineTotal.toLocaleString('id-ID') : ''}

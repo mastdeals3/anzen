@@ -337,7 +337,22 @@ function FinanceContent() {
         {!sidebarCollapsed && (
           <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setSidebarCollapsed(true)} />
         )}
-        <div className={`fixed inset-y-0 left-0 z-50 w-48 bg-white border-r border-gray-200 flex flex-col md:relative md:z-auto transition-transform duration-300 ${sidebarCollapsed ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}`}>
+        {/*
+          Sidebar root-cause fix (Priority 7 #5):
+          Previously `md:translate-x-0` unconditionally cancelled the collapse
+          transform on desktop, so the hamburger did nothing above md. Now the
+          collapsed state slides the panel off-screen at every breakpoint and
+          shrinks the takeaway width to 0 on desktop so the content pane
+          reclaims the space. Persistence + group toggle already work; this
+          was the missing piece for the hamburger to be reliably effective.
+        */}
+        <div
+          className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col md:relative md:z-auto overflow-hidden transition-[width,transform] duration-300 ${
+            sidebarCollapsed
+              ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 w-48'
+              : 'translate-x-0 w-48 md:w-48'
+          }`}
+        >
             {/* Menu Groups */}
             <div className="flex-1 overflow-y-auto">
               {financeMenu.map((group, groupIdx) => {
