@@ -3183,7 +3183,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         </div>
       )}
 
-      {viewModalOpen && viewingExpense && (
+      {viewModalOpen && viewingExpense && (() => {
+        // Currency-aware formatter — resolves from the joined bank account (if the
+        // expense was paid from a bank), or falls back to the reconciled bank line's
+        // account, or IDR when there's no bank context (petty cash / outstanding).
+        // Priority 8 #1: never hardcode Rp.
+        const currency = viewingExpense.bank_accounts?.currency
+          ?? viewingExpense.bank_statement_lines?.[0]?.bank_accounts?.currency
+          ?? 'IDR';
+        const fmtMoney = (n: number | null | undefined, decimals: 0 | 2 = 0) => {
+          const v = Number(n ?? 0);
+          if (currency === 'USD') return `USD ${v.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+          return `Rp ${v.toLocaleString('id-ID', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+        };
+        return (
         <Modal
           isOpen={viewModalOpen}
           onClose={() => {
@@ -3194,49 +3207,179 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           title="Expense Details"
           maxWidth="max-w-3xl"
         >
-          <div className="space-y-6">
-            {/* Supplier & Invoice Section (shown when supplier or invoice data exists) */}
-            {(viewingExpense.suppliers || viewingExpense.invoice_number || viewingExpense.due_date) && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 pb-4">
-                <h4 className="text-xs font-semibold text-blue-700 uppercase mb-3">Supplier & Invoice</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  {viewingExpense.suppliers && (
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium uppercase">Supplier</label>
-                      <p className="text-sm text-gray-900 mt-1 font-medium">{viewingExpense.suppliers.company_name}</p>
-                    </div>
-                  )}
-                  {viewingExpense.invoice_number && (
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium uppercase">Invoice No.</label>
-                      <p className="text-sm text-gray-900 mt-1 font-mono">{viewingExpense.invoice_number}</p>
-                    </div>
-                  )}
-                  {viewingExpense.due_date && (
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium uppercase">Due Date</label>
-                      <p className="text-sm text-gray-900 mt-1">{new Date(viewingExpense.due_date).toLocaleDateString()}</p>
-                    </div>
-                  )}
-                  {viewingExpense.payment_method === null && (
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium uppercase">Balance</label>
-                      <p className="text-sm font-bold mt-1">
-                        <span className={viewingExpense.amount - (viewingExpense.paid_amount ?? 0) > 0 ? 'text-red-600' : 'text-green-600'}>
-                          Rp {(viewingExpense.amount - (viewingExpense.paid_amount ?? 0)).toLocaleString('id-ID', { minimumFractionDigits: 0 })}
-                        </span>
-                        {(viewingExpense.paid_amount ?? 0) > 0 && (
-                          <span className="text-xs text-gray-500 ml-2">(Paid: Rp {(viewingExpense.paid_amount ?? 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })})</span>
-                        )}
-                      </p>
-                    </div>
+          <div className="space-y-3">
+            {/* ── Expense Summary (compact single card) ── */}
+            <div className="border border-gray-200 rounded-lg bg-white">
+              <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Expense Summary</span>
+                  {viewingExpense.voucher_number && (
+                    <span className="text-[11px] font-mono text-gray-600">{viewingExpense.voucher_number}</span>
                   )}
                 </div>
+                <span className="text-xs text-gray-700">
+                  {new Date(viewingExpense.expense_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </span>
+              </div>
+              <div className="px-3 py-2 grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                <div>
+                  <div className="text-[10px] uppercase font-medium text-gray-400">Category</div>
+                  <div className="text-gray-900">
+                    {expenseCategories.find(c => c.value === viewingExpense.expense_category)?.label || viewingExpense.expense_category}
+                  </div>
+                </div>
+                {viewingExpense.suppliers && (
+                  <div>
+                    <div className="text-[10px] uppercase font-medium text-gray-400">Supplier</div>
+                    <div className="text-gray-900 font-medium">{viewingExpense.suppliers.company_name}</div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-[10px] uppercase font-medium text-gray-400">Amount</div>
+                  <div className="text-base font-bold text-gray-900 font-mono">{fmtMoney(viewingExpense.amount, 2)}</div>
+                </div>
+                {viewingExpense.invoice_number && (
+                  <div>
+                    <div className="text-[10px] uppercase font-medium text-gray-400">Invoice No.</div>
+                    <div className="text-gray-900 font-mono text-xs">{viewingExpense.invoice_number}</div>
+                  </div>
+                )}
+                {viewingExpense.due_date && (
+                  <div>
+                    <div className="text-[10px] uppercase font-medium text-gray-400">Due Date</div>
+                    <div className="text-gray-900 text-xs">{new Date(viewingExpense.due_date).toLocaleDateString('id-ID')}</div>
+                  </div>
+                )}
+                {viewingExpense.payment_reference && (
+                  <div>
+                    <div className="text-[10px] uppercase font-medium text-gray-400">Reference</div>
+                    <div className="text-gray-900 text-xs font-mono">{viewingExpense.payment_reference}</div>
+                  </div>
+                )}
+                {viewingExpense.description && (
+                  <div className="col-span-3">
+                    <div className="text-[10px] uppercase font-medium text-gray-400">Description</div>
+                    <div className="text-gray-900 text-xs whitespace-pre-wrap">{viewingExpense.description}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── Tax breakdown (only if non-zero) ── */}
+            {(() => {
+              const rows: Array<[string, number, string]> = [];
+              if ((viewingExpense.ppn_amount || 0) > 0) rows.push(['PPN', viewingExpense.ppn_amount || 0, 'text-blue-700']);
+              if ((viewingExpense.pph_amount || 0) > 0) rows.push(['PPh Withheld', -(viewingExpense.pph_amount || 0), 'text-orange-700']);
+              if ((viewingExpense.stamp_duty_amount || 0) > 0) rows.push(['Stamp Duty', viewingExpense.stamp_duty_amount || 0, 'text-gray-700']);
+              if ((viewingExpense.bank_charges_amount || 0) > 0) rows.push(['Bank Charges', viewingExpense.bank_charges_amount || 0, 'text-purple-700']);
+              if ((viewingExpense.pib_bm_amount || 0) > 0) rows.push(['Import Duty (BM)', viewingExpense.pib_bm_amount || 0, 'text-amber-700']);
+              if ((viewingExpense.pib_ppn_amount || 0) > 0) rows.push(['PPN Import', viewingExpense.pib_ppn_amount || 0, 'text-amber-700']);
+              if ((viewingExpense.pib_pph_amount || 0) > 0) rows.push(['PPh 22 Import', viewingExpense.pib_pph_amount || 0, 'text-amber-700']);
+              if (rows.length === 0) return null;
+              const netPayable = (viewingExpense.amount || 0)
+                + (viewingExpense.ppn_amount || 0)
+                - (viewingExpense.pph_amount || 0)
+                + (viewingExpense.stamp_duty_amount || 0)
+                + (viewingExpense.bank_charges_amount || 0);
+              return (
+                <div className="border border-gray-200 rounded-lg bg-white">
+                  <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Tax & Charges</div>
+                  <div className="px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <span className="text-gray-500 text-xs">Invoice</span>
+                    <span className="font-mono text-gray-800">{fmtMoney(viewingExpense.amount)}</span>
+                    {rows.map(([label, value, tint]) => (
+                      <span key={label} className="flex items-center gap-1">
+                        <span className="text-gray-400 text-base font-light">{value < 0 ? '−' : '+'}</span>
+                        <span className="text-gray-500 text-xs">{label}</span>
+                        <span className={`font-mono ${tint}`}>{fmtMoney(Math.abs(value))}</span>
+                      </span>
+                    ))}
+                    <span className="text-gray-400 text-base font-light">=</span>
+                    <span className="ml-auto flex items-center gap-1.5 px-2 py-0.5 border border-emerald-300 bg-emerald-50 rounded">
+                      <span className="text-[10px] font-semibold text-emerald-700 uppercase">Payable</span>
+                      <span className="font-mono font-bold text-emerald-900">{fmtMoney(netPayable, 2)}</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Broker Invoice Breakdown (only if broker items exist) ── */}
+            {viewingExpense.broker_items && viewingExpense.broker_items.length > 0 && (
+              <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Broker Invoice Breakdown</div>
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
+                    <tr>
+                      <th className="px-3 py-1 text-left font-medium">Type</th>
+                      <th className="px-3 py-1 text-left font-medium">Description</th>
+                      <th className="px-3 py-1 text-right font-medium">Amount</th>
+                      <th className="px-3 py-1 text-right font-medium">PPN</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewingExpense.broker_items.map((item, i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-3 py-1 text-gray-700">{item.type}</td>
+                        <td className="px-3 py-1 text-gray-600 truncate max-w-[220px]">{item.description || '—'}</td>
+                        <td className="px-3 py-1 text-right font-mono text-gray-900">{fmtMoney(item.amount)}</td>
+                        <td className="px-3 py-1 text-right font-mono text-blue-700">{fmtMoney(item.ppn_amount || 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
 
-            {/* Payments (supplier + PPh23 dual-track) */}
+            {/* ── Payment Information (only shows fields that exist) ── */}
+            {(viewingExpense.payment_method !== undefined || viewingExpense.bank_accounts) && (() => {
+              const isOutstanding = viewingExpense.payment_method === null;
+              const balance = (viewingExpense.amount || 0) - (viewingExpense.paid_amount ?? 0);
+              return (
+                <div className="border border-gray-200 rounded-lg bg-white">
+                  <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Payment</div>
+                  <div className="px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <span className="flex items-center gap-1">
+                      <span className="text-[10px] uppercase font-medium text-gray-400">Method</span>
+                      {isOutstanding ? (
+                        <span className="px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded">A/P Outstanding</span>
+                      ) : (
+                        <span className="text-gray-900 capitalize">{viewingExpense.payment_method?.replace('_', ' ')}</span>
+                      )}
+                    </span>
+                    {viewingExpense.bank_accounts && (
+                      <span className="flex items-center gap-1">
+                        <span className="text-[10px] uppercase font-medium text-gray-400">Bank</span>
+                        <span className="text-gray-900 text-xs">
+                          {viewingExpense.bank_accounts.alias || viewingExpense.bank_accounts.bank_name} · {viewingExpense.bank_accounts.account_number}
+                          {viewingExpense.bank_accounts.currency && viewingExpense.bank_accounts.currency !== 'IDR' && (
+                            <span className="ml-1 text-[10px] text-purple-700 font-semibold">({viewingExpense.bank_accounts.currency})</span>
+                          )}
+                        </span>
+                      </span>
+                    )}
+                    {isOutstanding && (viewingExpense.amount || 0) > 0 && (
+                      <span className="ml-auto flex items-center gap-1">
+                        <span className="text-[10px] uppercase font-medium text-gray-400">Balance</span>
+                        <span className={`font-mono font-bold ${balance > 0 ? 'text-red-600' : 'text-green-700'}`}>
+                          {fmtMoney(balance)}
+                        </span>
+                        {(viewingExpense.paid_amount ?? 0) > 0 && (
+                          <span className="text-[10px] text-gray-500">(Paid {fmtMoney(viewingExpense.paid_amount)})</span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Payment Breakdown — only when >= 1 payment line exists ── */}
             {(() => {
+              const allocs = viewingExpense.voucher_allocations || [];
+              const bslLines = viewingExpense.bank_statement_lines || [];
+              // Only render when there's actual settlement data.
+              if (allocs.length === 0 && bslLines.length === 0) return null;
               const supplierTarget =
                 (viewingExpense.amount || 0)
                 + (viewingExpense.ppn_amount || 0)
@@ -3245,53 +3388,45 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               const supplierPaid = viewingExpense.paid_amount ?? 0;
               const pphTarget = viewingExpense.pph_amount || 0;
               const pphPaid = viewingExpense.pph_paid_amount ?? 0;
-              const statusBadge = (paid: number, target: number) => {
-                if (target <= 0) return <span className="text-gray-400 text-xs">—</span>;
-                if (paid <= 0) return <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">Pending</span>;
-                if (paid >= target - 1) return <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">Paid ✓</span>;
-                return <span className="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">Partial</span>;
+              const badge = (paid: number, target: number) => {
+                if (target <= 0) return null;
+                if (paid <= 0) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">Pending</span>;
+                if (paid >= target - 1) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">Paid ✓</span>;
+                return <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800">Partial</span>;
               };
-              const overall = (() => {
-                const totalTarget = supplierTarget + pphTarget;
-                const totalPaid = supplierPaid + pphPaid;
-                if (totalTarget <= 0) return '—';
-                if (totalPaid <= 0) return 'Pending';
-                if (totalPaid >= totalTarget - 1) return 'Fully Settled';
-                return 'Partial';
-              })();
-              const fmt = (n: number) => `Rp ${n.toLocaleString('id-ID', { minimumFractionDigits: 0 })}`;
-              const allocs = viewingExpense.voucher_allocations || [];
-              const bslLines = viewingExpense.bank_statement_lines || [];
-              if (supplierTarget <= 0 && pphTarget <= 0 && allocs.length === 0 && bslLines.length === 0) return null;
+              // Hide the supplier row if there's nothing owed (fully unbilled etc).
+              const showSupplier = supplierTarget > 0 || supplierPaid > 0;
+              const showPph = pphTarget > 0 || pphPaid > 0;
               return (
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <h4 className="text-xs font-semibold text-gray-600 uppercase mb-3">Payments</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-700">Supplier</span>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-gray-900">{fmt(supplierPaid)} / {fmt(supplierTarget)}</span>
-                        {statusBadge(supplierPaid, supplierTarget)}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-700">PPh23</span>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-gray-900">{fmt(pphPaid)} / {fmt(pphTarget)}</span>
-                        {statusBadge(pphPaid, pphTarget)}
-                      </div>
-                    </div>
-                    <div className="border-t pt-2 flex items-center justify-between text-xs">
-                      <span className="text-gray-500 uppercase font-medium">Overall</span>
-                      <span className="font-semibold text-gray-900">{overall}</span>
-                    </div>
+                <div className="border border-gray-200 rounded-lg bg-white">
+                  <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                    Payment Breakdown ({allocs.length + bslLines.length} {allocs.length + bslLines.length === 1 ? 'line' : 'lines'})
                   </div>
-                  {(allocs.length > 0 || bslLines.length > 0) && (
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="text-[10px] uppercase text-gray-400 font-medium mb-1">Payment lines</div>
+                  <div className="px-3 py-2 text-sm space-y-1">
+                    {showSupplier && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700 text-xs">Supplier</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-gray-900 text-xs">{fmtMoney(supplierPaid)} / {fmtMoney(supplierTarget)}</span>
+                          {badge(supplierPaid, supplierTarget)}
+                        </div>
+                      </div>
+                    )}
+                    {showPph && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700 text-xs">PPh Withholding</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-gray-900 text-xs">{fmtMoney(pphPaid)} / {fmtMoney(pphTarget)}</span>
+                          {badge(pphPaid, pphTarget)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {(allocs.length + bslLines.length) > 1 && (
+                    <div className="px-3 pb-2">
                       <table className="w-full text-xs">
-                        <thead className="text-gray-500">
-                          <tr>
+                        <thead className="text-gray-500 text-[10px] uppercase">
+                          <tr className="border-t border-gray-100">
                             <th className="text-left font-medium py-1">Date</th>
                             <th className="text-left font-medium py-1">Ref</th>
                             <th className="text-right font-medium py-1">Amount</th>
@@ -3301,20 +3436,27 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         <tbody>
                           {allocs.map((a) => (
                             <tr key={`va-${a.id}`} className="border-t border-gray-100">
-                              <td className="py-1 text-gray-700">{a.payment_vouchers?.payment_date ? new Date(a.payment_vouchers.payment_date).toLocaleDateString('id-ID') : '-'}</td>
+                              <td className="py-1 text-gray-700">{a.payment_vouchers?.payment_date ? new Date(a.payment_vouchers.payment_date).toLocaleDateString('id-ID') : '—'}</td>
                               <td className="py-1 text-gray-700 font-mono">{a.payment_vouchers?.voucher_number || 'PV'}</td>
-                              <td className="py-1 text-right font-mono">{fmt(a.allocated_amount)}</td>
+                              <td className="py-1 text-right font-mono">{fmtMoney(a.allocated_amount)}</td>
                               <td className="py-1 text-right text-gray-600 capitalize">{a.payment_kind || 'supplier'}</td>
                             </tr>
                           ))}
-                          {bslLines.map((b) => (
-                            <tr key={`bsl-${b.id}`} className="border-t border-gray-100">
-                              <td className="py-1 text-gray-700">{new Date(b.transaction_date).toLocaleDateString('id-ID')}</td>
-                              <td className="py-1 text-gray-700 truncate max-w-[180px]">{b.description || 'Bank'}</td>
-                              <td className="py-1 text-right font-mono">{fmt((b.debit_amount || 0) + (b.credit_amount || 0))}</td>
-                              <td className="py-1 text-right text-gray-600 capitalize">{b.payment_kind || 'supplier'}</td>
-                            </tr>
-                          ))}
+                          {bslLines.map((b) => {
+                            const lineCurrency = b.bank_accounts?.currency ?? currency;
+                            const lineAmount = (b.debit_amount || 0) + (b.credit_amount || 0);
+                            const fmtLine = (n: number) => lineCurrency === 'USD'
+                              ? `USD ${n.toLocaleString('en-US', { minimumFractionDigits: 0 })}`
+                              : `Rp ${n.toLocaleString('id-ID', { minimumFractionDigits: 0 })}`;
+                            return (
+                              <tr key={`bsl-${b.id}`} className="border-t border-gray-100">
+                                <td className="py-1 text-gray-700">{new Date(b.transaction_date).toLocaleDateString('id-ID')}</td>
+                                <td className="py-1 text-gray-700 truncate max-w-[180px]">{b.description || 'Bank'}</td>
+                                <td className="py-1 text-right font-mono">{fmtLine(lineAmount)}</td>
+                                <td className="py-1 text-right text-gray-600 capitalize">{b.payment_kind || 'supplier'}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -3323,122 +3465,30 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               );
             })()}
 
-            {/* Broker Items Table (for import_broker expenses) */}
-            {viewingExpense.broker_items && viewingExpense.broker_items.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold text-gray-600 uppercase mb-2">Broker Invoice Breakdown</h4>
-                <table className="w-full text-xs border border-gray-200 rounded">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-1.5 text-left text-gray-600">Item</th>
-                      <th className="px-3 py-1.5 text-right text-gray-600">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {viewingExpense.broker_items.map((item, i) => (
-                      <tr key={i} className="border-t border-gray-100">
-                        <td className="px-3 py-1.5 text-gray-700">{item.type}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-gray-900">Rp {item.amount.toLocaleString('id-ID', { minimumFractionDigits: 0 })}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Basic Information */}
-            <div className="grid grid-cols-2 gap-6 pb-4 border-b">
-              <div>
-                <label className="text-xs text-gray-500 font-medium uppercase">Date</label>
-                <p className="text-sm text-gray-900 mt-1 font-medium">
-                  {new Date(viewingExpense.expense_date).toLocaleDateString()}
-                </p>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 font-medium uppercase">Amount</label>
-                <p className="text-lg text-gray-900 mt-1 font-bold">
-                  Rp {viewingExpense.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 font-medium uppercase">Category</label>
-                <p className="text-sm text-gray-900 mt-1">
-                  {expenseCategories.find(c => c.value === viewingExpense.expense_category)?.label || viewingExpense.expense_category}
-                </p>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 font-medium uppercase">Type</label>
-                <p className="text-sm text-gray-900 mt-1 capitalize">
-                  {viewingExpense.expense_type || '-'}
-                </p>
-              </div>
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="text-xs text-gray-500 font-medium uppercase">Description</label>
-              <p className="text-sm text-gray-900 mt-1">
-                {viewingExpense.description || '-'}
-              </p>
-            </div>
-
-            {/* Payment Information */}
-            <div className="grid grid-cols-2 gap-6 pb-4 border-b">
-              <div>
-                <label className="text-xs text-gray-500 font-medium uppercase">Payment Method</label>
-                <p className="text-sm text-gray-900 mt-1 capitalize">
-                  {viewingExpense.payment_method === null ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded">A/P Outstanding</span>
-                  ) : viewingExpense.payment_method?.replace('_', ' ')}
-                </p>
-              </div>
-              {viewingExpense.bank_accounts && (
-                <div>
-                  <label className="text-xs text-gray-500 font-medium uppercase">Bank Account</label>
-                  <p className="text-sm text-gray-900 mt-1">
-                    {viewingExpense.bank_accounts.alias || viewingExpense.bank_accounts.bank_name} - {viewingExpense.bank_accounts.account_number}
-                  </p>
-                </div>
-              )}
-              {viewingExpense.payment_reference && (
-                <div>
-                  <label className="text-xs text-gray-500 font-medium uppercase">Payment Reference</label>
-                  <p className="text-sm text-gray-900 mt-1">
-                    {viewingExpense.payment_reference}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Context Links */}
+            {/* Context Links — compact inline chips (only when linked) */}
             {(viewingExpense.batches || viewingExpense.import_containers || viewingExpense.delivery_challans) && (
-              <div className="space-y-3 pb-4 border-b">
-                <label className="text-xs text-gray-500 font-medium uppercase">Linked To</label>
+              <div className="border border-gray-200 rounded-lg bg-white px-3 py-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-[10px] uppercase font-medium text-gray-400">Linked to</span>
                 {viewingExpense.batches && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Package className="w-4 h-4 text-blue-600" />
-                    <span className="text-blue-700 font-medium">Batch: {viewingExpense.batches.batch_number}</span>
-                  </div>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700">
+                    <Package className="w-3 h-3" /> Batch {viewingExpense.batches.batch_number}
+                  </span>
                 )}
                 {viewingExpense.import_containers && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Package className="w-4 h-4 text-green-600" />
-                    <span className="text-green-700 font-medium">Container: {viewingExpense.import_containers.container_ref}</span>
-                  </div>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-700">
+                    <Package className="w-3 h-3" /> {viewingExpense.import_containers.container_ref}
+                  </span>
                 )}
                 {viewingExpense.delivery_challans && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Truck className="w-4 h-4 text-green-600" />
-                    <button
-                      type="button"
-                      onClick={openLinkedDCQuickView}
-                      disabled={linkedDCQuickViewLoading}
-                      className="text-green-700 font-medium hover:text-green-800 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Delivery Challan: {viewingExpense.delivery_challans.challan_number}
-                      {linkedDCQuickViewLoading ? ' (opening...)' : ''}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={openLinkedDCQuickView}
+                    disabled={linkedDCQuickViewLoading}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-700 hover:bg-green-100 disabled:opacity-50"
+                  >
+                    <Truck className="w-3 h-3" /> DC {viewingExpense.delivery_challans.challan_number}
+                    {linkedDCQuickViewLoading && ' …'}
+                  </button>
                 )}
               </div>
             )}
@@ -3503,67 +3553,64 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </div>
             )}
 
-            {/* Bank Reconciliation Status - Enhanced Details */}
+            {/* Bank Reconciliation — only rendered when a match exists */}
             {viewingExpense.bank_statement_lines && viewingExpense.bank_statement_lines.length > 0 && (
-              <div className="pb-4 border-b">
-                <label className="text-xs text-gray-500 font-medium uppercase mb-3 block">
-                  <FileText className="w-4 h-4 inline mr-1" />
-                  Bank Reconciliation
-                </label>
-                <div className="space-y-3">
-                  {viewingExpense.bank_statement_lines.map((line) => (
-                    <div key={line.id} className="p-4 bg-green-50 border border-green-300 rounded-lg">
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-green-700 bg-green-200 rounded">
-                          ✓ LINKED TO BANK
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <div className="text-xs text-gray-600 font-medium mb-1">Bank Account</div>
-                          <div className="text-gray-900 font-semibold">
-                            {line.bank_accounts?.alias || line.bank_accounts?.bank_name}
-                          </div>
-                          <div className="text-xs text-gray-600">{line.bank_accounts?.account_number}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-600 font-medium mb-1">Transaction Date</div>
-                          <div className="text-gray-900 font-semibold">
+              <div className="border border-green-200 rounded-lg bg-green-50">
+                <div className="px-3 py-1.5 border-b border-green-200 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-green-800 uppercase tracking-wide flex items-center gap-1">
+                    <FileText className="w-3 h-3" /> Bank Reconciliation
+                  </span>
+                  <span className="text-[10px] font-bold text-green-700 bg-green-200 px-1.5 py-0.5 rounded">✓ LINKED</span>
+                </div>
+                <div className="px-3 py-2 space-y-2">
+                  {viewingExpense.bank_statement_lines.map((line) => {
+                    const lineCurrency = line.bank_accounts?.currency ?? currency;
+                    const fmtLine = (n: number) => lineCurrency === 'USD'
+                      ? `USD ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : `Rp ${n.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    const bankAmount = line.debit_amount || line.credit_amount || 0;
+                    return (
+                      <div key={line.id} className="text-xs">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                          <span className="text-gray-700">
+                            <span className="text-[10px] uppercase font-medium text-gray-500 mr-1">Bank</span>
+                            {line.bank_accounts?.alias || line.bank_accounts?.bank_name} · {line.bank_accounts?.account_number}
+                            {lineCurrency && lineCurrency !== 'IDR' && (
+                              <span className="ml-1 text-[10px] text-purple-700 font-semibold">({lineCurrency})</span>
+                            )}
+                          </span>
+                          <span className="text-gray-700">
+                            <span className="text-[10px] uppercase font-medium text-gray-500 mr-1">Date</span>
                             {new Date(line.transaction_date).toLocaleDateString('id-ID')}
-                          </div>
+                          </span>
+                          <span className="ml-auto flex items-center gap-3">
+                            <span className="flex items-center gap-1">
+                              <span className="text-[10px] uppercase font-medium text-gray-500">Bank Txn</span>
+                              <span className="font-mono font-bold text-green-700">{fmtLine(bankAmount)}</span>
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <span className="text-[10px] uppercase font-medium text-gray-500">Expense</span>
+                              <span className="font-mono font-bold text-gray-900">{fmtMoney(viewingExpense.amount, 2)}</span>
+                            </span>
+                          </span>
                         </div>
-                        <div>
-                          <div className="text-xs text-gray-600 font-medium mb-1">Bank Transaction Amount</div>
-                          <div className="text-lg text-green-700 font-bold">
-                            Rp {(line.debit_amount || line.credit_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-600 font-medium mb-1">Expense Amount</div>
-                          <div className="text-lg text-gray-900 font-bold">
-                            Rp {viewingExpense.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                        </div>
-                      </div>
-                      {line.description && (
-                        <div className="mt-3 pt-3 border-t border-green-200">
-                          <div className="text-xs text-gray-600 font-medium mb-1">Bank Statement Description</div>
-                          <div className="text-sm text-gray-900 font-medium bg-white p-2 rounded border border-green-200">
+                        {line.description && (
+                          <div className="mt-1 text-[11px] text-gray-700 bg-white px-2 py-1 rounded border border-green-200 truncate">
                             {line.description}
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* Documents */}
+            {/* Documents — only when attachments exist */}
             {viewingExpense.document_urls && viewingExpense.document_urls.length > 0 && (
               <div>
-                <label className="text-xs text-gray-500 font-medium uppercase mb-3 block">
-                  <FileText className="w-4 h-4 inline mr-1" />
+                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2 block">
+                  <FileText className="w-3.5 h-3.5 inline mr-1" />
                   Supporting Documents ({viewingExpense.document_urls.length})
                 </label>
                 <div className="grid grid-cols-1 gap-3">
@@ -3613,27 +3660,22 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </div>
             )}
 
-            {(!viewingExpense.document_urls || viewingExpense.document_urls.length === 0) && (
-              <div className="text-center py-4 text-gray-500 text-sm italic">
-                No supporting documents attached
-              </div>
-            )}
-
             {/* Close Button */}
-            <div className="flex justify-end pt-4 border-t">
+            <div className="flex justify-end pt-2 border-t border-gray-100">
               <button
                 onClick={() => {
                   setViewModalOpen(false);
                   setViewingExpense(null);
                 }}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                className="px-3 py-1.5 text-xs font-medium bg-gray-600 text-white rounded hover:bg-gray-700"
               >
                 Close
               </button>
             </div>
           </div>
         </Modal>
-      )}
+        );
+      })()}
 
       {/* Cancel Posting modal */}
       {cancelPostingModalOpen && cancelPostingTarget && (
