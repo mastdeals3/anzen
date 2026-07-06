@@ -7,20 +7,24 @@ import { formatDate } from '../../utils/dateFormat';
 interface InputPPNRecord {
   month: string;
   expense_date: string;
-  container_ref: string;
-  supplier: string;
-  import_invoice_value: number;
-  ppn_amount: number;
-  description: string;
+  container_ref: string | null;
+  supplier: string | null;
+  import_invoice_value: number | null;
+  ppn_amount: number | null;
+  description: string | null;
+  document_type?: string | null;
+  reference?: string | null;
+  parent_supplier?: string | null;
+  dpp_amount?: number | null;
 }
 
 interface PPh22Record {
   month: string;
   expense_date: string;
   voucher_number: string | null;
-  container_ref: string;
-  supplier: string;
-  pph22_amount: number;
+  container_ref: string | null;
+  supplier: string | null;
+  pph22_amount: number | null;
   description: string | null;
 }
 
@@ -30,17 +34,17 @@ interface OutputPPNRecord {
   invoice_number: string;
   customer: string;
   customer_npwp: string;
-  subtotal: number;
-  ppn_amount: number;
-  total_amount: number;
+  subtotal: number | null;
+  ppn_amount: number | null;
+  total_amount: number | null;
   payment_status: string;
 }
 
 interface MonthlySummary {
   month: string;
-  input_ppn_paid: number;
-  output_ppn_collected: number;
-  net_ppn_payable: number;
+  input_ppn_paid: number | null;
+  output_ppn_collected: number | null;
+  net_ppn_payable: number | null;
 }
 
 // Expense VAT / PPh records (from finance_expenses)
@@ -52,8 +56,8 @@ interface ExpenseVATRecord {
   supplier_name: string | null;
   expense_category: string;
   description: string | null;
-  amount: number;
-  ppn_amount: number;
+  amount: number | null;
+  ppn_amount: number | null;
 }
 
 interface ExpensePPhRecord {
@@ -64,8 +68,8 @@ interface ExpensePPhRecord {
   supplier_name: string | null;
   expense_category: string;
   description: string | null;
-  amount: number;
-  pph_amount: number;
+  amount: number | null;
+  pph_amount: number | null;
   pph_code: string | null;
   pph_name: string | null;
 }
@@ -78,7 +82,7 @@ interface AssetRegisterRecord {
   purchase_date: string;
   asset_account: string | null;
   asset_account_code: string | null;
-  cost: number;
+  cost: number | null;
   description: string | null;
 }
 
@@ -182,8 +186,11 @@ export function TaxReports() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return `Rp ${amount?.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatCurrency = (amount: number | null | undefined) => {
+    // Views/RPCs occasionally return NULL for empty months or missing joins.
+    // Coerce to 0 so the report never renders "Rp undefined".
+    const v = Number(amount ?? 0);
+    return `Rp ${(Number.isFinite(v) ? v : 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatMonth = (monthStr: string) => {
@@ -299,9 +306,9 @@ export function TaxReports() {
                         <td className="px-3 py-2 whitespace-nowrap text-right">
                           <div
                             className={`text-xs font-bold ${
-                              summary.net_ppn_payable > 0
+                              (summary.net_ppn_payable || 0) > 0
                                 ? 'text-red-600'
-                                : summary.net_ppn_payable < 0
+                                : (summary.net_ppn_payable || 0) < 0
                                 ? 'text-blue-600'
                                 : 'text-gray-600'
                             }`}
@@ -309,9 +316,9 @@ export function TaxReports() {
                             {formatCurrency(summary.net_ppn_payable)}
                           </div>
                           <div className="text-[10px] text-gray-500">
-                            {summary.net_ppn_payable > 0
+                            {(summary.net_ppn_payable || 0) > 0
                               ? t('finance.payToTax') || 'Pay to tax office'
-                              : summary.net_ppn_payable < 0
+                              : (summary.net_ppn_payable || 0) < 0
                               ? t('finance.carryForward') || 'Carry forward'
                               : t('finance.balanced') || 'Balanced'}
                           </div>
@@ -523,7 +530,7 @@ export function TaxReports() {
                         <tr className="bg-purple-50 font-bold">
                           <td colSpan={4} className="px-3 py-2 text-xs text-right text-gray-900">Total PPh 22 Dibayar Dimuka:</td>
                           <td className="px-3 py-2 text-xs text-right text-purple-700">
-                            {formatCurrency(pph22Records.reduce((s, r) => s + r.pph22_amount, 0))}
+                            {formatCurrency(pph22Records.reduce((s, r) => s + (r.pph22_amount || 0), 0))}
                           </td>
                         </tr>
                       </>
@@ -577,8 +584,8 @@ export function TaxReports() {
                   {expenseVAT.length > 0 && (
                     <tr className="bg-blue-50 font-bold border-t-2 border-blue-200">
                       <td colSpan={5} className="px-3 py-2 text-right text-gray-700">TOTAL ({expenseVAT.length} records):</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(expenseVAT.reduce((s, r) => s + r.amount, 0))}</td>
-                      <td className="px-3 py-2 text-right text-blue-700">{formatCurrency(expenseVAT.reduce((s, r) => s + r.ppn_amount, 0))}</td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(expenseVAT.reduce((s, r) => s + (r.amount || 0), 0))}</td>
+                      <td className="px-3 py-2 text-right text-blue-700">{formatCurrency(expenseVAT.reduce((s, r) => s + (r.ppn_amount || 0), 0))}</td>
                     </tr>
                   )}
                 </tbody>
@@ -630,8 +637,8 @@ export function TaxReports() {
                   {expensePPh.length > 0 && (
                     <tr className="bg-orange-50 font-bold border-t-2 border-orange-200">
                       <td colSpan={5} className="px-3 py-2 text-right text-gray-700">TOTAL ({expensePPh.length} records):</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(expensePPh.reduce((s, r) => s + r.amount, 0))}</td>
-                      <td className="px-3 py-2 text-right text-orange-700">{formatCurrency(expensePPh.reduce((s, r) => s + r.pph_amount, 0))}</td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(expensePPh.reduce((s, r) => s + (r.amount || 0), 0))}</td>
+                      <td className="px-3 py-2 text-right text-orange-700">{formatCurrency(expensePPh.reduce((s, r) => s + (r.pph_amount || 0), 0))}</td>
                     </tr>
                   )}
                 </tbody>
@@ -679,7 +686,7 @@ export function TaxReports() {
                   {assetRegister.length > 0 && (
                     <tr className="bg-green-50 font-bold border-t-2 border-green-200">
                       <td colSpan={5} className="px-3 py-2 text-right text-gray-700">TOTAL ASSET COST ({assetRegister.length} assets):</td>
-                      <td className="px-3 py-2 text-right text-green-700">{formatCurrency(assetRegister.reduce((s, r) => s + r.cost, 0))}</td>
+                      <td className="px-3 py-2 text-right text-green-700">{formatCurrency(assetRegister.reduce((s, r) => s + (r.cost || 0), 0))}</td>
                     </tr>
                   )}
                 </tbody>

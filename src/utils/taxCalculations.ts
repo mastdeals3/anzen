@@ -81,7 +81,7 @@ export interface TaxFieldConfig {
 
 export const DOCUMENT_TYPE_TAX_CONFIG: Record<DocumentType, TaxFieldConfig> = {
   'Operating Expense':               { ppn: true,  pph23: false, pph21: false, stamp: true,  pib: false, brokerItems: false },
-  'Utility':                         { ppn: true,  pph23: false, pph21: false, stamp: false, pib: false, brokerItems: false },
+  'Utility':                         { ppn: true,  pph23: true,  pph21: false, stamp: false, pib: false, brokerItems: false },
   'Staff Expense':                   { ppn: false, pph23: false, pph21: true,  stamp: false, pib: false, brokerItems: false },
   'Sales & Distribution':            { ppn: false, pph23: false, pph21: false, stamp: false, pib: false, brokerItems: false },
   'Professional Services':           { ppn: true,  pph23: true,  pph21: false, stamp: true,  pib: false, brokerItems: false },
@@ -114,6 +114,10 @@ export interface BrokerItem {
   description: string;
   amount: number;
   // ── Optional multi-supplier / PPN fields (added 2026-07-03) ──
+  // NOTE: this per-line supplier_id is used ONLY for tax-invoice display and the
+  // PPN register (vw_input_ppn_report Branch 5). It NEVER replaces or overrides
+  // finance_expenses.supplier_id (the main invoice supplier used by AP, Aging,
+  // Supplier Ledger, Expense Listing, Trial Balance, etc).
   supplier_id?: string | null;
   invoice_number?: string | null;
   invoice_date?: string | null;

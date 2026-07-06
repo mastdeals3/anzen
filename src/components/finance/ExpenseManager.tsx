@@ -58,10 +58,13 @@ interface FinanceExpense {
   pib_pph_amount?: number | null;
   // Tax fields for non-PIB expenses
   ppn_amount?: number | null;
+  ppn_manual_override?: boolean | null;
   pph_amount?: number | null;
   pph_code_id?: string | null;
   stamp_duty_amount?: number | null;
   fixed_asset_account_id?: string | null;
+  // Utility-only optional bank charges
+  bank_charges_amount?: number | null;
   batches?: { batch_number: string } | null;
   import_containers?: { container_ref: string } | null;
   delivery_challans?: { challan_number: string } | null;
@@ -491,10 +494,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     pib_pph_amount: 0,
     // Non-PIB tax fields
     ppn_amount: 0,
+    // Task 2: TRUE once the user has manually edited ppn_amount. When TRUE,
+    // ppn_amount is not overwritten by the amount / supplier auto-recompute.
+    ppn_manual_override: false,
     pph_amount: 0,
     pph_code_id: '',
     stamp_duty_amount: 0,
     fixed_asset_account_id: '',
+    // Task 5: Utility-only optional bank charges paid alongside the utility bill.
+    bank_charges_amount: 0,
   });
 
   useEffect(() => {
@@ -976,11 +984,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         payment_reference: formData.payment_reference || null,
         paid_by: formData.payment_method === null || formData.payment_method === 'outstanding' ? null : 'bank',
         document_urls: allDocumentUrls.length > 0 ? allDocumentUrls : null,
-        // New supplier invoice fields
+        // Main invoice supplier. NEVER derived from broker_items[i].supplier_id
+        // — broker line suppliers are used ONLY for tax invoice / PPN register.
         supplier_id: formData.supplier_id || null,
         invoice_number: formData.invoice_number || null,
         due_date: formData.due_date || null,
-        // Broker items (only for import_broker)
+        // Broker items (only for import_broker). Per-line supplier_id inside these
+        // items feeds vw_input_ppn_report Branch 5 — the main supplier above is untouched.
         broker_items: isBrokerInvoice && brokerItems.length > 0 ? brokerItems : null,
         // PIB breakdown — only persisted for pib_import category
         pib_bm_amount:  isPib ? (formData.pib_bm_amount  || 0) : null,
@@ -988,10 +998,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         pib_pph_amount: isPib ? (formData.pib_pph_amount || 0) : null,
         // Non-PIB tax fields — only for non-import non-pib categories
         ppn_amount:             (!isPib && !isImportCategory) ? (formData.ppn_amount || 0) : 0,
+        ppn_manual_override:    (!isPib && !isImportCategory) ? !!formData.ppn_manual_override : false,
         pph_amount:             (!isPib && !isImportCategory) ? (formData.pph_amount || 0) : 0,
         pph_code_id:            (!isPib && !isImportCategory && formData.pph_code_id) ? formData.pph_code_id : null,
         stamp_duty_amount:      (!isPib && !isImportCategory) ? (formData.stamp_duty_amount || 0) : 0,
         fixed_asset_account_id: isFixedAsset ? (formData.fixed_asset_account_id || null) : null,
+        // Task 5: bank charges only for Utility category; all others forced 0
+        bank_charges_amount:    formData.expense_category === 'utilities' ? (formData.bank_charges_amount || 0) : 0,
       };
 
       console.log('=== EXPENSE DATA TO SAVE ===');
@@ -1282,10 +1295,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       pib_ppn_amount: expense.pib_ppn_amount ?? 0,
       pib_pph_amount: expense.pib_pph_amount ?? 0,
       ppn_amount: expense.ppn_amount ?? 0,
+      ppn_manual_override: expense.ppn_manual_override ?? false,
       pph_amount: expense.pph_amount ?? 0,
       pph_code_id: expense.pph_code_id ?? '',
       stamp_duty_amount: expense.stamp_duty_amount ?? 0,
       fixed_asset_account_id: expense.fixed_asset_account_id ?? '',
+      bank_charges_amount: expense.bank_charges_amount ?? 0,
     });
 
     // Set selected bank transaction if expense is already linked
@@ -1504,10 +1519,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       pib_ppn_amount: 0,
       pib_pph_amount: 0,
       ppn_amount: 0,
+      ppn_manual_override: false,
       pph_amount: 0,
       pph_code_id: '',
       stamp_duty_amount: 0,
       fixed_asset_account_id: '',
+      bank_charges_amount: 0,
     });
   };
 
@@ -1530,8 +1547,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         if (sup.default_pph_code_id && (sup.tax_preference === 'pph_only' || sup.tax_preference === 'ppn_pph')) {
           updates.pph_code_id = sup.default_pph_code_id;
         }
-        // Auto-fill PPN if PKP
-        if (sup.pkp_status && (sup.tax_preference === 'ppn_only' || sup.tax_preference === 'ppn_pph')) {
+        // Auto-fill PPN if PKP — but respect a manual override the user has already set.
+        if (sup.pkp_status && (sup.tax_preference === 'ppn_only' || sup.tax_preference === 'ppn_pph') && !prev.ppn_manual_override) {
           updates.ppn_amount = calculatePPN(prev.amount, true);
         }
         // Auto-fill due_date from payment terms
@@ -2368,7 +2385,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       const amt = parseFloat(e.target.value) || 0;
                       setFormData(prev => ({
                         ...prev, amount: amt,
-                        ppn_amount: selectedSupplier?.pkp_status ? calculatePPN(amt, true) : prev.ppn_amount,
+                        // Preserve manual PPN edits — only auto-recompute when the
+                        // user hasn't overridden the value.
+                        ppn_amount: selectedSupplier?.pkp_status && !prev.ppn_manual_override
+                          ? calculatePPN(amt, true)
+                          : prev.ppn_amount,
                       }));
                     }}
                     className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs font-semibold" placeholder="0" required />
@@ -2651,16 +2672,35 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             {formData.expense_category === 'import_broker' && (
                               <span className="ml-1.5 text-[9px] text-gray-500 italic">(auto — sum of broker lines)</span>
                             )}
+                            {formData.ppn_manual_override && formData.expense_category !== 'import_broker' && (
+                              <span className="ml-1.5 text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1">manual</span>
+                            )}
                             {selectedSupplier?.pkp_status && formData.expense_category !== 'import_broker' && (
-                              <button type="button" onClick={() => setFormData(prev => ({ ...prev, ppn_amount: calculatePPN(prev.amount, true) }))}
-                                className="ml-1.5 text-[9px] text-blue-600 hover:text-blue-800 underline">Auto 11%</button>
+                              <button
+                                type="button"
+                                title="Recalculate PPN (11%) and clear the manual override"
+                                onClick={() => setFormData(prev => ({
+                                  ...prev,
+                                  ppn_amount: calculatePPN(prev.amount, true),
+                                  ppn_manual_override: false,
+                                }))}
+                                className="ml-1.5 text-[9px] text-blue-600 hover:text-blue-800 underline"
+                              >
+                                {formData.ppn_manual_override ? '↻ Recalculate' : 'Auto 11%'}
+                              </button>
                             )}
                           </label>
                           <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
-                            onChange={(e) => setFormData({ ...formData, ppn_amount: parseFloat(e.target.value) || 0 })}
+                            onChange={(e) => setFormData(prev => ({
+                              ...prev,
+                              ppn_amount: parseFloat(e.target.value) || 0,
+                              // User typing into the field flips on manual override —
+                              // the auto-recompute effects will now leave the value alone.
+                              ppn_manual_override: prev.expense_category !== 'import_broker',
+                            }))}
                             readOnly={formData.expense_category === 'import_broker'}
                             placeholder="0" className={`w-full px-2 py-1 text-xs border border-gray-300 rounded ${formData.expense_category === 'import_broker' ? 'bg-gray-100 text-gray-600' : ''}`} />
-                          <p className="text-[9px] text-gray-400 mt-0.5">DR PPN Masukan 1150</p>
+                          <p className="text-[9px] text-gray-400 mt-0.5">DR PPN Masukan 1150{formData.ppn_manual_override ? ' — manual override active' : ''}</p>
                         </div>
                       )}
                       {(taxCfg.pph23 || taxCfg.pph21) && (
@@ -2693,14 +2733,38 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </div>
                   )}
 
+                  {/* Task 5: Bank Charges — Utility category only */}
+                  {formData.expense_category === 'utilities' && (
+                    <div className="mt-3 grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Bank Charges <span className="text-[9px] text-gray-400 font-normal">(optional)</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={formData.bank_charges_amount || ''}
+                          onChange={(e) => setFormData({ ...formData, bank_charges_amount: parseFloat(e.target.value) || 0 })}
+                          placeholder="0"
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                        />
+                        <p className="text-[9px] text-gray-400 mt-0.5">DR Bank Charges • Bank leg grossed up</p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Tax summary line */}
-                  {(formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0) && (
+                  {(formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0 || (formData.expense_category === 'utilities' && formData.bank_charges_amount > 0)) && (
                     <div className="mt-2 pt-2 border-t text-[10px] text-gray-500 flex flex-wrap gap-3">
                       <span>DPP: Rp {(formData.amount || 0).toLocaleString('id-ID')}</span>
                       {formData.ppn_amount > 0 && <span className="text-blue-600">+PPN Rp {formData.ppn_amount.toLocaleString('id-ID')}</span>}
                       {formData.pph_amount > 0 && <span className="text-orange-600">−PPh Rp {formData.pph_amount.toLocaleString('id-ID')}</span>}
                       {formData.stamp_duty_amount > 0 && <span>+Meterai Rp {formData.stamp_duty_amount.toLocaleString('id-ID')}</span>}
-                      <span className="font-semibold text-gray-800">= Net Rp {((formData.amount || 0) + (formData.ppn_amount || 0) - (formData.pph_amount || 0) + (formData.stamp_duty_amount || 0)).toLocaleString('id-ID')}</span>
+                      {formData.expense_category === 'utilities' && formData.bank_charges_amount > 0 && (
+                        <span className="text-purple-700">+Bank Charges Rp {formData.bank_charges_amount.toLocaleString('id-ID')}</span>
+                      )}
+                      <span className="font-semibold text-gray-800">= Net Rp {((formData.amount || 0) + (formData.ppn_amount || 0) - (formData.pph_amount || 0) + (formData.stamp_duty_amount || 0) + (formData.expense_category === 'utilities' ? (formData.bank_charges_amount || 0) : 0)).toLocaleString('id-ID')}</span>
                     </div>
                   )}
                 </div>
