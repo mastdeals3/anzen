@@ -76,21 +76,24 @@ export function SearchableSelect({
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
     const dropdownHeight = Math.min(280, window.innerHeight * 0.4);
+    const minWidth = Math.max(rect.width, 280);
+    // Prevent right-edge overflow: shift left if needed
+    const leftPos = Math.min(rect.left, window.innerWidth - minWidth - 8);
 
     if (spaceBelow >= dropdownHeight || spaceBelow >= spaceAbove) {
       setDropdownStyle({
         position: 'fixed',
         top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
+        left: leftPos,
+        minWidth,
         zIndex: 9999,
       });
     } else {
       setDropdownStyle({
         position: 'fixed',
         bottom: window.innerHeight - rect.top + 4,
-        left: rect.left,
-        width: rect.width,
+        left: leftPos,
+        minWidth,
         zIndex: 9999,
       });
     }
@@ -304,7 +307,7 @@ export function SearchableSelect({
           }
         }}
         disabled={disabled}
-        className={`w-full px-3 border rounded-lg text-left flex items-center justify-between ${
+        className={`w-full px-3 border rounded-lg text-left flex items-center justify-between h-[34px] ${
           /\bpy-/.test(className) ? '' : 'py-2'
         } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:border-blue-500'} ${className}`}
         aria-haspopup="listbox"
