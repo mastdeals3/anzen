@@ -2305,10 +2305,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         >
           <form onSubmit={handleSubmit}>
             {/* ── Horizontal header rows (matches the mockup layout) ── */}
-            <div className="pb-3 border-b space-y-2.5">
+            <div className="pb-2 border-b space-y-2">
 
               {/* Row 1: Supplier | Inv No | Inv Date | Due Date | Category */}
-              <div className="grid grid-cols-12 gap-2.5">
+              <div className="grid grid-cols-12 gap-2">
                 {/* Supplier (4 cols) — "Create X" appears inline in dropdown */}
                 <div className="col-span-4">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Supplier{selectedDocType === 'Import / Customs Broker Invoice' ? ' (Broker)' : ''}</label>
@@ -2403,7 +2403,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 const taxCfg = selectedDocType ? DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType] : null;
                 const isBrokerRow = formData.expense_category === 'import_broker';
                 return (
-                  <div className="grid grid-cols-12 gap-2.5">
+                  <div className="grid grid-cols-12 gap-2">
                     {/* Invoice Amount */}
                     <div className="col-span-2">
                       <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Amount (IDR) <span className="text-red-500">*</span></label>
@@ -2515,7 +2515,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
               {/* Row 3: contextual — Container / DC / Fixed Asset */}
               {((requiresContainer || formData.expense_category === 'import_broker') || requiresDC || formData.expense_category === 'fixed_asset') && (
-                <div className="grid grid-cols-12 gap-2.5">
+                <div className="grid grid-cols-12 gap-2">
                   {(requiresContainer || formData.expense_category === 'import_broker') && (
                     <div className="col-span-6">
                       <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -2564,8 +2564,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               const taxCfg = DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType];
               if (!taxCfg || (!taxCfg.ppn && !taxCfg.pph23 && !taxCfg.pph21 && !taxCfg.stamp && !taxCfg.pib && !taxCfg.brokerItems)) return null;
               return (
-                <div className="py-3 border-b">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Tax</p>
+                <div className="py-2 border-b">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tax</p>
 
                   {/* PIB Breakdown */}
                   {taxCfg.pib && (() => {
@@ -2838,7 +2838,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             })()}
 
             {/* ── Bottom two-column: Payment (L) + Attachments (R) ── */}
-            <div className="grid grid-cols-2 gap-x-6 pt-3">
+            <div className="grid grid-cols-2 gap-x-6 pt-2">
               {/* LEFT: Payment */}
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment</p>
@@ -2980,7 +2980,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             </div>
 
             {/* ── Sticky footer ── */}
-            <div className="sticky bottom-0 bg-white border-t pt-3 pb-1 mt-4 flex justify-end gap-2">
+            <div className="sticky bottom-0 bg-white border-t pt-2 pb-1 mt-2 flex justify-end gap-2">
               <button type="button" onClick={() => { setModalOpen(false); resetForm(); }}
                 className="px-4 py-1.5 border border-gray-300 rounded hover:bg-gray-50 text-sm">
                 Cancel

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useDebounce } from '../hooks/useDebounce';
 
 interface Option {
@@ -49,10 +49,9 @@ export function SearchableSelect({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedOption = options.find(opt => opt.value === value);
-  const debouncedFilter = useDebounce(filter, 200);
+  const debouncedFilter = useDebounce(filter, 120);
 
   const filtered = useMemo(() => {
     if (!debouncedFilter) return options;
@@ -75,15 +74,14 @@ export function SearchableSelect({
     const rect = buttonRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    const dropdownHeight = Math.min(280, window.innerHeight * 0.4);
-    const minWidth = Math.max(rect.width, 280);
-    // Prevent right-edge overflow: shift left if needed
+    const dropdownHeight = Math.min(320, window.innerHeight * 0.4);
+    const minWidth = Math.max(rect.width, 240);
     const leftPos = Math.min(rect.left, window.innerWidth - minWidth - 8);
 
     if (spaceBelow >= dropdownHeight || spaceBelow >= spaceAbove) {
       setDropdownStyle({
         position: 'fixed',
-        top: rect.bottom + 4,
+        top: rect.bottom + 2,
         left: leftPos,
         minWidth,
         zIndex: 9999,
@@ -91,7 +89,7 @@ export function SearchableSelect({
     } else {
       setDropdownStyle({
         position: 'fixed',
-        bottom: window.innerHeight - rect.top + 4,
+        bottom: window.innerHeight - rect.top + 2,
         left: leftPos,
         minWidth,
         zIndex: 9999,
@@ -125,7 +123,7 @@ export function SearchableSelect({
   useEffect(() => {
     if (isOpen) {
       updateDropdownPosition();
-      setTimeout(() => inputRef.current?.focus(), 0);
+      buttonRef.current?.focus();
       if (value && !filter) {
         const idx = filtered.findIndex(o => o.value === value);
         if (idx !== -1) {
@@ -135,18 +133,25 @@ export function SearchableSelect({
       }
     } else {
       setHighlightedIndex(-1);
+      setFilter('');
     }
   }, [isOpen]);
 
   useEffect(() => {
     setHighlightedIndex(-1);
-  }, [filter]);
+  }, [debouncedFilter]);
+
+  useEffect(() => {
+    if (isOpen && highlightedIndex >= 0) {
+      scrollToIndex(highlightedIndex);
+    }
+  }, [highlightedIndex]);
 
   const scrollToIndex = (index: number) => {
-    if (listRef.current) {
-      const el = listRef.current.children[index] as HTMLElement;
-      if (el) el.scrollIntoView({ block: 'nearest' });
-    }
+    if (!listRef.current) return;
+    const items = listRef.current.querySelectorAll<HTMLElement>('[role="option"]');
+    const el = items[index];
+    if (el) el.scrollIntoView({ block: 'nearest' });
   };
 
   const handleSelect = (val: string) => {
@@ -155,88 +160,110 @@ export function SearchableSelect({
     setFilter('');
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleButtonKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!isOpen) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setIsOpen(true);
+      }
+      return;
+    }
+
     if (e.key === 'Escape') {
       e.preventDefault();
       setIsOpen(false);
       setFilter('');
       return;
     }
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlightedIndex(prev => {
-        const next = prev < filtered.length - 1 ? prev + 1 : prev;
-        scrollToIndex(next);
-        return next;
-      });
+      setHighlightedIndex(prev => (prev < filtered.length - 1 ? prev + 1 : prev));
       return;
     }
+
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlightedIndex(prev => {
-        const next = prev > 0 ? prev - 1 : 0;
-        scrollToIndex(next);
-        return next;
-      });
+      setHighlightedIndex(prev => (prev > 0 ? prev - 1 : 0));
       return;
     }
+
     if (e.key === 'Enter') {
       e.preventDefault();
       if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
         handleSelect(filtered[highlightedIndex].value);
+      } else if (onCreateNew && filter.trim() && filtered.length === 0) {
+        onCreateNew(filter.trim());
+        setIsOpen(false);
+        setFilter('');
       }
+      return;
+    }
+
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      setFilter(prev => prev.slice(0, -1));
+      return;
+    }
+
+    if (e.key === 'Delete') {
+      e.preventDefault();
+      setFilter('');
+      return;
+    }
+
+    // Printable character — append to filter
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      setFilter(prev => prev + e.key);
     }
   };
+
+  const flatFiltered = filtered;
 
   const dropdown = isOpen ? (
     <div
       data-searchable-dropdown="true"
       style={dropdownStyle}
-      className="bg-white border border-gray-200 rounded-lg shadow-2xl overflow-hidden"
+      className="bg-white border border-gray-200 rounded shadow-2xl overflow-hidden"
     >
-      <div className="p-2 border-b border-gray-100">
-        <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5">
-          <Search className="w-4 h-4 text-gray-400 shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type to search..."
-            className="flex-1 py-1.5 text-sm bg-transparent border-0 outline-none focus:ring-0"
-          />
-          {filter && (
-            <button type="button" onClick={() => setFilter('')} className="p-0.5">
-              <X className="w-3.5 h-3.5 text-gray-400" />
-            </button>
-          )}
+      {filter && (
+        <div className="px-2 py-1 border-b border-gray-100 bg-gray-50 flex items-center gap-1">
+          <span className="text-[10px] text-gray-400 uppercase tracking-wide shrink-0">Filter:</span>
+          <span className="text-xs font-medium text-gray-800 truncate">{filter}</span>
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); setFilter(''); buttonRef.current?.focus(); }}
+            className="ml-auto text-[10px] text-gray-400 hover:text-gray-600 shrink-0 px-0.5"
+          >
+            ✕
+          </button>
         </div>
-      </div>
-      <div ref={listRef} className="max-h-56 overflow-y-auto" role="listbox">
-        {filtered.length === 0 ? (
+      )}
+      <div ref={listRef} className="max-h-72 overflow-y-auto" role="listbox">
+        {flatFiltered.length === 0 ? (
           onCreateNew && filter.trim() ? (
             <div
               onMouseDown={(e) => { e.preventDefault(); onCreateNew(filter.trim()); setIsOpen(false); setFilter(''); }}
-              className="px-3 py-2.5 cursor-pointer text-sm text-blue-700 hover:bg-blue-50 flex items-center gap-1.5 font-medium"
+              className="px-2 py-1.5 cursor-pointer text-xs text-blue-700 hover:bg-blue-50 flex items-center gap-1.5 font-medium"
               role="option"
             >
-              <span className="text-base leading-none">+</span>
+              <span className="text-sm leading-none">+</span>
               Create &ldquo;{filter.trim()}&rdquo;
             </div>
           ) : (
-            <div className="px-3 py-3 text-sm text-gray-400 text-center">No results found</div>
+            <div className="px-2 py-2 text-xs text-gray-400 text-center">No results</div>
           )
         ) : (
           <>
             {(() => {
-              const hasGroups = filtered.some(o => o.group);
+              const hasGroups = flatFiltered.some(o => o.group);
               if (!hasGroups) {
-                return filtered.map((option, index) => (
+                return flatFiltered.map((option, index) => (
                   <div
                     key={option.value}
                     onMouseDown={(e) => { e.preventDefault(); handleSelect(option.value); }}
-                    className={`px-3 py-2 cursor-pointer text-sm ${
+                    className={`px-2 py-[5px] cursor-pointer text-xs leading-tight ${
                       index === highlightedIndex
                         ? 'bg-blue-500 text-white'
                         : option.value === value
@@ -251,19 +278,19 @@ export function SearchableSelect({
                 ));
               }
               let lastGroup = '';
-              return filtered.map((option, index) => {
+              return flatFiltered.map((option, index) => {
                 const showHeader = option.group && option.group !== lastGroup;
                 if (showHeader) lastGroup = option.group!;
                 return (
                   <div key={option.value}>
                     {showHeader && (
-                      <div className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 border-b border-gray-100">
+                      <div className="px-2 pt-1.5 pb-0.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 border-b border-gray-100">
                         {option.group}
                       </div>
                     )}
                     <div
                       onMouseDown={(e) => { e.preventDefault(); handleSelect(option.value); }}
-                      className={`px-3 py-2 cursor-pointer text-sm ${
+                      className={`px-2 py-[5px] cursor-pointer text-xs leading-tight ${
                         index === highlightedIndex
                           ? 'bg-blue-500 text-white'
                           : option.value === value
@@ -282,10 +309,10 @@ export function SearchableSelect({
             {onCreateNew && filter.trim() && (
               <div
                 onMouseDown={(e) => { e.preventDefault(); onCreateNew(filter.trim()); setIsOpen(false); setFilter(''); }}
-                className="px-3 py-2 cursor-pointer text-sm text-blue-700 hover:bg-blue-50 flex items-center gap-1.5 font-medium border-t border-gray-100"
+                className="px-2 py-[5px] cursor-pointer text-xs text-blue-700 hover:bg-blue-50 flex items-center gap-1.5 font-medium border-t border-gray-100"
                 role="option"
               >
-                <span className="text-base leading-none">+</span>
+                <span className="text-sm leading-none">+</span>
                 Create &ldquo;{filter.trim()}&rdquo;
               </div>
             )}
@@ -303,9 +330,9 @@ export function SearchableSelect({
         onClick={() => {
           if (!disabled) {
             setIsOpen(prev => !prev);
-            if (isOpen) setFilter('');
           }
         }}
+        onKeyDown={handleButtonKeyDown}
         disabled={disabled}
         className={`w-full px-3 border rounded-lg text-left flex items-center justify-between h-[34px] ${
           /\bpy-/.test(className) ? '' : 'py-2'
@@ -313,8 +340,10 @@ export function SearchableSelect({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className={`truncate ${selectedOption ? 'text-gray-900' : 'text-gray-400'}`}>
-          {selectedOption ? selectedOption.label : placeholder}
+        <span className={`truncate text-sm ${selectedOption ? 'text-gray-900' : 'text-gray-400'}`}>
+          {isOpen && filter ? (
+            <span className="text-gray-600">{filter}<span className="animate-pulse">|</span></span>
+          ) : selectedOption ? selectedOption.label : placeholder}
         </span>
         <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
