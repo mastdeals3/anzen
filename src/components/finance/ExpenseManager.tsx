@@ -2378,10 +2378,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 {/* Category (2 cols) — grouped by Doc Type, sets both on change */}
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Category <span className="text-red-500">*</span></label>
-                  <select value={formData.expense_category}
-                    onChange={(e) => {
-                      const cat = e.target.value;
-                      // Infer Doc Type from the chosen category
+                  <SearchableSelect
+                    value={formData.expense_category}
+                    onChange={(val) => {
+                      const cat = val || '';
                       let dt: DocumentType | '' = '';
                       for (const [docType, cats] of Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]) {
                         if (cats.includes(cat)) { dt = docType; break; }
@@ -2389,16 +2389,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       setSelectedDocType(dt);
                       setFormData(prev => ({ ...prev, expense_category: cat }));
                     }}
-                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white" required>
-                    <option value="">Select category</option>
-                    {(Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]).map(([docType, cats]) => (
-                      <optgroup key={docType} label={docType}>
-                        {cats.map(cat => (
-                          <option key={cat} value={cat}>{EXPENSE_CATEGORY_LABELS[cat] || cat}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
+                    options={(Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]).flatMap(([docType, cats]) =>
+                      cats.map(cat => ({ value: cat, label: `${EXPENSE_CATEGORY_LABELS[cat] || cat}`, group: docType }))
+                    )}
+                    placeholder="Select category"
+                    className="border-gray-300 text-sm py-1.5"
+                  />
                 </div>
               </div>
 
@@ -2464,15 +2460,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         </div>
                         <div className="col-span-2">
                           <label className="block text-xs font-medium text-gray-700 mb-1">PPh Code</label>
-                          <select value={formData.pph_code_id}
-                            onChange={(e) => {
-                              const tc = taxCodes.find(t => t.id === e.target.value);
-                              setFormData(prev => ({ ...prev, pph_code_id: e.target.value, pph_amount: tc ? Math.round(prev.amount * tc.rate / 100) : 0 }));
+                          <SearchableSelect
+                            value={formData.pph_code_id}
+                            onChange={(val) => {
+                              const tc = taxCodes.find(t => t.id === val);
+                              setFormData(prev => ({ ...prev, pph_code_id: val, pph_amount: tc ? Math.round(prev.amount * tc.rate / 100) : 0 }));
                             }}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white">
-                            <option value="">None</option>
-                            {taxCodes.map(tc => <option key={tc.id} value={tc.id}>{tc.code} — {tc.rate}%</option>)}
-                          </select>
+                            options={[{ value: '', label: 'None' }, ...taxCodes.map(tc => ({ value: tc.id, label: `${tc.code} — ${tc.rate}%` }))]}
+                            placeholder="None"
+                            className="border-gray-300 text-sm py-1.5"
+                          />
                         </div>
                       </>
                     )}
@@ -2525,36 +2522,37 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         <Package className="w-3 h-3 inline mr-1" />
                         Import Container{requiresContainer ? <span className="text-red-500"> *</span> : <span className="text-gray-400"> (optional)</span>}
                       </label>
-                      <select value={formData.import_container_id}
-                        onChange={(e) => setFormData({ ...formData, import_container_id: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white" required={requiresContainer}>
-                        <option value="">Select Container</option>
-                        {containers.map(c => <option key={c.id} value={c.id}>{c.container_ref}</option>)}
-                      </select>
+                      <SearchableSelect
+                        value={formData.import_container_id}
+                        onChange={(val) => setFormData({ ...formData, import_container_id: val })}
+                        options={[{ value: '', label: 'Select Container' }, ...containers.map(c => ({ value: c.id, label: c.container_ref }))]}
+                        placeholder="Select Container"
+                        className="border-gray-300 text-sm py-1.5"
+                      />
                     </div>
                   )}
                   {requiresDC && (
                     <div className="col-span-6">
                       <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Challan (optional)</label>
-                      <select value={formData.delivery_challan_id}
-                        onChange={(e) => setFormData({ ...formData, delivery_challan_id: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white">
-                        <option value="">None</option>
-                        {challans.map(ch => (
-                          <option key={ch.id} value={ch.id}>{ch.challan_number} — {new Date(ch.challan_date).toLocaleDateString('en-GB')} — {ch.customers?.company_name || ''}</option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        value={formData.delivery_challan_id}
+                        onChange={(val) => setFormData({ ...formData, delivery_challan_id: val })}
+                        options={[{ value: '', label: 'None' }, ...challans.map(ch => ({ value: ch.id, label: `${ch.challan_number} — ${new Date(ch.challan_date).toLocaleDateString('en-GB')} — ${ch.customers?.company_name || ''}` }))]}
+                        placeholder="None"
+                        className="border-gray-300 text-sm py-1.5"
+                      />
                     </div>
                   )}
                   {formData.expense_category === 'fixed_asset' && (
                     <div className="col-span-6">
                       <label className="block text-xs font-medium text-gray-700 mb-1">Asset Account <span className="text-red-500">*</span></label>
-                      <select value={formData.fixed_asset_account_id}
-                        onChange={(e) => setFormData({ ...formData, fixed_asset_account_id: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white" required>
-                        <option value="">Select account</option>
-                        {coaAssets.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
-                      </select>
+                      <SearchableSelect
+                        value={formData.fixed_asset_account_id}
+                        onChange={(val) => setFormData({ ...formData, fixed_asset_account_id: val })}
+                        options={[{ value: '', label: 'Select account' }, ...coaAssets.map(a => ({ value: a.id, label: `${a.code} — ${a.name}` }))]}
+                        placeholder="Select account"
+                        className="border-gray-300 text-sm py-1.5"
+                      />
                     </div>
                   )}
                 </div>
@@ -2673,7 +2671,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         </div>
 
                         {brokerItems.length > 0 && (
-                          <div className="border border-gray-300 rounded-md overflow-hidden bg-white shadow-sm">
+                          <div className="border border-gray-300 rounded-md bg-white shadow-sm overflow-x-auto">
                             {/* Header row */}
                             <div className={`${grid} bg-gray-100 border-b border-gray-300 text-[10px] font-semibold text-gray-600 uppercase tracking-wide`}>
                               <div className="px-2 py-1.5 border-r border-gray-300 text-center">#</div>
@@ -2782,37 +2780,40 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           </div>
                         )}
 
-                        {/* Payment Summary — compact vertical ledger card */}
+                        {/* Payment Summary — horizontal formula bar (ERP style) */}
                         {(() => {
                           const totalPpn = totalLinePpn + Math.max(0, (formData.ppn_amount || 0) - totalLinePpn);
                           const fmt = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
-                          const rows: { label: string; value: number; color: string }[] = [
-                            { label: 'Broker Invoice', value: brokerInvoiceAmount, color: 'text-gray-800' },
-                            { label: 'Reimbursement', value: reimbTotal, color: 'text-gray-800' },
-                            { label: 'PPN', value: totalPpn, color: 'text-blue-700' },
-                            { label: 'PPh Withheld', value: -parentPph, color: 'text-orange-700' },
-                            { label: 'Stamp Duty', value: parentStamp, color: 'text-gray-800' },
+                          type FormulaCell = { label: string; value: number; valueColor: string; op?: string };
+                          const cells: FormulaCell[] = [
+                            { label: 'Broker Invoice', value: brokerInvoiceAmount, valueColor: 'text-gray-900', op: '+' },
+                            { label: 'Reimbursement Total', value: reimbTotal, valueColor: 'text-gray-900', op: '+' },
+                            { label: 'PPN (Broker + Lines)', value: totalPpn, valueColor: 'text-blue-700', op: '−' },
+                            { label: 'PPh Withheld', value: parentPph, valueColor: 'text-orange-700', op: '+' },
+                            { label: 'Stamp Duty', value: parentStamp, valueColor: 'text-gray-900' },
                           ];
                           return (
-                            <div className="mt-2 border border-gray-200 rounded-lg bg-white overflow-hidden">
-                              <table className="w-full text-xs">
-                                <tbody>
-                                  {rows.map((r) => (
-                                    <tr key={r.label} className="border-b border-gray-100 last:border-b-0">
-                                      <td className="px-3 py-1.5 text-gray-500 font-medium w-36">{r.label}</td>
-                                      <td className={`px-3 py-1.5 text-right font-mono ${r.color}`}>{fmt(Math.abs(r.value))}</td>
-                                      <td className="px-3 py-1.5 text-gray-400 w-6">{r.value < 0 ? '−' : ''}</td>
-                                    </tr>
-                                  ))}
-                                  <tr className="bg-emerald-50 border-t-2 border-emerald-300">
-                                    <td className="px-3 py-2 font-bold text-emerald-800 text-xs uppercase tracking-wide">TOTAL PAYABLE</td>
-                                    <td className="px-3 py-2 text-right font-mono font-bold text-emerald-900 text-sm">{fmt(grandPayable)}</td>
-                                    <td></td>
-                                  </tr>
-                                </tbody>
-                              </table>
+                            <div className="mt-2">
+                              <div className="flex items-stretch border border-gray-200 rounded-lg bg-white overflow-hidden">
+                                {cells.map((cell, i) => (
+                                  <div key={cell.label} className="flex items-stretch min-w-0">
+                                    <div className={`flex flex-col justify-center px-3 py-2 min-w-[90px] ${i < cells.length - 1 ? 'border-r border-gray-200' : ''}`}>
+                                      <span className="text-[9px] text-gray-400 font-medium whitespace-nowrap">{cell.label}</span>
+                                      <span className={`text-xs font-bold font-mono mt-0.5 ${cell.valueColor}`}>{fmt(cell.value)}</span>
+                                    </div>
+                                    {cell.op && (
+                                      <div className="flex items-center px-1.5 text-xs font-bold text-gray-400 border-r border-gray-200 bg-gray-50 select-none">{cell.op}</div>
+                                    )}
+                                  </div>
+                                ))}
+                                <div className="flex items-center px-1.5 text-xs font-bold text-gray-400 bg-gray-50 select-none">=</div>
+                                <div className="flex flex-col justify-center px-4 py-2 bg-emerald-50 border-l-2 border-emerald-400 min-w-[110px]">
+                                  <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">TOTAL PAYABLE</span>
+                                  <span className="text-sm font-bold font-mono text-emerald-900 mt-0.5">{fmt(grandPayable)}</span>
+                                </div>
+                              </div>
                               {brokerItems.length > 0 && Math.abs(linesSumAmt - brokerInvoiceAmount) > 1 && (
-                                <div className="px-3 py-1 bg-orange-50 border-t border-orange-200 text-[10px] text-orange-700 flex items-center gap-1">
+                                <div className="mt-1 px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] text-orange-700 flex items-center gap-1">
                                   <AlertCircle className="w-3 h-3 shrink-0" />
                                   Reimb. total ≠ Broker Invoice (diff Rp {Math.abs(linesSumAmt - brokerInvoiceAmount).toLocaleString('id-ID')}) — invoice amount will be replaced with line total on save.
                                 </div>
@@ -2824,37 +2825,37 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     );
                   })()}
 
-                  {/* Non-broker totals recap — compact vertical ledger */}
+                  {/* Non-broker payment summary — horizontal formula bar */}
                   {formData.expense_category !== 'import_broker' && !taxCfg.pib && (formData.amount > 0 || formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0) && (() => {
                     const bc = formData.expense_category === 'utilities' ? (formData.bank_charges_amount || 0) : 0;
                     const payable = (formData.amount || 0) + (formData.ppn_amount || 0) - (formData.pph_amount || 0) + (formData.stamp_duty_amount || 0) + bc;
                     const fmt = (n: number) => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
-                    type SummaryRow = { label: string; value: number; color: string; show: boolean };
-                    const rows: SummaryRow[] = [
-                      { label: 'Invoice Amount', value: formData.amount || 0, color: 'text-gray-800', show: true },
-                      { label: 'PPN', value: formData.ppn_amount || 0, color: 'text-blue-700', show: (formData.ppn_amount || 0) > 0 },
-                      { label: 'PPh Withheld', value: -(formData.pph_amount || 0), color: 'text-orange-700', show: (formData.pph_amount || 0) > 0 },
-                      { label: 'Stamp Duty', value: formData.stamp_duty_amount || 0, color: 'text-gray-800', show: (formData.stamp_duty_amount || 0) > 0 },
-                      { label: 'Bank Charges', value: bc, color: 'text-purple-700', show: bc > 0 },
-                    ].filter(r => r.show);
+                    type FormulaCell = { label: string; value: number; valueColor: string; op?: string; show: boolean };
+                    const cells: FormulaCell[] = [
+                      { label: 'Invoice Amount', value: formData.amount || 0, valueColor: 'text-gray-900', op: '+', show: true },
+                      { label: 'PPN', value: formData.ppn_amount || 0, valueColor: 'text-blue-700', op: '−', show: (formData.ppn_amount || 0) > 0 },
+                      { label: 'PPh Withheld', value: formData.pph_amount || 0, valueColor: 'text-orange-700', op: '+', show: (formData.pph_amount || 0) > 0 },
+                      { label: 'Stamp Duty', value: formData.stamp_duty_amount || 0, valueColor: 'text-gray-900', op: '+', show: (formData.stamp_duty_amount || 0) > 0 },
+                      { label: 'Bank Charges', value: bc, valueColor: 'text-purple-700', show: bc > 0 },
+                    ].filter(c => c.show);
                     return (
-                      <div className="border border-gray-200 rounded-lg bg-white overflow-hidden max-w-xs">
-                        <table className="w-full text-xs">
-                          <tbody>
-                            {rows.map((r) => (
-                              <tr key={r.label} className="border-b border-gray-100">
-                                <td className="px-3 py-1.5 text-gray-500 font-medium">{r.label}</td>
-                                <td className={`px-3 py-1.5 text-right font-mono ${r.color}`}>
-                                  {r.value < 0 ? '−' : ''}{fmt(Math.abs(r.value))}
-                                </td>
-                              </tr>
-                            ))}
-                            <tr className="bg-emerald-50 border-t-2 border-emerald-300">
-                              <td className="px-3 py-2 font-bold text-emerald-800 text-xs uppercase tracking-wide">TOTAL PAYABLE</td>
-                              <td className="px-3 py-2 text-right font-mono font-bold text-emerald-900 text-sm">{fmt(payable)}</td>
-                            </tr>
-                          </tbody>
-                        </table>
+                      <div className="mt-2 flex items-stretch border border-gray-200 rounded-lg bg-white overflow-hidden">
+                        {cells.map((cell, i) => (
+                          <div key={cell.label} className="flex items-stretch min-w-0">
+                            <div className={`flex flex-col justify-center px-3 py-2 min-w-[90px] ${i < cells.length - 1 ? 'border-r border-gray-200' : ''}`}>
+                              <span className="text-[9px] text-gray-400 font-medium whitespace-nowrap">{cell.label}</span>
+                              <span className={`text-xs font-bold font-mono mt-0.5 ${cell.valueColor}`}>{fmt(cell.value)}</span>
+                            </div>
+                            {cell.op && i < cells.length - 1 && (
+                              <div className="flex items-center px-1.5 text-xs font-bold text-gray-400 border-r border-gray-200 bg-gray-50 select-none">{cell.op}</div>
+                            )}
+                          </div>
+                        ))}
+                        <div className="flex items-center px-1.5 text-xs font-bold text-gray-400 bg-gray-50 select-none">=</div>
+                        <div className="flex flex-col justify-center px-4 py-2 bg-emerald-50 border-l-2 border-emerald-400 min-w-[110px]">
+                          <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">TOTAL PAYABLE</span>
+                          <span className="text-sm font-bold font-mono text-emerald-900 mt-0.5">{fmt(payable)}</span>
+                        </div>
                       </div>
                     );
                   })()}

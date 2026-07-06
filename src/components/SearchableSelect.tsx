@@ -5,6 +5,7 @@ import { useDebounce } from '../hooks/useDebounce';
 interface Option {
   value: string;
   label: string;
+  group?: string;
 }
 
 interface SearchableSelectProps {
@@ -218,23 +219,56 @@ export function SearchableSelect({
               )
             ) : (
               <>
-                {filtered.map((option, index) => (
-                  <div
-                    key={option.value}
-                    onClick={() => handleSelect(option.value)}
-                    className={`px-3 py-2 cursor-pointer text-sm ${
-                      index === highlightedIndex
-                        ? 'bg-blue-500 text-white'
-                        : option.value === value
-                        ? 'bg-blue-50 text-blue-900'
-                        : 'text-gray-800 hover:bg-gray-50'
-                    }`}
-                    role="option"
-                    aria-selected={option.value === value}
-                  >
-                    {option.label}
-                  </div>
-                ))}
+                {(() => {
+                  const hasGroups = filtered.some(o => o.group);
+                  if (!hasGroups) {
+                    return filtered.map((option, index) => (
+                      <div
+                        key={option.value}
+                        onClick={() => handleSelect(option.value)}
+                        className={`px-3 py-2 cursor-pointer text-sm ${
+                          index === highlightedIndex
+                            ? 'bg-blue-500 text-white'
+                            : option.value === value
+                            ? 'bg-blue-50 text-blue-900'
+                            : 'text-gray-800 hover:bg-gray-50'
+                        }`}
+                        role="option"
+                        aria-selected={option.value === value}
+                      >
+                        {option.label}
+                      </div>
+                    ));
+                  }
+                  let lastGroup = '';
+                  return filtered.map((option, index) => {
+                    const showHeader = option.group && option.group !== lastGroup;
+                    if (showHeader) lastGroup = option.group!;
+                    return (
+                      <div key={option.value}>
+                        {showHeader && (
+                          <div className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 border-b border-gray-100">
+                            {option.group}
+                          </div>
+                        )}
+                        <div
+                          onClick={() => handleSelect(option.value)}
+                          className={`px-3 py-2 cursor-pointer text-sm ${
+                            index === highlightedIndex
+                              ? 'bg-blue-500 text-white'
+                              : option.value === value
+                              ? 'bg-blue-50 text-blue-900'
+                              : 'text-gray-800 hover:bg-gray-50'
+                          }`}
+                          role="option"
+                          aria-selected={option.value === value}
+                        >
+                          {option.label}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
                 {onCreateNew && filter.trim() && (
                   <div
                     onClick={() => {
