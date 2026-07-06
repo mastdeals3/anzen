@@ -486,140 +486,44 @@ export function CRM() {
 
   return (
     <Layout>
-      <div className="space-y-4">
-        <div className="flex items-center">
-          <h1 className="text-xl font-semibold text-gray-900">{t('crm.title')}</h1>
-        </div>
-
-        <div className="bg-white rounded-lg shadow">
+      <div className="space-y-2">
+        <div className="bg-white rounded-lg shadow-sm">
           <div className="border-b border-gray-200">
             <div className="flex overflow-x-auto">
-              <button
-                onClick={() => setActiveTab('inquiry-360')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'inquiry-360'
-                    ? 'border-purple-500 text-purple-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Orbit className="w-5 h-5" />
-                Inquiry 360
-              </button>
-              <button
-                onClick={() => setActiveTab('email')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'email'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Inbox className="w-5 h-5" />
-                {t('crm.emailInbox')}
-              </button>
-              <button
-                onClick={() => setActiveTab('table')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'table'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Table className="w-5 h-5" />
-                {t('crm.inquiries')}
-              </button>
-              <button
-                onClick={() => setActiveTab('pipeline')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'pipeline'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <LayoutGrid className="w-5 h-5" />
-                {t('crm.pipeline')}
-              </button>
-              <button
-                onClick={() => setActiveTab('calendar')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'calendar'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <CalendarIcon className="w-5 h-5" />
-                {t('crm.calendar')}
-              </button>
-              <button
-                onClick={() => setActiveTab('customers')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'customers'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Users className="w-5 h-5" />
-                {t('crm.customers')}
-              </button>
-              <button
-                onClick={() => setActiveTab('activities')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'activities'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Activity className="w-5 h-5" />
-                {t('crm.activities')}
-              </button>
-              
-              <button
-                onClick={() => setActiveTab('archive')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'archive'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Archive className="w-5 h-5" />
-                {t('crm.archive')}
-              </button>
-              <button
-                onClick={() => setActiveTab('sales-team')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'sales-team'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <BarChart3 className="w-5 h-5" />
-                {t('crm.salesTeam')}
-              </button>
-              <button
-                onClick={() => setActiveTab('delivery-log')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'delivery-log'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Send className="w-5 h-5" />
-                Delivery Log
-              </button>
-              <button
-                onClick={() => setActiveTab('documents')}
-                className={`flex items-center gap-2 px-6 py-4 border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'documents'
-                    ? 'border-blue-500 text-blue-600 font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <FolderOpen className="w-5 h-5" />
-                Documents
-              </button>
+              {([
+                ['inquiry-360', Orbit,       'Inquiry 360',       'purple'],
+                ['email',       Inbox,       t('crm.emailInbox'), 'blue'],
+                ['table',       Table,       t('crm.inquiries'),  'blue'],
+                ['pipeline',    LayoutGrid,  t('crm.pipeline'),   'blue'],
+                ['calendar',    CalendarIcon,t('crm.calendar'),   'blue'],
+                ['customers',   Users,       t('crm.customers'),  'blue'],
+                ['activities',  Activity,    t('crm.activities'), 'blue'],
+                ['archive',     Archive,     t('crm.archive'),    'blue'],
+                ['sales-team',  BarChart3,   t('crm.salesTeam'),  'blue'],
+                ['delivery-log',Send,        'Delivery Log',      'blue'],
+                ['documents',   FolderOpen,  'Documents',         'blue'],
+              ] as const).map(([tab, Icon, label, color]) => {
+                const isActive = activeTab === tab;
+                const activeCls = color === 'purple'
+                  ? 'border-purple-500 text-purple-600 font-medium'
+                  : 'border-blue-500 text-blue-600 font-medium';
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab as typeof activeTab)}
+                    className={`flex items-center gap-1.5 px-3 py-2 border-b-2 transition whitespace-nowrap text-xs ${
+                      isActive ? activeCls : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="p-6">
+          <div className="p-3">
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 flex items-center justify-between">
                 <p className="text-red-700">{error}</p>

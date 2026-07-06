@@ -2390,7 +2390,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       setFormData(prev => ({ ...prev, expense_category: cat }));
                     }}
                     options={(Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]).flatMap(([docType, cats]) =>
-                      cats.map(cat => ({ value: cat, label: `${EXPENSE_CATEGORY_LABELS[cat] || cat}`, group: docType }))
+                      cats.map(cat => {
+                        // Prefer the i18n label so the dropdown follows the active UI language.
+                        const translated = expenseCategories.find(c => c.value === cat)?.label;
+                        return { value: cat, label: translated || EXPENSE_CATEGORY_LABELS[cat] || cat, group: docType };
+                      })
                     )}
                     placeholder="Select category"
                     className="border-gray-300 text-sm py-1.5"

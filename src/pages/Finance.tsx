@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useFinance } from '../contexts/FinanceContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { ChevronDown, ChevronRight, Menu, X, Loader } from 'lucide-react';
 
@@ -60,6 +59,7 @@ interface MenuGroup {
 const getFinanceMenu = (t: Record<string, Record<string, string>>): MenuGroup[] => [
   {
     label: t.finance.vouchers,
+    collapsible: true,
     items: [
       { id: 'purchase', label: t.finance.purchase, shortcut: 'F9' },
       { id: 'receipt', label: t.finance.receipt, shortcut: 'F6' },
@@ -72,6 +72,7 @@ const getFinanceMenu = (t: Record<string, Record<string, string>>): MenuGroup[] 
   },
   {
     label: t.finance.books,
+    collapsible: true,
     items: [
       { id: 'ledger', label: t.finance.ledger, shortcut: 'Ctrl+L' },
       { id: 'journal_register', label: t.finance.journalRegister, shortcut: 'Ctrl+J' },
@@ -84,7 +85,7 @@ const getFinanceMenu = (t: Record<string, Record<string, string>>): MenuGroup[] 
     label: t.finance.reports,
     collapsible: true,
     items: [
-      { id: 'ca_reports', label: '📊 ' + t.finance.caReports, shortcut: 'Ctrl+R' },
+      { id: 'ca_reports', label: t.finance.caReports, shortcut: 'Ctrl+R' },
       { id: 'trial_balance', label: t.finance.trialBalance },
       { id: 'pnl', label: t.finance.profitLoss },
       { id: 'balance_sheet', label: t.finance.balanceSheet },
@@ -109,7 +110,6 @@ const getFinanceMenu = (t: Record<string, Record<string, string>>): MenuGroup[] 
 function FinanceContent() {
   const { profile } = useAuth();
   const { t } = useLanguage();
-  const { dateRange } = useFinance();
   const { navigationData, clearNavigationData } = useNavigation();
   const location = useLocation();
   const navigate = useNavigate();
@@ -366,29 +366,24 @@ function FinanceContent() {
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Top Bar */}
-          <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-3 flex items-center gap-3">
+          {/* Top Bar — compact, no duplicate title / date */}
+          <div className="bg-white border-b border-gray-200 px-3 py-1 flex items-center gap-2">
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-1.5 hover:bg-gray-100 rounded transition-colors"
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
               title={sidebarCollapsed ? 'Show Menu' : 'Hide Menu'}
+              aria-label={sidebarCollapsed ? 'Show finance menu' : 'Hide finance menu'}
             >
-              {sidebarCollapsed ? <Menu className="w-5 h-5 text-gray-600" /> : <X className="w-5 h-5 text-gray-600" />}
+              {sidebarCollapsed ? <Menu className="w-4 h-4 text-gray-600" /> : <X className="w-4 h-4 text-gray-600" />}
             </button>
-            <h1 className="text-base md:text-lg font-semibold text-gray-900 truncate">
-              <span className="hidden md:inline">{t.finance.title}</span>
-              <span className="md:hidden">
-                {financeMenu.flatMap(g => g.items).find(i => i.id === activeTab)?.label ?? t.finance.title}
-              </span>
-            </h1>
-            <span className="text-xs text-gray-400 ml-2 hidden md:inline">
-              {dateRange.startDate} to {dateRange.endDate}
+            <span className="text-sm font-semibold text-gray-700 truncate">
+              {financeMenu.flatMap(g => g.items).find(i => i.id === activeTab)?.label ?? t.finance.title}
             </span>
           </div>
 
           {/* Content Area - Pure White Background */}
           <div className="flex-1 overflow-auto bg-white">
-            <div className="p-3 md:p-6">
+            <div className="p-2 md:p-3">
               <Suspense fallback={
                 <div className="flex items-center justify-center py-12">
                   <Loader className="w-6 h-6 animate-spin text-blue-600" />

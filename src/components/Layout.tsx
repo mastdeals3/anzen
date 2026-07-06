@@ -4,7 +4,6 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useFinance } from '../contexts/FinanceContext';
 import { NotificationDropdown } from './NotificationDropdown';
-import { formatDate } from '../utils/dateFormat';
 import {
   LayoutDashboard, Package, Boxes, Warehouse, Users, CircleUser as UserCircle,
   ShoppingCart, DollarSign, Settings, LogOut, Menu, X, Globe, Truck, Zap,
@@ -105,10 +104,15 @@ export function Layout({ children }: LayoutProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [datePickerOpen]);
 
-  // Auto-collapse sidebar for specific pages
+  // Auto-collapse sidebar the FIRST time the user lands on a dense page.
+  // Track pages we've already auto-collapsed so a manual expand isn't reverted.
   const autoCollapsiblePages = ['crm', 'command-center', 'finance'];
+  const autoCollapsedPagesRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (autoCollapsiblePages.includes(currentPage) && !sidebarCollapsed) {
+    if (autoCollapsiblePages.includes(currentPage)
+        && !sidebarCollapsed
+        && !autoCollapsedPagesRef.current.has(currentPage)) {
+      autoCollapsedPagesRef.current.add(currentPage);
       setSidebarCollapsed(true);
     }
   }, [currentPage]);
@@ -291,20 +295,23 @@ export function Layout({ children }: LayoutProps) {
       {/* Main content */}
       <div className={`transition-[padding] duration-200 ${mainPadding}`}>
         <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div className="flex items-center justify-between px-4 py-2.5">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between px-3 py-1.5">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-1.5 rounded hover:bg-gray-100"
+                className="lg:hidden p-1 rounded hover:bg-gray-100"
+                title="Open menu"
               >
-                <Menu className="w-5 h-5" />
+                <Menu className="w-4 h-4" />
               </button>
               <button
                 onClick={() => { setSidebarCollapsed(!sidebarCollapsed); setHoverExpanded(false); }}
-                className="hidden lg:block p-1.5 rounded hover:bg-gray-100"
+                className="hidden lg:block p-1 rounded hover:bg-gray-100"
                 title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-expanded={!sidebarCollapsed}
               >
-                <Menu className="w-5 h-5" />
+                <Menu className="w-4 h-4" />
               </button>
             </div>
 
@@ -369,34 +376,31 @@ export function Layout({ children }: LayoutProps) {
               )}
             </div>
 
-            <div className="hidden lg:flex items-center gap-1.5 mr-3 text-xs text-gray-500">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>{formatDate(new Date())}</span>
-            </div>
-
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <NotificationDropdown />
 
               <button
                 onClick={toggleLanguage}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded hover:bg-gray-100"
+                className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100"
+                title="Toggle language"
               >
-                <Globe className="w-4 h-4 text-gray-600" />
+                <Globe className="w-3.5 h-3.5 text-gray-600" />
                 <span className="text-xs font-medium text-gray-700 uppercase">{language}</span>
               </button>
 
               <button
                 onClick={() => signOut()}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded hover:bg-gray-100 text-gray-700"
+                className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 text-gray-700"
+                title={t('auth.logout')}
               >
-                <LogOut className="w-4 h-4" />
-                <span className="text-xs font-medium">{t('auth.logout')}</span>
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="text-xs font-medium hidden md:inline">{t('auth.logout')}</span>
               </button>
             </div>
           </div>
         </header>
 
-        <main className="p-4 lg:p-6">
+        <main className="p-3 lg:p-4">
           {children}
         </main>
       </div>
