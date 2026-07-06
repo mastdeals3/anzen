@@ -57,6 +57,9 @@ interface FinanceExpense {
   // Tax fields for non-PIB expenses
   ppn_amount?: number | null;
   ppn_manual_override?: boolean | null;
+  ppn_calc_mode?: 'standard' | 'dpp_nilai_lain' | 'manual' | null;
+  dpp_amount?: number | null;
+  ppn_rate?: number | null;
   pph_amount?: number | null;
   pph_code_id?: string | null;
   stamp_duty_amount?: number | null;
@@ -492,9 +495,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     pib_pph_amount: 0,
     // Non-PIB tax fields
     ppn_amount: 0,
-    // Task 2: TRUE once the user has manually edited ppn_amount. When TRUE,
-    // ppn_amount is not overwritten by the amount / supplier auto-recompute.
+    // Task 2 (2026-07-06): TRUE once the user has manually edited ppn_amount.
+    // Kept for backward compat — new logic below uses ppn_calc_mode instead.
     ppn_manual_override: false,
+    // Indonesian PPN calc mode (2026-07-07): standard | dpp_nilai_lain | manual
+    ppn_calc_mode: 'standard' as 'standard' | 'dpp_nilai_lain' | 'manual',
+    dpp_amount: 0,
+    ppn_rate: 11,
     pph_amount: 0,
     pph_code_id: '',
     stamp_duty_amount: 0,
@@ -996,7 +1003,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         pib_pph_amount: isPib ? (formData.pib_pph_amount || 0) : null,
         // Non-PIB tax fields — only for non-import non-pib categories
         ppn_amount:             (!isPib && !isImportCategory) ? (formData.ppn_amount || 0) : 0,
-        ppn_manual_override:    (!isPib && !isImportCategory) ? !!formData.ppn_manual_override : false,
+        ppn_manual_override:    (!isPib && !isImportCategory) ? (formData.ppn_calc_mode === 'manual' || !!formData.ppn_manual_override) : false,
+        // PPN calc mode + DPP (Indonesian tax invoices)
+        ppn_calc_mode:          (!isPib && !isImportCategory) ? (formData.ppn_calc_mode || 'standard') : 'standard',
+        dpp_amount:             (!isPib && !isImportCategory && formData.ppn_calc_mode === 'dpp_nilai_lain') ? (formData.dpp_amount || 0) : null,
+        ppn_rate:               (!isPib && !isImportCategory) ? (formData.ppn_rate || 11) : 11,
         pph_amount:             (!isPib && !isImportCategory) ? (formData.pph_amount || 0) : 0,
         pph_code_id:            (!isPib && !isImportCategory && formData.pph_code_id) ? formData.pph_code_id : null,
         stamp_duty_amount:      (!isPib && !isImportCategory) ? (formData.stamp_duty_amount || 0) : 0,
@@ -1009,11 +1020,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       console.log('document_urls:', expenseData.document_urls);
       console.log('Full expense data:', expenseData);
 
-      // Columns added in the 2026-07-06 finance stabilization sprint. If the
-      // production DB has not yet applied those migrations, the insert/update
+      // Columns added in the 2026-07-06 / 2026-07-07 finance stabilization sprints.
+      // If the production DB has not yet applied those migrations, the insert/update
       // will fail with "column X does not exist". Strip them and retry so the
       // save always succeeds; the fields are optional to the accounting flow.
-      const OPTIONAL_NEW_COLUMNS = ['ppn_manual_override', 'bank_charges_amount'] as const;
+      const OPTIONAL_NEW_COLUMNS = [
+        'ppn_manual_override', 'bank_charges_amount',
+        'ppn_calc_mode', 'dpp_amount', 'ppn_rate',
+      ] as const;
       const stripOptionalColumns = (row: any) => {
         const clone: any = { ...row };
         for (const c of OPTIONAL_NEW_COLUMNS) delete clone[c];
@@ -1342,6 +1356,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       pib_pph_amount: expense.pib_pph_amount ?? 0,
       ppn_amount: expense.ppn_amount ?? 0,
       ppn_manual_override: expense.ppn_manual_override ?? false,
+      // Derive mode when loading pre-existing rows: manual_override was true → 'manual';
+      // otherwise fall back to whatever the server tells us, defaulting to 'standard'.
+      ppn_calc_mode: (expense.ppn_calc_mode ?? (expense.ppn_manual_override ? 'manual' : 'standard')) as 'standard' | 'dpp_nilai_lain' | 'manual',
+      dpp_amount: expense.dpp_amount ?? 0,
+      ppn_rate: expense.ppn_rate ?? 11,
       pph_amount: expense.pph_amount ?? 0,
       pph_code_id: expense.pph_code_id ?? '',
       stamp_duty_amount: expense.stamp_duty_amount ?? 0,
@@ -1566,6 +1585,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       pib_pph_amount: 0,
       ppn_amount: 0,
       ppn_manual_override: false,
+      ppn_calc_mode: 'standard',
+      dpp_amount: 0,
+      ppn_rate: 11,
       pph_amount: 0,
       pph_code_id: '',
       stamp_duty_amount: 0,
@@ -1593,8 +1615,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         if (sup.default_pph_code_id && (sup.tax_preference === 'pph_only' || sup.tax_preference === 'ppn_pph')) {
           updates.pph_code_id = sup.default_pph_code_id;
         }
-        // Auto-fill PPN if PKP — but respect a manual override the user has already set.
-        if (sup.pkp_status && (sup.tax_preference === 'ppn_only' || sup.tax_preference === 'ppn_pph') && !prev.ppn_manual_override) {
+        // Auto-fill PPN only for PKP suppliers AND when we're in STANDARD calc mode.
+        // DPP Nilai Lain and MANUAL modes keep whatever the user has entered.
+        const mode = prev.ppn_calc_mode || 'standard';
+        if (mode === 'standard' && sup.pkp_status && (sup.tax_preference === 'ppn_only' || sup.tax_preference === 'ppn_pph') && !prev.ppn_manual_override) {
           updates.ppn_amount = calculatePPN(prev.amount, true);
         }
         // Auto-fill due_date from payment terms
@@ -2414,40 +2438,92 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       <input type="number" step="1" min="0" value={formData.amount || ''}
                         onChange={(e) => {
                           const amt = parseFloat(e.target.value) || 0;
-                          setFormData(prev => ({
-                            ...prev, amount: amt,
-                            ppn_amount: selectedSupplier?.pkp_status && !prev.ppn_manual_override
-                              ? calculatePPN(amt, true)
-                              : prev.ppn_amount,
-                          }));
+                          setFormData(prev => {
+                            // Recompute PPN only in STANDARD mode. DPP mode reads dpp_amount;
+                            // MANUAL mode never recalculates from the invoice amount.
+                            const mode = prev.ppn_calc_mode || 'standard';
+                            const rate = prev.ppn_rate || 11;
+                            const ppn = mode === 'standard' && selectedSupplier?.pkp_status
+                              ? Math.round(amt * rate / 100)
+                              : prev.ppn_amount;
+                            return { ...prev, amount: amt, ppn_amount: ppn };
+                          });
                         }}
                         className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold text-right font-mono" placeholder="0" required />
                     </div>
 
-                    {/* PPN */}
+                    {/* PPN with mode selector */}
                     {taxCfg?.ppn && (
-                      <div className="col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
-                          PPN{isBrokerRow ? ' (from Broker)' : ''}
+                      <div className={formData.ppn_calc_mode === 'dpp_nilai_lain' ? 'col-span-3' : 'col-span-2'}>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium text-gray-700">
+                            PPN{isBrokerRow ? ' (from Broker)' : ''}
+                          </label>
                           {!isBrokerRow && (
-                            <span className={`text-[9px] font-semibold px-1 rounded ${formData.ppn_manual_override ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
-                              {formData.ppn_manual_override ? 'MAN' : 'AUTO'}
-                            </span>
+                            <select
+                              value={formData.ppn_calc_mode || 'standard'}
+                              onChange={(e) => {
+                                const mode = e.target.value as 'standard' | 'dpp_nilai_lain' | 'manual';
+                                setFormData(prev => {
+                                  const rate = prev.ppn_rate || 11;
+                                  let ppn = prev.ppn_amount;
+                                  if (mode === 'standard') {
+                                    ppn = selectedSupplier?.pkp_status ? Math.round((prev.amount || 0) * rate / 100) : 0;
+                                  } else if (mode === 'dpp_nilai_lain') {
+                                    ppn = Math.round((prev.dpp_amount || 0) * rate / 100);
+                                  }
+                                  return {
+                                    ...prev,
+                                    ppn_calc_mode: mode,
+                                    ppn_amount: ppn,
+                                    ppn_manual_override: mode === 'manual',
+                                    // reset DPP when leaving DPP mode
+                                    dpp_amount: mode === 'dpp_nilai_lain' ? (prev.dpp_amount || prev.amount || 0) : 0,
+                                  };
+                                });
+                              }}
+                              className="text-[10px] font-semibold border border-gray-200 rounded px-1 py-0.5 bg-white"
+                              title="PPN calculation mode"
+                            >
+                              <option value="standard">Standard</option>
+                              <option value="dpp_nilai_lain">DPP</option>
+                              <option value="manual">Manual</option>
+                            </select>
                           )}
-                          {!isBrokerRow && selectedSupplier?.pkp_status && (
-                            <button type="button" title="Recalculate 11% & clear manual override"
-                              onClick={() => setFormData(prev => ({ ...prev, ppn_amount: calculatePPN(prev.amount, true), ppn_manual_override: false }))}
-                              className="text-blue-600 hover:text-blue-800 text-[10px]">↻</button>
-                          )}
-                        </label>
-                        <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev,
-                            ppn_amount: parseFloat(e.target.value) || 0,
-                            ppn_manual_override: prev.expense_category !== 'import_broker',
-                          }))}
-                          readOnly={isBrokerRow}
-                          className={`w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono ${isBrokerRow ? 'bg-gray-100 text-gray-600' : ''}`} placeholder="0" />
+                        </div>
+                        {formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBrokerRow ? (
+                          <div className="grid grid-cols-2 gap-1">
+                            <input type="number" step="1" min="0" value={formData.dpp_amount || ''}
+                              onChange={(e) => {
+                                const dpp = parseFloat(e.target.value) || 0;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  dpp_amount: dpp,
+                                  ppn_amount: Math.round(dpp * (prev.ppn_rate || 11) / 100),
+                                }));
+                              }}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono"
+                              placeholder="DPP" title="DPP Nilai Lain" />
+                            <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
+                              onChange={(e) => setFormData(prev => ({ ...prev, ppn_amount: parseFloat(e.target.value) || 0 }))}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono text-blue-700"
+                              placeholder="PPN" title="PPN Amount (auto from DPP)" />
+                          </div>
+                        ) : (
+                          <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
+                            onChange={(e) => setFormData(prev => ({
+                              ...prev,
+                              ppn_amount: parseFloat(e.target.value) || 0,
+                              // Typing directly in PPN flips to manual so amount edits don't overwrite it.
+                              ppn_calc_mode: prev.expense_category === 'import_broker' ? prev.ppn_calc_mode : 'manual',
+                              ppn_manual_override: prev.expense_category !== 'import_broker',
+                            }))}
+                            readOnly={isBrokerRow}
+                            className={`w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono ${isBrokerRow ? 'bg-gray-100 text-gray-600' : ''}`} placeholder="0" />
+                        )}
+                        {formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBrokerRow && (
+                          <p className="text-[9px] text-gray-500 mt-0.5">DPP × {formData.ppn_rate || 11}% → PPN</p>
+                        )}
                       </div>
                     )}
 

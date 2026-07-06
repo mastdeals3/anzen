@@ -124,9 +124,40 @@ function FinanceContent() {
   const setActiveTab = useCallback((tab: FinanceTab) => {
     navigate(`/finance/${tab}`);
   }, [navigate]);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Persist Finance sidebar state so the user's choice survives page navigation.
+  const SIDEBAR_KEY = 'anzen.finance.sidebarCollapsed';
+  const GROUPS_KEY  = 'anzen.finance.collapsedGroups';
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(isMobile);
+  const [sidebarCollapsed, setSidebarCollapsedRaw] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return isMobile;
+    const saved = window.localStorage.getItem(SIDEBAR_KEY);
+    if (saved === '1') return true;
+    if (saved === '0') return false;
+    return isMobile;
+  });
+  const setSidebarCollapsed = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    setSidebarCollapsedRaw(prev => {
+      const value = typeof next === 'function' ? (next as (p: boolean) => boolean)(prev) : next;
+      if (typeof window !== 'undefined') window.localStorage.setItem(SIDEBAR_KEY, value ? '1' : '0');
+      return value;
+    });
+  }, []);
+  const [collapsedGroups, setCollapsedGroupsRaw] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const saved = window.localStorage.getItem(GROUPS_KEY);
+      if (!saved) return new Set();
+      const arr = JSON.parse(saved);
+      return Array.isArray(arr) ? new Set<string>(arr) : new Set();
+    } catch { return new Set(); }
+  });
+  const setCollapsedGroups = useCallback((updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setCollapsedGroupsRaw(prev => {
+      const next = typeof updater === 'function' ? (updater as (p: Set<string>) => Set<string>)(prev) : updater;
+      if (typeof window !== 'undefined') window.localStorage.setItem(GROUPS_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  }, []);
   const [editJournalEntryId, setEditJournalEntryId] = useState<string | null>(null);
   const [payInvoice, setPayInvoice] = useState<{ id: string; invoice_number: string; supplier_id: string; balance_amount: number } | null>(null);
   const [focusExpenseId, setFocusExpenseId] = useState<string | null>(null);
