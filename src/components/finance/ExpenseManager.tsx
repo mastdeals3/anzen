@@ -1009,19 +1009,47 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       console.log('document_urls:', expenseData.document_urls);
       console.log('Full expense data:', expenseData);
 
+      // Columns added in the 2026-07-06 finance stabilization sprint. If the
+      // production DB has not yet applied those migrations, the insert/update
+      // will fail with "column X does not exist". Strip them and retry so the
+      // save always succeeds; the fields are optional to the accounting flow.
+      const OPTIONAL_NEW_COLUMNS = ['ppn_manual_override', 'bank_charges_amount'] as const;
+      const stripOptionalColumns = (row: any) => {
+        const clone: any = { ...row };
+        for (const c of OPTIONAL_NEW_COLUMNS) delete clone[c];
+        return clone;
+      };
+      const isMissingColumnError = (err: any) =>
+        !!err && typeof err.message === 'string' &&
+        OPTIONAL_NEW_COLUMNS.some(c => err.message.includes(c)) &&
+        /column.*does not exist|schema cache|could not find/i.test(err.message);
+
       if (editingExpense) {
         // Regular update - bank expenses only (cash expenses go to Petty Cash Manager)
         console.log('=== UPDATING EXPENSE ===');
         console.log('Expense ID:', editingExpense.id);
 
-        const { error } = await supabase
-          .from('finance_expenses')
-          .update(expenseData)
-          .eq('id', editingExpense.id);
+        let updateErr: any;
+        {
+          const { error } = await supabase
+            .from('finance_expenses')
+            .update(expenseData)
+            .eq('id', editingExpense.id);
+          updateErr = error;
+        }
 
-        if (error) {
-          console.error('Update error:', error);
-          throw error;
+        if (updateErr && isMissingColumnError(updateErr)) {
+          console.warn('Retrying update without sprint-stabilization columns:', updateErr.message);
+          const { error: retryErr } = await supabase
+            .from('finance_expenses')
+            .update(stripOptionalColumns(expenseData))
+            .eq('id', editingExpense.id);
+          updateErr = retryErr;
+        }
+
+        if (updateErr) {
+          console.error('Update error:', updateErr);
+          throw updateErr;
         }
 
         console.log('Update successful! Fetching updated data...');
@@ -1139,10 +1167,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         }, 0);
         const voucherNumber = `${fyPrefix}${String(maxSeq + 1).padStart(3, '0')}`;
 
-        const { data: newExpense, error } = await supabase
-          .from('finance_expenses')
-          .insert([{ ...expenseData, created_by: user.id, voucher_number: voucherNumber }])
-          .select(`
+        const insertPayload = { ...expenseData, created_by: user.id, voucher_number: voucherNumber };
+        const selectClause = `
             *,
             batches (batch_number),
             import_containers (container_ref),
@@ -1157,12 +1183,34 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               bank_account_id,
               bank_accounts (bank_name, account_number)
             )
-          `)
-          .single();
+          `;
 
-        if (error) {
-          console.error('Insert error:', error);
-          throw error;
+        let newExpense: any = null;
+        let insertErr: any;
+        {
+          const { data, error } = await supabase
+            .from('finance_expenses')
+            .insert([insertPayload])
+            .select(selectClause)
+            .single();
+          newExpense = data;
+          insertErr = error;
+        }
+
+        if (insertErr && isMissingColumnError(insertErr)) {
+          console.warn('Retrying insert without sprint-stabilization columns:', insertErr.message);
+          const { data, error: retryErr } = await supabase
+            .from('finance_expenses')
+            .insert([stripOptionalColumns(insertPayload)])
+            .select(selectClause)
+            .single();
+          newExpense = data;
+          insertErr = retryErr;
+        }
+
+        if (insertErr) {
+          console.error('Insert error:', insertErr);
+          throw insertErr;
         }
 
         console.log('=== NEW EXPENSE CREATED ===');
@@ -2534,101 +2582,112 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     // All broker lines default to ppn_treatment='excluded' (line.amount = DPP, PPN added).
                     // Only the fields explicitly requested are collected; PPN is user-editable and
                     // seeds to 11% of the line amount when a PKP supplier is picked.
-                    const totalLineAmt = brokerItems.reduce((s, i) => s + (i.amount || 0), 0);
+                    const reimbTotal = brokerItems.reduce((s, i) => s + (i.amount || 0), 0);
                     const totalLinePpn = brokerItems.reduce((s, i) => s + (i.ppn_amount || 0), 0);
-                    const grandTotal = totalLineAmt + totalLinePpn;
+                    const brokerInvoiceAmount = formData.amount || 0;
+                    const parentPph = formData.pph_amount || 0;
+                    const parentStamp = formData.stamp_duty_amount || 0;
+                    const grandPayable = brokerInvoiceAmount + totalLinePpn - parentPph + parentStamp;
+                    const fmt = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
                     return (
-                      <div className="mb-2.5">
+                      <div className="mb-3">
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-medium text-gray-700">
-                            Reimbursement Lines <span className="text-gray-400">— sub-suppliers only affect the Input PPN report; the parent supplier remains the payable.</span>
-                          </span>
+                          <div>
+                            <span className="text-xs font-semibold text-gray-800">Reimbursement Lines</span>
+                            <span className="text-[10px] text-gray-500 ml-2">Sub-supplier only affects the Input PPN report — parent supplier stays as the payable.</span>
+                          </div>
                           <button type="button" onClick={addLine}
-                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-semibold">
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded">
                             <Plus className="w-3 h-3" /> Add Line
                           </button>
                         </div>
+
                         {brokerItems.length > 0 && (
-                          <div className="border border-gray-200 rounded overflow-hidden">
-                            <div className="grid grid-cols-12 gap-2 items-center px-2 py-1 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-                              <div className="col-span-4">Supplier</div>
+                          <div className="border border-gray-200 rounded-md overflow-hidden bg-white">
+                            <div className="grid grid-cols-12 gap-2 items-center px-2.5 py-1.5 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                              <div className="col-span-5">Sub-Supplier</div>
                               <div className="col-span-2">Invoice #</div>
                               <div className="col-span-2 text-right">Amount</div>
                               <div className="col-span-2 text-right">PPN</div>
-                              <div className="col-span-1 text-right">Total</div>
-                              <div className="col-span-1"></div>
+                              <div className="col-span-1 text-right pr-1">Total</div>
                             </div>
                             {brokerItems.map((item, idx) => {
                               const lineTotal = (item.amount || 0) + (item.ppn_amount || 0);
                               return (
-                                <div key={idx} className="grid grid-cols-12 gap-2 items-center px-2 py-1 border-b border-gray-100 last:border-b-0 hover:bg-blue-50/30 text-xs">
-                                  <div className="col-span-4">
+                                <div key={idx} className="grid grid-cols-12 gap-2 items-center px-2.5 py-1.5 border-b border-gray-100 last:border-b-0 hover:bg-blue-50/40 group">
+                                  <div className="col-span-5 relative">
                                     <SearchableSelect
                                       value={item.supplier_id || ''}
                                       onChange={(val) => {
                                         const sup = suppliers.find(s => s.id === val) ?? null;
-                                        // Auto-seed PPN at 11% when a PKP supplier is picked and amount already set.
                                         const seedPpn = sup?.pkp_status && (item.amount || 0) > 0
                                           ? Math.round((item.amount || 0) * 0.11)
-                                          : (item.ppn_amount || 0);
-                                        updateLine(idx, { supplier_id: val || null, ppn_treatment: 'excluded', ppn_amount: seedPpn });
+                                          : 0;
+                                        updateLine(idx, { supplier_id: val || null, ppn_treatment: 'excluded', ppn_amount: sup ? seedPpn : (item.ppn_amount || 0) });
                                       }}
                                       options={[
-                                        { value: '', label: '— Sub-supplier —' },
+                                        { value: '', label: '— None —' },
                                         ...suppliers.map(s => ({ value: s.id, label: `${s.company_name}${s.pkp_status ? ' ✓PKP' : ''}` })),
                                       ]}
-                                      placeholder="Select supplier"
-                                      className="text-xs"
+                                      placeholder="Search supplier..."
                                     />
                                   </div>
                                   <div className="col-span-2">
                                     <input type="text" value={item.invoice_number || ''}
                                       onChange={(e) => updateLine(idx, { invoice_number: e.target.value })}
-                                      className="w-full px-1.5 py-1 border border-gray-200 rounded text-xs" placeholder="Inv #" />
+                                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Inv #" />
                                   </div>
                                   <div className="col-span-2">
                                     <input type="number" step="1" min="0" value={item.amount || ''}
                                       onChange={(e) => {
                                         const amt = parseFloat(e.target.value) || 0;
                                         const sup = suppliers.find(s => s.id === (item.supplier_id || '')) ?? null;
-                                        // Reseed PPN when amount changes AND user hasn't manually edited PPN off-formula.
                                         const seedPpn = sup?.pkp_status ? Math.round(amt * 0.11) : 0;
                                         updateLine(idx, { amount: amt, ppn_treatment: 'excluded', ppn_amount: seedPpn });
                                       }}
-                                      className="w-full px-1.5 py-1 border border-gray-200 rounded text-xs text-right" placeholder="0" />
+                                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm text-right font-mono" placeholder="0" />
                                   </div>
                                   <div className="col-span-2">
                                     <input type="number" step="1" min="0" value={item.ppn_amount || ''}
                                       onChange={(e) => updateLine(idx, { ppn_treatment: 'excluded', ppn_amount: parseFloat(e.target.value) || 0 })}
-                                      className="w-full px-1.5 py-1 border border-gray-200 rounded text-xs text-right" placeholder="0" />
+                                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm text-right font-mono" placeholder="0" />
                                   </div>
-                                  <div className="col-span-1 text-right font-mono text-gray-800">
-                                    {lineTotal.toLocaleString('id-ID')}
-                                  </div>
-                                  <div className="col-span-1 text-right">
+                                  <div className="col-span-1 flex items-center justify-end gap-1">
+                                    <span className="font-mono text-sm text-gray-800">{lineTotal.toLocaleString('id-ID')}</span>
                                     <button type="button" onClick={() => removeLine(idx)}
-                                      className="text-red-500 hover:text-red-700 p-0.5" title="Remove">
+                                      className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity p-0.5" title="Remove line">
                                       <X className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
                                 </div>
                               );
                             })}
-                            <div className="grid grid-cols-12 gap-2 items-center px-2 py-1.5 bg-blue-50 border-t border-blue-200 text-xs font-semibold">
-                              <div className="col-span-4 text-gray-700">Totals ({brokerItems.length})</div>
-                              <div className="col-span-2"></div>
-                              <div className="col-span-2 text-right font-mono text-gray-800">{totalLineAmt.toLocaleString('id-ID')}</div>
-                              <div className="col-span-2 text-right font-mono text-blue-700">{totalLinePpn.toLocaleString('id-ID')}</div>
-                              <div className="col-span-1 text-right font-mono text-gray-900">{grandTotal.toLocaleString('id-ID')}</div>
-                              <div className="col-span-1"></div>
-                            </div>
-                            {isBroker && Math.abs(linesSumAmt - (formData.amount || 0)) > 1 && (
-                              <div className="px-2 py-1 bg-orange-50 border-t border-orange-200 text-[11px] text-orange-700 flex items-center gap-1">
-                                <AlertCircle className="w-3 h-3" /> Line amounts total ≠ invoice amount (Rp {(formData.amount || 0).toLocaleString('id-ID')})
-                              </div>
-                            )}
                           </div>
                         )}
+
+                        {/* Live Payment Summary — always visible so the accountant knows exactly what becomes the payable. */}
+                        <div className="mt-2 border border-blue-200 bg-blue-50/60 rounded-md">
+                          <div className="grid grid-cols-5 divide-x divide-blue-200 text-center">
+                            {[
+                              { label: 'Broker Invoice',    value: brokerInvoiceAmount, tint: 'text-gray-800' },
+                              { label: 'Reimb. Total',      value: reimbTotal,          tint: 'text-gray-800' },
+                              { label: 'Total PPN',         value: totalLinePpn,        tint: 'text-blue-700' },
+                              { label: 'PPh Withheld',      value: parentPph,           tint: 'text-orange-700' },
+                              { label: 'Grand Payable',     value: grandPayable,        tint: 'text-gray-900 font-bold' },
+                            ].map((c) => (
+                              <div key={c.label} className="px-2 py-1.5">
+                                <div className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">{c.label}</div>
+                                <div className={`text-sm font-mono ${c.tint}`}>{fmt(c.value)}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {brokerItems.length > 0 && Math.abs(linesSumAmt - brokerInvoiceAmount) > 1 && (
+                            <div className="px-2.5 py-1 bg-orange-50 border-t border-orange-200 text-[10px] text-orange-700 flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3 shrink-0" />
+                              Reimbursement total ≠ Broker Invoice Amount (diff Rp {Math.abs(linesSumAmt - brokerInvoiceAmount).toLocaleString('id-ID')}) — invoice amount will be replaced with line total on save.
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })()}
