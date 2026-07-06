@@ -2589,33 +2589,41 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     const parentStamp = formData.stamp_duty_amount || 0;
                     const grandPayable = brokerInvoiceAmount + totalLinePpn - parentPph + parentStamp;
                     const fmt = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
+                    // Excel/Tally-density reimbursement grid. Row = 36-40px, inputs borderless
+                    // inside cells with visible cell borders. SearchableSelect uses the same
+                    // component & size as the header Supplier picker (default text-sm py-2).
+                    const cellInputCls = 'w-full h-[34px] px-2 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none rounded-none text-sm bg-transparent';
                     return (
-                      <div className="mb-3">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div>
-                            <span className="text-xs font-semibold text-gray-800">Reimbursement Lines</span>
-                            <span className="text-[10px] text-gray-500 ml-2">Sub-supplier only affects the Input PPN report — parent supplier stays as the payable.</span>
+                      <div className="mb-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-[11px] text-gray-500">
+                            <span className="font-semibold text-gray-800 text-xs">Reimbursement Lines</span>
+                            <span className="ml-2">Sub-supplier affects Input PPN only. Parent supplier stays as the payable.</span>
                           </div>
                           <button type="button" onClick={addLine}
-                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded">
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-blue-700 border border-blue-300 bg-blue-50 hover:bg-blue-100 rounded">
                             <Plus className="w-3 h-3" /> Add Line
                           </button>
                         </div>
 
                         {brokerItems.length > 0 && (
-                          <div className="border border-gray-200 rounded-md overflow-hidden bg-white">
-                            <div className="grid grid-cols-12 gap-2 items-center px-2.5 py-1.5 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
-                              <div className="col-span-5">Sub-Supplier</div>
-                              <div className="col-span-2">Invoice #</div>
-                              <div className="col-span-2 text-right">Amount</div>
-                              <div className="col-span-2 text-right">PPN</div>
-                              <div className="col-span-1 text-right pr-1">Total</div>
+                          <div className="border border-gray-300 rounded overflow-hidden bg-white shadow-sm">
+                            {/* Header row — Excel-style */}
+                            <div className="grid grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_28px] bg-gray-100 border-b border-gray-300 text-[10px] font-semibold text-gray-600 uppercase tracking-wide">
+                              <div className="px-2 py-1 border-r border-gray-300">Sub-Supplier</div>
+                              <div className="px-2 py-1 border-r border-gray-300">Invoice #</div>
+                              <div className="px-2 py-1 border-r border-gray-300 text-right">Amount</div>
+                              <div className="px-2 py-1 border-r border-gray-300 text-right">PPN</div>
+                              <div className="px-2 py-1 border-r border-gray-300 text-right">Total</div>
+                              <div></div>
                             </div>
                             {brokerItems.map((item, idx) => {
                               const lineTotal = (item.amount || 0) + (item.ppn_amount || 0);
                               return (
-                                <div key={idx} className="grid grid-cols-12 gap-2 items-center px-2.5 py-1.5 border-b border-gray-100 last:border-b-0 hover:bg-blue-50/40 group">
-                                  <div className="col-span-5 relative">
+                                <div key={idx}
+                                  className="grid grid-cols-[minmax(0,5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_28px] items-stretch border-b border-gray-200 last:border-b-0 hover:bg-blue-50/40 group">
+                                  {/* Sub-supplier — SearchableSelect flush inside cell */}
+                                  <div className="border-r border-gray-200 [&_button]:!rounded-none [&_button]:!border-0 [&_button]:!shadow-none [&_button]:!bg-transparent [&_button]:!h-[36px] [&_button]:!py-0 [&_button]:!px-2">
                                     <SearchableSelect
                                       value={item.supplier_id || ''}
                                       onChange={(val) => {
@@ -2632,12 +2640,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                       placeholder="Search supplier..."
                                     />
                                   </div>
-                                  <div className="col-span-2">
+                                  <div className="border-r border-gray-200">
                                     <input type="text" value={item.invoice_number || ''}
                                       onChange={(e) => updateLine(idx, { invoice_number: e.target.value })}
-                                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm" placeholder="Inv #" />
+                                      className={cellInputCls} placeholder="—" />
                                   </div>
-                                  <div className="col-span-2">
+                                  <div className="border-r border-gray-200">
                                     <input type="number" step="1" min="0" value={item.amount || ''}
                                       onChange={(e) => {
                                         const amt = parseFloat(e.target.value) || 0;
@@ -2645,17 +2653,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                         const seedPpn = sup?.pkp_status ? Math.round(amt * 0.11) : 0;
                                         updateLine(idx, { amount: amt, ppn_treatment: 'excluded', ppn_amount: seedPpn });
                                       }}
-                                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm text-right font-mono" placeholder="0" />
+                                      className={cellInputCls + ' text-right font-mono'} placeholder="0" />
                                   </div>
-                                  <div className="col-span-2">
+                                  <div className="border-r border-gray-200">
                                     <input type="number" step="1" min="0" value={item.ppn_amount || ''}
                                       onChange={(e) => updateLine(idx, { ppn_treatment: 'excluded', ppn_amount: parseFloat(e.target.value) || 0 })}
-                                      className="w-full px-2 py-2 border border-gray-200 rounded-lg text-sm text-right font-mono" placeholder="0" />
+                                      className={cellInputCls + ' text-right font-mono'} placeholder="0" />
                                   </div>
-                                  <div className="col-span-1 flex items-center justify-end gap-1">
-                                    <span className="font-mono text-sm text-gray-800">{lineTotal.toLocaleString('id-ID')}</span>
+                                  <div className="border-r border-gray-200 flex items-center justify-end px-2 h-[36px] font-mono text-sm text-gray-800">
+                                    {lineTotal ? lineTotal.toLocaleString('id-ID') : ''}
+                                  </div>
+                                  <div className="flex items-center justify-center h-[36px]">
                                     <button type="button" onClick={() => removeLine(idx)}
-                                      className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity p-0.5" title="Remove line">
+                                      className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity p-1" title="Remove line" tabIndex={-1}>
                                       <X className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
@@ -2665,27 +2675,22 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           </div>
                         )}
 
-                        {/* Live Payment Summary — always visible so the accountant knows exactly what becomes the payable. */}
-                        <div className="mt-2 border border-blue-200 bg-blue-50/60 rounded-md">
-                          <div className="grid grid-cols-5 divide-x divide-blue-200 text-center">
-                            {[
-                              { label: 'Broker Invoice',    value: brokerInvoiceAmount, tint: 'text-gray-800' },
-                              { label: 'Reimb. Total',      value: reimbTotal,          tint: 'text-gray-800' },
-                              { label: 'Total PPN',         value: totalLinePpn,        tint: 'text-blue-700' },
-                              { label: 'PPh Withheld',      value: parentPph,           tint: 'text-orange-700' },
-                              { label: 'Grand Payable',     value: grandPayable,        tint: 'text-gray-900 font-bold' },
-                            ].map((c) => (
-                              <div key={c.label} className="px-2 py-1.5">
-                                <div className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">{c.label}</div>
-                                <div className={`text-sm font-mono ${c.tint}`}>{fmt(c.value)}</div>
-                              </div>
-                            ))}
-                          </div>
+                        {/* Live Payment Summary — single-line compact card */}
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-0.5 px-2.5 py-1.5 border border-blue-200 bg-blue-50/70 rounded text-xs">
+                          <span className="text-gray-600"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">Broker Inv</span><span className="font-mono">{fmt(brokerInvoiceAmount)}</span></span>
+                          <span className="text-gray-400">·</span>
+                          <span className="text-gray-600"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">Reimb</span><span className="font-mono">{fmt(reimbTotal)}</span></span>
+                          <span className="text-gray-400">·</span>
+                          <span className="text-blue-700"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">PPN</span><span className="font-mono">{fmt(totalLinePpn)}</span></span>
+                          <span className="text-gray-400">·</span>
+                          <span className="text-orange-700"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">PPh</span><span className="font-mono">−{fmt(parentPph)}</span></span>
+                          <span className="text-gray-400">·</span>
+                          <span className="ml-auto text-gray-900 font-bold"><span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">Payable</span><span className="font-mono text-sm">{fmt(grandPayable)}</span></span>
                           {brokerItems.length > 0 && Math.abs(linesSumAmt - brokerInvoiceAmount) > 1 && (
-                            <div className="px-2.5 py-1 bg-orange-50 border-t border-orange-200 text-[10px] text-orange-700 flex items-center gap-1">
+                            <span className="w-full flex items-center gap-1 mt-0.5 pt-1 border-t border-orange-200 text-[10px] text-orange-700">
                               <AlertCircle className="w-3 h-3 shrink-0" />
-                              Reimbursement total ≠ Broker Invoice Amount (diff Rp {Math.abs(linesSumAmt - brokerInvoiceAmount).toLocaleString('id-ID')}) — invoice amount will be replaced with line total on save.
-                            </div>
+                              Reimb total ≠ Broker Invoice (diff Rp {Math.abs(linesSumAmt - brokerInvoiceAmount).toLocaleString('id-ID')}) — invoice amount will be replaced with line total on save.
+                            </span>
                           )}
                         </div>
                       </div>
