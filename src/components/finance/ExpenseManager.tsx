@@ -1874,166 +1874,146 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
   return (
     <div className="space-y-4">
-      {/* Compact Header with Summary Stats */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg p-2.5 text-white shadow-md">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-sm font-bold">Expense Tracker</h2>
-            <div className="flex gap-2">
-              <div className="bg-white/20 rounded px-2.5 py-1">
-                <div className="text-blue-100 text-[9px] leading-tight">Total</div>
-                <div className="text-xs font-bold">
-                  Rp {filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </div>
-              </div>
-              <div className="bg-white/20 rounded px-2.5 py-1">
-                <div className="text-blue-100 text-[9px] leading-tight">Reconciled</div>
-                <div className="text-xs font-bold">
-                  {expenses.filter(e => reconciledExpenseIds.has(e.id)).length} / {expenses.length}
-                </div>
-              </div>
+      {/* Compact single-strip header — KPIs + primary actions */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded px-2 py-1 text-white shadow-sm flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xs font-bold whitespace-nowrap">Expenses</h2>
+          <div className="flex gap-1.5">
+            <div className="bg-white/20 rounded px-1.5 py-0.5">
+              <span className="text-blue-100 text-[9px] mr-1">TOTAL</span>
+              <span className="text-[11px] font-bold">
+                Rp {filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0).toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+              </span>
+            </div>
+            <div className="bg-white/20 rounded px-1.5 py-0.5">
+              <span className="text-blue-100 text-[9px] mr-1">LINKED</span>
+              <span className="text-[11px] font-bold">
+                {expenses.filter(e => reconciledExpenseIds.has(e.id)).length} / {expenses.length}
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setHealthCheckOpen(o => !o);
-                if (!healthCheckOpen && healthIssues.length === 0) loadHealthCheck();
-              }}
-              className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded font-medium transition-all shadow-sm text-xs border ${healthCheckOpen ? 'bg-orange-50 border-orange-300 text-orange-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-              title="Finance Health Check"
-            >
-              <AlertCircle className="w-3.5 h-3.5" />
-              Health
-              {healthIssues.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                  {healthIssues.length}
-                </span>
-              )}
-            </button>
-            {canManage && (
-              <button
-                onClick={() => {
-                  resetForm();
-                  setModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white text-blue-600 rounded hover:bg-blue-50 font-medium transition-all shadow-sm text-xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                New
-              </button>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              setHealthCheckOpen(o => !o);
+              if (!healthCheckOpen && healthIssues.length === 0) loadHealthCheck();
+            }}
+            className={`relative inline-flex items-center gap-1 h-6 px-2 rounded font-medium text-[11px] border transition-colors ${healthCheckOpen ? 'bg-orange-50 border-orange-300 text-orange-700' : 'bg-white/95 border-transparent text-gray-700 hover:bg-white'}`}
+            title="Finance Health Check"
+          >
+            <AlertCircle className="w-3 h-3" />
+            Health
+            {healthIssues.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                {healthIssues.length}
+              </span>
             )}
-          </div>
+          </button>
+          {canManage && (
+            <button
+              onClick={() => { resetForm(); setModalOpen(true); }}
+              className="inline-flex items-center gap-1 h-6 px-2 bg-white text-blue-700 rounded font-semibold text-[11px] hover:bg-blue-50"
+            >
+              <Plus className="w-3 h-3" /> New
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Compact Single-Line Filter Bar */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Type Filter Pills */}
-          <div className="flex gap-1">
-            {[
-              { value: 'all', label: 'All', icon: '📋' },
-              { value: 'import', label: 'Import', icon: '📦' },
-              { value: 'sales', label: 'Sales', icon: '🚚' },
-              { value: 'staff', label: 'Staff', icon: '👥' },
-              { value: 'operations', label: 'Ops', icon: '🏢' },
-              { value: 'admin', label: 'Admin', icon: '📄' },
-            ].map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => setFilterType(tab.value as any)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  filterType === tab.value
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {tab.icon} {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="h-6 w-px bg-gray-300"></div>
-
-          {/* Reconciliation Filter */}
-          <div className="flex gap-1">
-            {[
-              { value: 'all', label: 'All' },
-              { value: 'reconciled', label: '✓ Linked' },
-              { value: 'not_reconciled', label: '⚠ Unlinked' },
-            ].map((filter) => (
-              <button
-                key={filter.value}
-                onClick={() => setReconFilter(filter.value as any)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  reconFilter === filter.value
-                    ? 'bg-green-600 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Category Filter */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-2 py-1 border border-gray-300 rounded-md text-xs"
-          >
-            <option value="all">All Categories</option>
-            {expenseCategories
-              .sort((a, b) => {
-                const groupOrder = { 'Import Costs': 1, 'Sales & Distribution': 2, 'Staff Costs': 3, 'Operations': 4, 'Administrative': 5 };
-                const aOrder = groupOrder[a.group as keyof typeof groupOrder] || 999;
-                const bOrder = groupOrder[b.group as keyof typeof groupOrder] || 999;
-                if (aOrder !== bOrder) return aOrder - bOrder;
-                return a.label.localeCompare(b.label);
-              })
-              .map((category) => (
-                <option key={category.value} value={category.value}>
-                  {category.label}
-                </option>
-              ))}
-          </select>
-
-          {/* Supplier Filter */}
-          {suppliers.length > 0 && (
-            <select
-              value={supplierFilter}
-              onChange={(e) => setSupplierFilter(e.target.value)}
-              className="px-2 py-1 border border-gray-300 rounded-md text-xs"
+      {/* Compact filter bar (single row) */}
+      <div className="bg-white rounded border border-gray-200 px-2 py-1 flex items-center gap-2 flex-wrap">
+        <div className="flex gap-0.5">
+          {[
+            { value: 'all', label: 'All' },
+            { value: 'import', label: 'Import' },
+            { value: 'sales', label: 'Sales' },
+            { value: 'staff', label: 'Staff' },
+            { value: 'operations', label: 'Ops' },
+            { value: 'admin', label: 'Admin' },
+          ].map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setFilterType(tab.value as any)}
+              className={`h-6 px-2 rounded text-[11px] font-medium transition-colors ${
+                filterType === tab.value ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
             >
-              <option value="all">All Suppliers</option>
-              <option value="no_supplier">— No Supplier —</option>
-              {suppliers.map(s => (
-                <option key={s.id} value={s.id}>{s.company_name}</option>
-              ))}
-            </select>
-          )}
-
-          {/* Export Button */}
-          <button
-            onClick={exportToCSV}
-            disabled={filteredExpenses.length === 0}
-            className="ml-auto px-3 py-1.5 bg-green-600 text-white rounded-md text-xs hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-1.5 font-medium"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Export ({filteredExpenses.length})
-          </button>
+              {tab.label}
+            </button>
+          ))}
         </div>
+
+        <div className="h-4 w-px bg-gray-300"></div>
+
+        <div className="flex gap-0.5">
+          {[
+            { value: 'all', label: 'All' },
+            { value: 'reconciled', label: 'Linked' },
+            { value: 'not_reconciled', label: 'Unlinked' },
+          ].map((filter) => (
+            <button
+              key={filter.value}
+              onClick={() => setReconFilter(filter.value as any)}
+              className={`h-6 px-2 rounded text-[11px] font-medium transition-colors ${
+                reconFilter === filter.value ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="h-6 px-1.5 border border-gray-300 rounded text-[11px] bg-white"
+        >
+          <option value="all">All Categories</option>
+          {expenseCategories
+            .sort((a, b) => {
+              const groupOrder = { 'Import Costs': 1, 'Sales & Distribution': 2, 'Staff Costs': 3, 'Operations': 4, 'Administrative': 5 };
+              const aOrder = groupOrder[a.group as keyof typeof groupOrder] || 999;
+              const bOrder = groupOrder[b.group as keyof typeof groupOrder] || 999;
+              if (aOrder !== bOrder) return aOrder - bOrder;
+              return a.label.localeCompare(b.label);
+            })
+            .map((category) => (
+              <option key={category.value} value={category.value}>{category.label}</option>
+            ))}
+        </select>
+
+        {suppliers.length > 0 && (
+          <select
+            value={supplierFilter}
+            onChange={(e) => setSupplierFilter(e.target.value)}
+            className="h-6 px-1.5 border border-gray-300 rounded text-[11px] bg-white"
+          >
+            <option value="all">All Suppliers</option>
+            <option value="no_supplier">— No Supplier —</option>
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id}>{s.company_name}</option>
+            ))}
+          </select>
+        )}
+
+        <button
+          onClick={exportToCSV}
+          disabled={filteredExpenses.length === 0}
+          className="ml-auto inline-flex items-center gap-1 h-6 px-2 bg-green-600 text-white rounded text-[11px] font-medium hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+        >
+          <Download className="w-3 h-3" /> Export ({filteredExpenses.length})
+        </button>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
         <table className="min-w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">No.</th>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">No.</th>
               <th
                 onClick={() => handleSort('date')}
-                className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
               >
                 <div className="flex items-center gap-1">
                   Date
@@ -2044,7 +2024,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </th>
               <th
                 onClick={() => handleSort('category')}
-                className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
               >
                 <div className="flex items-center gap-1">
                   Category
@@ -2053,10 +2033,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   )}
                 </div>
               </th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Context</th>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Context</th>
               <th
                 onClick={() => handleSort('description')}
-                className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
               >
                 <div className="flex items-center gap-1">
                   Description
@@ -2067,7 +2047,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </th>
               <th
                 onClick={() => handleSort('amount')}
-                className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                className="px-2 py-1.5 text-right text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
               >
                 <div className="flex items-center justify-end gap-1">
                   Amount
@@ -2078,7 +2058,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </th>
               <th
                 onClick={() => handleSort('payment_method')}
-                className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
+                className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center justify-center gap-1">
                   Payment
@@ -2087,10 +2067,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   )}
                 </div>
               </th>
-              <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600">Type</th>
+              <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Type</th>
               <th
                 onClick={() => handleSort('reconciliation')}
-                className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
+                className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center justify-center gap-1">
                   Status
@@ -2099,8 +2079,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   )}
                 </div>
               </th>
-              <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600">Approval</th>
-              {canManage && <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600">Actions</th>}
+              <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Approval</th>
+              {canManage && <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -2130,22 +2110,22 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                 return (
                   <tr key={expense.id} className="hover:bg-blue-50/50 transition-colors">
-                    <td className="px-4 py-2.5 whitespace-nowrap">
+                    <td className="px-2 py-1.5 whitespace-nowrap">
                       <div className="font-mono text-xs text-gray-500">
                         {expense.voucher_number || '—'}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
+                    <td className="px-2 py-1.5 whitespace-nowrap">
                       <div className="text-xs text-gray-900 font-medium">
                         {formatDate(expense.expense_date)}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-2 py-1.5">
                       <div className="text-xs font-medium text-gray-900">
                         {category?.label || expense.expense_category}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-2 py-1.5">
                       {expense.import_container_id && expense.import_containers ? (
                         <div className="flex items-center gap-1.5 text-xs">
                           <Package className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
@@ -2168,15 +2148,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         <span className="text-gray-400 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-2 py-1.5">
                       <div className="text-xs text-gray-700 line-clamp-1">{expense.description || '—'}</div>
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-right">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-right">
                       <div className="text-xs font-semibold text-gray-900">
                         {expense.bank_accounts?.currency === 'USD' ? '$' : 'Rp'} {expense.amount.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-center">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {expense.payment_method === null ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded">
                           Outstanding (A/P)
@@ -2193,7 +2173,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         <span className="text-xs text-gray-600">{expense.payment_method.replace('_', ' ')}</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-center">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded ${getTypeColor(category?.type || 'admin')}`}>
                         {category?.type === 'import' && 'CAP'}
                         {category?.type === 'sales' && 'EXP'}
@@ -2202,7 +2182,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         {category?.type === 'admin' && 'EXP'}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-center">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {expense.payment_method === null ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded">
                           A/P Outstanding
@@ -2217,7 +2197,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-center">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {expense.approval_status === 'approved' ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full">
                           <CheckCircle className="w-3 h-3" />Approved
@@ -2233,7 +2213,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       )}
                     </td>
                     {canManage && (
-                      <td className="px-4 py-2.5 whitespace-nowrap text-center">
+                      <td className="px-2 py-1.5 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={async () => {
@@ -2308,10 +2288,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             {/* Totals Row */}
             {!loading && sortedExpenses.length > 0 && (
               <tr className="bg-gradient-to-r from-blue-50 to-blue-100 border-t-2 border-blue-200 font-bold">
-                <td colSpan={4} className="px-4 py-2.5 text-right text-xs text-gray-900">
+                <td colSpan={4} className="px-2 py-1.5 text-right text-xs text-gray-900">
                   TOTAL ({sortedExpenses.length} expenses):
                 </td>
-                <td className="px-4 py-2.5 text-right text-sm text-blue-900 font-bold">
+                <td className="px-2 py-1.5 text-right text-sm text-blue-900 font-bold">
                   Rp {sortedExpenses.reduce((sum, exp) => sum + exp.amount, 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </td>
                 <td colSpan={canManage ? 5 : 4}></td>

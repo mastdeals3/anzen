@@ -364,7 +364,7 @@ function FinanceContent() {
                     {isCollapsible ? (
                       <button
                         onClick={() => toggleGroup(group.label)}
-                        className="w-full px-2 py-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex items-center justify-between hover:bg-gray-50"
+                        className="w-full px-2 py-1 text-[9px] font-semibold text-gray-500 uppercase tracking-wider flex items-center justify-between hover:bg-gray-50"
                       >
                         <span>{group.label}</span>
                         {isCollapsed ? (
@@ -374,7 +374,7 @@ function FinanceContent() {
                         )}
                       </button>
                     ) : (
-                      <div className="px-2 py-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                      <div className="px-2 py-1 text-[9px] font-semibold text-gray-500 uppercase tracking-wider">
                         {group.label}
                       </div>
                     )}
@@ -388,7 +388,7 @@ function FinanceContent() {
                               setActiveTab(item.id);
                               if (window.innerWidth < 768) setSidebarCollapsed(true);
                             }}
-                            className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                            className={`w-full text-left px-2 py-1 text-[11px] transition-colors ${
                               activeTab === item.id
                                 ? 'bg-blue-50 text-blue-700 font-medium border-l-2 border-blue-600'
                                 : 'text-gray-700 hover:bg-gray-50 border-l-2 border-transparent'
@@ -397,7 +397,7 @@ function FinanceContent() {
                             <div className="flex items-center justify-between">
                               <span>{item.label}</span>
                               {item.shortcut && (
-                                <span className="text-[10px] text-gray-400">{item.shortcut}</span>
+                                <span className="text-[9px] text-gray-400">{item.shortcut}</span>
                               )}
                             </div>
                           </button>
@@ -412,24 +412,24 @@ function FinanceContent() {
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Top Bar — compact, no duplicate title / date */}
-          <div className="bg-white border-b border-gray-200 px-3 py-1 flex items-center gap-2">
+          {/* Slim top strip — hamburger + active sub-tab breadcrumb only */}
+          <div className="bg-white border-b border-gray-200 px-2 py-0.5 flex items-center gap-1.5 min-h-[26px]">
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
+              className="p-0.5 hover:bg-gray-100 rounded transition-colors"
               title={sidebarCollapsed ? 'Show Menu' : 'Hide Menu'}
               aria-label={sidebarCollapsed ? 'Show finance menu' : 'Hide finance menu'}
             >
-              {sidebarCollapsed ? <Menu className="w-4 h-4 text-gray-600" /> : <X className="w-4 h-4 text-gray-600" />}
+              {sidebarCollapsed ? <Menu className="w-3.5 h-3.5 text-gray-600" /> : <X className="w-3.5 h-3.5 text-gray-600" />}
             </button>
-            <span className="text-sm font-semibold text-gray-700 truncate">
+            <span className="text-[11px] font-semibold text-gray-600 truncate">
               {financeMenu.flatMap(g => g.items).find(i => i.id === activeTab)?.label ?? t.finance.title}
             </span>
           </div>
 
-          {/* Content Area - Pure White Background */}
+          {/* Content Area — minimal padding so summary cards sit right under the header */}
           <div className="flex-1 overflow-auto bg-white">
-            <div className="p-2 md:p-3">
+            <div className="px-2 py-1.5 md:px-2.5 md:py-2">
               <Suspense fallback={
                 <div className="flex items-center justify-center py-12">
                   <Loader className="w-6 h-6 animate-spin text-blue-600" />

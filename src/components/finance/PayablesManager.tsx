@@ -582,119 +582,100 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
   const unpaidBills = bills.filter(b => b.payment_status !== 'paid');
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow p-4 text-white">
-          <div className="flex items-center justify-between">
+    <div className="space-y-2">
+      {/* Compact KPI strip — one row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded px-2 py-1.5 text-white">
+          <div className="flex items-center justify-between gap-1">
             <div>
-              <p className="text-xs text-red-100">Total AP Outstanding</p>
-              <p className="text-xl font-bold mt-1">Rp {totalCombinedPayable.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
-              <p className="text-[10px] text-red-200 mt-0.5">Bills + Expense Bills</p>
+              <p className="text-[9px] text-red-100 uppercase tracking-wide">AP Outstanding</p>
+              <p className="text-sm font-bold font-mono">Rp {totalCombinedPayable.toLocaleString('id-ID', { maximumFractionDigits: 0 })}</p>
             </div>
-            <DollarSign className="w-7 h-7 text-red-200" />
+            <DollarSign className="w-4 h-4 text-red-200 shrink-0" />
           </div>
         </div>
-
-        <div className="bg-orange-50 rounded-lg shadow p-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-orange-50 border border-orange-200 rounded px-2 py-1.5">
+          <div className="flex items-center justify-between gap-1">
             <div>
-              <p className="text-xs text-orange-600">Overdue</p>
-              <p className="text-xl font-bold text-orange-600 mt-1">{overdueBills.length + overdueExpenseBills.length}</p>
-              <p className="text-[10px] text-orange-500 mt-0.5">{overdueBills.length} bills + {overdueExpenseBills.length} expense bills</p>
+              <p className="text-[9px] text-orange-600 uppercase tracking-wide">Overdue</p>
+              <p className="text-sm font-bold text-orange-700 font-mono">{overdueBills.length + overdueExpenseBills.length}</p>
             </div>
-            <AlertCircle className="w-7 h-7 text-orange-400" />
+            <AlertCircle className="w-4 h-4 text-orange-400 shrink-0" />
           </div>
         </div>
-
-        <div className="bg-purple-50 rounded-lg shadow p-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-purple-50 border border-purple-200 rounded px-2 py-1.5">
+          <div className="flex items-center justify-between gap-1">
             <div>
-              <p className="text-xs text-purple-600">Expense Bills (AP)</p>
-              <p className="text-xl font-bold text-purple-600 mt-1">Rp {totalExpenseBillsPayable.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
-              <p className="text-[10px] text-purple-500 mt-0.5">{outstandingExpenseBills.length} outstanding</p>
+              <p className="text-[9px] text-purple-600 uppercase tracking-wide">Expense Bills</p>
+              <p className="text-sm font-bold text-purple-700 font-mono">Rp {totalExpenseBillsPayable.toLocaleString('id-ID', { maximumFractionDigits: 0 })}</p>
             </div>
-            <FileText className="w-7 h-7 text-purple-400" />
+            <FileText className="w-4 h-4 text-purple-400 shrink-0" />
           </div>
         </div>
-
-        <div className="bg-blue-50 rounded-lg shadow p-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-blue-50 border border-blue-200 rounded px-2 py-1.5">
+          <div className="flex items-center justify-between gap-1">
             <div>
-              <p className="text-xs text-blue-600">Legacy Bills</p>
-              <p className="text-xl font-bold text-blue-600 mt-1">Rp {totalPayable.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
-              <p className="text-[10px] text-blue-500 mt-0.5">{bills.filter(b => b.payment_status !== 'paid').length} pending</p>
+              <p className="text-[9px] text-blue-600 uppercase tracking-wide">Legacy Bills</p>
+              <p className="text-sm font-bold text-blue-700 font-mono">Rp {totalPayable.toLocaleString('id-ID', { maximumFractionDigits: 0 })}</p>
             </div>
-            <FileText className="w-7 h-7 text-blue-400" />
+            <FileText className="w-4 h-4 text-blue-400 shrink-0" />
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
+      {/* Compact tab strip */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-0.5">
           <button
             onClick={() => setViewMode('expense_bills')}
-            className={`px-4 py-2 rounded-lg transition text-sm ${
-              viewMode === 'expense_bills'
-                ? 'bg-purple-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            className={`inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] font-medium transition-colors ${
+              viewMode === 'expense_bills' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            <FileText className="w-4 h-4 inline mr-2" />
+            <FileText className="w-3 h-3" />
             Expense Bills (AP)
             {outstandingExpenseBills.length > 0 && (
-              <span className="ml-2 px-1.5 py-0.5 bg-purple-200 text-purple-800 text-xs rounded-full">
+              <span className={`ml-1 px-1 py-0 rounded text-[10px] font-semibold ${viewMode === 'expense_bills' ? 'bg-purple-800 text-purple-50' : 'bg-purple-200 text-purple-800'}`}>
                 {outstandingExpenseBills.length}
               </span>
             )}
           </button>
           <button
             onClick={() => setViewMode('bills')}
-            className={`px-4 py-2 rounded-lg transition text-sm ${
-              viewMode === 'bills'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            className={`inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] font-medium transition-colors ${
+              viewMode === 'bills' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            <FileText className="w-4 h-4 inline mr-2" />
+            <FileText className="w-3 h-3" />
             Legacy Bills
           </button>
           <button
             onClick={() => setViewMode('payments')}
-            className={`px-4 py-2 rounded-lg transition text-sm ${
-              viewMode === 'payments'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            className={`inline-flex items-center gap-1 h-7 px-2 rounded text-[11px] font-medium transition-colors ${
+              viewMode === 'payments' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            <DollarSign className="w-4 h-4 inline mr-2" />
+            <DollarSign className="w-3 h-3" />
             Payments
           </button>
         </div>
 
         {canManage && (
-          <div className="flex gap-2">
+          <div className="flex gap-1">
             {viewMode === 'bills' && (
               <button
-                onClick={() => {
-                  resetBillForm();
-                  setBillModalOpen(true);
-                }}
-                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+                onClick={() => { resetBillForm(); setBillModalOpen(true); }}
+                className="inline-flex items-center gap-1 h-7 px-2 bg-blue-600 text-white rounded text-[11px] font-semibold hover:bg-blue-700"
               >
-                <Plus className="w-5 h-5" />
-                Add Bill
+                <Plus className="w-3 h-3" /> Add Bill
               </button>
             )}
             {viewMode === 'payments' && (
               <button
-                onClick={() => {
-                  resetPaymentForm();
-                  setPaymentModalOpen(true);
-                }}
-                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
+                onClick={() => { resetPaymentForm(); setPaymentModalOpen(true); }}
+                className="inline-flex items-center gap-1 h-7 px-2 bg-green-600 text-white rounded text-[11px] font-semibold hover:bg-green-700"
               >
-                <Plus className="w-5 h-5" />
-                Record Payment
+                <Plus className="w-3 h-3" /> Record Payment
               </button>
             )}
           </div>
@@ -717,16 +698,16 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Supplier</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Invoice #</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Category</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Description</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Invoice Date</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Due Date</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">Amount</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">Paid</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">Balance</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600">Aging</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Supplier</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Invoice #</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Category</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Description</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Invoice Date</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Due Date</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-semibold text-gray-600">Amount</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-semibold text-gray-600">Paid</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-semibold text-gray-600">Balance</th>
+                  <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Aging</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -734,28 +715,28 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
                   const isOverdue = bill.days_overdue > 0;
                   return (
                     <tr key={bill.id} className={`hover:bg-purple-50/40 ${isOverdue ? 'bg-red-50/30' : ''}`}>
-                      <td className="px-4 py-2.5">
+                      <td className="px-2 py-1.5">
                         <span className="font-medium text-gray-900 text-xs">
                           {bill.supplier_name || <span className="text-gray-400 italic">No Supplier</span>}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-2 py-1.5">
                         <span className="font-mono text-xs text-gray-600">
                           {bill.invoice_number || '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-2 py-1.5">
                         <span className="text-xs text-gray-700">{categoryLabel(bill.expense_category)}</span>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-2 py-1.5">
                         <span className="text-xs text-gray-600 line-clamp-1">{bill.description || '—'}</span>
                       </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
+                      <td className="px-2 py-1.5 whitespace-nowrap">
                         <span className="text-xs text-gray-700">
                           {new Date(bill.invoice_date).toLocaleDateString('en-GB')}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap">
+                      <td className="px-2 py-1.5 whitespace-nowrap">
                         {bill.due_date ? (
                           <span className={`text-xs font-medium ${isOverdue ? 'text-red-600' : 'text-gray-700'}`}>
                             {new Date(bill.due_date).toLocaleDateString('en-GB')}
@@ -765,16 +746,16 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
                           <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
                         <span className="text-xs text-gray-700">Rp {bill.amount.toLocaleString('id-ID')}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
                         <span className="text-xs text-green-700">Rp {bill.paid_amount.toLocaleString('id-ID')}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
                         <span className="text-xs font-semibold text-red-600">Rp {bill.balance_amount.toLocaleString('id-ID')}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-center">
+                      <td className="px-2 py-1.5 text-center">
                         {isOverdue ? (
                           <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 rounded">
                             {bill.days_overdue}d overdue
@@ -792,16 +773,16 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
                 })}
                 {/* Totals row */}
                 <tr className="bg-purple-50 border-t-2 border-purple-200 font-bold">
-                  <td colSpan={6} className="px-4 py-2.5 text-right text-xs text-gray-700">
+                  <td colSpan={6} className="px-2 py-1.5 text-right text-xs text-gray-700">
                     TOTAL ({outstandingExpenseBills.length} bills):
                   </td>
-                  <td className="px-4 py-2.5 text-right text-xs text-gray-700">
+                  <td className="px-2 py-1.5 text-right text-xs text-gray-700">
                     Rp {outstandingExpenseBills.reduce((s, b) => s + b.amount, 0).toLocaleString('id-ID')}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-xs text-green-700">
+                  <td className="px-2 py-1.5 text-right text-xs text-green-700">
                     Rp {outstandingExpenseBills.reduce((s, b) => s + b.paid_amount, 0).toLocaleString('id-ID')}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-sm text-red-700 font-bold">
+                  <td className="px-2 py-1.5 text-right text-sm text-red-700 font-bold">
                     Rp {totalExpenseBillsPayable.toLocaleString('id-ID')}
                   </td>
                   <td />
