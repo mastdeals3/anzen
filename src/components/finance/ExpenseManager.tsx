@@ -2656,7 +2656,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     // Excel/Tally-density reimbursement grid with # column, Invoice Date and PPN %
                     // dropdown. Row = 36px. Inputs sit flush inside cells with visible borders.
                     const cellInputCls = 'w-full h-[34px] px-2 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none rounded-none text-sm bg-transparent';
-                    const grid = 'grid grid-cols-[28px_minmax(0,4fr)_minmax(0,1.8fr)_minmax(0,1.8fr)_minmax(0,1.8fr)_60px_minmax(0,1.6fr)_minmax(0,1.6fr)_36px]';
+                    const grid = 'grid grid-cols-[28px_minmax(0,4fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_36px]';
                     return (
                       <div className="mb-2">
                         <div className="flex items-center justify-between mb-1.5">
@@ -2675,22 +2675,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             {/* Header row */}
                             <div className={`${grid} bg-gray-100 border-b border-gray-300 text-[10px] font-semibold text-gray-600 uppercase tracking-wide`}>
                               <div className="px-2 py-1.5 border-r border-gray-300 text-center">#</div>
-                              <div className="px-2 py-1.5 border-r border-gray-300">Sub-supplier <span className="normal-case font-normal text-gray-400">(Type to search)</span></div>
+                              <div className="px-2 py-1.5 border-r border-gray-300">Sub-supplier <span className="normal-case font-normal text-gray-400">(type to search)</span></div>
                               <div className="px-2 py-1.5 border-r border-gray-300">Invoice No.</div>
-                              <div className="px-2 py-1.5 border-r border-gray-300">Invoice Date</div>
                               <div className="px-2 py-1.5 border-r border-gray-300 text-right">Amount (IDR)</div>
-                              <div className="px-2 py-1.5 border-r border-gray-300 text-center">PPN %</div>
                               <div className="px-2 py-1.5 border-r border-gray-300 text-right">PPN Amount</div>
                               <div className="px-2 py-1.5 border-r border-gray-300 text-right">Total (IDR)</div>
-                              <div className="px-2 py-1.5 text-center">Action</div>
+                              <div className="px-2 py-1.5 text-center">Del</div>
                             </div>
-                            {brokerItems.map((item, idx) => {
+                              {brokerItems.map((item, idx) => {
                               const lineTotal = (item.amount || 0) + (item.ppn_amount || 0);
-                              const currentPct = (item.amount || 0) > 0
-                                ? Math.round(((item.ppn_amount || 0) / (item.amount || 1)) * 100)
-                                : 0;
-                              // Snap common percentages so the dropdown reflects reality.
-                              const displayPct = currentPct === 11 || currentPct === 0 ? currentPct : (item.ppn_amount || 0) > 0 ? currentPct : 0;
                               return (
                                 <div key={idx}
                                   className={`${grid} items-stretch border-b border-gray-200 last:border-b-0 hover:bg-blue-50/40 group`}>
@@ -2721,32 +2714,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                       className={cellInputCls} placeholder="—" />
                                   </div>
                                   <div className="border-r border-gray-200">
-                                    <input type="date" value={item.invoice_date || ''}
-                                      onChange={(e) => updateLine(idx, { invoice_date: e.target.value })}
-                                      className={cellInputCls} />
-                                  </div>
-                                  <div className="border-r border-gray-200">
                                     <input type="number" step="1" min="0" value={item.amount || ''}
                                       onChange={(e) => {
                                         const amt = parseFloat(e.target.value) || 0;
-                                        const pct = displayPct || (suppliers.find(s => s.id === (item.supplier_id || ''))?.pkp_status ? 11 : 0);
+                                        const sup = suppliers.find(s => s.id === (item.supplier_id || ''));
+                                        const pct = sup?.pkp_status ? 11 : 0;
                                         const seedPpn = Math.round(amt * pct / 100);
                                         updateLine(idx, { amount: amt, ppn_treatment: 'excluded', ppn_amount: seedPpn });
                                       }}
                                       className={cellInputCls + ' text-right font-mono'} placeholder="0" />
-                                  </div>
-                                  <div className="border-r border-gray-200 flex items-center">
-                                    <select value={displayPct === 11 ? '11' : displayPct === 0 ? '0' : ''}
-                                      onChange={(e) => {
-                                        const pct = parseFloat(e.target.value) || 0;
-                                        const amt = item.amount || 0;
-                                        updateLine(idx, { ppn_treatment: 'excluded', ppn_amount: Math.round(amt * pct / 100) });
-                                      }}
-                                      className="w-full h-[34px] px-1 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none text-sm bg-transparent text-center">
-                                      <option value="0">0%</option>
-                                      <option value="11">11%</option>
-                                      {displayPct !== 0 && displayPct !== 11 && <option value="">{displayPct}%</option>}
-                                    </select>
                                   </div>
                                   <div className="border-r border-gray-200">
                                     <input type="number" step="1" min="0" value={item.ppn_amount || ''}
@@ -2770,9 +2746,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               <div className="border-r border-gray-300 px-2 py-1.5 text-center"></div>
                               <div className="border-r border-gray-300 px-2 py-1.5">Total ({brokerItems.length} Lines)</div>
                               <div className="border-r border-gray-300 px-2 py-1.5"></div>
-                              <div className="border-r border-gray-300 px-2 py-1.5"></div>
                               <div className="border-r border-gray-300 px-2 py-1.5 text-right font-mono text-gray-900">{reimbTotal.toLocaleString('id-ID')}</div>
-                              <div className="border-r border-gray-300 px-2 py-1.5"></div>
                               <div className="border-r border-gray-300 px-2 py-1.5 text-right font-mono text-blue-700">{totalLinePpn.toLocaleString('id-ID')}</div>
                               <div className="border-r border-gray-300 px-2 py-1.5 text-right font-mono text-gray-900">{(reimbTotal + totalLinePpn).toLocaleString('id-ID')}</div>
                               <div></div>
