@@ -675,7 +675,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -690,7 +690,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         {canManage && (
           <button
             onClick={() => { resetForm(); setModalOpen(true); }}
-            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+            className="flex items-center gap-2 bg-green-600 text-white h-7 px-2 rounded hover:bg-green-700"
           >
             <ArrowDownCircle className="w-5 h-5" />
             New Receipt
@@ -698,39 +698,39 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded border border-gray-200 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Voucher No</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bank</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Allocated To</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Voucher No</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Bank</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Allocated To</th>
+              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+              <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filteredVouchers.map(voucher => (
               <tr key={voucher.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-mono text-sm">{voucher.voucher_number}</td>
-                <td className="px-4 py-3">{new Date(voucher.voucher_date).toLocaleDateString('id-ID')}</td>
-                <td className="px-4 py-3">{voucher.customers?.company_name}</td>
-                <td className="px-4 py-3">
+                <td className="px-2 py-1.5 font-mono text-sm">{voucher.voucher_number}</td>
+                <td className="px-2 py-1.5">{new Date(voucher.voucher_date).toLocaleDateString('id-ID')}</td>
+                <td className="px-2 py-1.5">{voucher.customers?.company_name}</td>
+                <td className="px-2 py-1.5">
                   <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs capitalize">
                     {voucher.payment_method.replace('_', ' ')}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-sm">
+                <td className="px-2 py-1.5 text-sm">
                   {voucher.bank_accounts?.alias || voucher.bank_accounts?.account_name || '-'}
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{voucher.allocated_to}</td>
-                <td className="px-4 py-3 text-right font-medium text-green-600">
+                <td className="px-2 py-1.5 text-sm text-gray-600">{voucher.allocated_to}</td>
+                <td className="px-2 py-1.5 text-right font-medium text-green-600">
                   Rp {voucher.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-2 py-1.5">
                   <div className="flex items-center justify-center gap-1">
                     <button
                       onClick={() => handleView(voucher)}
@@ -795,7 +795,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       </div>
 
       <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); resetForm(); }} title={editMode ? "Edit Receipt Voucher" : "New Receipt Voucher"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
@@ -1031,7 +1031,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         title="Receipt Voucher Details"
       >
         {selectedVoucher && (
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-500">Voucher Number</label>
@@ -1059,7 +1059,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-500">Amount</label>
-                <p className="text-2xl font-bold text-green-600">Rp {selectedVoucher.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className="text-sm font-bold text-green-600">Rp {selectedVoucher.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
               </div>
               {selectedVoucher.description && (
                 <div className="col-span-2">
@@ -1161,7 +1161,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           onClose={() => { setCancelPostingTarget(null); setCancelPostingReason(''); }}
           title={`Cancel GL Posting — ${cancelPostingTarget.voucher_number}`}
         >
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
               This will delete the journal entry for this receipt voucher and reset it to Draft. The voucher will need to be re-posted after any edits.
             </div>

@@ -256,7 +256,7 @@ export function TaxReports() {
       ) : (
         <>
           {activeTab === 'summary' && (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded border border-gray-200 overflow-hidden">
               <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
                 <h3 className="text-sm font-medium text-gray-900">{t('finance.monthlySummary') || 'Monthly Tax Summary'}</h3>
                 <p className="text-[10px] text-gray-600">{t('finance.netPPNFormula') || 'Net PPN = Output PPN - Input PPN'}</p>
@@ -332,7 +332,7 @@ export function TaxReports() {
           )}
 
           {activeTab === 'input' && (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded border border-gray-200 overflow-hidden">
               <div className="px-3 py-2 bg-blue-50 border-b border-blue-200">
                 <h3 className="text-sm font-medium text-blue-900">{t('finance.inputPPNReport') || 'Input PPN Report'}</h3>
                 <p className="text-[10px] text-blue-700">
@@ -393,7 +393,7 @@ export function TaxReports() {
           )}
 
           {activeTab === 'output' && (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded border border-gray-200 overflow-hidden">
               <div className="px-3 py-2 bg-green-50 border-b border-green-200">
                 <h3 className="text-sm font-medium text-green-900">{t('finance.outputPPNReport') || 'Output PPN Report'}</h3>
                 <p className="text-[10px] text-green-700">
@@ -482,7 +482,7 @@ export function TaxReports() {
           )}
 
           {activeTab === 'pph22' && (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="bg-white rounded border border-gray-200 overflow-hidden">
               <div className="px-3 py-2 bg-purple-50 border-b border-purple-200">
                 <h3 className="text-sm font-medium text-purple-900">PPh 22 Advance Income Tax Report</h3>
                 <p className="text-[10px] text-purple-700">
@@ -548,7 +548,7 @@ export function TaxReports() {
           )}
           {/* ── Expense VAT Register ─────────────────────────────────────── */}
           {activeTab === 'expense_vat' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+            <div className="bg-white rounded border border-gray-200 overflow-x-auto">
               <div className="px-3 py-2 bg-blue-50 border-b border-blue-200">
                 <p className="text-xs text-blue-800 font-medium">
                   Input VAT recorded on expense bills (non-PIB). Includes Operating Expenses, Professional Services,
@@ -595,7 +595,7 @@ export function TaxReports() {
 
           {/* ── Expense PPh Register ─────────────────────────────────────── */}
           {activeTab === 'expense_pph' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+            <div className="bg-white rounded border border-gray-200 overflow-x-auto">
               <div className="px-3 py-2 bg-orange-50 border-b border-orange-200">
                 <p className="text-xs text-orange-800 font-medium">
                   PPh withholding recorded on expense bills. Use this to prepare SPT Masa PPh reports.
@@ -648,7 +648,7 @@ export function TaxReports() {
 
           {/* ── Asset Register ───────────────────────────────────────────── */}
           {activeTab === 'assets' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+            <div className="bg-white rounded border border-gray-200 overflow-x-auto">
               <div className="px-3 py-2 bg-green-50 border-b border-green-200">
                 <p className="text-xs text-green-800 font-medium">
                   All fixed asset purchases recorded in the Expense module. Useful for depreciation schedule preparation.

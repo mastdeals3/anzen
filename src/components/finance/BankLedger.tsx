@@ -325,7 +325,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
   const closingBalance = openingBalance + totalCredit - totalDebit;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-blue-600" />
@@ -400,28 +400,28 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Date</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Particulars</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Ref No</th>
-                  <th className="px-3 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Debit (Dr)</th>
-                  <th className="px-3 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Credit (Cr)</th>
-                  <th className="px-3 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Balance</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Date</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Particulars</th>
+                  <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Ref No</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Debit (Dr)</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Credit (Cr)</th>
+                  <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Balance</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 <tr className="bg-blue-50 font-semibold">
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900">
                     {new Date(globalDateRange.startDate).toLocaleDateString('id-ID')}
                   </td>
-                  <td className="px-3 py-2 text-sm text-gray-900" colSpan={2}>
+                  <td className="px-2 py-1 text-xs text-gray-900" colSpan={2}>
                     Opening Balance
                     {globalDateRange.startDate > (selectedBankData?.opening_balance_date || '') && (
                       <span className="ml-2 text-xs font-normal text-gray-600">(adjusted for date filter)</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right">-</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right">-</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right font-bold">
+                  <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right">-</td>
+                  <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right">-</td>
+                  <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right font-bold">
                     {selectedBankData && formatAmount(openingBalance, selectedBankData.currency)}
                   </td>
                 </tr>
@@ -446,25 +446,25 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
                         setShowDetailModal(true);
                       }}
                     >
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900">
                         {new Date(entry.entry_date).toLocaleDateString('id-ID')}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900">
+                      <td className="px-2 py-1 text-xs text-gray-900">
                         {entry.particulars}
                       </td>
                       <td
-                        className="px-3 py-2 text-sm text-gray-600 font-mono"
+                        className="px-2 py-1 text-xs text-gray-600 font-mono"
                         title={entry.canonical_reference && entry.canonical_reference !== entry.reference ? `Bank statement ref: ${entry.reference}` : undefined}
                       >
                         {entry.canonical_reference || entry.reference}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-red-600 text-right font-medium">
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-red-600 text-right font-medium">
                         {selectedBankData && (entry.debit > 0 ? formatAmount(entry.debit, selectedBankData.currency) : '-')}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-green-600 text-right font-medium">
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-green-600 text-right font-medium">
                         {selectedBankData && (entry.credit > 0 ? formatAmount(entry.credit, selectedBankData.currency) : '-')}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right font-semibold">
                         {selectedBankData && formatAmount(entry.running_balance, selectedBankData.currency)}
                       </td>
                     </tr>
@@ -473,16 +473,16 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
 
                 {ledgerEntries.length > 0 && (
                   <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
-                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900" colSpan={3}>
+                    <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900" colSpan={3}>
                       Closing Balance
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm text-red-600 text-right font-bold">
+                    <td className="px-2 py-1 whitespace-nowrap text-xs text-red-600 text-right font-bold">
                       {selectedBankData && formatAmount(totalDebit, selectedBankData.currency)}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm text-green-600 text-right font-bold">
+                    <td className="px-2 py-1 whitespace-nowrap text-xs text-green-600 text-right font-bold">
                       {selectedBankData && formatAmount(totalCredit, selectedBankData.currency)}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right font-bold">
+                    <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right font-bold">
                       {selectedBankData && formatAmount(closingBalance, selectedBankData.currency)}
                     </td>
                   </tr>
@@ -497,13 +497,13 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowDetailModal(false)}>
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Transaction Details</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Transaction Details</h3>
               <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600">
                 <span className="text-2xl">&times;</span>
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-2">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-600">Date</p>
@@ -565,7 +565,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
         onClose={() => setShowOpeningBalanceModal(false)}
         title="Update Opening Balance"
       >
-        <div className="space-y-4">
+        <div className="space-y-2">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Opening Balance Amount *
@@ -606,7 +606,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
             </button>
             <button
               onClick={updateOpeningBalance}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               Update
             </button>

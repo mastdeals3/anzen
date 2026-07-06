@@ -428,7 +428,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
           TRIAL BALANCE
       ═══════════════════════════════════════════════════════════════════ */}
       {reportType === 'trial_balance' && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden print:shadow-none print:border-0">
+        <div className="bg-white rounded border border-gray-200 overflow-hidden print:shadow-none print:border-0">
           {/* Report Header */}
           <div className="bg-slate-800 text-white px-5 py-3 print:bg-white print:text-gray-900 print:border-b-2 print:border-gray-800">
             <div className="flex items-center justify-between">
@@ -557,9 +557,9 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
               {/* Grand Total */}
               <tfoot>
                 <tr className="bg-slate-800 text-white font-bold border-t-2 border-slate-600">
-                  <td className="px-3 py-2.5 text-right text-[10px] uppercase tracking-widest" colSpan={2}>GRAND TOTAL</td>
+                  <td className="px-2 py-1.5 text-right text-[10px] uppercase tracking-widest" colSpan={2}>GRAND TOTAL</td>
                   {[tbGrandTotals.openingDr, tbGrandTotals.openingCr, tbGrandTotals.periodDr, tbGrandTotals.periodCr, tbGrandTotals.closingDr, tbGrandTotals.closingCr].map((v, i) => (
-                    <td key={i} className="px-3 py-2.5 text-right text-xs tabular-nums">{fmt(v)}</td>
+                    <td key={i} className="px-2 py-1.5 text-right text-xs tabular-nums">{fmt(v)}</td>
                   ))}
                 </tr>
                 {(() => {
@@ -588,7 +588,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
           PROFIT & LOSS
       ═══════════════════════════════════════════════════════════════════ */}
       {reportType === 'pnl' && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden print:shadow-none print:border-0">
+        <div className="bg-white rounded border border-gray-200 overflow-hidden print:shadow-none print:border-0">
           <div className="bg-slate-800 text-white px-5 py-3 print:bg-white print:text-gray-900 print:border-b-2 print:border-gray-800">
             <div className="flex items-center justify-between">
               <div>
@@ -666,13 +666,13 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
 
                 {/* GROSS PROFIT */}
                 <tr className={`border-t-2 ${grossProfit >= 0 ? 'bg-blue-100 border-blue-400' : 'bg-red-100 border-red-400'}`}>
-                  <td colSpan={2} className={`px-3 py-2.5 text-sm font-bold ${grossProfit >= 0 ? 'text-blue-900' : 'text-red-900'}`}>
+                  <td colSpan={2} className={`px-2 py-1.5 text-sm font-bold ${grossProfit >= 0 ? 'text-blue-900' : 'text-red-900'}`}>
                     Gross Profit (Laba Kotor)
                   </td>
-                  <td className={`px-3 py-2.5 text-right text-sm font-bold tabular-nums ${grossProfit >= 0 ? 'text-blue-900' : 'text-red-900'}`}>
+                  <td className={`px-2 py-1.5 text-right text-sm font-bold tabular-nums ${grossProfit >= 0 ? 'text-blue-900' : 'text-red-900'}`}>
                     Rp {fmt(grossProfit)}
                   </td>
-                  <td className={`px-3 py-2.5 text-right text-[10px] font-semibold ${grossProfit >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
+                  <td className={`px-2 py-1.5 text-right text-[10px] font-semibold ${grossProfit >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
                     {pctStr(grossProfit, netRevenue)}
                   </td>
                 </tr>
@@ -737,14 +737,14 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
               {/* NET INCOME footer */}
               <tfoot>
                 <tr className={`border-t-2 ${netIncome >= 0 ? 'bg-green-700 border-green-500' : 'bg-red-700 border-red-500'} text-white`}>
-                  <td colSpan={2} className="px-3 py-3 text-sm font-bold uppercase tracking-wide">
+                  <td colSpan={2} className="px-2 py-1.5 text-sm font-bold uppercase tracking-wide">
                     Net Income — Provisional
                     <span className="block text-[10px] font-normal opacity-75">Laba Bersih (Sementara)</span>
                   </td>
-                  <td className="px-3 py-3 text-right text-base font-bold tabular-nums">
+                  <td className="px-2 py-1.5 text-right text-base font-bold tabular-nums">
                     Rp {fmt(netIncome)}
                   </td>
-                  <td className="px-3 py-3 text-right text-xs font-semibold">
+                  <td className="px-2 py-1.5 text-right text-xs font-semibold">
                     {pctStr(netIncome, netRevenue)}
                   </td>
                 </tr>
@@ -758,7 +758,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
           BALANCE SHEET
       ═══════════════════════════════════════════════════════════════════ */}
       {reportType === 'balance_sheet' && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden print:shadow-none print:border-0">
+        <div className="bg-white rounded border border-gray-200 overflow-hidden print:shadow-none print:border-0">
           <div className="bg-slate-800 text-white px-5 py-3 print:bg-white print:text-gray-900 print:border-b-2 print:border-gray-800">
             <div className="flex items-center justify-between">
               <div>
@@ -837,7 +837,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                 {/* Total Assets */}
                 <tr className="bg-blue-900 text-white border-t-2 border-blue-700">
                   <td colSpan={2} className="px-5 py-2.5 text-xs font-bold uppercase tracking-wide">TOTAL ASSETS</td>
-                  <td className="px-4 py-2.5 text-right text-sm font-bold tabular-nums">Rp {fmt(totalAssets)}</td>
+                  <td className="px-2 py-1.5 text-right text-sm font-bold tabular-nums">Rp {fmt(totalAssets)}</td>
                 </tr>
 
                 {/* Spacer */}
@@ -891,7 +891,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                 {/* Total Liabilities */}
                 <tr className="bg-red-900 text-white border-t-2 border-red-700">
                   <td colSpan={2} className="px-5 py-2.5 text-xs font-bold uppercase tracking-wide">TOTAL LIABILITIES</td>
-                  <td className="px-4 py-2.5 text-right text-sm font-bold tabular-nums">Rp {fmt(totalLiabilities)}</td>
+                  <td className="px-2 py-1.5 text-right text-sm font-bold tabular-nums">Rp {fmt(totalLiabilities)}</td>
                 </tr>
 
                 <tr><td colSpan={3} className="py-1 bg-gray-50 border-t border-gray-200" /></tr>
@@ -933,7 +933,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                 {/* Total Liabilities + Equity */}
                 <tr className="bg-purple-900 text-white border-t-2 border-purple-700">
                   <td colSpan={2} className="px-5 py-2.5 text-xs font-bold uppercase tracking-wide">TOTAL LIABILITIES + EQUITY</td>
-                  <td className="px-4 py-2.5 text-right text-sm font-bold tabular-nums">Rp {fmt(totalLiabEquity)}</td>
+                  <td className="px-2 py-1.5 text-right text-sm font-bold tabular-nums">Rp {fmt(totalLiabEquity)}</td>
                 </tr>
 
                 {/* Balance Check */}

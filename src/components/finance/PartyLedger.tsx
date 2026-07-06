@@ -298,7 +298,7 @@ export default function PartyLedger() {
   const selectedPartyData = parties.find(p => p.id === selectedParty);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {partyType === 'customer' ? (
@@ -406,34 +406,34 @@ export default function PartyLedger() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Date
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Particulars
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Ref No
                     </th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Debit (Dr)
                     </th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Credit (Cr)
                     </th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Balance
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   <tr className="bg-blue-50 font-semibold">
-                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900" colSpan={3}>
+                    <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900" colSpan={3}>
                       Opening Balance
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right">-</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right">-</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right font-bold">
+                    <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right">-</td>
+                    <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right">-</td>
+                    <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right font-bold">
                       {formatBalance(openingBalance)}
                     </td>
                   </tr>
@@ -453,22 +453,22 @@ export default function PartyLedger() {
                   ) : (
                     ledgerEntries.map(entry => (
                       <tr key={entry.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900">
                           {new Date(entry.entry_date).toLocaleDateString('id-ID')}
                         </td>
-                        <td className="px-3 py-2 text-sm text-gray-900">
+                        <td className="px-2 py-1 text-xs text-gray-900">
                           {entry.particulars}
                         </td>
-                        <td className="px-3 py-2 text-sm text-gray-600 font-mono">
+                        <td className="px-2 py-1 text-xs text-gray-600 font-mono">
                           {entry.reference}
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-sm text-red-600 text-right font-medium">
+                        <td className="px-2 py-1 whitespace-nowrap text-xs text-red-600 text-right font-medium">
                           {entry.debit > 0 ? formatAmount(entry.debit) : '-'}
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-sm text-green-600 text-right font-medium">
+                        <td className="px-2 py-1 whitespace-nowrap text-xs text-green-600 text-right font-medium">
                           {entry.credit > 0 ? formatAmount(entry.credit) : '-'}
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right font-semibold">
+                        <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right font-semibold">
                           {formatBalance(entry.running_balance)}
                         </td>
                       </tr>
@@ -477,16 +477,16 @@ export default function PartyLedger() {
 
                   {ledgerEntries.length > 0 && (
                     <tr className="bg-gray-100 font-semibold border-t-2 border-gray-300">
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900" colSpan={3}>
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900" colSpan={3}>
                         Closing Balance
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-red-600 text-right font-bold">
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-red-600 text-right font-bold">
                         {formatAmount(totalDebit)}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-green-600 text-right font-bold">
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-green-600 text-right font-bold">
                         {formatAmount(totalCredit)}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right font-bold">
+                      <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900 text-right font-bold">
                         {formatBalance(closingBalance)}
                       </td>
                     </tr>

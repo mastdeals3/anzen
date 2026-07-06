@@ -615,7 +615,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   if (loading) return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -638,19 +638,19 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded border border-gray-200 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Voucher No</th>
-              <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
-              <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
-              <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Invoice No.</th>
-              <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Bank</th>
-              <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase">Bank Debit</th>
-              <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase">Net Paid</th>
-              {canManage && <th className="px-3 py-2.5 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>}
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Voucher No</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Invoice No.</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Bank</th>
+              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Bank Debit</th>
+              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Net Paid</th>
+              {canManage && <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -1181,7 +1181,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           onClose={() => { setCancelPostingTarget(null); setCancelPostingReason(''); }}
           title={`Cancel GL Posting — ${cancelPostingTarget.voucher_number}`}
         >
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
               This will delete the journal entry for this payment voucher and reset it to Draft. The voucher will need to be re-posted after any edits.
             </div>
@@ -1216,11 +1216,11 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
 
       {viewingVoucher && (
         <Modal isOpen={!!viewingVoucher} onClose={() => setViewingVoucher(null)} title={`Payment Voucher ${viewingVoucher.voucher_number}`}>
-          <div className="space-y-4 text-sm">
+          <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200">
               <div>
                 <div className="text-xs text-gray-500">Voucher No.</div>
-                <div className="text-lg font-semibold text-gray-900">{viewingVoucher.voucher_number}</div>
+                <div className="text-sm font-semibold text-gray-900">{viewingVoucher.voucher_number}</div>
               </div>
               <div className="text-right">
                 <div className="text-xs text-gray-500">Date</div>

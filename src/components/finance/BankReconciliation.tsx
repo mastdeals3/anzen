@@ -338,7 +338,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <select
@@ -406,7 +406,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
             activeFilter === 'all' ? 'bg-blue-50 border-2 border-blue-500' : 'bg-gray-50 border border-gray-200'
           }`}
         >
-          <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
+          <div className="text-sm font-bold text-gray-900">{stats.total}</div>
           <div className="text-xs text-gray-500">Total</div>
         </button>
         <button
@@ -417,7 +417,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
         >
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-green-600" />
-            <span className="text-2xl font-bold text-green-700">{stats.matched}</span>
+            <span className="text-sm font-bold text-green-700">{stats.matched}</span>
           </div>
           <div className="text-xs text-gray-500">Matched</div>
         </button>
@@ -429,7 +429,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
         >
           <div className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-yellow-600" />
-            <span className="text-2xl font-bold text-yellow-700">{stats.needsReview}</span>
+            <span className="text-sm font-bold text-yellow-700">{stats.needsReview}</span>
           </div>
           <div className="text-xs text-gray-500">Review</div>
         </button>
@@ -441,7 +441,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
         >
           <div className="flex items-center gap-2">
             <XCircle className="w-5 h-5 text-red-600" />
-            <span className="text-2xl font-bold text-red-700">{stats.unmatched}</span>
+            <span className="text-sm font-bold text-red-700">{stats.unmatched}</span>
           </div>
           <div className="text-xs text-gray-500">Unmatched</div>
         </button>
@@ -451,7 +451,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
             activeFilter === 'no_link' ? 'bg-purple-50 border-2 border-purple-500' : 'bg-gray-50 border border-gray-200'
           }`}
         >
-          <div className="text-2xl font-bold text-purple-700">{stats.noLink}</div>
+          <div className="text-sm font-bold text-purple-700">{stats.noLink}</div>
           <div className="text-xs text-gray-500">Not Linked</div>
         </button>
       </div>
@@ -470,7 +470,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
           {canManage && (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="inline-flex items-center gap-2 h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               <Upload className="w-4 h-4" />
               Upload BCA Statement

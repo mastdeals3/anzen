@@ -503,7 +503,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Fund Transfers</h2>
@@ -515,7 +515,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
               resetForm();
               setModalOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-2 h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             <Plus className="w-4 h-4" />
             New Transfer
@@ -527,15 +527,15 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transfer #</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">From</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">→</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">To</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-              {canManage && <th className="sticky right-0 bg-gray-50 z-10 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>}
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Transfer #</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">From</th>
+              <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">→</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">To</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+              <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+              {canManage && <th className="sticky right-0 bg-gray-50 z-10 px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -554,27 +554,27 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
             ) : (
               transfers.map((transfer) => (
                 <tr key={transfer.id} className="group hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-2 py-1.5 whitespace-nowrap text-sm text-gray-900">
                     {formatDateDDMMYY(transfer.transfer_date)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap font-mono text-sm text-gray-900">
+                  <td className="px-2 py-1.5 whitespace-nowrap font-mono text-sm text-gray-900">
                     {transfer.transfer_number}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">
+                  <td className="px-2 py-1.5 text-sm text-gray-900">
                     <div className="font-medium">{transfer.from_account_name}</div>
                     <div className="text-xs text-gray-500">{getAccountTypeLabel(transfer.from_account_type)}</div>
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-2 py-1.5 text-center">
                     <ArrowRightLeft className="w-4 h-4 text-blue-600 inline" />
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">
+                  <td className="px-2 py-1.5 text-sm text-gray-900">
                     <div className="font-medium">{transfer.to_account_name}</div>
                     <div className="text-xs text-gray-500">{getAccountTypeLabel(transfer.to_account_type)}</div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">
+                  <td className="px-2 py-1.5 text-sm text-gray-700">
                     {transfer.description || '-'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
+                  <td className="px-2 py-1.5 whitespace-nowrap text-right text-sm font-medium text-gray-900">
                     {transfer.from_currency === transfer.to_currency ? (
                       <div>
                         {transfer.from_currency === 'USD' ? '$' : 'Rp'} {transfer.from_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -596,11 +596,11 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                       </div>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                  <td className="px-2 py-1.5 whitespace-nowrap text-center">
                     {getStatusBadge(transfer.status)}
                   </td>
                   {canManage && (
-                    <td className="sticky right-0 bg-white group-hover:bg-gray-50 z-10 px-6 py-4 whitespace-nowrap text-center">
+                    <td className="sticky right-0 bg-white group-hover:bg-gray-50 z-10 px-2 py-1.5 whitespace-nowrap text-center">
                       <div className="flex items-center justify-center gap-2">
                         {transfer.status === 'pending' && (
                           <>
@@ -685,7 +685,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
           title={viewOnly ? "View Fund Transfer" : editingTransfer ? "Edit Fund Transfer" : "New Fund Transfer"}
           maxWidth="max-w-2xl"
         >
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-2">
           <fieldset disabled={viewOnly} className="contents">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -941,7 +941,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
               {!viewOnly && (
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
                 >
                   {editingTransfer ? 'Update Transfer' : 'Create Transfer'}
                 </button>

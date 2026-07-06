@@ -174,13 +174,13 @@ export function BankAccountsManager({ canManage }: Props) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Bank Accounts</h2>
         {canManage && (
           <button
             onClick={() => { resetForm(); setModalOpen(true); }}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-2 bg-blue-600 text-white h-7 px-2 rounded hover:bg-blue-700"
           >
             <Plus className="w-5 h-5" />
             Add Bank Account
@@ -207,7 +207,7 @@ export function BankAccountsManager({ canManage }: Props) {
         onClose={() => { setModalOpen(false); resetForm(); }}
         title={editingAccount ? 'Edit Bank Account' : 'Add Bank Account'}
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Account Name *</label>
@@ -318,7 +318,7 @@ export function BankAccountsManager({ canManage }: Props) {
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               {editingAccount ? 'Update' : 'Add'} Account
             </button>

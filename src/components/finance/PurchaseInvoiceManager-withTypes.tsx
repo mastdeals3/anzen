@@ -423,7 +423,7 @@ export function PurchaseInvoiceManager({ canManage }: PurchaseInvoiceManagerProp
               resetForm();
               setModalOpen(true);
             }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="inline-flex items-center gap-2 h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             <Plus className="w-4 h-4" />
             New Purchase Invoice
@@ -444,7 +444,7 @@ export function PurchaseInvoiceManager({ canManage }: PurchaseInvoiceManagerProp
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded border border-gray-200 overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

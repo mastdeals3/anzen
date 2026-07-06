@@ -201,7 +201,7 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px]">
@@ -234,7 +234,7 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
       </div>
 
       {/* Journal Voucher View (Tally Style) - One row per voucher */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0">
@@ -336,7 +336,7 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
       {/* Voucher Detail Modal */}
       <Modal isOpen={viewModalOpen} onClose={() => setViewModalOpen(false)} title={`Journal Entry: ${selectedEntry?.entry_number}`}>
         {selectedEntry && (
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-gray-500">Date:</span>

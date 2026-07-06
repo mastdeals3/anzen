@@ -1017,13 +1017,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
   }, {} as Record<string, typeof expenseCategories>);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Compact Header */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+      <div className="bg-white rounded border border-gray-200 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Petty Cash</h2>
+              <h2 className="text-sm font-bold text-gray-900">Petty Cash</h2>
               <p className="text-xs text-gray-600 mt-0.5">Track cash withdrawals and expenses</p>
             </div>
             <div className="flex items-center gap-4 ml-8">
@@ -1056,7 +1056,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       </div>
 
       {/* Compact Single-Line Filter Bar */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+      <div className="bg-white rounded border border-gray-200 p-2">
         <div className="flex items-center gap-3 flex-wrap">
           {/* Type Filter Pills */}
           <div className="flex gap-1">
@@ -1109,13 +1109,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+      <div className="bg-white rounded border border-gray-200 overflow-x-auto">
         <table className="min-w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th
                 onClick={() => handleSort('transaction_date')}
-                className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
               >
                 <div className="flex items-center gap-1">
                   Date
@@ -1126,7 +1126,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
               </th>
               <th
                 onClick={() => handleSort('transaction_number')}
-                className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
               >
                 <div className="flex items-center gap-1">
                   Number
@@ -1135,13 +1135,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                   )}
                 </div>
               </th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Type</th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Category</th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Description</th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Linked To</th>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Type</th>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Category</th>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Description</th>
+              <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Linked To</th>
               <th
                 onClick={() => handleSort('amount')}
-                className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                className="px-2 py-1.5 text-right text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
               >
                 <div className="flex items-center justify-end gap-1">
                   Amount
@@ -1150,8 +1150,8 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                   )}
                 </div>
               </th>
-              <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600">Approval</th>
-              {canManage && <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600">Actions</th>}
+              <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Approval</th>
+              {canManage && <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -1174,10 +1174,10 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
                 return (
                   <tr key={tx.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-sm text-gray-900">
                       {formatDate(tx.transaction_date)}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-2 py-1.5 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-blue-600">{tx.transaction_number}</span>
                         {tx.voucher_number && (
@@ -1187,7 +1187,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-2 py-1.5 whitespace-nowrap">
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
                         tx.transaction_type === 'withdraw'
                           ? 'bg-blue-100 text-blue-800'
@@ -1206,7 +1206,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                         )}
                       </span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-2 py-1.5 whitespace-nowrap">
                       {categoryInfo && (
                         <div className="flex items-center gap-2">
                           {Icon && <Icon className="h-4 w-4 text-gray-500" />}
@@ -1214,13 +1214,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-2 py-1.5 text-sm text-gray-600">
                       <div className="max-w-xs truncate">
                         {tx.description}
                         {tx.paid_to && <div className="text-xs text-gray-500">To: {tx.paid_to}</div>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm">
+                    <td className="px-2 py-1.5 text-sm">
                       <div className="space-y-1">
                         {tx.import_containers && (
                           <div className="flex items-center gap-1 text-purple-600">
@@ -1236,14 +1236,14 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-right">
                       <span className={`text-sm font-medium ${
                         tx.transaction_type === 'withdraw' ? 'text-blue-600' : 'text-red-600'
                       }`}>
                         {tx.transaction_type === 'withdraw' ? '+' : '-'} Rp {Number(tx.amount).toLocaleString('id-ID')}
                       </span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {tx.approval_status === 'approved' ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full">
                           <CheckCircle className="w-3 h-3" />Approved
@@ -1258,7 +1258,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-right text-sm">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => viewTransaction(tx)}
@@ -1325,7 +1325,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       </div>
 
       <Modal isOpen={modalOpen} onClose={closeModal} title={editingTransaction ? 'Edit Transaction' : 'Add Petty Cash Transaction'}>
-        <form onSubmit={handleSubmit} className="space-y-4" onPaste={handlePaste}>
+        <form onSubmit={handleSubmit} className="space-y-2" onPaste={handlePaste}>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Transaction Type</label>
             <select
@@ -1645,13 +1645,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
             <button
               type="button"
               onClick={closeModal}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              className="h-7 px-2 text-xs text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               {editingTransaction ? 'Update' : 'Save'} Transaction
             </button>
@@ -1911,7 +1911,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
               <button
                 type="button"
                 onClick={() => setViewModalOpen(false)}
-                className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                className="h-7 px-2 text-xs text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
               >
                 Close
               </button>
@@ -1949,7 +1949,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           onClose={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }}
           title="Cancel Posting"
         >
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
               <p className="font-semibold mb-1">{cancelPostingTarget.transaction_number}</p>
               <p>This will delete the posted journal entry and return the transaction to Draft. You can then edit and re-approve to repost.</p>
@@ -1968,14 +1968,14 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50"
               >
                 Back
               </button>
               <button
                 onClick={handleCancelPostingConfirm}
                 disabled={!cancelPostingReason.trim() || cancelPostingLoading}
-                className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-1.5"
+                className="h-7 px-2 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 {cancelPostingLoading ? 'Cancelling...' : 'Cancel Posting'}
@@ -1988,7 +1988,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       {/* Petty cash rejection modal */}
       {pcRejectionModalOpen && (
         <Modal isOpen={pcRejectionModalOpen} onClose={() => { setPcRejectionModalOpen(false); setPcRejectionReason(''); }} title="Reject Petty Cash Entry">
-          <div className="space-y-4">
+          <div className="space-y-2">
             <p className="text-sm text-gray-600">Please provide a reason for rejecting this petty cash entry.</p>
             <textarea
               value={pcRejectionReason}
@@ -1998,11 +1998,11 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
             />
             <div className="flex justify-end gap-2">
-              <button onClick={() => { setPcRejectionModalOpen(false); setPcRejectionReason(''); }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={() => { setPcRejectionModalOpen(false); setPcRejectionReason(''); }} className="h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50">Cancel</button>
               <button
                 onClick={handleRejectPettyCashConfirm}
                 disabled={!pcRejectionReason.trim() || !!approvalLoading}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="h-7 px-2 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
               >
                 Reject
               </button>

@@ -262,7 +262,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -277,7 +277,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
         {canManage && (
           <button
             onClick={() => { resetForm(); setModalOpen(true); }}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-2 bg-blue-600 text-white h-7 px-2 rounded hover:bg-blue-700"
           >
             <Plus className="w-5 h-5" />
             Add Supplier
@@ -285,25 +285,25 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded border border-gray-200 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company Name</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">NPWP</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">PKP</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Terms</th>
-              {canManage && <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>}
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Company Name</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">NPWP</th>
+              <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">PKP</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Terms</th>
+              {canManage && <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y">
             {filteredSuppliers.map(supplier => (
               <tr key={supplier.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-mono text-sm">{supplier.supplier_code || '-'}</td>
-                <td className="px-4 py-3">
+                <td className="px-2 py-1.5 font-mono text-sm">{supplier.supplier_code || '-'}</td>
+                <td className="px-2 py-1.5">
                   <div className="flex items-center gap-2">
                     <Building2 className="w-4 h-4 text-gray-400" />
                     <div>
@@ -312,28 +312,28 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-2 py-1.5">
                   {supplier.supplier_type ? (
                     <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full">{supplier.supplier_type}</span>
                   ) : (
                     <span className="text-gray-400 text-xs">—</span>
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-2 py-1.5">
                   <div className="text-sm">{supplier.contact_person || '-'}</div>
                   {supplier.phone && <div className="text-sm text-gray-500">{supplier.phone}</div>}
                 </td>
-                <td className="px-4 py-3 font-mono text-sm">{supplier.npwp || '-'}</td>
-                <td className="px-4 py-3 text-center">
+                <td className="px-2 py-1.5 font-mono text-sm">{supplier.npwp || '-'}</td>
+                <td className="px-2 py-1.5 text-center">
                   {supplier.pkp_status ? (
                     <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">PKP</span>
                   ) : (
                     <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">Non-PKP</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-sm">{supplier.payment_terms_days} days</td>
+                <td className="px-2 py-1.5 text-sm">{supplier.payment_terms_days} days</td>
                 {canManage && (
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-2 py-1.5 text-right">
                     <button onClick={() => handleEdit(supplier)} className="text-blue-600 hover:text-blue-800 mr-2">
                       <Edit className="w-4 h-4" />
                     </button>
@@ -356,7 +356,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
       </div>
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingSupplier ? 'Edit Supplier' : 'Add Supplier'}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Code</label>
@@ -590,7 +590,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
             <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-gray-700 border rounded-lg hover:bg-gray-50">
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <button type="submit" className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
               {editingSupplier ? 'Update' : 'Create'} Supplier
             </button>
           </div>

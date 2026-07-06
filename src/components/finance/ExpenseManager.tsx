@@ -3677,11 +3677,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               />
             </div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Back</button>
+              <button onClick={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }} className="h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50">Back</button>
               <button
                 onClick={handleCancelPostingConfirm}
                 disabled={!cancelPostingReason.trim() || cancelPostingLoading}
-                className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-1.5"
+                className="h-7 px-2 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 {cancelPostingLoading ? 'Cancelling...' : 'Cancel Posting'}
@@ -3704,11 +3704,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
             />
             <div className="flex justify-end gap-2">
-              <button onClick={() => { setRejectionModalOpen(false); setRejectionReason(''); }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={() => { setRejectionModalOpen(false); setRejectionReason(''); }} className="h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50">Cancel</button>
               <button
                 onClick={handleRejectExpenseConfirm}
                 disabled={!rejectionReason.trim() || !!approvalLoading}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="h-7 px-2 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
               >
                 Reject
               </button>

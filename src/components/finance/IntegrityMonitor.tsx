@@ -64,16 +64,16 @@ export function IntegrityMonitor() {
   }, [loadMetrics]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Integrity Monitor</h2>
+          <h2 className="text-sm font-semibold text-gray-900">Integrity Monitor</h2>
           <p className="text-sm text-gray-500">Read-only finance integrity checks.</p>
         </div>
         <button
           onClick={loadMetrics}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
@@ -90,9 +90,9 @@ export function IntegrityMonitor() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Check</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Count</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Check</th>
+              <th className="px-2 py-1.5 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Count</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white">
@@ -100,9 +100,9 @@ export function IntegrityMonitor() {
               const hasIssue = metric.count > 0;
               return (
                 <tr key={metric.key}>
-                  <td className="px-4 py-3 text-sm text-gray-900">{metric.label}</td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">{metric.count}</td>
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-2 py-1.5 text-sm text-gray-900">{metric.label}</td>
+                  <td className="px-2 py-1.5 text-right text-sm font-semibold text-gray-900">{metric.count}</td>
+                  <td className="px-2 py-1.5 text-sm">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${hasIssue ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
                       {hasIssue ? <AlertTriangle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
                       {hasIssue ? 'Issue detected' : 'OK'}

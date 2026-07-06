@@ -2408,7 +2408,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Compact Header with Bank Selection and Actions */}
       <div className="bg-gradient-to-r from-slate-700 to-slate-800 rounded-lg p-2.5 text-white shadow-md">
         <div className="flex items-center justify-between">
@@ -2473,7 +2473,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       </div>
 
       {/* Compact Filter Bar */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+      <div className="bg-white rounded border border-gray-200 p-2">
         <div className="flex items-center gap-3 flex-wrap">
           {/* Bank Account Selector */}
           <select
@@ -2558,7 +2558,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           {canManage && (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="inline-flex items-center gap-2 h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               <Upload className="w-4 h-4" />
               Upload Statement
@@ -2831,16 +2831,16 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               ))}
               {/* Totals Row */}
               <tr className="bg-blue-50 border-t-2 border-blue-200 font-bold">
-                <td colSpan={2} className="px-3 py-3 text-right text-gray-900">
+                <td colSpan={2} className="px-2 py-1.5 text-right text-gray-900">
                   TOTAL ({sortedLines.length} transactions):
                 </td>
-                <td className="px-3 py-3 text-right text-red-700 font-bold whitespace-nowrap">
+                <td className="px-2 py-1.5 text-right text-red-700 font-bold whitespace-nowrap">
                   {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {sortedLines.reduce((sum, line) => sum + line.debit, 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
-                <td className="px-3 py-3 text-right text-green-700 font-bold whitespace-nowrap">
+                <td className="px-2 py-1.5 text-right text-green-700 font-bold whitespace-nowrap">
                   {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {sortedLines.reduce((sum, line) => sum + line.credit, 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
-                <td colSpan={2} className="px-3 py-3 text-center text-gray-600 text-sm">
+                <td colSpan={2} className="px-2 py-1.5 text-center text-gray-600 text-sm">
                   Net: {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {(sortedLines.reduce((sum, line) => sum + line.credit, 0) - sortedLines.reduce((sum, line) => sum + line.debit, 0)).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
@@ -3366,7 +3366,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           }}
           title="PDF Extraction Failed"
         >
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <p className="text-yellow-800 text-sm font-medium mb-2">{ocrError.message}</p>
               <div className="space-y-2">
@@ -3391,7 +3391,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                   <button
                     onClick={handleRunOCR}
                     disabled={uploading}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                    className="flex-1 h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
                   >
                     {uploading ? 'Processing with OCR...' : 'Run OCR Anyway'}
                   </button>
@@ -3417,7 +3417,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           onClose={() => setOcrPreview(null)}
           title="OCR Preview - Confirm Before Saving"
         >
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <p className="text-green-800 text-sm font-medium mb-2">
                 ✅ OCR extracted {ocrPreview.transactionCount} transactions
@@ -3508,7 +3508,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         title="Confirm Clear Data"
       >
         {deletePreview && (
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <h4 className="font-medium text-yellow-900 mb-2">Warning: Data Deletion</h4>
               <p className="text-sm text-yellow-800">
@@ -3538,7 +3538,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
                 <div>
                   <div className="text-xs text-gray-600 mb-1">Total Transactions</div>
-                  <div className="text-2xl font-bold text-gray-900">
+                  <div className="text-sm font-bold text-gray-900">
                     {deletePreview.total_count}
                   </div>
                 </div>
@@ -3605,7 +3605,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         title="Edit Bank Statement Line"
       >
         {editingLine && (
-          <form onSubmit={handleUpdateLine} className="space-y-4">
+          <form onSubmit={handleUpdateLine} className="space-y-2">
             <div className="p-3 bg-gray-50 rounded-lg">
               <div className="text-sm text-gray-600 mb-1">Date:</div>
               <div className="font-medium">{new Date(editingLine.date).toLocaleDateString('id-ID')}</div>
@@ -3842,7 +3842,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
               >
                 Update
               </button>
@@ -3861,7 +3861,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           }}
           title="CSV Import Result"
         >
-          <div className="space-y-4">
+          <div className="space-y-2">
             {importResult.importedCount > 0 ? (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />

@@ -566,14 +566,14 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Purchase Invoices</h2>
+        <h2 className="text-xl sm:text-sm font-bold text-gray-900">Purchase Invoices</h2>
         {canManage && (
           <button
             onClick={() => {
               resetForm();
               setModalOpen(true);
             }}
-            className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm sm:text-base whitespace-nowrap"
+            className="inline-flex items-center gap-2 px-3 sm:h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 text-sm sm:text-base whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">New Purchase Invoice</span>
@@ -599,28 +599,28 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              <th className="px-3 sm:px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                 Invoice #
               </th>
-              <th className="hidden md:table-cell px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="hidden md:table-cell px-3 sm:px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Supplier
               </th>
-              <th className="hidden lg:table-cell px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="hidden lg:table-cell px-3 sm:px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Date
               </th>
-              <th className="hidden sm:table-cell px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              <th className="hidden sm:table-cell px-3 sm:px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                 Currency
               </th>
-              <th className="px-3 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-3 sm:px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Total
               </th>
-              <th className="hidden xl:table-cell px-3 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="hidden xl:table-cell px-3 sm:px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Balance
               </th>
-              <th className="hidden lg:table-cell px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="hidden lg:table-cell px-3 sm:px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-3 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50">
+              <th className="px-3 sm:px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50">
                 Actions
               </th>
             </tr>
@@ -635,19 +635,19 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
             ) : (
               filteredInvoices.map((invoice) => (
                 <tr key={invoice.id} className="hover:bg-gray-50">
-                  <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <td className="px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm font-medium text-gray-900">
                     <div className="flex flex-col">
                       <span>{invoice.invoice_number}</span>
                       <span className="md:hidden text-xs text-gray-500">{invoice.suppliers?.company_name}</span>
                     </div>
                   </td>
-                  <td className="hidden md:table-cell px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="hidden md:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm text-gray-900">
                     {invoice.suppliers?.company_name}
                   </td>
-                  <td className="hidden lg:table-cell px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="hidden lg:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(invoice.invoice_date)}
                   </td>
-                  <td className="hidden sm:table-cell px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="hidden sm:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex flex-col">
                       <span>{invoice.currency}</span>
                       {invoice.currency === 'USD' && (
@@ -657,7 +657,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       )}
                     </div>
                   </td>
-                  <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-medium">
+                  <td className="px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm text-right text-gray-900 font-medium">
                     <div className="flex flex-col items-end">
                       <span>{invoice.currency} {invoice.total_amount.toLocaleString()}</span>
                       <span className="lg:hidden text-xs">
@@ -667,12 +667,12 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       </span>
                     </div>
                   </td>
-                  <td className="hidden xl:table-cell px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
+                  <td className="hidden xl:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm text-right font-medium">
                     <span className={invoice.balance_amount > 0 ? 'text-red-600' : 'text-green-600'}>
                       {invoice.currency} {invoice.balance_amount.toLocaleString()}
                     </span>
                   </td>
-                  <td className="hidden lg:table-cell px-3 sm:px-6 py-4 whitespace-nowrap">
+                  <td className="hidden lg:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                       invoice.status === 'paid'
                         ? 'bg-green-100 text-green-800'
@@ -683,7 +683,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       {invoice.status}
                     </span>
                   </td>
-                  <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white">
+                  <td className="px-3 sm:px-2 py-1.5 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white">
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleOpenView(invoice)}
@@ -739,7 +739,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
         }}
         title={editingInvoice ? `Edit Invoice: ${editingInvoice.invoice_number}` : 'New Purchase Invoice'}
       >
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-2">
           {/* Header Section */}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -1317,7 +1317,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                           href={viewBlobUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                          className="inline-flex items-center gap-2 h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
                         >
                           <FileText className="w-4 h-4" />
                           Open PDF in New Tab

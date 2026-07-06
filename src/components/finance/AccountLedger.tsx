@@ -429,7 +429,7 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Account Selector */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1">
@@ -502,7 +502,7 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
           {/* Ledger Header */}
           <div className="bg-white border rounded-lg p-4 print:border-0">
             <div className="text-center mb-4">
-              <h2 className="text-xl font-bold">Account Ledger</h2>
+              <h2 className="text-sm font-bold">Account Ledger</h2>
               <h3 className="text-lg font-medium mt-1">
                 {selectedAccount.code} - {selectedAccount.name}
               </h3>

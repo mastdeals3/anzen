@@ -485,11 +485,11 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Journal Voucher</h2>
+          <h2 className="text-sm font-bold text-gray-900">Journal Voucher</h2>
           <p className="text-sm text-gray-500 mt-0.5">Manual double-entry journal posting</p>
         </div>
         <div className="flex items-center gap-2">
@@ -497,7 +497,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
           <div className="relative" ref={templateRef}>
             <button
               onClick={() => setTemplateOpen(!templateOpen)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg border border-gray-300 transition-colors"
+              className="flex items-center gap-1.5 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg border border-gray-300 transition-colors"
             >
               <FileText className="w-4 h-4" />
               Templates
@@ -509,7 +509,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
                   <button
                     key={t.name}
                     onClick={() => applyTemplate(t)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors"
+                    className="w-full text-left px-2 py-1.5 hover:bg-blue-50 transition-colors"
                   >
                     <div className="text-sm font-medium text-gray-900">{t.name}</div>
                     <div className="text-xs text-gray-500">{t.description}</div>
@@ -532,7 +532,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
                   type="date"
                   value={entryDate}
                   onChange={e => setEntryDate(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               <div className="sm:col-span-2">
@@ -542,7 +542,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
                   value={narration}
                   onChange={e => setNarration(e.target.value)}
                   placeholder="e.g. Loan received from Bank BCA"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
             </div>
@@ -553,11 +553,11 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-gray-600">
-                  <th className="text-left px-4 py-2.5 font-medium w-10">#</th>
-                  <th className="text-left px-4 py-2.5 font-medium min-w-[280px]">Account</th>
-                  <th className="text-left px-4 py-2.5 font-medium min-w-[160px]">Line Narration</th>
-                  <th className="text-right px-4 py-2.5 font-medium w-36">Debit</th>
-                  <th className="text-right px-4 py-2.5 font-medium w-36">Credit</th>
+                  <th className="text-left px-2 py-1.5 font-medium w-10">#</th>
+                  <th className="text-left px-2 py-1.5 font-medium min-w-[280px]">Account</th>
+                  <th className="text-left px-2 py-1.5 font-medium min-w-[160px]">Line Narration</th>
+                  <th className="text-right px-2 py-1.5 font-medium w-36">Debit</th>
+                  <th className="text-right px-2 py-1.5 font-medium w-36">Credit</th>
                   <th className="text-center px-2 py-2.5 font-medium w-20">Actions</th>
                 </tr>
               </thead>
@@ -584,7 +584,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
                           </div>
                           <div className="absolute left-0 top-full mt-1 w-full bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-48 overflow-y-auto">
                             {filteredAccounts.length === 0 ? (
-                              <div className="px-4 py-3 text-sm text-gray-400">No accounts found</div>
+                              <div className="px-2 py-1.5 text-sm text-gray-400">No accounts found</div>
                             ) : (
                               filteredAccounts.map(acc => (
                                 <button
@@ -672,7 +672,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-                  <td className="px-4 py-3" colSpan={3}>
+                  <td className="px-2 py-1.5" colSpan={3}>
                     <button
                       onClick={addLine}
                       className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 transition-colors"
@@ -680,10 +680,10 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
                       <Plus className="w-4 h-4" /> Add Row
                     </button>
                   </td>
-                  <td className={`px-4 py-3 text-right tabular-nums ${totalDebit !== totalCredit ? 'text-red-600' : 'text-gray-900'}`}>
+                  <td className={`px-2 py-1.5 text-right tabular-nums ${totalDebit !== totalCredit ? 'text-red-600' : 'text-gray-900'}`}>
                     {formatCurrency(totalDebit)}
                   </td>
-                  <td className={`px-4 py-3 text-right tabular-nums ${totalDebit !== totalCredit ? 'text-red-600' : 'text-gray-900'}`}>
+                  <td className={`px-2 py-1.5 text-right tabular-nums ${totalDebit !== totalCredit ? 'text-red-600' : 'text-gray-900'}`}>
                     {formatCurrency(totalCredit)}
                   </td>
                   <td></td>
@@ -729,7 +729,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
 
       {/* Existing entries list */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="px-4 py-3 border-b border-gray-100">
+        <div className="px-2 py-1.5 border-b border-gray-100">
           <h3 className="text-sm font-semibold text-gray-700">Manual Journal Entries</h3>
         </div>
         {loading ? (
@@ -745,23 +745,23 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-gray-600 text-xs uppercase">
-                  <th className="text-left px-4 py-2.5 font-medium">Entry #</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Date</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Description</th>
-                  <th className="text-right px-4 py-2.5 font-medium">Debit</th>
-                  <th className="text-right px-4 py-2.5 font-medium">Credit</th>
-                  <th className="text-center px-4 py-2.5 font-medium">Actions</th>
+                  <th className="text-left px-2 py-1.5 font-medium">Entry #</th>
+                  <th className="text-left px-2 py-1.5 font-medium">Date</th>
+                  <th className="text-left px-2 py-1.5 font-medium">Description</th>
+                  <th className="text-right px-2 py-1.5 font-medium">Debit</th>
+                  <th className="text-right px-2 py-1.5 font-medium">Credit</th>
+                  <th className="text-center px-2 py-1.5 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {entries.map(e => (
                   <tr key={e.id} className="border-t border-gray-100 hover:bg-gray-50/80 transition-colors">
-                    <td className="px-4 py-2.5 font-mono text-blue-700 font-medium">{e.entry_number}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{new Date(e.entry_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-                    <td className="px-4 py-2.5 text-gray-800 max-w-xs truncate">{e.description || '-'}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{formatCurrency(e.total_debit)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{formatCurrency(e.total_credit)}</td>
-                    <td className="px-4 py-2.5 text-center">
+                    <td className="px-2 py-1.5 font-mono text-blue-700 font-medium">{e.entry_number}</td>
+                    <td className="px-2 py-1.5 text-gray-600">{new Date(e.entry_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                    <td className="px-2 py-1.5 text-gray-800 max-w-xs truncate">{e.description || '-'}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{formatCurrency(e.total_debit)}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{formatCurrency(e.total_credit)}</td>
+                    <td className="px-2 py-1.5 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           onClick={() => viewEntryDetail(e)}
@@ -797,7 +797,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
       {/* View detail modal */}
       {viewEntry && (
         <Modal isOpen={viewModalOpen} title={`Journal Entry: ${viewEntry.entry_number}`} onClose={() => setViewModalOpen(false)} size="lg">
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-gray-500">Date:</span>{' '}

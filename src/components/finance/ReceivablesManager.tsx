@@ -523,12 +523,12 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2">
       <div className="flex justify-between items-center">
         <div className="flex gap-2">
           <button
             onClick={() => setView('invoices')}
-            className={`px-4 py-2 rounded-lg font-medium transition ${
+            className={`h-7 px-2 rounded font-medium transition ${
               view === 'invoices'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -538,7 +538,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
           </button>
           <button
             onClick={() => setView('payments')}
-            className={`px-4 py-2 rounded-lg font-medium transition ${
+            className={`h-7 px-2 rounded font-medium transition ${
               view === 'payments'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -548,7 +548,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
           </button>
           <button
             onClick={() => setView('ageing')}
-            className={`px-4 py-2 rounded-lg font-medium transition flex items-center gap-1.5 ${
+            className={`h-7 px-2 rounded font-medium transition flex items-center gap-1.5 ${
               view === 'ageing'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -618,7 +618,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
         />
       ) : (
         /* AR Ageing Schedule */
-        <div className="space-y-4">
+        <div className="space-y-2">
           {/* Summary cards */}
           <div className="grid grid-cols-5 gap-3">
             {[
@@ -730,7 +730,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
         title="Record Customer Payment"
         size="lg"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-2">
           {selectedInvoice && (
             <div className="bg-blue-50 p-4 rounded-lg">
               <div className="text-sm">
@@ -938,7 +938,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition"
               disabled={Object.values(selectedAllocations).reduce((a,b) => a+b, 0) === 0}
             >
               Record Payment

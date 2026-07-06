@@ -121,7 +121,7 @@ export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -156,43 +156,43 @@ export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-blue-50 rounded-lg p-4">
           <p className="text-sm text-blue-600">Total Debit</p>
-          <p className="text-2xl font-bold text-blue-700">Rp {totals.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <p className="text-sm font-bold text-blue-700">Rp {totals.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
         <div className="bg-green-50 rounded-lg p-4">
           <p className="text-sm text-green-600">Total Credit</p>
-          <p className="text-2xl font-bold text-green-700">Rp {totals.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+          <p className="text-sm font-bold text-green-700">Rp {totals.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded border border-gray-200 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Entry No</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Debit</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Credit</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">View</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Entry No</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Debit</th>
+              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Credit</th>
+              <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">View</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filteredEntries.map(entry => (
               <tr key={entry.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-mono text-sm">{entry.entry_number}</td>
-                <td className="px-4 py-3">{new Date(entry.entry_date).toLocaleDateString('id-ID')}</td>
-                <td className="px-4 py-3">
+                <td className="px-2 py-1.5 font-mono text-sm">{entry.entry_number}</td>
+                <td className="px-2 py-1.5">{new Date(entry.entry_date).toLocaleDateString('id-ID')}</td>
+                <td className="px-2 py-1.5">
                   <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
                     {entry.source_module ? sourceModuleLabels[entry.source_module] || entry.source_module : 'Manual'}
                   </span>
                 </td>
-                <td className="px-4 py-3 font-mono text-sm">{entry.reference_number || '-'}</td>
-                <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{entry.description || '-'}</td>
-                <td className="px-4 py-3 text-right text-blue-600">Rp {entry.total_debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className="px-4 py-3 text-right text-green-600">Rp {entry.total_credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className="px-4 py-3 text-center">
+                <td className="px-2 py-1.5 font-mono text-sm">{entry.reference_number || '-'}</td>
+                <td className="px-2 py-1.5 text-sm text-gray-600 max-w-xs truncate">{entry.description || '-'}</td>
+                <td className="px-2 py-1.5 text-right text-blue-600">Rp {entry.total_debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className="px-2 py-1.5 text-right text-green-600">Rp {entry.total_credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className="px-2 py-1.5 text-center">
                   <button
                     onClick={() => handleViewEntry(entry)}
                     className="text-blue-600 hover:text-blue-800"
@@ -215,7 +215,7 @@ export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
 
       <Modal isOpen={viewModalOpen} onClose={() => setViewModalOpen(false)} title={`Journal Entry: ${selectedEntry?.entry_number}`}>
         {selectedEntry && (
-          <div className="space-y-4">
+          <div className="space-y-2">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-gray-500">Date:</span>

@@ -318,7 +318,7 @@ export function AgeingReport() {
   return (
     <div className="space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+      <div className="flex items-center justify-between bg-white rounded border border-gray-200 p-2">
         <div className="flex items-center gap-3">
           <div className="text-xs font-medium text-gray-700">{t('as_of_date', 'As of Date')}:</div>
           <input
@@ -364,7 +364,7 @@ export function AgeingReport() {
       </div>
 
       {/* Data Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded border border-gray-200 overflow-hidden">
         {loading ? (
           <div className="p-8 text-center">
             <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
