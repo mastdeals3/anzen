@@ -485,23 +485,22 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
   };
 
   return (
-    <div className="space-y-2">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-bold text-gray-900">Journal Voucher</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Manual double-entry journal posting</p>
+    <div className="flex flex-col gap-1.5">
+      {/* Shared title strip — matches every other Finance page */}
+      <div className="flex items-center justify-between h-8 px-2 bg-white border border-gray-200 rounded">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <h1 className="text-xs font-bold text-gray-900 truncate">Journal Voucher</h1>
+          <span className="text-[10px] text-gray-400 truncate">Manual double-entry journal posting</span>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Template dropdown */}
+        <div className="flex items-center gap-1 shrink-0">
           <div className="relative" ref={templateRef}>
             <button
               onClick={() => setTemplateOpen(!templateOpen)}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg border border-gray-300 transition-colors"
+              className="inline-flex items-center gap-1 h-7 px-2 text-xs bg-white hover:bg-gray-50 text-gray-700 rounded border border-gray-300"
             >
-              <FileText className="w-4 h-4" />
+              <FileText className="w-3 h-3" />
               Templates
-              <ChevronDown className="w-3.5 h-3.5" />
+              <ChevronDown className="w-3 h-3" />
             </button>
             {templateOpen && (
               <div className="absolute right-0 top-full mt-1 w-72 bg-white rounded-lg shadow-xl border border-gray-200 z-50 py-1 max-h-80 overflow-y-auto">
@@ -511,8 +510,8 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
                     onClick={() => applyTemplate(t)}
                     className="w-full text-left px-2 py-1.5 hover:bg-blue-50 transition-colors"
                   >
-                    <div className="text-sm font-medium text-gray-900">{t.name}</div>
-                    <div className="text-xs text-gray-500">{t.description}</div>
+                    <div className="text-xs font-medium text-gray-900">{t.name}</div>
+                    <div className="text-[10px] text-gray-500">{t.description}</div>
                   </button>
                 ))}
               </div>

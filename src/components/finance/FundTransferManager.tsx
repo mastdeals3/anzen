@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye } from 'lucide-react';
 import { Modal } from '../Modal';
+import { FinancePage } from './FinancePage';
+import { FinanceTable } from './FinanceTable';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
@@ -502,178 +504,86 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
     }
   };
 
+  const fmtAmount = (ccy: string, amt: number) =>
+    `${ccy === 'USD' ? '$' : 'Rp'} ${amt.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">Fund Transfers</h2>
-          <p className="text-sm text-gray-600">Transfer funds between accounts</p>
-        </div>
-        {canManage && (
+    <>
+      <FinancePage
+        title="Fund Transfers"
+        subtitle="Transfer funds between accounts"
+        actions={canManage && (
           <button
-            onClick={() => {
-              resetForm();
-              setModalOpen(true);
-            }}
-            className="flex items-center gap-2 h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+            onClick={() => { resetForm(); setModalOpen(true); }}
+            className="inline-flex items-center gap-1 h-7 px-2 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3 h-3" />
             New Transfer
           </button>
         )}
-      </div>
-
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Transfer #</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">From</th>
-              <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">→</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">To</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-              <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-              {canManage && <th className="sticky right-0 bg-gray-50 z-10 px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {loading ? (
-              <tr>
-                <td colSpan={canManage ? 9 : 8} className="px-6 py-8 text-center text-gray-500">
-                  Loading...
-                </td>
-              </tr>
-            ) : transfers.length === 0 ? (
-              <tr>
-                <td colSpan={canManage ? 9 : 8} className="px-6 py-8 text-center text-gray-500">
-                  No fund transfers found
-                </td>
-              </tr>
-            ) : (
-              transfers.map((transfer) => (
-                <tr key={transfer.id} className="group hover:bg-gray-50">
-                  <td className="px-2 py-1.5 whitespace-nowrap text-sm text-gray-900">
-                    {formatDateDDMMYY(transfer.transfer_date)}
-                  </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap font-mono text-sm text-gray-900">
-                    {transfer.transfer_number}
-                  </td>
-                  <td className="px-2 py-1.5 text-sm text-gray-900">
-                    <div className="font-medium">{transfer.from_account_name}</div>
-                    <div className="text-xs text-gray-500">{getAccountTypeLabel(transfer.from_account_type)}</div>
-                  </td>
-                  <td className="px-2 py-1.5 text-center">
-                    <ArrowRightLeft className="w-4 h-4 text-blue-600 inline" />
-                  </td>
-                  <td className="px-2 py-1.5 text-sm text-gray-900">
-                    <div className="font-medium">{transfer.to_account_name}</div>
-                    <div className="text-xs text-gray-500">{getAccountTypeLabel(transfer.to_account_type)}</div>
-                  </td>
-                  <td className="px-2 py-1.5 text-sm text-gray-700">
-                    {transfer.description || '-'}
-                  </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                    {transfer.from_currency === transfer.to_currency ? (
-                      <div>
-                        {transfer.from_currency === 'USD' ? '$' : 'Rp'} {transfer.from_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <div className="text-red-600">
-                          {transfer.from_currency === 'USD' ? '$' : 'Rp'} {transfer.from_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                        <div className="text-xs text-gray-500">→</div>
-                        <div className="text-green-600">
-                          {transfer.to_currency === 'USD' ? '$' : 'Rp'} {transfer.to_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                        {transfer.exchange_rate && (
-                          <div className="text-xs text-gray-500">
-                            Rate: {transfer.exchange_rate.toFixed(6)}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap text-center">
-                    {getStatusBadge(transfer.status)}
-                  </td>
-                  {canManage && (
-                    <td className="sticky right-0 bg-white group-hover:bg-gray-50 z-10 px-2 py-1.5 whitespace-nowrap text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        {transfer.status === 'pending' && (
-                          <>
-                            <button
-                              onClick={() => handleEdit(transfer)}
-                              className="text-blue-600 hover:text-blue-800"
-                              title="Edit Transfer"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(transfer.id)}
-                              className="text-red-600 hover:text-red-800"
-                              title="Delete permanently"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                        {transfer.status === 'posted' && (
-                          <>
-                            <button
-                              onClick={() => handleEdit(transfer)}
-                              className="text-blue-600 hover:text-blue-800"
-                              title="Edit Transfer"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleReverse(transfer.id)}
-                              className="text-amber-600 hover:text-amber-800"
-                              title="Reverse this posted transfer"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                        {transfer.status === 'reversed' && (
-                          <>
-                            <button
-                              onClick={() => handleView(transfer)}
-                              className="text-gray-600 hover:text-gray-800"
-                              title="View Transfer"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(transfer.id)}
-                              className="text-red-600 hover:text-red-800"
-                              title="Delete permanently"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                        {transfer.status === 'cancelled' && (
-                          <button
-                            onClick={() => handleDelete(transfer.id)}
-                            className="text-red-600 hover:text-red-800"
-                            title="Delete permanently"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
+      >
+        <FinanceTable
+          rows={transfers}
+          rowKey={(t) => t.id}
+          loading={loading}
+          empty="No fund transfers found"
+          columns={[
+            { header: 'Date',       cell: (t) => formatDateDDMMYY(t.transfer_date) },
+            { header: 'Transfer #', cell: (t) => <span className="font-mono">{t.transfer_number}</span> },
+            { header: 'From',       cell: (t) => (
+              <div>
+                <div className="font-medium">{t.from_account_name}</div>
+                <div className="text-[10px] text-gray-500">{getAccountTypeLabel(t.from_account_type)}</div>
+              </div>
+            ) },
+            { header: '→', align: 'center', cell: () => <ArrowRightLeft className="w-3 h-3 text-blue-600 inline" /> },
+            { header: 'To',         cell: (t) => (
+              <div>
+                <div className="font-medium">{t.to_account_name}</div>
+                <div className="text-[10px] text-gray-500">{getAccountTypeLabel(t.to_account_type)}</div>
+              </div>
+            ) },
+            { header: 'Description', cell: (t) => t.description || '-' },
+            { header: 'Amount', align: 'right', cell: (t) => (
+              t.from_currency === t.to_currency
+                ? <span className="font-medium">{fmtAmount(t.from_currency, t.from_amount)}</span>
+                : (
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                    <span className="text-red-600">{fmtAmount(t.from_currency, t.from_amount)}</span>
+                    <span className="text-gray-400">→</span>
+                    <span className="text-green-600">{fmtAmount(t.to_currency, t.to_amount)}</span>
+                  </span>
+                )
+            ) },
+            { header: 'Status', align: 'center', cell: (t) => getStatusBadge(t.status) },
+            ...(canManage ? [{
+              header: 'Actions', align: 'center' as const,
+              cell: (t: FundTransfer) => (
+                <div className="flex items-center justify-center gap-0.5">
+                  {(t.status === 'pending' || t.status === 'posted') && (
+                    <button onClick={(e) => { e.stopPropagation(); handleEdit(t); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit Transfer">
+                      <Edit className="w-3.5 h-3.5" />
+                    </button>
                   )}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  {t.status === 'posted' && (
+                    <button onClick={(e) => { e.stopPropagation(); handleReverse(t.id); }} className="p-1 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Reverse this posted transfer">
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {t.status === 'reversed' && (
+                    <button onClick={(e) => { e.stopPropagation(); handleView(t); }} className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded" title="View Transfer">
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete permanently">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ),
+            }] : []),
+          ]}
+        />
+      </FinancePage>
 
       {modalOpen && (
         <Modal
@@ -950,6 +860,6 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
           </form>
         </Modal>
       )}
-    </div>
+    </>
   );
 }

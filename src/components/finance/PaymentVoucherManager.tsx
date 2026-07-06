@@ -4,6 +4,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Search, ArrowUpCircle, Pencil, Trash2, Eye, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
+import { FinancePage } from './FinancePage';
+import { FinanceTable } from './FinanceTable';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 
@@ -615,151 +617,140 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   if (loading) return <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search payments..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg"
-          />
-        </div>
-        {canManage && (
+    <>
+      <FinancePage
+        title="Payment Vouchers"
+        actions={canManage && (
           <button
             onClick={() => { resetForm(); setModalOpen(true); }}
-            className="flex items-center gap-1.5 bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 text-sm"
+            className="inline-flex items-center gap-1 h-7 px-2 bg-red-600 text-white rounded text-xs font-semibold hover:bg-red-700"
           >
-            <ArrowUpCircle className="w-4 h-4" />
+            <ArrowUpCircle className="w-3 h-3" />
             New Payment
           </button>
         )}
-      </div>
-
-      <div className="bg-white rounded border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Voucher No</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Invoice No.</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Bank</th>
-              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Bank Debit</th>
-              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Net Paid</th>
-              {canManage && <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {filteredVouchers.map(v => {
+        toolbar={
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 w-3 h-3" />
+            <input
+              type="text"
+              placeholder="Search payments..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-7 pl-7 pr-2 text-xs border border-gray-300 rounded"
+            />
+          </div>
+        }
+      >
+        <FinanceTable
+          rows={filteredVouchers}
+          rowKey={(v) => v.id}
+          empty="No payment vouchers found"
+          expandable={(v) => {
+            const invs = v.invoice_numbers || [];
+            if (invs.length <= 1) return null;
+            return {
+              label: `+${invs.length - 1} more`,
+              content: (
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Paid Invoices</span>
+                  {invs.map(inv => (
+                    <button
+                      key={inv.id}
+                      onClick={(e) => { e.stopPropagation(); onViewInvoice?.(inv.id); }}
+                      className="text-xs text-blue-600 hover:text-blue-800 hover:underline font-mono"
+                      title="View purchase invoice"
+                    >
+                      {inv.number}
+                    </button>
+                  ))}
+                </div>
+              ),
+            };
+          }}
+          columns={[
+            { header: 'Voucher No', cell: (v) => <span className="font-mono font-medium">{v.voucher_number}</span> },
+            { header: 'Date',       cell: (v) => new Date(v.voucher_date).toLocaleDateString('id-ID') },
+            { header: 'Supplier',   cell: (v) => v.suppliers?.company_name ?? '—' },
+            { header: 'Method',     cell: (v) => (
+              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] capitalize">
+                {v.payment_method.replace('_', ' ')}
+              </span>
+            ) },
+            { header: 'Invoice',    cell: (v) => {
+              const invs = v.invoice_numbers || [];
+              if (invs.length === 0) return <span className="text-gray-400">—</span>;
+              const first = invs[0];
+              return (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onViewInvoice?.(first.id); }}
+                  className="text-blue-600 hover:text-blue-800 hover:underline font-mono"
+                >
+                  {first.number}
+                </button>
+              );
+            } },
+            { header: 'Bank',       cell: (v) => v.bank_accounts
+              ? `${v.bank_accounts.alias || v.bank_accounts.account_name} (${v.bank_accounts.currency})`
+              : <span className="text-gray-400">—</span> },
+            { header: 'Bank Debit', align: 'right', cell: (v) => {
               const bankCcy = v.bank_accounts?.currency || v.payment_currency || 'IDR';
               const invCcy = v.invoice_currency || 'IDR';
               const isCross = invCcy !== bankCcy && v.bank_amount != null && v.bank_amount > 0;
-              return (
-                <tr key={v.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 font-mono text-xs font-medium">{v.voucher_number}</td>
-                  <td className="px-3 py-2 text-xs">{new Date(v.voucher_date).toLocaleDateString('id-ID')}</td>
-                  <td className="px-3 py-2 text-xs">{v.suppliers?.company_name}</td>
-                  <td className="px-3 py-2">
-                    <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs capitalize">
-                      {v.payment_method.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    {v.invoice_numbers && v.invoice_numbers.length > 0 ? (
-                      <div className="flex flex-col gap-0.5">
-                        {v.invoice_numbers.map(inv => (
-                          <button
-                            key={inv.id}
-                            onClick={() => onViewInvoice?.(inv.id)}
-                            className="text-blue-600 hover:text-blue-800 hover:underline text-left"
-                            title="View purchase invoice"
-                          >
-                            {inv.number}
-                          </button>
-                        ))}
-                      </div>
-                    ) : <span className="text-gray-400">—</span>}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-700">
-                    {v.bank_accounts
-                      ? `${v.bank_accounts.alias || v.bank_accounts.account_name} (${v.bank_accounts.currency})`
-                      : <span className="text-gray-400">—</span>}
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs">
-                    {(() => {
-                      const debit = isCross
-                        ? (v.bank_amount || 0)
-                        : (v.amount || 0) + (v.bank_charge || 0);
-                      return <span className="font-medium text-blue-700">{fmt(debit, bankCcy)}</span>;
-                    })()}
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs font-medium text-red-600">{fmt(v.net_amount, invCcy)}</td>
-                  {canManage && (
-                    <td className="px-3 py-2 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => handleView(v)}
-                          className="p-1.5 text-gray-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-                          title="View"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        {!v.is_posted && (
-                          <>
-                            <button
-                              onClick={() => handlePostVoucher(v)}
-                              disabled={postingLoading === v.id}
-                              className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-                              title="Post to GL"
-                            >
-                              <CheckCircle className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleEdit(v)}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                              title="Edit"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(v)}
-                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-                        {v.is_posted && (
-                          <span className="flex items-center gap-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
-                            <Lock className="w-3 h-3" /> Posted
-                          </span>
-                        )}
-                        {v.is_posted && isAdmin && (
-                          <button
-                            onClick={() => openCancelPostingModal(v)}
-                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
-                            title="Cancel Posting"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
+              const debit = isCross ? (v.bank_amount || 0) : (v.amount || 0) + (v.bank_charge || 0);
+              return <span className="font-medium text-blue-700">{fmt(debit, bankCcy)}</span>;
+            } },
+            { header: 'Net Paid',   align: 'right', cell: (v) => (
+              <span className="font-medium text-red-600">{fmt(v.net_amount, v.invoice_currency || 'IDR')}</span>
+            ) },
+            ...(canManage ? [{
+              header: 'Actions',
+              align: 'center' as const,
+              cell: (v: PaymentVoucher) => (
+                <div className="flex items-center justify-center gap-0.5">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleView(v); }}
+                    className="p-1 text-gray-400 hover:text-slate-700 hover:bg-slate-100 rounded"
+                    title="View"
+                  ><Eye className="w-3.5 h-3.5" /></button>
+                  {!v.is_posted && (
+                    <>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handlePostVoucher(v); }}
+                        disabled={postingLoading === v.id}
+                        className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
+                        title="Post to GL"
+                      ><CheckCircle className="w-3.5 h-3.5" /></button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEdit(v); }}
+                        className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                        title="Edit"
+                      ><Pencil className="w-3.5 h-3.5" /></button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(v); }}
+                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                        title="Delete"
+                      ><Trash2 className="w-3.5 h-3.5" /></button>
+                    </>
                   )}
-                </tr>
-              );
-            })}
-            {filteredVouchers.length === 0 && (
-              <tr><td colSpan={canManage ? 9 : 8} className="px-4 py-8 text-center text-gray-500 text-sm">No payment vouchers found</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  {v.is_posted && (
+                    <span className="flex items-center gap-0.5 px-1 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
+                      <Lock className="w-3 h-3" /> Posted
+                    </span>
+                  )}
+                  {v.is_posted && isAdmin && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openCancelPostingModal(v); }}
+                      className="p-1 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded"
+                      title="Cancel Posting"
+                    ><RotateCcw className="w-3.5 h-3.5" /></button>
+                  )}
+                </div>
+              ),
+            }] : []),
+          ]}
+        />
+      </FinancePage>
 
       <Modal
         isOpen={modalOpen}
@@ -1379,6 +1370,6 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           </div>
         </Modal>
       )}
-    </div>
+    </>
   );
 }

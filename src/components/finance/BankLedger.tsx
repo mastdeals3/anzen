@@ -325,27 +325,30 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
   const closingBalance = openingBalance + totalCredit - totalDebit;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-blue-600" />
-          <h2 className="text-xl font-semibold text-gray-800">Bank Ledger (Bank Book)</h2>
+    <div className="flex flex-col gap-1.5">
+      {/* Shared title strip — matches every other Finance page */}
+      <div className="flex items-center justify-between h-8 px-2 bg-white border border-gray-200 rounded">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <h1 className="text-xs font-bold text-gray-900 truncate flex items-center gap-1.5">
+            <BookOpen className="w-3 h-3 text-blue-600" /> Bank Ledger
+          </h1>
+          <span className="text-[10px] text-gray-400 truncate">Bank Book</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             onClick={loadLedgerEntries}
             disabled={!selectedBank || loading}
-            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1 h-7 px-2 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
           <button
             onClick={exportToExcel}
             disabled={!selectedBank || ledgerEntries.length === 0}
-            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1 h-7 px-2 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-3 h-3" />
             Export
           </button>
         </div>
