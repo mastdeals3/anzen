@@ -14,10 +14,8 @@ import {
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_GROUPS,
   DOCUMENT_TYPE_TAX_CONFIG,
-  BROKER_ITEM_TYPES,
   SUPPLIER_TYPES,
   type BrokerItem,
-  type BrokerPpnTreatment,
   type DocumentType,
   calculatePPN,
   computeBrokerLinePpn,
@@ -2255,7 +2253,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           isOpen={modalOpen}
           onClose={() => { setModalOpen(false); resetForm(); }}
           title={editingExpense ? 'Edit Expense' : 'Record New Expense'}
-          maxWidth="max-w-4xl"
+          maxWidth="max-w-5xl"
         >
           <form onSubmit={handleSubmit}>
             {/* ── Top two-column grid: Supplier (L) + Document (R) ── */}
@@ -2515,145 +2513,116 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     };
                     const addLine = () => setBrokerItems(prev => [...prev, {
                       type: 'other', description: '', amount: 0,
-                      supplier_id: null, invoice_number: '', invoice_date: '',
-                      ppn_treatment: 'none', ppn_amount: 0, npwp: '', container_reference: '', attachment_path: null,
+                      supplier_id: null, invoice_number: '',
+                      ppn_treatment: 'excluded', ppn_amount: 0,
                     }]);
                     const removeLine = (idx: number) => setBrokerItems(prev => {
                       const next = prev.filter((_, i) => i !== idx);
                       if (isBroker) {
-                        const sumAmt = next.reduce((s, i) => s + (i.amount || 0) - (i.ppn_treatment === 'included' ? (i.ppn_amount || 0) : 0), 0);
+                        const sumAmt = next.reduce((s, i) => s + (i.amount || 0), 0);
                         const sumPpn = next.reduce((s, i) => s + (i.ppn_amount || 0), 0);
                         setFormData(fd => ({ ...fd, amount: sumAmt, ppn_amount: sumPpn }));
                       }
                       return next;
                     });
-                    const handleLineFileUpload = async (idx: number, file: File | undefined) => {
-                      if (!file) return;
-                      try {
-                        const ext = file.name.split('.').pop() || 'bin';
-                        const path = `broker-lines/${Date.now()}-${idx}.${ext}`;
-                        const { error: upErr } = await supabase.storage.from('finance-attachments').upload(path, file, { upsert: false });
-                        if (upErr) throw upErr;
-                        updateLine(idx, { attachment_path: path });
-                      } catch (err: any) {
-                        alert('Attachment upload failed: ' + (err.message || String(err)));
-                      }
-                    };
-                    // Match the parent roll-up: DPP-only sum (subtract included PPN portion).
+                    // DPP-only roll-up: with treatment='excluded' the line.amount IS the DPP,
+                    // so this is a straight sum. (Legacy 'included' rows subtract the PPN.)
                     const linesSumAmt = brokerItems.reduce((s, i) => s + (i.amount || 0) - (i.ppn_treatment === 'included' ? (i.ppn_amount || 0) : 0), 0);
-                    const linesSumPpn = brokerItems.reduce((s, i) => s + (i.ppn_amount || 0), 0);
+                    // Compact reimbursement-style table: Supplier | Invoice # | Amount | PPN | Total | ✕
+                    // All broker lines default to ppn_treatment='excluded' (line.amount = DPP, PPN added).
+                    // Only the fields explicitly requested are collected; PPN is user-editable and
+                    // seeds to 11% of the line amount when a PKP supplier is picked.
+                    const totalLineAmt = brokerItems.reduce((s, i) => s + (i.amount || 0), 0);
+                    const totalLinePpn = brokerItems.reduce((s, i) => s + (i.ppn_amount || 0), 0);
+                    const grandTotal = totalLineAmt + totalLinePpn;
                     return (
                       <div className="mb-2.5">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-xs font-medium text-gray-700">
-                            Cost Breakdown <span className="text-gray-400">(items must sum to invoice amount; PPN aggregates to parent)</span>
+                            Reimbursement Lines <span className="text-gray-400">— sub-suppliers only affect the Input PPN report; the parent supplier remains the payable.</span>
                           </span>
                           <button type="button" onClick={addLine}
-                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-semibold">
                             <Plus className="w-3 h-3" /> Add Line
                           </button>
                         </div>
                         {brokerItems.length > 0 && (
-                          <div className="space-y-2">
-                            {brokerItems.map((item, idx) => (
-                              <div key={idx} className="border border-gray-200 rounded p-2 bg-gray-50/50 relative">
-                                <button type="button" onClick={() => removeLine(idx)}
-                                  className="absolute top-1 right-1 text-red-500 hover:text-red-700 p-0.5" title="Remove">
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                                <div className="grid grid-cols-12 gap-1.5 text-[11px]">
-                                  <div className="col-span-2">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">Type</label>
-                                    <select value={item.type}
-                                      onChange={(e) => updateLine(idx, { type: e.target.value as BrokerItem['type'] })}
-                                      className="w-full px-1 py-0.5 border border-gray-200 rounded text-xs">
-                                      {BROKER_ITEM_TYPES.map(bt => <option key={bt.value} value={bt.value}>{bt.label}</option>)}
-                                    </select>
-                                  </div>
-                                  <div className="col-span-3">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">Supplier</label>
+                          <div className="border border-gray-200 rounded overflow-hidden">
+                            <div className="grid grid-cols-12 gap-2 items-center px-2 py-1 bg-gray-50 border-b border-gray-200 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                              <div className="col-span-4">Supplier</div>
+                              <div className="col-span-2">Invoice #</div>
+                              <div className="col-span-2 text-right">Amount</div>
+                              <div className="col-span-2 text-right">PPN</div>
+                              <div className="col-span-1 text-right">Total</div>
+                              <div className="col-span-1"></div>
+                            </div>
+                            {brokerItems.map((item, idx) => {
+                              const lineTotal = (item.amount || 0) + (item.ppn_amount || 0);
+                              return (
+                                <div key={idx} className="grid grid-cols-12 gap-2 items-center px-2 py-1 border-b border-gray-100 last:border-b-0 hover:bg-blue-50/30 text-xs">
+                                  <div className="col-span-4">
                                     <SearchableSelect
                                       value={item.supplier_id || ''}
-                                      onChange={(val) => updateLine(idx, { supplier_id: val || null })}
+                                      onChange={(val) => {
+                                        const sup = suppliers.find(s => s.id === val) ?? null;
+                                        // Auto-seed PPN at 11% when a PKP supplier is picked and amount already set.
+                                        const seedPpn = sup?.pkp_status && (item.amount || 0) > 0
+                                          ? Math.round((item.amount || 0) * 0.11)
+                                          : (item.ppn_amount || 0);
+                                        updateLine(idx, { supplier_id: val || null, ppn_treatment: 'excluded', ppn_amount: seedPpn });
+                                      }}
                                       options={[
-                                        { value: '', label: '— None —' },
+                                        { value: '', label: '— Sub-supplier —' },
                                         ...suppliers.map(s => ({ value: s.id, label: `${s.company_name}${s.pkp_status ? ' ✓PKP' : ''}` })),
                                       ]}
                                       placeholder="Select supplier"
                                       className="text-xs"
                                     />
                                   </div>
-                                  <div className="col-span-3">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">Description</label>
-                                    <input type="text" value={item.description}
-                                      onChange={(e) => updateLine(idx, { description: e.target.value })}
-                                      className="w-full px-1 py-0.5 border border-gray-200 rounded text-xs" placeholder="details..." />
-                                  </div>
                                   <div className="col-span-2">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">Amount</label>
-                                    <input type="number" step="1" min="0" value={item.amount || ''}
-                                      onChange={(e) => updateLine(idx, { amount: parseFloat(e.target.value) || 0 })}
-                                      className="w-full px-1 py-0.5 border border-gray-200 rounded text-xs text-right" placeholder="0" />
-                                  </div>
-                                  <div className="col-span-2">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">PPN Treatment</label>
-                                    <select value={item.ppn_treatment || 'none'}
-                                      onChange={(e) => updateLine(idx, { ppn_treatment: e.target.value as BrokerPpnTreatment })}
-                                      className="w-full px-1 py-0.5 border border-gray-200 rounded text-xs">
-                                      <option value="none">None</option>
-                                      <option value="excluded">Excl (add 11%)</option>
-                                      <option value="included">Incl (extract 11%)</option>
-                                    </select>
-                                  </div>
-                                  <div className="col-span-3">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">Invoice #</label>
                                     <input type="text" value={item.invoice_number || ''}
                                       onChange={(e) => updateLine(idx, { invoice_number: e.target.value })}
-                                      className="w-full px-1 py-0.5 border border-gray-200 rounded text-xs" placeholder="Sub-invoice ref" />
+                                      className="w-full px-1.5 py-1 border border-gray-200 rounded text-xs" placeholder="Inv #" />
                                   </div>
                                   <div className="col-span-2">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">Invoice Date</label>
-                                    <input type="date" value={item.invoice_date || ''}
-                                      onChange={(e) => updateLine(idx, { invoice_date: e.target.value })}
-                                      className="w-full px-1 py-0.5 border border-gray-200 rounded text-xs" />
+                                    <input type="number" step="1" min="0" value={item.amount || ''}
+                                      onChange={(e) => {
+                                        const amt = parseFloat(e.target.value) || 0;
+                                        const sup = suppliers.find(s => s.id === (item.supplier_id || '')) ?? null;
+                                        // Reseed PPN when amount changes AND user hasn't manually edited PPN off-formula.
+                                        const seedPpn = sup?.pkp_status ? Math.round(amt * 0.11) : 0;
+                                        updateLine(idx, { amount: amt, ppn_treatment: 'excluded', ppn_amount: seedPpn });
+                                      }}
+                                      className="w-full px-1.5 py-1 border border-gray-200 rounded text-xs text-right" placeholder="0" />
                                   </div>
                                   <div className="col-span-2">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">NPWP</label>
-                                    <input type="text" value={item.npwp || ''}
-                                      onChange={(e) => updateLine(idx, { npwp: e.target.value })}
-                                      className="w-full px-1 py-0.5 border border-gray-200 rounded text-xs" placeholder="Tax id" />
+                                    <input type="number" step="1" min="0" value={item.ppn_amount || ''}
+                                      onChange={(e) => updateLine(idx, { ppn_treatment: 'excluded', ppn_amount: parseFloat(e.target.value) || 0 })}
+                                      className="w-full px-1.5 py-1 border border-gray-200 rounded text-xs text-right" placeholder="0" />
                                   </div>
-                                  <div className="col-span-3">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">Container Ref</label>
-                                    <input type="text" value={item.container_reference || ''}
-                                      onChange={(e) => updateLine(idx, { container_reference: e.target.value })}
-                                      className="w-full px-1 py-0.5 border border-gray-200 rounded text-xs" placeholder="CTR-…" />
+                                  <div className="col-span-1 text-right font-mono text-gray-800">
+                                    {lineTotal.toLocaleString('id-ID')}
                                   </div>
-                                  <div className="col-span-2">
-                                    <label className="block text-[10px] text-gray-500 mb-0.5">PPN (auto)</label>
-                                    <input type="text" readOnly value={(item.ppn_amount || 0).toLocaleString('id-ID')}
-                                      className="w-full px-1 py-0.5 border border-gray-200 rounded text-xs text-right bg-gray-100 text-gray-600" />
-                                  </div>
-                                  <div className="col-span-10 flex items-center gap-2">
-                                    <label className="block text-[10px] text-gray-500">Attachment:</label>
-                                    <input type="file" onChange={(e) => handleLineFileUpload(idx, e.target.files?.[0])}
-                                      className="text-[10px]" />
-                                    {item.attachment_path && (
-                                      <span className="text-[10px] text-green-700 truncate">✓ {item.attachment_path.split('/').pop()}</span>
-                                    )}
+                                  <div className="col-span-1 text-right">
+                                    <button type="button" onClick={() => removeLine(idx)}
+                                      className="text-red-500 hover:text-red-700 p-0.5" title="Remove">
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
                                   </div>
                                 </div>
-                              </div>
-                            ))}
-                            <div className="flex items-center justify-between px-2 py-1 bg-gray-100 rounded text-xs font-semibold">
-                              <span className="text-gray-600">Totals</span>
-                              <span className="font-mono">
-                                Amount Rp {linesSumAmt.toLocaleString('id-ID')} · PPN Rp {linesSumPpn.toLocaleString('id-ID')}
-                              </span>
+                              );
+                            })}
+                            <div className="grid grid-cols-12 gap-2 items-center px-2 py-1.5 bg-blue-50 border-t border-blue-200 text-xs font-semibold">
+                              <div className="col-span-4 text-gray-700">Totals ({brokerItems.length})</div>
+                              <div className="col-span-2"></div>
+                              <div className="col-span-2 text-right font-mono text-gray-800">{totalLineAmt.toLocaleString('id-ID')}</div>
+                              <div className="col-span-2 text-right font-mono text-blue-700">{totalLinePpn.toLocaleString('id-ID')}</div>
+                              <div className="col-span-1 text-right font-mono text-gray-900">{grandTotal.toLocaleString('id-ID')}</div>
+                              <div className="col-span-1"></div>
                             </div>
-                            {isBroker && brokerItems.length > 0 && Math.abs(linesSumAmt - (formData.amount || 0)) > 1 && (
-                              <div className="px-2 py-1 bg-orange-50 border border-orange-200 rounded text-xs text-orange-700 flex items-center gap-1">
-                                <AlertCircle className="w-3 h-3" /> Items total ≠ invoice amount (Rp {(formData.amount || 0).toLocaleString('id-ID')})
+                            {isBroker && Math.abs(linesSumAmt - (formData.amount || 0)) > 1 && (
+                              <div className="px-2 py-1 bg-orange-50 border-t border-orange-200 text-[11px] text-orange-700 flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" /> Line amounts total ≠ invoice amount (Rp {(formData.amount || 0).toLocaleString('id-ID')})
                               </div>
                             )}
                           </div>
@@ -2662,97 +2631,91 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     );
                   })()}
 
-                  {/* Standard Tax: PPN / PPh / Stamp in a 3-col grid */}
-                  {(taxCfg.ppn || taxCfg.pph23 || taxCfg.pph21 || taxCfg.stamp) && (
-                    <div className="grid grid-cols-3 gap-3">
-                      {taxCfg.ppn && (
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            PPN Input VAT
-                            {formData.expense_category === 'import_broker' && (
-                              <span className="ml-1.5 text-[9px] text-gray-500 italic">(auto — sum of broker lines)</span>
-                            )}
-                            {formData.ppn_manual_override && formData.expense_category !== 'import_broker' && (
-                              <span className="ml-1.5 text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1">manual</span>
-                            )}
-                            {selectedSupplier?.pkp_status && formData.expense_category !== 'import_broker' && (
-                              <button
-                                type="button"
-                                title="Recalculate PPN (11%) and clear the manual override"
-                                onClick={() => setFormData(prev => ({
-                                  ...prev,
-                                  ppn_amount: calculatePPN(prev.amount, true),
-                                  ppn_manual_override: false,
-                                }))}
-                                className="ml-1.5 text-[9px] text-blue-600 hover:text-blue-800 underline"
-                              >
-                                {formData.ppn_manual_override ? '↻ Recalculate' : 'Auto 11%'}
-                              </button>
-                            )}
-                          </label>
-                          <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
-                            onChange={(e) => setFormData(prev => ({
-                              ...prev,
-                              ppn_amount: parseFloat(e.target.value) || 0,
-                              // User typing into the field flips on manual override —
-                              // the auto-recompute effects will now leave the value alone.
-                              ppn_manual_override: prev.expense_category !== 'import_broker',
-                            }))}
-                            readOnly={formData.expense_category === 'import_broker'}
-                            placeholder="0" className={`w-full px-2 py-1 text-xs border border-gray-300 rounded ${formData.expense_category === 'import_broker' ? 'bg-gray-100 text-gray-600' : ''}`} />
-                          <p className="text-[9px] text-gray-400 mt-0.5">DR PPN Masukan 1150{formData.ppn_manual_override ? ' — manual override active' : ''}</p>
-                        </div>
-                      )}
-                      {(taxCfg.pph23 || taxCfg.pph21) && (
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">{taxCfg.pph23 ? 'PPh 23' : 'PPh 21'}</label>
-                          <select value={formData.pph_code_id}
-                            onChange={(e) => {
-                              const tc = taxCodes.find(t => t.id === e.target.value);
-                              setFormData(prev => ({ ...prev, pph_code_id: e.target.value, pph_amount: tc ? Math.round(prev.amount * tc.rate / 100) : 0 }));
-                            }}
-                            className="w-full px-2 py-1 text-xs border border-gray-300 rounded mb-1">
-                            <option value="">None</option>
-                            {taxCodes.map(tc => <option key={tc.id} value={tc.id}>{tc.code} ({tc.rate}%)</option>)}
-                          </select>
-                          <input type="number" step="1" min="0" value={formData.pph_amount || ''}
-                            onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
-                            placeholder="Amount" className="w-full px-2 py-1 text-xs border border-gray-300 rounded" />
-                          <p className="text-[9px] text-gray-400 mt-0.5">CR PPh Payable 2132</p>
-                        </div>
-                      )}
-                      {taxCfg.stamp && (
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">Bea Meterai</label>
-                          <input type="number" step="1000" min="0" value={formData.stamp_duty_amount || ''}
-                            onChange={(e) => setFormData({ ...formData, stamp_duty_amount: parseFloat(e.target.value) || 0 })}
-                            placeholder="0" className="w-full px-2 py-1 text-xs border border-gray-300 rounded" />
-                          <p className="text-[9px] text-gray-400 mt-0.5">DR Bea Meterai 6950</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Task 5: Bank Charges — Utility category only */}
-                  {formData.expense_category === 'utilities' && (
-                    <div className="mt-3 grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          Bank Charges <span className="text-[9px] text-gray-400 font-normal">(optional)</span>
-                        </label>
-                        <input
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={formData.bank_charges_amount || ''}
-                          onChange={(e) => setFormData({ ...formData, bank_charges_amount: parseFloat(e.target.value) || 0 })}
-                          placeholder="0"
-                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
-                        />
-                        <p className="text-[9px] text-gray-400 mt-0.5">DR Bank Charges • Bank leg grossed up</p>
+                  {/* Compact single-row tax bar: PPN | PPh | Bank Charges | Stamp */}
+                  {(() => {
+                    const showBankCharges = formData.expense_category === 'utilities';
+                    const showPPh = taxCfg.pph23 || taxCfg.pph21;
+                    const cells = [taxCfg.ppn, showPPh, showBankCharges, taxCfg.stamp].filter(Boolean).length;
+                    if (cells === 0) return null;
+                    const gridCls = cells === 4 ? 'grid-cols-4' : cells === 3 ? 'grid-cols-3' : cells === 2 ? 'grid-cols-2' : 'grid-cols-1';
+                    return (
+                      <div className={`grid ${gridCls} gap-3 items-start`}>
+                        {taxCfg.ppn && (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-xs font-medium text-gray-700">PPN</label>
+                              {formData.expense_category === 'import_broker' ? (
+                                <span className="text-[9px] text-gray-500 italic">Σ broker lines</span>
+                              ) : (
+                                <span className="flex items-center gap-1">
+                                  <span className={`text-[9px] font-semibold px-1 rounded ${formData.ppn_manual_override ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                                    {formData.ppn_manual_override ? 'MANUAL' : 'AUTO'}
+                                  </span>
+                                  {selectedSupplier?.pkp_status && (
+                                    <button
+                                      type="button"
+                                      title="Recalculate PPN 11% and clear manual override"
+                                      onClick={() => setFormData(prev => ({ ...prev, ppn_amount: calculatePPN(prev.amount, true), ppn_manual_override: false }))}
+                                      className="text-[9px] text-blue-600 hover:text-blue-800 underline"
+                                    >↻</button>
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                            <input type="number" step="1" min="0" value={formData.ppn_amount || ''}
+                              onChange={(e) => setFormData(prev => ({
+                                ...prev,
+                                ppn_amount: parseFloat(e.target.value) || 0,
+                                ppn_manual_override: prev.expense_category !== 'import_broker',
+                              }))}
+                              readOnly={formData.expense_category === 'import_broker'}
+                              placeholder="0" className={`w-full px-2 py-1.5 text-xs border border-gray-300 rounded ${formData.expense_category === 'import_broker' ? 'bg-gray-100 text-gray-600' : ''}`} />
+                          </div>
+                        )}
+                        {showPPh && (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-xs font-medium text-gray-700">{taxCfg.pph23 ? 'PPh 23' : 'PPh 21'}</label>
+                              <select value={formData.pph_code_id}
+                                onChange={(e) => {
+                                  const tc = taxCodes.find(t => t.id === e.target.value);
+                                  setFormData(prev => ({ ...prev, pph_code_id: e.target.value, pph_amount: tc ? Math.round(prev.amount * tc.rate / 100) : 0 }));
+                                }}
+                                className="text-[10px] border border-gray-200 rounded px-1 py-0.5 max-w-[110px]">
+                                <option value="">None</option>
+                                {taxCodes.map(tc => <option key={tc.id} value={tc.id}>{tc.code} {tc.rate}%</option>)}
+                              </select>
+                            </div>
+                            <input type="number" step="1" min="0" value={formData.pph_amount || ''}
+                              onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
+                              placeholder="0" className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded" />
+                          </div>
+                        )}
+                        {showBankCharges && (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-xs font-medium text-gray-700">Bank Charges</label>
+                              <span className="text-[9px] text-gray-400">optional</span>
+                            </div>
+                            <input type="number" step="1" min="0" value={formData.bank_charges_amount || ''}
+                              onChange={(e) => setFormData({ ...formData, bank_charges_amount: parseFloat(e.target.value) || 0 })}
+                              placeholder="0" className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded" />
+                          </div>
+                        )}
+                        {taxCfg.stamp && (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-xs font-medium text-gray-700">Bea Meterai</label>
+                              <span className="text-[9px] text-gray-400">optional</span>
+                            </div>
+                            <input type="number" step="1000" min="0" value={formData.stamp_duty_amount || ''}
+                              onChange={(e) => setFormData({ ...formData, stamp_duty_amount: parseFloat(e.target.value) || 0 })}
+                              placeholder="0" className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded" />
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Tax summary line */}
                   {(formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0 || (formData.expense_category === 'utilities' && formData.bank_charges_amount > 0)) && (
