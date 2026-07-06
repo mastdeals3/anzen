@@ -253,6 +253,9 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
     }
   });
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [resizing, setResizing] = useState<{ column: string; startX: number; startWidth: number } | null>(null);
   const selectedInquiry = filteredData.find(i => selectedRows.has(i.id));
 
@@ -1629,342 +1632,298 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
 
   return (
     <div className="space-y-4">
-      {/* Export/Import Buttons */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      {/* Compact toolbar — Export/Import dropdowns + Columns + Add Inquiry + search + count */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* Export dropdown */}
+        <div className="relative">
           <button
-            onClick={exportToExcel}
+            onClick={() => { setExportMenuOpen(o => !o); setImportMenuOpen(false); setColumnsMenuOpen(false); }}
             disabled={exporting || filteredData.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Export to Excel (.xlsx)"
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            {exporting ? 'Exporting...' : 'Export Excel'}
+            <Download className="w-3 h-3" />
+            {exporting ? 'Exporting…' : 'Export'}
+            <ChevronDown className="w-3 h-3 opacity-60" />
           </button>
-          <button
-            onClick={exportToCSV}
-            disabled={exporting || filteredData.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Export to CSV for Google Sheets"
-          >
-            <Download className="w-3.5 h-3.5" />
-            {exporting ? 'Exporting...' : 'Export CSV'}
-          </button>
+          {exportMenuOpen && (
+            <div className="absolute left-0 top-full mt-1 w-40 bg-white border border-gray-200 rounded shadow-lg z-50 py-1">
+              <button onClick={() => { setExportMenuOpen(false); exportToExcel(); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
+                <FileSpreadsheet className="w-3 h-3" /> Excel (.xlsx)
+              </button>
+              <button onClick={() => { setExportMenuOpen(false); exportToCSV(); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
+                <Download className="w-3 h-3" /> CSV
+              </button>
+            </div>
+          )}
+        </div>
 
+        {/* Import dropdown */}
+        {canManage && (
           <div className="relative">
             <button
-              onClick={() => setColumnsMenuOpen(open => !open)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
+              onClick={() => { setImportMenuOpen(o => !o); setExportMenuOpen(false); setColumnsMenuOpen(false); }}
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition"
             >
-              Columns
+              <Upload className="w-3 h-3" />
+              Import
+              <ChevronDown className="w-3 h-3 opacity-60" />
             </button>
-            {columnsMenuOpen && (
-              <div className="absolute left-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded shadow-lg z-50 p-2">
-                <button onClick={resetTablePrefs} className="text-[11px] text-blue-600 hover:underline mb-1">Reset widths</button>
-                {[
-                  ['inquiry_number', 'Inquiry No'],
-                  ['inquiry_date', 'Date'],
-                  ['product_name', 'Product'],
-                  ['specification', 'Specification'],
-                  ['quantity', 'Qty'],
-                  ['supplier_name', 'Supplier'],
-                  ['company_name', 'Company'],
-                  ['mail_subject', 'Mail Subject'],
-                  ['aceerp_no', 'AC ERP#'],
-                  ['status_next', 'Status'],
-                  ['pipeline_status', 'Pipeline'],
-                  ['our_side', 'Our Side'],
-                  ['purchase_price', 'P.Price'],
-                  ['offered_price', 'O.Price'],
-                  ['delivery_date', 'Delivery'],
-                  ['priority', 'Priority'],
-                  ['remarks', 'Remarks'],
-                ].map(([key, label]) => (
-                  <label key={key} className="flex items-center gap-2 px-1.5 py-1 text-xs text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={isColumnVisible(key)}
-                      disabled={['inquiry_number', 'product_name'].includes(key)}
-                      onChange={() => toggleColumnVisibility(key)}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
+            {importMenuOpen && (
+              <div className="absolute left-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded shadow-lg z-50 py-1">
+                <label className="w-full text-left px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 cursor-pointer">
+                  <FileSpreadsheet className="w-3 h-3" /> Import Excel
+                  <input type="file" accept=".xlsx,.xls" onChange={(e) => { setImportMenuOpen(false); handleImportFile(e); }} className="hidden" />
+                </label>
+                <button onClick={() => { setImportMenuOpen(false); downloadImportTemplate(); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-1.5">
+                  <Download className="w-3 h-3" /> Download Template
+                </button>
               </div>
             )}
           </div>
+        )}
 
-          {canManage && (
-            <>
-              <div className="w-px h-8 bg-gray-300 mx-2" />
-              <button
-                onClick={downloadImportTemplate}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
-                title="Download Excel template for bulk import"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Download Template
-              </button>
-              <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition cursor-pointer">
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                Import Excel
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleImportFile}
-                  className="hidden"
-                />
-              </label>
-              {onAddInquiry && (
-                <>
-                  <div className="w-px h-8 bg-gray-300 mx-2" />
-                  <button
-                    onClick={onAddInquiry}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add Inquiry
-                  </button>
-                </>
-              )}
-            </>
+        {/* Columns menu */}
+        <div className="relative">
+          <button
+            onClick={() => { setColumnsMenuOpen(o => !o); setExportMenuOpen(false); setImportMenuOpen(false); }}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 transition"
+          >
+            Columns
+            <ChevronDown className="w-3 h-3 opacity-60" />
+          </button>
+          {columnsMenuOpen && (
+            <div className="absolute left-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded shadow-lg z-50 p-2">
+              <button onClick={resetTablePrefs} className="text-[11px] text-blue-600 hover:underline mb-1">Reset widths</button>
+              {[
+                ['inquiry_number', 'Inquiry No'],
+                ['inquiry_date', 'Date'],
+                ['product_name', 'Product'],
+                ['specification', 'Specification'],
+                ['quantity', 'Qty'],
+                ['supplier_name', 'Supplier'],
+                ['company_name', 'Company'],
+                ['mail_subject', 'Mail Subject'],
+                ['aceerp_no', 'AC ERP#'],
+                ['status_next', 'Status'],
+                ['pipeline_status', 'Pipeline'],
+                ['our_side', 'Our Side'],
+                ['purchase_price', 'P.Price'],
+                ['offered_price', 'O.Price'],
+                ['delivery_date', 'Delivery'],
+                ['priority', 'Priority'],
+                ['remarks', 'Remarks'],
+              ].map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 px-1.5 py-1 text-xs text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={isColumnVisible(key)}
+                    disabled={['inquiry_number', 'product_name'].includes(key)}
+                    onChange={() => toggleColumnVisibility(key)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
           )}
-
-          <div className="text-sm text-gray-600 ml-2">
-            {filteredData.length} {filteredData.length === 1 ? 'inquiry' : 'inquiries'}
-            {filters.length > 0 && ' (filtered)'}
-            {sortConfig.direction && ' (sorted)'}
-          </div>
         </div>
 
-        {/* Product search */}
-        <div className="relative mt-2">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+        {canManage && onAddInquiry && (
+          <button
+            onClick={onAddInquiry}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-white bg-blue-600 border border-blue-600 rounded hover:bg-blue-700 transition"
+          >
+            <Plus className="w-3 h-3" />
+            Add Inquiry
+          </button>
+        )}
+
+        {/* Product search — sits inline in the toolbar */}
+        <div className="relative flex-1 min-w-[180px] max-w-[320px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
           <input
             type="text"
             value={productSearch}
             onChange={e => setProductSearch(e.target.value)}
-            placeholder="Search by product name..."
-            className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            placeholder="Search product..."
+            className="w-full pl-7 pr-6 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
           />
           {productSearch && (
             <button
               onClick={() => setProductSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
             </button>
           )}
         </div>
+
+        <div className="ml-auto text-xs text-gray-500">
+          {filteredData.length} {filteredData.length === 1 ? 'inquiry' : 'inquiries'}
+          {filters.length > 0 && ' · filtered'}
+          {sortConfig.direction && ' · sorted'}
+        </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {[
-            ['all', 'All'],
-            ['new_not_sent', 'New Not Sent'],
-            ['waiting_india', 'Waiting India Reply'],
-            ['reminder_due', 'Reminder Due'],
-            ['need_kunal', 'Need Kunal Price'],
-            ['reply_pending', 'Reply Pending'],
-            ['quote_sent', 'Quote Sent'],
-          ].map(([value, label]) => (
+      {/* Compact status chips */}
+      <div className="flex flex-wrap items-center gap-1">
+        {[
+          ['all', 'All'],
+          ['new_not_sent', 'New Not Sent'],
+          ['waiting_india', 'Waiting India'],
+          ['reminder_due', 'Reminder Due'],
+          ['need_kunal', 'Need Kunal Price'],
+          ['reply_pending', 'Reply Pending'],
+          ['quote_sent', 'Quote Sent'],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            onClick={() => setQuickFilter(value)}
+            className={`px-2 py-0.5 text-[11px] rounded-full border transition ${
+              quickFilter === value
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Compact quick-actions toolbar — one row, ERP density */}
+      {selectedRows.size > 0 && canManage && selectedInquiry && (() => {
+        const allHaveAceRef = filteredData.filter(i => selectedRows.has(i.id)).every(i => !!i.aceerp_no);
+        const btn = 'flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium rounded border transition';
+        return (
+          <div className="bg-blue-50 border border-blue-200 rounded px-2 py-1 flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] text-blue-900 font-medium mr-1">
+              <span className="font-bold">{selectedInquiry.inquiry_number}</span>
+              <span className="text-blue-700"> · {selectedInquiry.product_name}</span>
+            </span>
+            <div className="flex items-center gap-1 flex-wrap">
+              <button onClick={handleSendQuote} title="Send Price"
+                className={`${btn} text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100`}>
+                <Send className="w-3 h-3" /> Send Price
+              </button>
+              <button onClick={handleSendCOAMSDS} title="Send COA/MSDS"
+                className={`${btn} text-green-700 bg-green-50 border-green-200 hover:bg-green-100`}>
+                <FileText className="w-3 h-3" /> COA/MSDS
+              </button>
+              <button
+                onClick={handleSendToIndia}
+                disabled={!allHaveAceRef}
+                title={allHaveAceRef ? 'Send To India' : 'ACE ERP Reference Number required'}
+                className={`${btn} ${allHaveAceRef ? 'text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100' : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-60'}`}
+              >
+                <Upload className="w-3 h-3" /> To India
+              </button>
+              <button onClick={handleLogCall} title="Log Call"
+                className={`${btn} text-gray-700 bg-white border-gray-300 hover:bg-gray-50`}>
+                <Phone className="w-3 h-3" /> Log Call
+              </button>
+              <button onClick={handleScheduleFollowUp} title="Schedule Follow-up"
+                className={`${btn} text-gray-700 bg-white border-gray-300 hover:bg-gray-50`}>
+                <Calendar className="w-3 h-3" /> Follow-up
+              </button>
+              <button onClick={() => setCreateTaskModalOpen(true)} title="Create Task"
+                className={`${btn} text-gray-700 bg-white border-gray-300 hover:bg-gray-50`}>
+                <CheckSquare className="w-3 h-3" /> Task
+              </button>
+              <button onClick={handleDeleteSelected} title="Delete Selected"
+                className={`${btn} text-red-700 bg-red-50 border-red-200 hover:bg-red-100`}>
+                <X className="w-3 h-3" /> Delete
+              </button>
+            </div>
             <button
-              key={value}
-              onClick={() => setQuickFilter(value)}
-              className={`px-2.5 py-1 text-[11px] rounded border transition ${
-                quickFilter === value
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-              }`}
+              onClick={() => setSelectedRows(new Set())}
+              className="ml-auto p-0.5 text-gray-400 hover:text-gray-600 hover:bg-white rounded"
+              title="Deselect"
             >
-              {label}
+              <X className="w-3.5 h-3.5" />
             </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Quick Actions Bar */}
-      {selectedRows.size > 0 && canManage && selectedInquiry && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="text-sm font-medium text-blue-900">
-                Selected: <span className="font-bold">{selectedInquiry.inquiry_number}</span> - {selectedInquiry.product_name}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleSendToKunalPricing}
-                title="Mark for Kunal review only. This does not send source price/docs."
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 transition"
-              >
-                <Calculator className="w-3.5 h-3.5" />
-                Send to Pricing Queue
-              </button>
-              <button
-                onClick={handleSendQuote}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition"
-              >
-                <Send className="w-3.5 h-3.5" />
-                Send Price
-              </button>
-              <button
-                onClick={handleSendCOAMSDS}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 transition"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                Send COA/MSDS
-              </button>
-              {(() => {
-                const allHaveAceRef = filteredData.filter(i => selectedRows.has(i.id)).every(i => !!i.aceerp_no);
-                return (
-                  <button
-                    onClick={handleSendToIndia}
-                    disabled={!allHaveAceRef}
-                    title={allHaveAceRef ? 'Send To India' : 'ACE ERP Reference Number required before sending to India'}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition ${
-                      allHaveAceRef
-                        ? 'text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 cursor-pointer'
-                        : 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed opacity-60'
-                    }`}
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    Send To India
-                  </button>
-                );
-              })()}
-              <button
-                onClick={handleLogCall}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                Log Call
-              </button>
-              <button
-                onClick={handleScheduleFollowUp}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                Schedule Follow-up
-              </button>
-              <button
-                onClick={() => setCreateTaskModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
-              >
-                <CheckSquare className="w-3.5 h-3.5" />
-                Create Task
-              </button>
-              <button
-                onClick={handleEditRequirements}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 transition"
-                title="Edit Customer Requirements"
-              >
-                <CheckSquare className="w-3.5 h-3.5" />
-                Edit Requirements
-              </button>
-              <button
-                onClick={handleDeleteSelected}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition"
-                title="Delete Selected"
-              >
-                <X className="w-3.5 h-3.5" />
-                Delete
-              </button>
-              <button
-                onClick={() => setSelectedRows(new Set())}
-                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"
-                title="Deselect"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
+      {/* Compact collapsible Inquiry Context — collapsed by default; Inquiry 360 tab covers this in depth */}
       {selectedInquiry && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 bg-white border border-gray-200 rounded-lg p-4">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Inquiry Context Timeline</h3>
-                <p className="text-xs text-gray-500">
-                  Inquiry #{selectedInquiry.inquiry_number} · {selectedInquiry.company_name}
-                </p>
-              </div>
+        <div className="bg-white border border-gray-200 rounded">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !timelineExpanded;
+              setTimelineExpanded(next);
+              if (next) loadInquiryContextTimeline(selectedInquiry);
+            }}
+            className="w-full flex items-center justify-between px-2 py-1 text-[11px] hover:bg-gray-50"
+          >
+            <span className="flex items-center gap-1.5">
+              {timelineExpanded ? <ChevronDown className="w-3 h-3 text-gray-500" /> : <ChevronRight className="w-3 h-3 text-gray-500" />}
+              <span className="font-semibold text-gray-700">Context Timeline</span>
+              <span className="text-gray-500">· {selectedInquiry.inquiry_number} · {selectedInquiry.company_name}</span>
+              {!timelineExpanded && contextEvents.length > 0 && (
+                <span className="text-gray-400">({contextEvents.length})</span>
+              )}
+            </span>
+            <span className="flex items-center gap-2">
               <button
-                onClick={() => loadInquiryContextTimeline(selectedInquiry)}
-                className="text-xs px-2 py-1 border border-gray-300 rounded-md hover:bg-gray-50"
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleSendGeneralEmail(); }}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 rounded"
+                title="Send Email"
               >
-                Refresh
+                <Mail className="w-3 h-3" /> Email
               </button>
-            </div>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleScheduleAppointment(); }}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-teal-700 hover:bg-teal-100 rounded"
+                title="Schedule Appointment"
+              >
+                <Calendar className="w-3 h-3" /> Appointment
+              </button>
+              {timelineExpanded && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); loadInquiryContextTimeline(selectedInquiry); }}
+                  className="text-[11px] text-gray-500 hover:text-gray-700 cursor-pointer"
+                >Refresh</span>
+              )}
+            </span>
+          </button>
 
-            {contextLoading ? (
-              <div className="text-sm text-gray-500 py-6 text-center">Loading timeline…</div>
-            ) : contextEvents.length === 0 ? (
-              <div className="text-sm text-gray-500 py-6 text-center">No context events yet for this inquiry/customer.</div>
-            ) : (
-              <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                {contextEvents.map((event) => (
-                  <div key={event.id} className="border border-gray-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        {event.source === 'email' && <Mail className="w-3.5 h-3.5 text-blue-600" />}
-                        {event.source === 'appointment' && <Calendar className="w-3.5 h-3.5 text-teal-600" />}
-                        {event.source === 'activity' && <Phone className="w-3.5 h-3.5 text-purple-600" />}
-                        {event.source === 'requirement' && <FileText className="w-3.5 h-3.5 text-green-600" />}
-                        <p className="text-sm font-medium text-gray-800">{event.title}</p>
+          {timelineExpanded && (
+            <div className="px-2 pb-2 border-t border-gray-100">
+              {contextLoading ? (
+                <div className="text-xs text-gray-500 py-3 text-center">Loading timeline…</div>
+              ) : contextEvents.length === 0 ? (
+                <div className="text-xs text-gray-500 py-3 text-center">No context events yet.</div>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1 mt-1.5">
+                  {contextEvents.map((event) => (
+                    <div key={event.id} className="border border-gray-200 rounded px-2 py-1 flex items-start gap-2">
+                      <div className="mt-0.5">
+                        {event.source === 'email' && <Mail className="w-3 h-3 text-blue-600" />}
+                        {event.source === 'appointment' && <Calendar className="w-3 h-3 text-teal-600" />}
+                        {event.source === 'activity' && <Phone className="w-3 h-3 text-purple-600" />}
+                        {event.source === 'requirement' && <FileText className="w-3 h-3 text-green-600" />}
                       </div>
-                      <span className="text-xs text-gray-500 capitalize">{event.source}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[12px] font-medium text-gray-800 truncate">{event.title}</p>
+                          <span className="text-[10px] text-gray-500 flex items-center gap-1 shrink-0">
+                            <Clock className="w-2.5 h-2.5" />
+                            {new Date(event.eventAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        {event.description && (
+                          <p className="text-[11px] text-gray-600 whitespace-pre-wrap line-clamp-2">{event.description}</p>
+                        )}
+                      </div>
                     </div>
-                    {event.description && (
-                      <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{event.description}</p>
-                    )}
-                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {new Date(event.eventAt).toLocaleString('en-GB', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">In-context Actions</h3>
-            <p className="text-xs text-gray-500 mb-3">Work this inquiry without switching global tabs.</p>
-            <div className="space-y-2">
-              <button
-                onClick={handleLogCall}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
-              >
-                <Phone className="w-4 h-4" />
-                Log Call
-              </button>
-              <button
-                onClick={handleScheduleAppointment}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-teal-700 bg-teal-50 border border-teal-200 rounded-md hover:bg-teal-100"
-              >
-                <Calendar className="w-4 h-4" />
-                Schedule Appointment
-              </button>
-              <button
-                onClick={handleSendGeneralEmail}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
-              >
-                <Mail className="w-4 h-4" />
-                Send Email
-              </button>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       )}
 
