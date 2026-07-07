@@ -4,6 +4,8 @@ import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye 
 import { Modal } from '../Modal';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
+import { FinanceModal } from './FinanceModal';
+import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
@@ -586,35 +588,44 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
       </FinancePage>
 
       {modalOpen && (
-        <Modal
+        <FinanceModal
           isOpen={modalOpen}
-          onClose={() => {
-            setModalOpen(false);
-            resetForm();
-          }}
+          onClose={() => { setModalOpen(false); resetForm(); }}
           title={viewOnly ? "View Fund Transfer" : editingTransfer ? "Edit Fund Transfer" : "New Fund Transfer"}
-          maxWidth="max-w-2xl"
+          size="md"
+          footer={
+            <>
+              <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className={F_BTN_SECONDARY}>
+                {viewOnly ? 'Close' : 'Cancel'}
+              </button>
+              {!viewOnly && (
+                <button type="submit" form="fund-transfer-form" className={F_BTN_PRIMARY}>
+                  {editingTransfer ? 'Update Transfer' : 'Create Transfer'}
+                </button>
+              )}
+            </>
+          }
         >
-          <form onSubmit={handleSubmit} className="space-y-2">
+          <form id="fund-transfer-form" onSubmit={handleSubmit} className="space-y-2">
           <fieldset disabled={viewOnly} className="contents">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                 Transfer Date <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
                 value={formData.transfer_date}
                 onChange={(e) => setFormData({ ...formData, transfer_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 required
               />
             </div>
 
             <div className="border-2 border-blue-200 rounded-lg p-4 bg-blue-50">
               <h3 className="text-sm font-semibold text-blue-900 mb-3">From (Source Account)</h3>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                     Account Type <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -624,7 +635,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                       from_account_type: e.target.value as any,
                       from_bank_account_id: e.target.value === 'bank' ? formData.from_bank_account_id : ''
                     })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                     required
                   >
                     <option value="bank">Bank Account</option>
@@ -634,7 +645,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                 </div>
                 {formData.from_account_type === 'bank' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                       Bank Account <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -643,7 +654,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                         setFormData({ ...formData, from_bank_account_id: e.target.value, from_bank_statement_line_id: '' });
                         loadBankStatements(e.target.value, 'from');
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                       required
                     >
                       <option value="">Select Bank Account</option>
@@ -656,7 +667,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                     Amount ({getFromCurrency()}) <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -675,14 +686,14 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                         setFormData({ ...formData, from_amount: newAmount });
                       }
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                     required
                     min="0.01"
                   />
                 </div>
                 {formData.from_bank_account_id && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                       🔗 Link to Bank Statement (Optional)
                     </label>
                     {fromBankStatements.length > 0 ? (
@@ -690,7 +701,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                         <select
                           value={formData.from_bank_statement_line_id}
                           onChange={(e) => setFormData({ ...formData, from_bank_statement_line_id: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                         >
                           <option value="">No link</option>
                           {fromBankStatements.map((stmt) => (
@@ -720,9 +731,9 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
 
             <div className="border-2 border-green-200 rounded-lg p-4 bg-green-50">
               <h3 className="text-sm font-semibold text-green-900 mb-3">To (Destination Account)</h3>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                     Account Type <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -732,7 +743,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                       to_account_type: e.target.value as any,
                       to_bank_account_id: e.target.value === 'bank' ? formData.to_bank_account_id : ''
                     })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                     required
                   >
                     <option value="petty_cash">Petty Cash</option>
@@ -742,7 +753,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                 </div>
                 {formData.to_account_type === 'bank' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                       Bank Account <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -751,7 +762,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                         setFormData({ ...formData, to_bank_account_id: e.target.value, to_bank_statement_line_id: '' });
                         loadBankStatements(e.target.value, 'to');
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                       required
                     >
                       <option value="">Select Bank Account</option>
@@ -764,7 +775,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                     Amount ({getToCurrency()}) <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -772,7 +783,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                     step="0.01"
                     value={formData.to_amount || ''}
                     onChange={(e) => setFormData({ ...formData, to_amount: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                     required
                     min="0.01"
                   />
@@ -784,7 +795,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                 </div>
                 {formData.to_bank_account_id && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                       🔗 Link to Bank Statement (Optional)
                     </label>
                     {toBankStatements.length > 0 ? (
@@ -792,7 +803,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                         <select
                           value={formData.to_bank_statement_line_id}
                           onChange={(e) => setFormData({ ...formData, to_bank_statement_line_id: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                         >
                           <option value="">No link</option>
                           {toBankStatements.map((stmt) => (
@@ -817,12 +828,12 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 placeholder="Purpose of transfer (optional)"
               />
             </div>
@@ -837,28 +848,8 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
             )}
           </fieldset>
 
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setModalOpen(false);
-                  resetForm();
-                }}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                {viewOnly ? 'Close' : 'Cancel'}
-              </button>
-              {!viewOnly && (
-                <button
-                  type="submit"
-                  className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  {editingTransfer ? 'Update Transfer' : 'Create Transfer'}
-                </button>
-              )}
-            </div>
           </form>
-        </Modal>
+        </FinanceModal>
       )}
     </>
   );

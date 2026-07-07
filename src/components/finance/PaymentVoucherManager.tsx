@@ -6,6 +6,8 @@ import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
+import { FinanceModal } from './FinanceModal';
+import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 
@@ -752,28 +754,38 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         />
       </FinancePage>
 
-      <Modal
+      <FinanceModal
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); resetForm(); }}
         title={editingVoucher ? `Edit ${editingVoucher.voucher_number}` : 'New Payment Voucher'}
         size="lg"
+        footer={
+          <>
+            <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className={F_BTN_SECONDARY}>
+              Cancel
+            </button>
+            <button type="submit" form="payment-voucher-form" className={`${F_BTN_PRIMARY} bg-red-600 hover:bg-red-700`}>
+              {editingVoucher ? 'Update Payment' : 'Save Payment'}
+            </button>
+          </>
+        }
       >
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form id="payment-voucher-form" onSubmit={handleSubmit} className="space-y-2">
 
           {/* Row 1: Date + Supplier */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Date *</label>
               <input
                 type="date"
                 required
                 value={formData.voucher_date}
                 onChange={(e) => setFormData({ ...formData, voucher_date: e.target.value })}
-                className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Supplier *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Supplier *</label>
               <SearchableSelect
                 value={formData.supplier_id}
                 onChange={(val) => setFormData({ ...formData, supplier_id: val })}
@@ -786,12 +798,12 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           {/* Row 2: Method + Amount */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Payment Method *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Payment Method *</label>
               <select
                 required
                 value={formData.payment_method}
                 onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               >
                 <option value="cash">Cash</option>
                 <option value="bank_transfer">Bank Transfer</option>
@@ -801,7 +813,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                 Amount{pendingInvoices.length > 0 ? ` (${invoiceCurrency})` : ''} *
               </label>
               <input
@@ -810,7 +822,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
                 step="0.01"
                 value={formData.amount || ''}
                 onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
           </div>
@@ -819,7 +831,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           {formData.payment_method !== 'cash' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                   Bank Account
                   {selectedBank && (
                     <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
@@ -882,12 +894,12 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Reference No.</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Reference No.</label>
                 <input
                   type="text"
                   value={formData.reference_number}
                   onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
-                  className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 />
               </div>
             </div>
@@ -962,11 +974,11 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
             <div className="grid grid-cols-2 gap-3 mb-2">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">PPh Type</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">PPh Type</label>
                 <select
                   value={formData.pph_code_id}
                   onChange={(e) => setFormData({ ...formData, pph_code_id: e.target.value })}
-                  className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg bg-white"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white bg-white"
                 >
                   <option value="">No withholding</option>
                   {taxCodes.map(t => (
@@ -975,7 +987,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">PPh Amount {pendingInvoices.length > 0 ? `(${invoiceCurrency})` : ''}</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">PPh Amount {pendingInvoices.length > 0 ? `(${invoiceCurrency})` : ''}</label>
                 <input
                   type="number"
                   value={formData.pph_amount || ''}
@@ -1009,11 +1021,11 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               rows={2}
             />
           </div>
@@ -1155,16 +1167,8 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className="px-3 py-1.5 text-sm text-gray-600 border rounded-lg hover:bg-gray-50">
-              Cancel
-            </button>
-            <button type="submit" className="px-4 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
-              {editingVoucher ? 'Update Payment' : 'Save Payment'}
-            </button>
-          </div>
         </form>
-      </Modal>
+      </FinanceModal>
 
       {cancelPostingTarget && (
         <Modal
@@ -1177,12 +1181,12 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
               This will delete the journal entry for this payment voucher and reset it to Draft. The voucher will need to be re-posted after any edits.
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Reason (optional)</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Reason (optional)</label>
               <textarea
                 value={cancelPostingReason}
                 onChange={(e) => setCancelPostingReason(e.target.value)}
                 rows={3}
-                className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 placeholder="Reason for cancelling the GL posting..."
               />
             </div>

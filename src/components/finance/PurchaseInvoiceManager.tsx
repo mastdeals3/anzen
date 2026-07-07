@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase';
 import { Plus, CreditCard as Edit, Trash2, Search, FileText, Eye, X, AlertCircle, CreditCard } from 'lucide-react';
 import { showConfirm } from '../ConfirmDialog';
 import { Modal } from '../Modal';
+import { FinanceModal } from './FinanceModal';
+import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SearchableSelect } from '../SearchableSelect';
 import { FileUpload } from '../FileUpload';
 import { showToast } from '../ToastNotification';
@@ -732,20 +734,36 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
       </div>
 
       {/* Create/Edit Modal */}
-      <Modal
+      <FinanceModal
         isOpen={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          setEditingInvoice(null);
-          resetForm();
-        }}
+        onClose={() => { setModalOpen(false); setEditingInvoice(null); resetForm(); }}
         title={editingInvoice ? `Edit Invoice: ${editingInvoice.invoice_number}` : 'New Purchase Invoice'}
+        size="xl"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => { setModalOpen(false); setEditingInvoice(null); resetForm(); }}
+              className={F_BTN_SECONDARY}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="purchase-invoice-form"
+              disabled={uploading}
+              className={`${F_BTN_PRIMARY} disabled:opacity-50`}
+            >
+              {uploading ? 'Uploading...' : editingInvoice ? 'Save Changes' : 'Create Invoice'}
+            </button>
+          </>
+        }
       >
-        <form onSubmit={handleSubmit} className="space-y-2">
+        <form id="purchase-invoice-form" onSubmit={handleSubmit} className="space-y-2">
           {/* Header Section */}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                 Supplier *
               </label>
               <SearchableSelect
@@ -760,7 +778,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                 Invoice Number *
               </label>
               <input
@@ -769,12 +787,12 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                 onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
                 required
                 placeholder="INV-001"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                 Invoice Date *
               </label>
               <input
@@ -782,30 +800,30 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                 value={formData.invoice_date}
                 onChange={(e) => setFormData({ ...formData, invoice_date: e.target.value })}
                 required
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                 Due Date
               </label>
               <input
                 type="date"
                 value={formData.due_date}
                 onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                 Currency *
               </label>
               <select
                 value={formData.currency}
                 onChange={(e) => setFormData({ ...formData, currency: e.target.value, exchange_rate: e.target.value === 'IDR' ? 1 : formData.exchange_rate })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
               >
                 <option value="IDR">IDR</option>
                 <option value="USD">USD</option>
@@ -814,7 +832,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
 
             {formData.currency === 'USD' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                   Exchange Rate * (1 USD = ? IDR)
                 </label>
                 <input
@@ -825,14 +843,14 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                   step="0.01"
                   required
                   placeholder="15750"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             )}
 
             {selectedSupplier?.pkp_status && (
               <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                   Faktur Pajak Number
                 </label>
                 <input
@@ -840,25 +858,25 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                   value={formData.faktur_pajak_number}
                   onChange={(e) => setFormData({ ...formData, faktur_pajak_number: e.target.value })}
                   placeholder="010.000-00.00000000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             )}
 
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                 Notes
               </label>
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                 Attachments (Supplier Invoice)
               </label>
               <FileUpload
@@ -902,7 +920,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
 
             <div className="space-y-4 max-h-96 overflow-y-auto">
               {lineItems.map((item, index) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <div key={index} className="border border-gray-200 rounded-lg p-4 space-y-2">
                   <div className="flex items-start justify-between">
                     <span className="text-sm font-medium text-gray-700">Line {index + 1}</span>
                     {lineItems.length > 1 && (
@@ -918,7 +936,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
 
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         Type *
                       </label>
                       <select
@@ -939,7 +957,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
 
                     {item.item_type === 'inventory' ? (
                       <div className="col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                           Product *
                         </label>
                         <select
@@ -957,7 +975,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       </div>
                     ) : item.item_type === 'expense' ? (
                       <div className="col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                           Expense Account *
                         </label>
                         <select
@@ -975,7 +993,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       </div>
                     ) : item.item_type === 'fixed_asset' ? (
                       <div className="col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                           Asset Account *
                         </label>
                         <select
@@ -993,7 +1011,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       </div>
                     ) : (
                       <div className="col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                           Ledger (Optional - defaults to Inventory)
                         </label>
                         <select
@@ -1013,7 +1031,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                       Description *
                     </label>
                     <input
@@ -1027,7 +1045,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
 
                   <div className="grid grid-cols-5 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         Qty *
                       </label>
                       <input
@@ -1040,7 +1058,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         Unit
                       </label>
                       <input
@@ -1052,7 +1070,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         Rate *
                       </label>
                       <input
@@ -1069,7 +1087,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         Amount
                       </label>
                       <input
@@ -1129,29 +1147,8 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex justify-end gap-3 pt-6 border-t">
-            <button
-              type="button"
-              onClick={() => {
-                setModalOpen(false);
-                setEditingInvoice(null);
-                resetForm();
-              }}
-              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={uploading}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {uploading ? 'Uploading...' : editingInvoice ? 'Save Changes' : 'Create Invoice'}
-            </button>
-          </div>
         </form>
-      </Modal>
+      </FinanceModal>
 
       {/* View Modal */}
       {selectedInvoice && (

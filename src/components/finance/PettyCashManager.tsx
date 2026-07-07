@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Upload, X, FileText, Image, Eye, CreditCard as Edit2, Trash2, ExternalLink, Download, Clipboard, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw } from 'lucide-react';
 import { Modal } from '../Modal';
+import { FinanceModal } from './FinanceModal';
+import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { showToast } from '../ToastNotification';
@@ -1312,14 +1314,29 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
         </table>
       </div>
 
-      <Modal isOpen={modalOpen} onClose={closeModal} title={editingTransaction ? 'Edit Transaction' : 'Add Petty Cash Transaction'}>
-        <form onSubmit={handleSubmit} className="space-y-2" onPaste={handlePaste}>
+      <FinanceModal
+        isOpen={modalOpen}
+        onClose={closeModal}
+        title={editingTransaction ? 'Edit Transaction' : 'Add Petty Cash Transaction'}
+        size="lg"
+        footer={
+          <>
+            <button type="button" onClick={closeModal} className={F_BTN_SECONDARY}>
+              Cancel
+            </button>
+            <button type="submit" form="petty-cash-form" className={F_BTN_PRIMARY}>
+              {editingTransaction ? 'Update' : 'Save'} Transaction
+            </button>
+          </>
+        }
+      >
+        <form id="petty-cash-form" onSubmit={handleSubmit} className="space-y-2" onPaste={handlePaste}>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Transaction Type</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Transaction Type</label>
             <select
               value={formData.transaction_type}
               onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value as 'withdraw' | 'expense' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               required
             >
               <option value="expense">Expense (Cash Out)</option>
@@ -1329,23 +1346,23 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Date</label>
               <input
                 type="date"
                 value={formData.transaction_date}
                 onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rp)</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Amount (Rp)</label>
               <input
                 type="number"
                 value={formData.amount || ''}
                 onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 required
                 min="1"
                 step="1"
@@ -1361,13 +1378,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           {formData.transaction_type === 'expense' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                   Expense Category <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={formData.expense_category}
                   onChange={(e) => setFormData({ ...formData, expense_category: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
                   required
                 >
                   <option value="">Select expense category...</option>
@@ -1404,13 +1421,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                     Link to Container {selectedCategory?.requiresContainer && <span className="text-red-500">*</span>}
                   </label>
                   <select
                     value={formData.import_container_id}
                     onChange={(e) => setFormData({ ...formData, import_container_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                     required={selectedCategory?.requiresContainer}
                   >
                     <option value="">None</option>
@@ -1421,11 +1438,11 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Link to Delivery Challan (Sales)</label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Link to Delivery Challan (Sales)</label>
                   <select
                     value={formData.delivery_challan_id}
                     onChange={(e) => setFormData({ ...formData, delivery_challan_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                   >
                     <option value="">None</option>
                     {challans.map((c) => (
@@ -1439,23 +1456,23 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Paid To</label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Paid To</label>
                   <input
                     type="text"
                     value={formData.paid_to}
                     onChange={(e) => setFormData({ ...formData, paid_to: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                     placeholder="Vendor/Supplier name"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Paid By (Staff)</label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Paid By (Staff)</label>
                   <input
                     type="text"
                     value={formData.paid_by_staff_name}
                     onChange={(e) => setFormData({ ...formData, paid_by_staff_name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                     placeholder="Staff member name"
                   />
                 </div>
@@ -1466,11 +1483,11 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           {formData.transaction_type === 'withdraw' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bank Account</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Account</label>
                 <select
                   value={formData.bank_account_id}
                   onChange={(e) => setFormData({ ...formData, bank_account_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                   required
                 >
                   <option value="">Select bank account</option>
@@ -1484,23 +1501,23 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Source/Reference</label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Source/Reference</label>
                   <input
                     type="text"
                     value={formData.source}
                     onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                     placeholder="Check number, transfer ref"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Received By</label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Received By</label>
                   <input
                     type="text"
                     value={formData.received_by_staff_name}
                     onChange={(e) => setFormData({ ...formData, received_by_staff_name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                     placeholder="Staff member name"
                   />
                 </div>
@@ -1509,11 +1526,11 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               rows={3}
               required
               placeholder="Enter transaction details"
@@ -1629,23 +1646,8 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
             )}
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={closeModal}
-              className="h-7 px-2 text-xs text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              {editingTransaction ? 'Update' : 'Save'} Transaction
-            </button>
-          </div>
         </form>
-      </Modal>
+      </FinanceModal>
 
       <Modal
         isOpen={viewModalOpen}
@@ -1654,7 +1656,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
         maxWidth="max-w-lg"
       >
         {viewingTransaction && (
-          <div className="space-y-3 text-sm">
+          <div className="space-y-2 text-sm">
             {/* Compact Header Bar */}
             <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-3 py-2 rounded -mt-1 -mx-1">
               <div className="flex items-center justify-between">
@@ -1944,13 +1946,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
               <p className="mt-1 text-xs">This action cannot be done if the accounting period is closed.</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason for cancelling posting <span className="text-red-500">*</span></label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Reason for cancelling posting <span className="text-red-500">*</span></label>
               <textarea
                 value={cancelPostingReason}
                 onChange={e => setCancelPostingReason(e.target.value)}
                 rows={3}
                 placeholder="Reason (e.g. wrong amount entered, incorrect category)..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -1983,7 +1985,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
               onChange={e => setPcRejectionReason(e.target.value)}
               rows={3}
               placeholder="Reason for rejection..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-red-500 focus:border-red-500"
             />
             <div className="flex justify-end gap-2">
               <button onClick={() => { setPcRejectionModalOpen(false); setPcRejectionReason(''); }} className="h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50">Cancel</button>

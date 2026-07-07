@@ -4,6 +4,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Plus, Eye, Search, ArrowDownCircle, Check, CreditCard as Edit2, Trash2, X, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
+import { FinanceModal } from './FinanceModal';
+import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { showToast } from '../ToastNotification';
@@ -802,21 +804,36 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         </table>
       </div>
 
-      <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); resetForm(); }} title={editMode ? "Edit Receipt Voucher" : "New Receipt Voucher"}>
-        <form onSubmit={handleSubmit} className="space-y-2">
+      <FinanceModal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); resetForm(); }}
+        title={editMode ? "Edit Receipt Voucher" : "New Receipt Voucher"}
+        size="lg"
+        footer={
+          <>
+            <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className={F_BTN_SECONDARY}>
+              Cancel
+            </button>
+            <button type="submit" form="receipt-voucher-form" className={`${F_BTN_PRIMARY} bg-green-600 hover:bg-green-700`}>
+              {editMode ? 'Update Receipt' : 'Save Receipt'}
+            </button>
+          </>
+        }
+      >
+        <form id="receipt-voucher-form" onSubmit={handleSubmit} className="space-y-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Date *</label>
               <input
                 type="date"
                 required
                 value={formData.voucher_date}
                 onChange={(e) => setFormData({ ...formData, voucher_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Customer *</label>
               {editMode ? (
                 <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50">
                   {customers.find(c => c.id === formData.customer_id)?.company_name || 'Unknown'}
@@ -834,12 +851,12 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Payment Method *</label>
               <select
                 required
                 value={formData.payment_method}
                 onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               >
                 <option value="cash">Cash</option>
                 <option value="bank_transfer">Bank Transfer</option>
@@ -849,7 +866,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rp) *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Amount (Rp) *</label>
               <input
                 type="number"
                 required
@@ -857,7 +874,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                 step="0.01"
                 value={formData.amount}
                 onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
           </div>
@@ -865,11 +882,11 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           {formData.payment_method !== 'cash' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bank Account</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Account</label>
                 <select
                   value={formData.bank_account_id}
                   onChange={(e) => setFormData({ ...formData, bank_account_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 >
                   <option value="">Select account</option>
                   {bankAccounts.map(b => (
@@ -880,12 +897,12 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Reference No.</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Reference No.</label>
                 <input
                   type="text"
                   value={formData.reference_number}
                   onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                   placeholder="Check/Transfer reference"
                 />
               </div>
@@ -893,11 +910,11 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               rows={2}
             />
           </div>
@@ -1021,16 +1038,8 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className="px-4 py-2 text-gray-700 border rounded-lg hover:bg-gray-50">
-              Cancel
-            </button>
-            <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-              {editMode ? 'Update Receipt' : 'Save Receipt'}
-            </button>
-          </div>
         </form>
-      </Modal>
+      </FinanceModal>
 
       {/* View Details Modal */}
       <Modal
@@ -1174,12 +1183,12 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
               This will delete the journal entry for this receipt voucher and reset it to Draft. The voucher will need to be re-posted after any edits.
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Reason (optional)</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Reason (optional)</label>
               <textarea
                 value={cancelPostingReason}
                 onChange={(e) => setCancelPostingReason(e.target.value)}
                 rows={3}
-                className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 placeholder="Reason for cancelling the GL posting..."
               />
             </div>

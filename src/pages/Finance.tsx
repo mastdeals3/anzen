@@ -349,8 +349,8 @@ function FinanceContent() {
         <div
           className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col md:relative md:z-auto overflow-hidden transition-[width,transform] duration-300 ${
             sidebarCollapsed
-              ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 w-48'
-              : 'translate-x-0 w-48 md:w-48'
+              ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 w-40'
+              : 'translate-x-0 w-40 md:w-40'
           }`}
         >
             {/* Menu Groups */}
@@ -364,17 +364,17 @@ function FinanceContent() {
                     {isCollapsible ? (
                       <button
                         onClick={() => toggleGroup(group.label)}
-                        className="w-full px-2 py-1 text-[9px] font-semibold text-gray-500 uppercase tracking-wider flex items-center justify-between hover:bg-gray-50"
+                        className="w-full px-2 py-0.5 text-[8px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between hover:bg-gray-50"
                       >
                         <span>{group.label}</span>
                         {isCollapsed ? (
-                          <ChevronRight className="w-3 h-3" />
+                          <ChevronRight className="w-2.5 h-2.5" />
                         ) : (
-                          <ChevronDown className="w-3 h-3" />
+                          <ChevronDown className="w-2.5 h-2.5" />
                         )}
                       </button>
                     ) : (
-                      <div className="px-2 py-1 text-[9px] font-semibold text-gray-500 uppercase tracking-wider">
+                      <div className="px-2 py-0.5 text-[8px] font-bold text-gray-400 uppercase tracking-wider">
                         {group.label}
                       </div>
                     )}
@@ -388,7 +388,7 @@ function FinanceContent() {
                               setActiveTab(item.id);
                               if (window.innerWidth < 768) setSidebarCollapsed(true);
                             }}
-                            className={`w-full text-left px-2 py-1 text-[11px] transition-colors ${
+                            className={`w-full text-left px-2 py-[3px] text-[10px] leading-tight transition-colors ${
                               activeTab === item.id
                                 ? 'bg-blue-50 text-blue-700 font-medium border-l-2 border-blue-600'
                                 : 'text-gray-700 hover:bg-gray-50 border-l-2 border-transparent'
@@ -397,7 +397,7 @@ function FinanceContent() {
                             <div className="flex items-center justify-between">
                               <span>{item.label}</span>
                               {item.shortcut && (
-                                <span className="text-[9px] text-gray-400">{item.shortcut}</span>
+                                <span className="text-[8px] text-gray-400">{item.shortcut}</span>
                               )}
                             </div>
                           </button>

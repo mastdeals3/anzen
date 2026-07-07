@@ -359,85 +359,85 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
         <form onSubmit={handleSubmit} className="space-y-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Code</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Supplier Code</label>
               <input
                 type="text"
                 value={formData.supplier_code}
                 onChange={(e) => setFormData({ ...formData, supplier_code: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 placeholder="Auto-generated if empty"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Company Name *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Company Name *</label>
               <input
                 type="text"
                 required
                 value={formData.company_name}
                 onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Contact Person</label>
               <input
                 type="text"
                 value={formData.contact_person}
                 onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Phone</label>
               <input
                 type="text"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Email</label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Address</label>
             <textarea
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               rows={2}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">City</label>
               <input
                 type="text"
                 value={formData.city}
                 onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Country</label>
               <input
                 type="text"
                 value={formData.country}
                 onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
           </div>
@@ -446,12 +446,12 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
             <h4 className="font-medium text-gray-700 mb-3">Tax Information</h4>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">NPWP</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">NPWP</label>
                 <input
                   type="text"
                   value={formData.npwp}
                   onChange={(e) => setFormData({ ...formData, npwp: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                   placeholder="00.000.000.0-000.000"
                 />
               </div>
@@ -472,42 +472,42 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
             <h4 className="font-medium text-gray-700 mb-3">Bank Details</h4>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Name</label>
                 <input
                   type="text"
                   value={formData.bank_name}
                   onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Number</label>
                 <input
                   type="text"
                   value={formData.bank_account_number}
                   onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Account Name</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Name</label>
                 <input
                   type="text"
                   value={formData.bank_account_name}
                   onChange={(e) => setFormData({ ...formData, bank_account_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 />
               </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms (Days)</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Payment Terms (Days)</label>
             <input
               type="number"
               value={formData.payment_terms_days}
               onChange={(e) => setFormData({ ...formData, payment_terms_days: parseInt(e.target.value) || 30 })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
             />
           </div>
 
@@ -519,11 +519,11 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
             </p>
             <div className="grid grid-cols-1 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Type</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Supplier Type</label>
                 <select
                   value={formData.supplier_type || 'General'}
                   onChange={(e) => handleSupplierTypeChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 >
                   {SUPPLIER_TYPES.map(t => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -532,11 +532,11 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
                 <p className="text-xs text-gray-500 mt-0.5">Selecting a type auto-fills tax preference, category, and payment terms</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Default Expense Category</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Default Expense Category</label>
                 <select
                   value={formData.default_expense_category}
                   onChange={(e) => setFormData({ ...formData, default_expense_category: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 >
                   {DEFAULT_CATEGORY_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -546,11 +546,11 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tax Preference</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Tax Preference</label>
                 <select
                   value={formData.tax_preference}
                   onChange={(e) => setFormData({ ...formData, tax_preference: e.target.value as 'none' | 'ppn_only' | 'ppn_pph' | 'pph_only' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 >
                   <option value="none">None (no auto-tax)</option>
                   <option value="ppn_only">PPN Only (11% VAT)</option>
@@ -567,11 +567,11 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
 
               {(formData.tax_preference === 'ppn_pph' || formData.tax_preference === 'pph_only') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Default PPh Type</label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Default PPh Type</label>
                   <select
                     value={formData.default_pph_code_id}
                     onChange={(e) => setFormData({ ...formData, default_pph_code_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                   >
                     <option value="">None</option>
                     {taxCodes.map(tc => (

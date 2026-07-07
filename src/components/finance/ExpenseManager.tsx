@@ -4,6 +4,8 @@ import { Plus, DollarSign, Package, Truck, Building2, CreditCard as Edit, Trash2
 import { Modal } from '../Modal';
 import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
+import { FinanceModal } from './FinanceModal';
+import { FormSection, F_LABEL, F_INPUT, F_INPUT_MONEY, F_SELECT, F_TEXTAREA, F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -2302,13 +2304,24 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       </div>
 
       {modalOpen && (
-        <Modal
+        <FinanceModal
           isOpen={modalOpen}
           onClose={() => { setModalOpen(false); resetForm(); }}
           title={editingExpense ? 'Edit Expense' : 'Record New Expense'}
-          maxWidth="max-w-6xl"
+          subtitle={editingExpense?.voucher_number || undefined}
+          size="2xl"
+          footer={
+            <>
+              <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className={F_BTN_SECONDARY}>
+                Cancel
+              </button>
+              <button type="submit" form="expense-form" className={F_BTN_PRIMARY}>
+                {editingExpense ? 'Update' : 'Save'} Expense
+              </button>
+            </>
+          }
         >
-          <form onSubmit={handleSubmit}>
+          <form id="expense-form" onSubmit={handleSubmit}>
             {/* ── Horizontal header rows (matches the mockup layout) ── */}
             <div className="pb-2 border-b space-y-2">
 
@@ -2316,7 +2329,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               <div className="grid grid-cols-12 gap-2">
                 {/* Supplier (4 cols) — "Create X" appears inline in dropdown */}
                 <div className="col-span-4">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Supplier{selectedDocType === 'Import / Customs Broker Invoice' ? ' (Broker)' : ''}</label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Supplier{selectedDocType === 'Import / Customs Broker Invoice' ? ' (Broker)' : ''}</label>
                   <div className="flex-1 min-w-0">
                     <SearchableSelect
                       value={formData.supplier_id}
@@ -2349,15 +2362,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                 {/* Inv No (2 cols) */}
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Inv. No.</label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Inv. No.</label>
                   <input type="text" value={formData.invoice_number}
                     onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
-                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm" placeholder="—" />
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" placeholder="—" />
                 </div>
 
                 {/* Inv Date (2 cols) */}
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Inv. Date <span className="text-red-500">*</span></label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Inv. Date <span className="text-red-500">*</span></label>
                   <input type="date" value={formData.expense_date}
                     onChange={(e) => {
                       const d = e.target.value;
@@ -2366,12 +2379,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         due_date: selectedSupplier?.payment_terms_days ? getDueDateFromTerms(d, selectedSupplier.payment_terms_days) : prev.due_date,
                       }));
                     }}
-                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm" required />
+                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" required />
                 </div>
 
                 {/* Due Date (2 cols) */}
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Due Date</label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Due Date</label>
                   <input type="date" value={formData.due_date}
                     onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
                     className={`w-full px-2.5 py-1.5 border rounded-lg text-sm ${formData.due_date && formData.due_date < new Date().toISOString().split('T')[0] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
@@ -2382,7 +2395,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                 {/* Category (2 cols) — grouped by Doc Type, sets both on change */}
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Category <span className="text-red-500">*</span></label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Category <span className="text-red-500">*</span></label>
                   <SearchableSelect
                     value={formData.expense_category}
                     onChange={(val) => {
@@ -2415,7 +2428,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   <div className="grid grid-cols-12 gap-2">
                     {/* Invoice Amount */}
                     <div className="col-span-2">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Invoice Amount (IDR) <span className="text-red-500">*</span></label>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Invoice Amount (IDR) <span className="text-red-500">*</span></label>
                       <MoneyInput value={formData.amount} required placeholder="0"
                         onChange={(amt) => {
                           setFormData(prev => {
@@ -2427,7 +2440,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             return { ...prev, amount: amt, ppn_amount: ppn };
                           });
                         }}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm font-semibold text-right font-mono" />
+                        className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white font-semibold text-right font-mono" />
                     </div>
 
                     {/* PPN with mode selector */}
@@ -2492,7 +2505,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               ppn_calc_mode: prev.expense_category === 'import_broker' ? prev.ppn_calc_mode : 'manual',
                               ppn_manual_override: prev.expense_category !== 'import_broker',
                             }))}
-                            className={`w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono ${isBrokerRow ? 'bg-gray-100 text-gray-600' : ''}`} />
+                            className={`w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono ${isBrokerRow ? 'bg-gray-100 text-gray-600' : ''}`} />
                         )}
                         {formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBrokerRow && (
                           <p className="text-[9px] text-gray-500 mt-0.5">DPP × {formData.ppn_rate || 11}% → PPN</p>
@@ -2504,15 +2517,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     {(taxCfg?.pph23 || taxCfg?.pph21) && (
                       <>
                         <div className="col-span-1">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                          <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                             {taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'}
                           </label>
                           <MoneyInput value={formData.pph_amount} placeholder="0"
                             onChange={(v) => setFormData({ ...formData, pph_amount: v })}
-                            className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" />
+                            className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono" />
                         </div>
                         <div className="col-span-2">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">PPh Code</label>
+                          <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">PPh Code</label>
                           <SearchableSelect
                             value={formData.pph_code_id}
                             onChange={(val) => {
@@ -2530,37 +2543,37 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     {/* Stamp Duty */}
                     {taxCfg?.stamp && (
                       <div className="col-span-1">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Stamp Duty</label>
+                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Stamp Duty</label>
                         <MoneyInput value={formData.stamp_duty_amount} placeholder="0"
                           onChange={(v) => setFormData({ ...formData, stamp_duty_amount: v })}
-                          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" />
+                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono" />
                       </div>
                     )}
 
                     {/* Bank Charges (Utility only) */}
                     {formData.expense_category === 'utilities' && (
                       <div className="col-span-1">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Bank Chg</label>
+                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Chg</label>
                         <MoneyInput value={formData.bank_charges_amount} placeholder="0"
                           onChange={(v) => setFormData({ ...formData, bank_charges_amount: v })}
-                          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" />
+                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono" />
                       </div>
                     )}
 
                     {/* Reference — fills remaining */}
                     <div className="col-span-2">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Reference</label>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Reference</label>
                       <input type="text" value={formData.payment_reference}
                         onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm" placeholder="TT ref / cheque #" />
+                        className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" placeholder="TT ref / cheque #" />
                     </div>
 
                     {/* Description — fills remaining */}
                     <div className="col-span-2">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
                       <input type="text" value={formData.description}
                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm" placeholder="Invoice description..." />
+                        className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" placeholder="Invoice description..." />
                     </div>
                   </div>
                 );
@@ -2571,7 +2584,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 <div className="grid grid-cols-12 gap-2">
                   {(requiresContainer || formData.expense_category === 'import_broker') && (
                     <div className="col-span-6">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         <Package className="w-3 h-3 inline mr-1" />
                         Import Container{requiresContainer ? <span className="text-red-500"> *</span> : <span className="text-gray-400"> (optional)</span>}
                       </label>
@@ -2586,7 +2599,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   )}
                   {requiresDC && (
                     <div className="col-span-6">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Delivery Challan (optional)</label>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Delivery Challan (optional)</label>
                       <SearchableSelect
                         value={formData.delivery_challan_id}
                         onChange={(val) => setFormData({ ...formData, delivery_challan_id: val })}
@@ -2598,7 +2611,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   )}
                   {formData.expense_category === 'fixed_asset' && (
                     <div className="col-span-6">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Asset Account <span className="text-red-500">*</span></label>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Asset Account <span className="text-red-500">*</span></label>
                       <SearchableSelect
                         value={formData.fixed_asset_account_id}
                         onChange={(val) => setFormData({ ...formData, fixed_asset_account_id: val })}
@@ -2896,7 +2909,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment</p>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Method <span className="text-red-500">*</span></label>
+                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Method <span className="text-red-500">*</span></label>
                   <select value={formData.payment_method ?? 'outstanding'}
                     onChange={(e) => {
                       const val = e.target.value === 'outstanding' ? null : e.target.value;
@@ -2920,7 +2933,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                 {formData.payment_method !== null && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Bank Account <span className="text-red-500">*</span></label>
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Account <span className="text-red-500">*</span></label>
                     <select value={formData.bank_account_id}
                       onChange={(e) => {
                         setFormData({ ...formData, bank_account_id: e.target.value });
@@ -2937,7 +2950,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                 {formData.payment_method !== null && formData.bank_account_id && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Link to Bank Transaction</label>
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Link to Bank Transaction</label>
                     {unlinkedBankTransactions.length > 0 ? (
                       <select value={selectedBankTransactionId} onChange={(e) => setSelectedBankTransactionId(e.target.value)}
                         className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs">
@@ -3031,18 +3044,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </div>
             </div>
 
-            {/* ── Sticky footer ── */}
-            <div className="sticky bottom-0 bg-white border-t pt-2 pb-1 mt-2 flex justify-end gap-2">
-              <button type="button" onClick={() => { setModalOpen(false); resetForm(); }}
-                className="px-4 py-1.5 border border-gray-300 rounded hover:bg-gray-50 text-sm">
-                Cancel
-              </button>
-              <button type="submit" className="px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">
-                {editingExpense ? 'Update' : 'Save'} Expense
-              </button>
-            </div>
           </form>
-        </Modal>
+        </FinanceModal>
       )}
 
       {/* Quick Add Supplier Modal — redesigned with type, PKP, terms */}
@@ -3051,7 +3054,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           <div className="space-y-3">
             <p className="text-xs text-gray-500">Minimum info. Fill full details in Suppliers Master later.</p>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Company Name <span className="text-red-500">*</span></label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Company Name <span className="text-red-500">*</span></label>
               <input type="text" value={quickAddSupplierName} autoFocus
                 onChange={(e) => setQuickAddSupplierName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAddSupplier(); } }}
@@ -3059,7 +3062,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 placeholder="e.g. PT. Mitra Logistik Indonesia" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Supplier Type</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Supplier Type</label>
               <select value={quickAddSupplierType}
                 onChange={(e) => {
                   const st = e.target.value;
@@ -3079,7 +3082,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">PKP Registered</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">PKP Registered</label>
                 <div className="flex gap-2 mt-1.5">
                   <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                     <input type="radio" name="qs_pkp" checked={quickAddSupplierPKP} onChange={() => setQuickAddSupplierPKP(true)} /> Yes
@@ -3090,7 +3093,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Payment Terms (days)</label>
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Payment Terms (days)</label>
                 <input type="number" min="0" value={quickAddSupplierTerms}
                   onChange={(e) => setQuickAddSupplierTerms(parseInt(e.target.value) || 0)}
                   className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-sm" />

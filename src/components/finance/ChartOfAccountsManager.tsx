@@ -264,23 +264,23 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
         <form onSubmit={handleSubmit} className="space-y-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Account Code *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Code *</label>
               <input
                 type="text"
                 required
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
                 placeholder="e.g., 1101"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Account Type *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Type *</label>
               <select
                 required
                 value={formData.account_type}
                 onChange={(e) => setFormData({ ...formData, account_type: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               >
                 {accountTypes.map(type => (
                   <option key={type.value} value={type.value}>{type.label}</option>
@@ -290,43 +290,43 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Account Name (English) *</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Name (English) *</label>
             <input
               type="text"
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Account Name (Indonesian)</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Name (Indonesian)</label>
             <input
               type="text"
               value={formData.name_id}
               onChange={(e) => setFormData({ ...formData, name_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Account Group</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Group</label>
               <input
                 type="text"
                 value={formData.account_group}
                 onChange={(e) => setFormData({ ...formData, account_group: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Normal Balance *</label>
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Normal Balance *</label>
               <select
                 required
                 value={formData.normal_balance}
                 onChange={(e) => setFormData({ ...formData, normal_balance: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               >
                 <option value="debit">Debit</option>
                 <option value="credit">Credit</option>
@@ -335,11 +335,11 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Parent Account</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Parent Account</label>
             <select
               value={formData.parent_id}
               onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
             >
               <option value="">None (Top Level)</option>
               {accounts.filter(a => a.is_header).map(a => (
@@ -360,11 +360,11 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
               rows={2}
             />
           </div>
