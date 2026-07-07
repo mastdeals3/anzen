@@ -1057,7 +1057,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         ppn_amount:             persistHeaderTax ? (formData.ppn_amount || 0) : 0,
         ppn_manual_override:    persistHeaderTax ? (formData.ppn_calc_mode === 'manual' || !!formData.ppn_manual_override) : false,
         ppn_calc_mode:          persistHeaderTax ? (formData.ppn_calc_mode || 'standard') : 'standard',
-        dpp_amount:             (persistHeaderTax && formData.ppn_calc_mode === 'dpp_nilai_lain') ? (formData.dpp_amount || 0) : null,
+        // Persist header DDP whenever set — used both as the DPP Nilai Lain
+        // taxable base AND, for broker invoices, as an independent additive
+        // component of Total Payable. Nulled only when the field is empty.
+        dpp_amount:             persistHeaderTax && (formData.dpp_amount || 0) > 0 ? (formData.dpp_amount || 0) : null,
         ppn_rate:               persistHeaderTax ? (formData.ppn_rate || 11) : 11,
         pph_amount:             persistHeaderTax ? (formData.pph_amount || 0) : 0,
         pph_code_id:            (persistHeaderTax && formData.pph_code_id) ? formData.pph_code_id : null,
@@ -2549,19 +2552,22 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   <div className="grid grid-cols-12 gap-2">
                     {/* Invoice Amount */}
                     <div className="col-span-2">
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Invoice Amount (IDR) <span className="text-red-500">*</span></label>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                        {isBrokerRow ? 'Broker Invoice' : 'Invoice Amount'} <span className="text-red-500">*</span>
+                      </label>
                       <MoneyInput value={formData.amount} required placeholder="0"
                         onChange={(amt) => {
                           setFormData(prev => {
                             const mode = prev.ppn_calc_mode || 'standard';
                             const rate = prev.ppn_rate || 11;
-                            const ppn = mode === 'standard' && selectedSupplier?.pkp_status
+                            // Broker invoice PPN is INDEPENDENT of the line PPNs.
+                            // For non-broker rows we still auto-derive PPN from the
+                            // supplier's PKP status; for broker rows we leave PPN alone
+                            // — the user types it directly.
+                            const ppn = !isBrokerRow && mode === 'standard' && selectedSupplier?.pkp_status
                               ? Math.round(amt * rate / 100)
                               : prev.ppn_amount;
-                            // PPh auto-recalc: when a PPh code is selected, keep pph_amount
-                            // aligned to (new amount × code rate). If the user has manually
-                            // adjusted pph_amount off-formula, we intentionally re-anchor to
-                            // the new amount to match SAP behaviour on document total change.
+                            // PPh auto-recalc when a code is picked (unchanged).
                             const tc = prev.pph_code_id ? taxCodes.find(t => t.id === prev.pph_code_id) : null;
                             const pph = tc ? Math.round(amt * tc.rate / 100) : prev.pph_amount;
                             return { ...prev, amount: amt, ppn_amount: ppn, pph_amount: pph };
@@ -2569,6 +2575,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         }}
                         className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white font-semibold text-right font-mono" />
                     </div>
+
+                    {/* Header DDP — broker only. Independent additive scalar in Total Payable. */}
+                    {isBrokerRow && (
+                      <div className="col-span-2">
+                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Header DDP</label>
+                        <MoneyInput value={formData.dpp_amount} placeholder="0"
+                          onChange={(v) => setFormData(prev => ({ ...prev, dpp_amount: v }))}
+                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono" />
+                      </div>
+                    )}
 
                     {/* PPN with mode selector */}
                     {taxCfg?.ppn && (
@@ -2790,73 +2806,103 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     );
                   })()}
 
-                  {/* Broker Items (multi-supplier + per-line PPN)
-                      2026-07 refactor — reimbursement lines are INDEPENDENT of the
-                      Broker Invoice amount. Editing a line NEVER rolls up into
-                      formData.amount / formData.ppn_amount. Header stays put.
+                  {/* ══════════════════════════════════════════════════════════════
+                       BROKER CALCULATION ENGINE — 2026-07-08 spec
+                       ══════════════════════════════════════════════════════════════
+                       Broker Invoice, Header DDP, and every Reimbursement Line are
+                       INDEPENDENT inputs. NOTHING rolls up into anything else.
+                       They only meet inside the Total Payable formula.
 
-                      Each line carries its own:
-                          amount       — the line's supplier invoice total (Rp)
-                          dpp_amount   — Dasar Pengenaan Pajak (taxable base)
-                          ppn_rate     — % (11, 12, 0, custom)
-                          ppn_amount   — computed from dpp*rate/100; editable
-                          ppn_treatment — 'excluded' means line.amount = DPP + PPN
-                                          'included' preserved for legacy rows
-                      Total per line = amount (already includes PPN in most Indonesian
-                      forwarder invoices), but we render Amount + PPN as visible columns
-                      to match user's brief. */}
+                       Line columns (per user brief):
+                         # | Supplier | Invoice No | Tax Inv # | Inv Date |
+                         Amount | DDP | PPN% | PPN Amount | Total | Delete
+
+                       Per-line formulas:
+                         PPN Amount (Auto)  = round(DDP × PPN%)
+                         PPN Amount (Manual) = user-typed value; NOT overwritten
+                         Line Total          = Amount + DDP + PPN Amount
+
+                       Auto vs Manual (Excel semantics, per row):
+                         • Editing DDP or PPN%   → Auto (recompute PPN Amount).
+                         • Editing PPN Amount    → Manual (freeze PPN Amount).
+                         • ppn_mode: 'auto' | 'manual' — persisted per line via a
+                           dedicated `ppn_treatment` alias to avoid a schema change.
+
+                       Total Payable:
+                         Broker Invoice          (header, independent)
+                         + Header DDP            (header, independent)
+                         + Σ Line.Amount         (all lines)
+                         + Σ Line.DDP            (all lines)
+                         + Σ Line.PPN Amount     (all lines)
+                         + Broker PPN            (header, independent)
+                         − Broker PPh            (header, independent)
+                         + Broker Stamp Duty     (header, independent)
+                     ══════════════════════════════════════════════════════════════ */}
                   {taxCfg.brokerItems && (() => {
+                    // ─── updateLine — pure line mutator, NEVER touches header state.
                     const updateLine = (idx: number, patch: Partial<BrokerItem>) => {
                       setBrokerItems(prev => prev.map((it, i) => {
                         if (i !== idx) return it;
                         const merged = { ...it, ...patch };
-                        // Auto-recompute PPN Amount when DPP or rate changes AND the
-                        // caller did NOT explicitly override ppn_amount. Manual PPN
-                        // edits (Faktur Pajak rounding) stick until the user changes
-                        // DPP or rate.
-                        const rateChanged = 'ppn_rate' in patch;
-                        const dppChanged = 'dpp_amount' in patch;
+                        const inManualMode = merged.ppn_treatment === 'included'; // 'included' = manual PPN flag (repurposed to avoid new schema field)
                         const explicitPpn = 'ppn_amount' in patch;
-                        if ((rateChanged || dppChanged) && !explicitPpn) {
-                          const dpp = merged.dpp_amount ?? merged.amount ?? 0;
+                        const dppChanged  = 'dpp_amount' in patch;
+                        const rateChanged = 'ppn_rate' in patch;
+                        // Rule 1: user typed a PPN Amount directly → flip row to manual.
+                        if (explicitPpn) {
+                          merged.ppn_treatment = 'included';
+                        }
+                        // Rule 2: user edited DDP or % → flip row BACK to auto and recompute.
+                        else if (dppChanged || rateChanged) {
+                          merged.ppn_treatment = 'excluded';
+                          const dpp = merged.dpp_amount ?? 0;
                           const rate = merged.ppn_rate ?? 0;
                           merged.ppn_amount = Math.round(dpp * rate / 100);
                         }
-                        // Legacy safety: if a line has treatment=excluded and neither
-                        // dpp_amount nor ppn_rate is set, keep the old computeBrokerLinePpn
-                        // behaviour so pre-refactor rows still balance on load.
-                        if (('amount' in patch) && !explicitPpn && merged.dpp_amount == null && merged.ppn_rate == null) {
+                        // Rule 3: auto-mode row with no explicit patch → keep formula alive
+                        // if amount changes. We do NOT auto-seed DDP from Amount (they're
+                        // independent per the user's brief). Legacy fallback preserved.
+                        else if (!inManualMode && 'amount' in patch && merged.dpp_amount == null && merged.ppn_rate == null) {
                           merged.ppn_amount = computeBrokerLinePpn(merged.amount, merged.ppn_treatment);
                         }
                         return merged;
                       }));
-                      // Deliberately DO NOT roll up to formData.amount / ppn_amount.
-                      // Broker Invoice and reimbursement lines are independent.
+                      // NO setFormData here. Header stays put by construction.
                     };
                     const addLine = () => setBrokerItems(prev => [...prev, {
                       type: 'other', description: '', amount: 0,
                       supplier_id: null, invoice_number: '',
+                      tax_invoice_number: '', invoice_date: '',
                       ppn_treatment: 'excluded', ppn_amount: 0,
                       dpp_amount: 0, ppn_rate: 11,
                     } as BrokerItem]);
                     const removeLine = (idx: number) => setBrokerItems(prev => prev.filter((_, i) => i !== idx));
 
-                    // ─── Totals (read-only derivations; NEVER written back to formData) ───
-                    const reimbTotal   = brokerItems.reduce((s, i) => s + (i.amount     || 0), 0);
-                    const totalLineDpp = brokerItems.reduce((s, i) => s + (i.dpp_amount ?? i.amount ?? 0), 0);
-                    const totalLinePpn = brokerItems.reduce((s, i) => s + (i.ppn_amount || 0), 0);
-                    const brokerInvoiceAmount = formData.amount || 0;   // independent of lines
+                    // ─── Read-only derivations — never written back to state ───
+                    const reimbAmount  = brokerItems.reduce((s, i) => s + (i.amount     || 0), 0);
+                    const reimbDpp     = brokerItems.reduce((s, i) => s + (i.dpp_amount || 0), 0);
+                    const reimbPpn     = brokerItems.reduce((s, i) => s + (i.ppn_amount || 0), 0);
+                    const brokerInvoiceAmount = formData.amount || 0;
+                    const brokerHeaderDdp     = formData.dpp_amount || 0;
                     const brokerInvoicePpn    = formData.ppn_amount || 0;
                     const parentPph   = formData.pph_amount || 0;
                     const parentStamp = formData.stamp_duty_amount || 0;
-                    const totalPpn = brokerInvoicePpn + totalLinePpn;
-                    // Total Payable per user brief:
-                    //   Broker Invoice + Reimb Total + PPN (broker + lines) − PPh + Stamp
-                    const grandPayable = brokerInvoiceAmount + reimbTotal + totalPpn - parentPph + parentStamp;
+                    // Total PPN (Payable formula) — sum of every PPN component in the invoice.
+                    const totalPpn = brokerInvoicePpn + reimbPpn;
+                    // Total Payable — the single formula, source of truth.
+                    const grandPayable =
+                        brokerInvoiceAmount
+                      + brokerHeaderDdp
+                      + reimbAmount
+                      + reimbDpp
+                      + totalPpn
+                      - parentPph
+                      + parentStamp;
                     const fmt = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
-                    // Excel-density row. 7 fields per line: Supplier / Inv# / Amount / DPP / PPN% / PPN Amt / Total + delete
-                    const cellInputCls = 'w-full h-[32px] px-1.5 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none rounded-none text-[11px] bg-transparent';
-                    const grid = 'grid grid-cols-[28px_minmax(0,3.5fr)_minmax(0,1.5fr)_minmax(0,1.5fr)_minmax(0,1.5fr)_60px_minmax(0,1.5fr)_minmax(0,1.5fr)_36px]';
+                    // Excel density — 10 data cells per row + delete.
+                    const cellInputCls = 'w-full h-[30px] px-1.5 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none rounded-none text-[11px] bg-transparent';
+                    // # | Supplier | Inv# | Tax Inv# | Inv Date | Amount | DDP | PPN% | PPN Amt | Total | Del
+                    const grid = 'grid grid-cols-[24px_minmax(0,2.5fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_52px_minmax(0,1.3fr)_minmax(0,1.3fr)_28px]';
                     return (
                       <div className="mb-2">
                         <div className="flex items-center justify-between mb-1.5">
@@ -2874,41 +2920,39 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           <div className="border border-gray-300 rounded-md bg-white shadow-sm overflow-x-auto">
                             {/* Header row */}
                             <div className={`${grid} bg-gray-100 border-b border-gray-300 text-[10px] font-semibold text-gray-600 uppercase tracking-wide`}>
-                              <div className="px-1.5 py-1 border-r border-gray-300 text-center">#</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300">Sub-supplier</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300">Invoice #</div>
+                              <div className="px-1 py-1 border-r border-gray-300 text-center">#</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300">Supplier</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300">Invoice No</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300">Tax Inv #</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300">Inv Date</div>
                               <div className="px-1.5 py-1 border-r border-gray-300 text-right">Amount</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300 text-right">DPP</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300 text-center">PPN%</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300 text-right">DDP</div>
+                              <div className="px-1 py-1 border-r border-gray-300 text-center">PPN%</div>
                               <div className="px-1.5 py-1 border-r border-gray-300 text-right">PPN Amt</div>
                               <div className="px-1.5 py-1 border-r border-gray-300 text-right">Total</div>
-                              <div className="px-1 py-1 text-center">Del</div>
+                              <div className="px-0.5 py-1 text-center">✕</div>
                             </div>
-                              {brokerItems.map((item, idx) => {
-                              // "Total" per line = Amount when line.amount already includes PPN
-                              // (typical Indonesian forwarder invoice), or Amount + PPN when
-                              // supplier issues DPP + PPN separately. Detected via ppn_treatment.
-                              const lineTotal = item.ppn_treatment === 'included' || item.dpp_amount != null
-                                ? (item.amount || 0)                             // amount is the gross
-                                : (item.amount || 0) + (item.ppn_amount || 0);   // classic excluded
-                              const dppDisplay = item.dpp_amount ?? item.amount ?? 0;
-                              const rateDisplay = item.ppn_rate ?? (item.amount ? Math.round(((item.ppn_amount||0)/(item.dpp_amount||item.amount)) * 100) : 11);
+                            {brokerItems.map((item, idx) => {
+                              // Line Total (per user brief) = Amount + DDP + PPN Amount.
+                              // NO conditionals — every line uses the same formula so what the
+                              // user sees is what the Payable calc uses.
+                              const lineTotal =
+                                  (item.amount     || 0)
+                                + (item.dpp_amount || 0)
+                                + (item.ppn_amount || 0);
+                              const rateDisplay = item.ppn_rate ?? 0;
+                              const isManual = item.ppn_treatment === 'included';
                               return (
                                 <div key={idx}
                                   className={`${grid} items-stretch border-b border-gray-200 last:border-b-0 hover:bg-blue-50/40 group`}>
-                                  <div className="border-r border-gray-200 flex items-center justify-center h-[32px] text-[11px] text-gray-500 font-medium">
+                                  <div className="border-r border-gray-200 flex items-center justify-center h-[30px] text-[10px] text-gray-500 font-medium">
                                     {idx + 1}
                                   </div>
-                                  {/* Sub-supplier — SearchableSelect flush inside cell */}
-                                  <div className="border-r border-gray-200 [&_button]:!rounded-none [&_button]:!border-0 [&_button]:!shadow-none [&_button]:!bg-transparent [&_button]:!h-[32px] [&_button]:!py-0 [&_button]:!px-2 [&_button]:!text-[11px]">
+                                  {/* Supplier */}
+                                  <div className="border-r border-gray-200 [&_button]:!rounded-none [&_button]:!border-0 [&_button]:!shadow-none [&_button]:!bg-transparent [&_button]:!h-[30px] [&_button]:!py-0 [&_button]:!px-2 [&_button]:!text-[11px]">
                                     <SearchableSelect
                                       value={item.supplier_id || ''}
-                                      onChange={(val) => {
-                                        // Only assign supplier — do NOT auto-touch DPP/rate/PPN.
-                                        // Rate stays whatever the user set; typical Indonesian
-                                        // forwarders bill 11%, but we don't force it.
-                                        updateLine(idx, { supplier_id: val || null });
-                                      }}
+                                      onChange={(val) => updateLine(idx, { supplier_id: val || null })}
                                       options={[
                                         { value: '', label: '— None —' },
                                         ...suppliers.map(s => ({ value: s.id, label: `${s.company_name}${s.pkp_status ? ' ✓PKP' : ''}` })),
@@ -2916,31 +2960,37 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                       placeholder="Search..."
                                     />
                                   </div>
+                                  {/* Invoice No */}
                                   <div className="border-r border-gray-200">
                                     <input type="text" value={item.invoice_number || ''}
                                       onChange={(e) => updateLine(idx, { invoice_number: e.target.value })}
                                       className={cellInputCls} placeholder="—" />
                                   </div>
-                                  {/* Amount — gross line total (what the sub-supplier billed) */}
+                                  {/* Tax Invoice # (Faktur Pajak) */}
+                                  <div className="border-r border-gray-200">
+                                    <input type="text" value={item.tax_invoice_number || ''}
+                                      onChange={(e) => updateLine(idx, { tax_invoice_number: e.target.value })}
+                                      className={cellInputCls} placeholder="—" title="Faktur Pajak number" />
+                                  </div>
+                                  {/* Invoice Date */}
+                                  <div className="border-r border-gray-200">
+                                    <input type="date" value={item.invoice_date || ''}
+                                      onChange={(e) => updateLine(idx, { invoice_date: e.target.value })}
+                                      className={cellInputCls + ' font-mono'} />
+                                  </div>
+                                  {/* Amount — independent input */}
                                   <div className="border-r border-gray-200">
                                     <MoneyInput value={item.amount} placeholder="0"
-                                      onChange={(amt) => {
-                                        // When user enters Amount, seed DPP = Amount if DPP was untouched,
-                                        // then let PPN auto-recalc from the seeded DPP + current rate.
-                                        const dppNeedsSeed = item.dpp_amount == null || item.dpp_amount === item.amount;
-                                        const patch: Partial<BrokerItem> = { amount: amt };
-                                        if (dppNeedsSeed) patch.dpp_amount = amt;
-                                        updateLine(idx, patch);
-                                      }}
+                                      onChange={(amt) => updateLine(idx, { amount: amt })}
                                       className={cellInputCls + ' text-right font-mono'} />
                                   </div>
-                                  {/* DPP — Dasar Pengenaan Pajak */}
+                                  {/* DDP — independent input; Auto mode PPN recomputes from this */}
                                   <div className="border-r border-gray-200">
-                                    <MoneyInput value={dppDisplay} placeholder="0"
+                                    <MoneyInput value={item.dpp_amount ?? 0} placeholder="0"
                                       onChange={(v) => updateLine(idx, { dpp_amount: v })}
                                       className={cellInputCls + ' text-right font-mono text-gray-700'} />
                                   </div>
-                                  {/* PPN % — typing 11 → PPN Amt auto = DPP × 11% */}
+                                  {/* PPN % — typing 11 → PPN Amt = DDP × 11% (Auto) */}
                                   <div className="border-r border-gray-200">
                                     <input type="number" min="0" max="100" step="0.5"
                                       value={rateDisplay === 0 ? '' : rateDisplay}
@@ -2950,16 +3000,22 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                       }}
                                       className={cellInputCls + ' text-center font-mono'} placeholder="0" />
                                   </div>
-                                  {/* PPN Amount — editable; manual edit sticks */}
-                                  <div className="border-r border-gray-200">
+                                  {/* PPN Amount — editing this flips row to Manual mode */}
+                                  <div className="border-r border-gray-200 relative">
                                     <MoneyInput value={item.ppn_amount} placeholder="0"
                                       onChange={(v) => updateLine(idx, { ppn_amount: v })}
-                                      className={cellInputCls + ' text-right font-mono text-blue-700'} />
+                                      className={cellInputCls + ` text-right font-mono ${isManual ? 'text-amber-700' : 'text-blue-700'}`}
+                                      title={isManual ? 'Manual mode — edit DDP or PPN% to return to Auto' : 'Auto = DDP × PPN%'} />
+                                    {isManual && (
+                                      <span className="absolute right-1 top-0.5 text-[8px] font-bold text-amber-600 uppercase tracking-wide pointer-events-none">M</span>
+                                    )}
                                   </div>
-                                  <div className="border-r border-gray-200 flex items-center justify-end px-2 h-[32px] font-mono text-[11px] text-gray-800">
+                                  {/* Total = Amount + DDP + PPN (per user brief) */}
+                                  <div className="border-r border-gray-200 flex items-center justify-end px-2 h-[30px] font-mono text-[11px] font-semibold text-gray-900">
                                     {lineTotal ? lineTotal.toLocaleString('id-ID') : ''}
                                   </div>
-                                  <div className="flex items-center justify-center h-[32px]">
+                                  {/* Delete */}
+                                  <div className="flex items-center justify-center h-[30px]">
                                     <button type="button" onClick={() => removeLine(idx)}
                                       className="text-red-500 hover:text-red-700 p-0.5" title="Remove line" tabIndex={-1}>
                                       <Trash2 className="w-3 h-3" />
@@ -2970,25 +3026,29 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             })}
                             {/* Footer totals row */}
                             <div className={`${grid} bg-gray-50 border-t border-gray-300 text-[11px] font-semibold text-gray-700`}>
-                              <div className="border-r border-gray-300 px-1.5 py-1 text-center"></div>
-                              <div className="border-r border-gray-300 px-1.5 py-1">Total ({brokerItems.length} lines)</div>
+                              <div className="border-r border-gray-300 px-1 py-1 text-center"></div>
+                              <div className="border-r border-gray-300 px-1.5 py-1">Reimbursement Total ({brokerItems.length})</div>
                               <div className="border-r border-gray-300 px-1.5 py-1"></div>
-                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{reimbTotal.toLocaleString('id-ID')}</div>
-                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{totalLineDpp.toLocaleString('id-ID')}</div>
                               <div className="border-r border-gray-300 px-1.5 py-1"></div>
-                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-blue-700">{totalLinePpn.toLocaleString('id-ID')}</div>
-                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{(reimbTotal + totalLinePpn).toLocaleString('id-ID')}</div>
+                              <div className="border-r border-gray-300 px-1.5 py-1"></div>
+                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{reimbAmount.toLocaleString('id-ID')}</div>
+                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{reimbDpp.toLocaleString('id-ID')}</div>
+                              <div className="border-r border-gray-300 px-1 py-1"></div>
+                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-blue-700">{reimbPpn.toLocaleString('id-ID')}</div>
+                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{(reimbAmount + reimbDpp + reimbPpn).toLocaleString('id-ID')}</div>
                               <div></div>
                             </div>
                           </div>
                         )}
 
-                        {/* Payment Summary — Broker Invoice + Reimb + PPN − PPh + Stamp = Payable */}
+                        {/* Payment Summary — Broker Invoice + Header DDP + Reimb Amt + Reimb DDP + PPN − PPh + Stamp = Payable */}
                         {(() => {
                           type FormulaCell = { label: string; value: number; valueColor: string; op?: string };
                           const cells: FormulaCell[] = [
                             { label: 'Broker Invoice',      value: brokerInvoiceAmount, valueColor: 'text-gray-900', op: '+' },
-                            { label: 'Reimbursement Total', value: reimbTotal,          valueColor: 'text-gray-900', op: '+' },
+                            { label: 'Header DDP',          value: brokerHeaderDdp,     valueColor: 'text-gray-700', op: '+' },
+                            { label: 'Reimb. Amount',       value: reimbAmount,         valueColor: 'text-gray-900', op: '+' },
+                            { label: 'Reimb. DDP',          value: reimbDpp,            valueColor: 'text-gray-700', op: '+' },
                             { label: 'PPN (Total)',         value: totalPpn,            valueColor: 'text-blue-700', op: '−' },
                             { label: 'PPh Withheld',        value: parentPph,           valueColor: 'text-orange-700', op: '+' },
                             { label: 'Stamp Duty',          value: parentStamp,         valueColor: 'text-gray-900' },

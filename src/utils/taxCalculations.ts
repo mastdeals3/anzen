@@ -121,6 +121,10 @@ export interface BrokerItem {
   supplier_id?: string | null;
   invoice_number?: string | null;
   invoice_date?: string | null;
+  // Faktur Pajak (Indonesian tax invoice) number — separate from commercial
+  // invoice_number since a supplier's tax invoice # differs from their
+  // commercial invoice #. Both are captured for the Input PPN report.
+  tax_invoice_number?: string | null;
   ppn_treatment?: BrokerPpnTreatment;
   ppn_amount?: number;
   // ── Indonesian tax invoice fields (added 2026-07-07) ──
