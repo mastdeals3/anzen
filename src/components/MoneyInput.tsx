@@ -83,8 +83,14 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function
 ) {
   const [focused, setFocused] = useState(false);
   const numeric = Number(value ?? 0);
-  const showEmpty = hideZero && numeric === 0 && !focused;
+  // Show empty whenever the value is exactly zero, even on focus. Otherwise
+  // clicking a "0" field and typing 5 produces "05" (the "0" sat there when
+  // the keypress fired). Empty-display + typing-5 → "5" immediately.
+  // The `focused` var is retained so consumers passing `hideZero={false}` can
+  // still opt into always-formatted display.
+  const showEmpty = hideZero && numeric === 0;
   const display = showEmpty ? '' : formatId(numeric, decimal);
+  void focused; // referenced only by handlers below; kept for onFocus/onBlur tracking
 
   return (
     <input

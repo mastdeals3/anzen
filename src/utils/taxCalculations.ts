@@ -123,6 +123,13 @@ export interface BrokerItem {
   invoice_date?: string | null;
   ppn_treatment?: BrokerPpnTreatment;
   ppn_amount?: number;
+  // ── Indonesian tax invoice fields (added 2026-07-07) ──
+  // dpp_amount   = Dasar Pengenaan Pajak (taxable base). If NULL, treated as
+  //                = line.amount for legacy rows.
+  // ppn_rate     = tax rate as percentage (0, 11, 12, custom). NULL for legacy.
+  // Line PPN Amount = round(dpp_amount * ppn_rate / 100) unless manually overridden.
+  dpp_amount?: number;
+  ppn_rate?: number;
   npwp?: string | null;
   container_reference?: string | null;
   attachment_path?: string | null;
