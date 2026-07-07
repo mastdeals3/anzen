@@ -6,6 +6,7 @@ import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinanceModal } from './FinanceModal';
 import { FormSection, F_LABEL, F_INPUT, F_INPUT_MONEY, F_SELECT, F_TEXTAREA, F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
+import { getCategoryFieldRules } from './categoryFieldRules';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -454,6 +455,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [selectedDocType, setSelectedDocType] = useState<DocumentType | ''>('');
   const [brokerItems, setBrokerItems] = useState<BrokerItem[]>([]);
+  // Category-driven pickers (2026-07-08) — Staff Master + Utility Master.
+  // These are pure UI selectors; the underlying finance_expenses.supplier_id
+  // column stays as-is (utilities resolve through the linked supplier;
+  // staff rows leave supplier_id null and prefix the description with the
+  // staff name for traceability).
+  const [staffRoster, setStaffRoster] = useState<Array<{ id: string; full_name: string; department: string | null; default_gl_code: string | null }>>([]);
+  const [utilityRoster, setUtilityRoster] = useState<Array<{ id: string; provider_name: string; utility_type: string; supplier_id: string | null; default_gl_code: string | null }>>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<string>('');
+  const [selectedUtilityId, setSelectedUtilityId] = useState<string>('');
+  const [periodLabel, setPeriodLabel] = useState<string>('');   // Salary Month / Billing Month
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
   // Quick Add Supplier modal
   const [showQuickAddSupplier, setShowQuickAddSupplier] = useState(false);
@@ -816,6 +827,24 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           .order('company_name');
         setSuppliers((sup as Supplier[]) || []);
       }
+      // Staff Master + Utility Master (dynamic form pickers).
+      // Non-blocking — if the tables aren't deployed yet we degrade gracefully.
+      if (staffRoster.length === 0) {
+        const { data: staff } = await supabase
+          .from('finance_staff_master')
+          .select('id, full_name, department, default_gl_code')
+          .eq('status', 'active')
+          .order('full_name');
+        if (staff) setStaffRoster(staff);
+      }
+      if (utilityRoster.length === 0) {
+        const { data: utl } = await supabase
+          .from('finance_utility_master')
+          .select('id, provider_name, utility_type, supplier_id, default_gl_code')
+          .eq('status', 'active')
+          .order('provider_name');
+        if (utl) setUtilityRoster(utl);
+      }
     } catch (error: any) {
       console.error('Error loading data:', error.message);
       alert('Failed to load expenses');
@@ -977,12 +1006,31 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       // import cost categories (freight, duty, etc.) still zero out those
       // header tax fields — that logic is unchanged.
       const persistHeaderTax = !isPib && (!isImportCategory || isBrokerInvoice);
+      // Dynamic-form prefix — inject Staff / Utility name and period into
+      // description for ledger traceability. Prefix is added ONLY when the
+      // category dictates and only if the user has not already typed the same
+      // value at the start of description.
+      const rules = getCategoryFieldRules(formData.expense_category);
+      let composedDescription = (formData.description || '').trim();
+      if (rules.staff === 'show' && selectedStaffId) {
+        const s = staffRoster.find(x => x.id === selectedStaffId);
+        if (s) {
+          const tag = `[${s.full_name}${periodLabel ? ' · ' + periodLabel : ''}]`;
+          if (!composedDescription.startsWith(tag)) composedDescription = `${tag} ${composedDescription}`.trim();
+        }
+      } else if (rules.utility === 'show' && selectedUtilityId) {
+        const u = utilityRoster.find(x => x.id === selectedUtilityId);
+        if (u) {
+          const tag = `[${u.provider_name}${periodLabel ? ' · ' + periodLabel : ''}]`;
+          if (!composedDescription.startsWith(tag)) composedDescription = `${tag} ${composedDescription}`.trim();
+        }
+      }
       const expenseData = {
         expense_category: formData.expense_category,
         expense_type: category?.type || 'admin',
         amount: formData.amount,
         expense_date: formData.expense_date,
-        description: formData.description || null,
+        description: composedDescription || null,
         batch_id: formData.batch_id || null,
         import_container_id: formData.import_container_id || null,
         delivery_challan_id: formData.delivery_challan_id || null,
@@ -1568,6 +1616,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     setSelectedSupplier(null);
     setSelectedDocType('');
     setBrokerItems([]);
+    setSelectedStaffId('');
+    setSelectedUtilityId('');
+    setPeriodLabel('');
     setFormData({
       expense_category: 'other',
       amount: 0,
@@ -2325,38 +2376,88 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             {/* ── Horizontal header rows (matches the mockup layout) ── */}
             <div className="pb-2 border-b space-y-2">
 
-              {/* Row 1: Supplier | Inv No | Inv Date | Due Date | Category */}
+              {/* Row 1: Category-driven picker | Inv No | Inv Date | Due Date | Category */}
+              {(() => {
+                const rules = getCategoryFieldRules(formData.expense_category);
+                return (
               <div className="grid grid-cols-12 gap-2">
-                {/* Supplier (4 cols) — "Create X" appears inline in dropdown */}
+                {/* Column 1 (4 cols) — driven by category rules */}
                 <div className="col-span-4">
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Supplier{selectedDocType === 'Import / Customs Broker Invoice' ? ' (Broker)' : ''}</label>
-                  <div className="flex-1 min-w-0">
-                    <SearchableSelect
-                      value={formData.supplier_id}
-                      onChange={(val) => handleSupplierSelect(val)}
-                      options={[
-                        { value: '', label: '— None (misc / petty cash) —' },
-                        ...suppliers.map((s) => ({
-                          value: s.id,
-                          label: `${s.company_name}${s.pkp_status ? ' ✓PKP' : ''}`,
-                        })),
-                      ]}
-                      placeholder="Search supplier..."
-                      className="border-gray-300 text-sm py-1.5"
-                      onCreateNew={(name) => {
-                        setQuickAddSupplierName(name);
-                        setShowQuickAddSupplier(true);
-                      }}
-                    />
-                  </div>
-                  {selectedSupplier && (
-                    <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
-                      {selectedSupplier.pkp_status && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded font-medium">PKP 11%</span>}
-                      {selectedSupplier.payment_terms_days ? <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">Net {selectedSupplier.payment_terms_days}d</span> : null}
-                      {selectedSupplier.tax_preference && selectedSupplier.tax_preference !== 'none' && (
-                        <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium capitalize">{selectedSupplier.tax_preference.replace(/_/g,' ')}</span>
+                  {rules.staff === 'show' ? (
+                    <>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Staff <span className="text-red-500">*</span></label>
+                      <SearchableSelect
+                        value={selectedStaffId}
+                        onChange={(val) => {
+                          setSelectedStaffId(val);
+                          // Staff rows do NOT set finance_expenses.supplier_id — leave it null.
+                          // The staff name flows into the description on save for ledger traceability.
+                          setFormData(prev => ({ ...prev, supplier_id: '' }));
+                          setSelectedSupplier(null);
+                        }}
+                        options={[
+                          { value: '', label: '— None —' },
+                          ...staffRoster.map(s => ({ value: s.id, label: `${s.full_name}${s.department ? ' · ' + s.department : ''}` })),
+                        ]}
+                        placeholder="Search staff..."
+                      />
+                    </>
+                  ) : rules.utility === 'show' ? (
+                    <>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Utility Provider <span className="text-red-500">*</span></label>
+                      <SearchableSelect
+                        value={selectedUtilityId}
+                        onChange={(val) => {
+                          setSelectedUtilityId(val);
+                          // Utility rows resolve to a supplier when the master has one linked.
+                          // Otherwise leave supplier_id null; the provider name goes into description.
+                          const util = utilityRoster.find(u => u.id === val);
+                          if (util?.supplier_id) {
+                            handleSupplierSelect(util.supplier_id);
+                          } else {
+                            setFormData(prev => ({ ...prev, supplier_id: '' }));
+                            setSelectedSupplier(null);
+                          }
+                        }}
+                        options={[
+                          { value: '', label: '— None —' },
+                          ...utilityRoster.map(u => ({ value: u.id, label: `${u.provider_name} · ${u.utility_type}` })),
+                        ]}
+                        placeholder="Search utility..."
+                      />
+                    </>
+                  ) : rules.supplier !== 'hide' && (
+                    <>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Supplier{selectedDocType === 'Import / Customs Broker Invoice' ? ' (Broker)' : ''}{rules.supplier === 'show' ? '' : ' (optional)'}</label>
+                      <div className="flex-1 min-w-0">
+                        <SearchableSelect
+                          value={formData.supplier_id}
+                          onChange={(val) => handleSupplierSelect(val)}
+                          options={[
+                            { value: '', label: '— None (misc / petty cash) —' },
+                            ...suppliers.map((s) => ({
+                              value: s.id,
+                              label: `${s.company_name}${s.pkp_status ? ' ✓PKP' : ''}`,
+                            })),
+                          ]}
+                          placeholder="Search supplier..."
+                          className="border-gray-300 text-sm py-1.5"
+                          onCreateNew={(name) => {
+                            setQuickAddSupplierName(name);
+                            setShowQuickAddSupplier(true);
+                          }}
+                        />
+                      </div>
+                      {selectedSupplier && (
+                        <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
+                          {selectedSupplier.pkp_status && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded font-medium">PKP 11%</span>}
+                          {selectedSupplier.payment_terms_days ? <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">Net {selectedSupplier.payment_terms_days}d</span> : null}
+                          {selectedSupplier.tax_preference && selectedSupplier.tax_preference !== 'none' && (
+                            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium capitalize">{selectedSupplier.tax_preference.replace(/_/g,' ')}</span>
+                          )}
+                        </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
 
@@ -2419,6 +2520,26 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   />
                 </div>
               </div>
+                );
+              })()}
+
+              {/* Row 1b (conditional) — Salary Month / Billing Month */}
+              {(() => {
+                const rules = getCategoryFieldRules(formData.expense_category);
+                if (rules.salaryMonth !== 'show' && rules.billingMonth !== 'show') return null;
+                return (
+                  <div className="grid grid-cols-12 gap-2">
+                    <div className="col-span-4">
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                        {rules.salaryMonth === 'show' ? 'Salary Month' : 'Billing Month'}
+                      </label>
+                      <input type="month" value={periodLabel}
+                        onChange={(e) => setPeriodLabel(e.target.value)}
+                        className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Row 2: Invoice Amount | PPN | PPh Withheld | PPh Code | Stamp Duty | Reference | Description */}
               {(() => {

@@ -25,6 +25,8 @@ const BankReconciliation = lazy(() => import('../components/finance/BankReconcil
 const ChartOfAccountsManager = lazy(() => import('../components/finance/ChartOfAccountsManager').then(m => ({ default: m.ChartOfAccountsManager })));
 const SuppliersManager = lazy(() => import('../components/finance/SuppliersManager').then(m => ({ default: m.SuppliersManager })));
 const BankAccountsManager = lazy(() => import('../components/finance/BankAccountsManager').then(m => ({ default: m.BankAccountsManager })));
+const StaffMasterManager = lazy(() => import('../components/finance/StaffMasterManager').then(m => ({ default: m.StaffMasterManager })));
+const UtilityMasterManager = lazy(() => import('../components/finance/UtilityMasterManager').then(m => ({ default: m.UtilityMasterManager })));
 const TaxReports = lazy(() => import('../components/finance/TaxReports').then(m => ({ default: m.TaxReports })));
 const CAReports = lazy(() => import('../components/finance/CAReports').then(m => ({ default: m.CAReports })));
 const GeneralJournalEntry = lazy(() => import('../components/finance/GeneralJournalEntry').then(m => ({ default: m.GeneralJournalEntry })));
@@ -34,13 +36,13 @@ type FinanceTab =
   | 'purchase' | 'receipt' | 'payment' | 'journal' | 'contra' | 'expenses' | 'petty_cash'
   | 'ledger' | 'journal_register' | 'bank_ledger' | 'party_ledger' | 'bank_recon'
   | 'trial_balance' | 'pnl' | 'balance_sheet' | 'receivables' | 'payables' | 'ageing' | 'tax' | 'ca_reports' | 'integrity_monitor'
-  | 'coa' | 'customers' | 'suppliers' | 'products' | 'banks';
+  | 'coa' | 'customers' | 'suppliers' | 'products' | 'banks' | 'staff_master' | 'utility_master';
 
 const FINANCE_TABS: readonly FinanceTab[] = [
   'purchase', 'receipt', 'payment', 'journal', 'contra', 'expenses', 'petty_cash',
   'ledger', 'journal_register', 'bank_ledger', 'party_ledger', 'bank_recon',
   'trial_balance', 'pnl', 'balance_sheet', 'receivables', 'payables', 'ageing', 'tax', 'ca_reports', 'integrity_monitor',
-  'coa', 'customers', 'suppliers', 'products', 'banks',
+  'coa', 'customers', 'suppliers', 'products', 'banks', 'staff_master', 'utility_master',
 ];
 const DEFAULT_FINANCE_TAB: FinanceTab = 'purchase';
 
@@ -103,6 +105,8 @@ const getFinanceMenu = (t: Record<string, Record<string, string>>): MenuGroup[] 
       { id: 'coa', label: t.finance.chartOfAccounts },
       { id: 'suppliers', label: t.finance.suppliers },
       { id: 'banks', label: t.finance.banks },
+      { id: 'staff_master', label: 'Staff Master' },
+      { id: 'utility_master', label: 'Utility Master' },
     ]
   }
 ];
@@ -325,6 +329,10 @@ function FinanceContent() {
         return <SuppliersManager canManage={canManage} />;
       case 'banks':
         return <BankAccountsManager canManage={canManage} />;
+      case 'staff_master':
+        return <StaffMasterManager canManage={canManage} />;
+      case 'utility_master':
+        return <UtilityMasterManager canManage={canManage} />;
       default:
         return <div className="text-center p-8 text-gray-500">{t?.common?.noData || 'No data available'}</div>;
     }
