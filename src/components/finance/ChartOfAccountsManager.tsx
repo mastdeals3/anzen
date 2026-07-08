@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Edit, Trash2, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { Modal } from '../Modal';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 
 interface Account {
   id: string;
@@ -261,119 +262,81 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
       </div>
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingAccount ? 'Edit Account' : 'Add Account'}>
-        <form onSubmit={handleSubmit} className="space-y-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Code *</label>
-              <input
-                type="text"
-                required
-                value={formData.code}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-1.5">
+          <SapRow>
+            <SapField label="Code" required span={4}>
+              <input type="text" required value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                placeholder="e.g., 1101"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Type *</label>
-              <select
-                required
-                value={formData.account_type}
+                className={SAP_INPUT + ' !font-mono'} placeholder="e.g., 1101" />
+            </SapField>
+            <SapField label="Type" required span={4}>
+              <select required value={formData.account_type}
                 onChange={(e) => setFormData({ ...formData, account_type: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              >
+                className={SAP_INPUT}>
                 {accountTypes.map(type => (
                   <option key={type.value} value={type.value}>{type.label}</option>
                 ))}
               </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Name (English) *</label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Name (Indonesian)</label>
-            <input
-              type="text"
-              value={formData.name_id}
-              onChange={(e) => setFormData({ ...formData, name_id: e.target.value })}
-              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Group</label>
-              <input
-                type="text"
-                value={formData.account_group}
-                onChange={(e) => setFormData({ ...formData, account_group: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Normal Balance *</label>
-              <select
-                required
-                value={formData.normal_balance}
+            </SapField>
+            <SapField label="Normal" required span={4}>
+              <select required value={formData.normal_balance}
                 onChange={(e) => setFormData({ ...formData, normal_balance: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              >
+                className={SAP_INPUT}>
                 <option value="debit">Debit</option>
                 <option value="credit">Credit</option>
               </select>
-            </div>
-          </div>
+            </SapField>
+          </SapRow>
+          <SapRow>
+            <SapField label="Name (EN)" required span={6}>
+              <input type="text" required value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className={SAP_INPUT} />
+            </SapField>
+            <SapField label="Name (ID)" span={6}>
+              <input type="text" value={formData.name_id}
+                onChange={(e) => setFormData({ ...formData, name_id: e.target.value })}
+                className={SAP_INPUT} />
+            </SapField>
+          </SapRow>
+          <SapRow>
+            <SapField label="Group" span={4}>
+              <input type="text" value={formData.account_group}
+                onChange={(e) => setFormData({ ...formData, account_group: e.target.value })}
+                className={SAP_INPUT} />
+            </SapField>
+            <SapField label="Parent" span={8}>
+              <select value={formData.parent_id}
+                onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
+                className={SAP_INPUT}>
+                <option value="">None (Top Level)</option>
+                {accounts.filter(a => a.is_header).map(a => (
+                  <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                ))}
+              </select>
+            </SapField>
+          </SapRow>
+          <SapRow>
+            <SapField label="Header" span={4}>
+              <label className="flex items-center gap-1.5 h-7 px-1 text-[11px]">
+                <input type="checkbox" checked={formData.is_header}
+                  onChange={(e) => setFormData({ ...formData, is_header: e.target.checked })}
+                  className="rounded" />
+                <span>Group only (no posting)</span>
+              </label>
+            </SapField>
+            <SapField label="Description" span={8}>
+              <input type="text" value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className={SAP_INPUT} />
+            </SapField>
+          </SapRow>
 
-          <div>
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Parent Account</label>
-            <select
-              value={formData.parent_id}
-              onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
-              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-            >
-              <option value="">None (Top Level)</option>
-              {accounts.filter(a => a.is_header).map(a => (
-                <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="is_header"
-              checked={formData.is_header}
-              onChange={(e) => setFormData({ ...formData, is_header: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="is_header" className="text-sm text-gray-700">This is a header/group account (not for posting)</label>
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              rows={2}
-            />
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-gray-700 border rounded-lg hover:bg-gray-50">
-              Cancel
-            </button>
-            <button type="submit" className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
+            <button type="button" onClick={() => setModalOpen(false)}
+              className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
+            <button type="submit"
+              className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
               {editingAccount ? 'Update' : 'Create'} Account
             </button>
           </div>

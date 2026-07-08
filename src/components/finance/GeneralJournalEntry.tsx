@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { showToast } from '../ToastNotification';
 import { Modal } from '../Modal';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { parseIndonesianNumber, formatNumber } from '../../utils/currency';
 
 interface Account {
@@ -522,29 +523,21 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
 
       {canManage && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          {/* Entry header */}
-          <div className="p-4 border-b border-gray-100">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={entryDate}
+          {/* Entry header — SAP B1 layout */}
+          <div className="p-2 border-b border-gray-100">
+            <SapRow>
+              <SapField label="Date" required span={4}>
+                <input type="date" value={entryDate}
                   onChange={e => setEntryDate(e.target.value)}
-                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Narration / Description</label>
-                <input
-                  type="text"
-                  value={narration}
+                  className={SAP_INPUT} />
+              </SapField>
+              <SapField label="Narration" span={8}>
+                <input type="text" value={narration}
                   onChange={e => setNarration(e.target.value)}
                   placeholder="e.g. Loan received from Bank BCA"
-                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            </div>
+                  className={SAP_INPUT} />
+              </SapField>
+            </SapRow>
           </div>
 
           {/* Journal lines grid */}

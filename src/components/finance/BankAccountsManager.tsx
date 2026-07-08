@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DataTable } from '../DataTable';
 import { Modal } from '../Modal';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { Plus, Edit } from 'lucide-react';
 
 interface BankAccount {
@@ -207,119 +208,68 @@ export function BankAccountsManager({ canManage }: Props) {
         onClose={() => { setModalOpen(false); resetForm(); }}
         title={editingAccount ? 'Edit Bank Account' : 'Add Bank Account'}
       >
-        <form onSubmit={handleSubmit} className="space-y-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Name *</label>
-              <input
-                type="text"
-                value={formData.account_name}
-                onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Name *</label>
-              <input
-                type="text"
-                value={formData.bank_name}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-1.5">
+          <SapRow>
+            <SapField label="Bank Name" required span={4}>
+              <input type="text" value={formData.bank_name}
                 onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Display Alias</label>
-              <input
-                type="text"
-                value={formData.alias}
+                className={SAP_INPUT} required />
+            </SapField>
+            <SapField label="Account Name" required span={4}>
+              <input type="text" value={formData.account_name}
+                onChange={(e) => setFormData({ ...formData, account_name: e.target.value })}
+                className={SAP_INPUT} required />
+            </SapField>
+            <SapField label="Alias" span={4}>
+              <input type="text" value={formData.alias}
                 onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., BCA IDR, Mandiri USD"
-              />
-              <p className="text-xs text-gray-500 mt-1">Short name for easier identification in lists</p>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Number *</label>
-              <input
-                type="text"
-                value={formData.account_number}
+                className={SAP_INPUT} placeholder="BCA IDR, Mandiri USD" />
+            </SapField>
+          </SapRow>
+          <SapRow>
+            <SapField label="Account #" required span={4}>
+              <input type="text" value={formData.account_number}
                 onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account Type *</label>
-              <select
-                value={formData.account_type}
+                className={SAP_INPUT + ' !font-mono'} required />
+            </SapField>
+            <SapField label="Type" required span={4}>
+              <select value={formData.account_type}
                 onChange={(e) => setFormData({ ...formData, account_type: e.target.value as any })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                required
-              >
+                className={SAP_INPUT} required>
                 <option value="savings">Savings</option>
                 <option value="current">Current</option>
                 <option value="credit_card">Credit Card</option>
                 <option value="other">Other</option>
               </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Currency *</label>
-              <select
-                value={formData.currency}
+            </SapField>
+            <SapField label="Currency" required span={4}>
+              <select value={formData.currency}
                 onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="IDR">IDR (Indonesian Rupiah)</option>
-                <option value="USD">USD (US Dollar)</option>
+                className={SAP_INPUT} required>
+                <option value="IDR">IDR</option>
+                <option value="USD">USD</option>
               </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Opening Balance</label>
-              <input
-                type="number"
+            </SapField>
+          </SapRow>
+          <SapRow>
+            <SapField label="Open Bal" span={6}>
+              <input type="number" step="0.01" placeholder="0"
                 value={formData.opening_balance === 0 ? '' : formData.opening_balance}
                 onChange={(e) => setFormData({ ...formData, opening_balance: e.target.value === '' ? 0 : Number(e.target.value) })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                step="0.01"
-                placeholder="0"
-              />
-              <p className="text-xs text-gray-500 mt-1">Leave blank if opening balance is zero</p>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Opening Balance Date *</label>
-              <input
-                type="date"
-                value={formData.opening_balance_date}
+                className={SAP_INPUT + ' !text-right !font-mono'} />
+            </SapField>
+            <SapField label="Open Date" required span={6}>
+              <input type="date" value={formData.opening_balance_date}
                 onChange={(e) => setFormData({ ...formData, opening_balance_date: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">Date when the opening balance is effective</p>
-            </div>
-          </div>
+                className={SAP_INPUT} required />
+            </SapField>
+          </SapRow>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={() => { setModalOpen(false); resetForm(); }}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="h-7 px-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
+            <button type="button" onClick={() => { setModalOpen(false); resetForm(); }}
+              className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
+            <button type="submit"
+              className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
               {editingAccount ? 'Update' : 'Add'} Account
             </button>
           </div>

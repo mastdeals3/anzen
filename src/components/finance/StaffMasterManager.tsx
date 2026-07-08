@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
 import { Modal } from '../Modal';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 
@@ -222,60 +223,57 @@ export function StaffMasterManager({ canManage }: Props) {
       {modalOpen && (
         <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); reset(); }}
           title={editing ? `Edit Staff: ${editing.full_name}` : 'New Staff'} maxWidth="max-w-lg">
-          <form onSubmit={save} className="space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="col-span-2">
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Full Name <span className="text-red-500">*</span></label>
+          <form onSubmit={save} className="flex flex-col gap-1.5">
+            <SapRow>
+              <SapField label="Full Name" required span={8}>
                 <input required value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Employee Code</label>
+                  className={SAP_INPUT} />
+              </SapField>
+              <SapField label="Emp Code" span={4}>
                 <input value={form.employee_code} onChange={e => setForm({ ...form, employee_code: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Department</label>
+                  className={SAP_INPUT} />
+              </SapField>
+            </SapRow>
+            <SapRow>
+              <SapField label="Department" span={6}>
                 <input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Default GL Code</label>
-                <input value={form.default_gl_code} onChange={e => setForm({ ...form, default_gl_code: e.target.value })}
-                  placeholder="e.g. 6100"
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white font-mono" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Default GL Name</label>
-                <input value={form.default_gl_name} onChange={e => setForm({ ...form, default_gl_name: e.target.value })}
-                  placeholder="Salary Expense"
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">NPWP</label>
-                <input value={form.npwp} onChange={e => setForm({ ...form, npwp: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white font-mono" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Status</label>
+                  className={SAP_INPUT} />
+              </SapField>
+              <SapField label="Status" span={6}>
                 <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as 'active' | 'inactive' })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white">
+                  className={SAP_INPUT}>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Notes</label>
-                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
-                  rows={2}
-                  className="w-full px-2 py-1 text-[11px] border border-gray-300 rounded bg-white resize-none" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
+              </SapField>
+            </SapRow>
+            <SapRow>
+              <SapField label="GL Code" span={4}>
+                <input value={form.default_gl_code} onChange={e => setForm({ ...form, default_gl_code: e.target.value })}
+                  placeholder="e.g. 6100"
+                  className={SAP_INPUT + ' !font-mono'} />
+              </SapField>
+              <SapField label="GL Name" span={4}>
+                <input value={form.default_gl_name} onChange={e => setForm({ ...form, default_gl_name: e.target.value })}
+                  placeholder="Salary Expense"
+                  className={SAP_INPUT} />
+              </SapField>
+              <SapField label="NPWP" span={4}>
+                <input value={form.npwp} onChange={e => setForm({ ...form, npwp: e.target.value })}
+                  className={SAP_INPUT + ' !font-mono'} />
+              </SapField>
+            </SapRow>
+            <SapRow>
+              <SapField label="Notes" span={12}>
+                <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
+                  className={SAP_INPUT} />
+              </SapField>
+            </SapRow>
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
               <button type="button" onClick={() => { setModalOpen(false); reset(); }}
-                className="h-7 px-2 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
+                className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
               <button type="submit"
-                className="h-7 px-2 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
+                className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
                 {editing ? 'Update' : 'Create'}
               </button>
             </div>

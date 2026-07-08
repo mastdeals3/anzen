@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Plus, Pencil, Trash2, Search, Zap } from 'lucide-react';
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 
@@ -244,66 +245,65 @@ export function UtilityMasterManager({ canManage }: Props) {
       {modalOpen && (
         <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); reset(); }}
           title={editing ? `Edit Utility: ${editing.provider_name}` : 'New Utility Provider'} maxWidth="max-w-lg">
-          <form onSubmit={save} className="space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Provider Name <span className="text-red-500">*</span></label>
+          <form onSubmit={save} className="flex flex-col gap-1.5">
+            <SapRow>
+              <SapField label="Provider" required span={8}>
                 <input required value={form.provider_name} onChange={e => setForm({ ...form, provider_name: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Utility Type</label>
+                  className={SAP_INPUT} />
+              </SapField>
+              <SapField label="Type" span={4}>
                 <select value={form.utility_type} onChange={e => setForm({ ...form, utility_type: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white">
+                  className={SAP_INPUT}>
                   {UTILITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Account / Subscriber #</label>
+              </SapField>
+            </SapRow>
+            <SapRow>
+              <SapField label="Acct #" span={6}>
                 <input value={form.account_number} onChange={e => setForm({ ...form, account_number: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white font-mono" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Status</label>
+                  className={SAP_INPUT + ' !font-mono'} />
+              </SapField>
+              <SapField label="Status" span={6}>
                 <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as 'active' | 'inactive' })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white">
+                  className={SAP_INPUT}>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Default GL Code</label>
+              </SapField>
+            </SapRow>
+            <SapRow>
+              <SapField label="GL Code" span={4}>
                 <input value={form.default_gl_code} onChange={e => setForm({ ...form, default_gl_code: e.target.value })}
                   placeholder="e.g. 6200"
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white font-mono" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Default GL Name</label>
+                  className={SAP_INPUT + ' !font-mono'} />
+              </SapField>
+              <SapField label="GL Name" span={8}>
                 <input value={form.default_gl_name} onChange={e => setForm({ ...form, default_gl_name: e.target.value })}
                   placeholder="Utilities Expense"
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Linked Supplier <span className="text-gray-400 text-[9px] normal-case">(optional — flows through AP)</span></label>
+                  className={SAP_INPUT} />
+              </SapField>
+            </SapRow>
+            <SapRow>
+              <SapField label="Supplier" span={12}>
                 <SearchableSelect
                   value={form.supplier_id}
                   onChange={(v) => setForm({ ...form, supplier_id: v })}
                   options={[{ value: '', label: '— None —' }, ...suppliers.map(s => ({ value: s.id, label: s.company_name }))]}
-                  placeholder="Search..."
+                  placeholder="Optional — links utility to AP..."
                 />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Notes</label>
-                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
-                  rows={2}
-                  className="w-full px-2 py-1 text-[11px] border border-gray-300 rounded bg-white resize-none" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
+              </SapField>
+            </SapRow>
+            <SapRow>
+              <SapField label="Notes" span={12}>
+                <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
+                  className={SAP_INPUT} />
+              </SapField>
+            </SapRow>
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
               <button type="button" onClick={() => { setModalOpen(false); reset(); }}
-                className="h-7 px-2 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
+                className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
               <button type="submit"
-                className="h-7 px-2 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
+                className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
                 {editing ? 'Update' : 'Create'}
               </button>
             </div>
