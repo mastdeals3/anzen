@@ -576,6 +576,27 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     loadData();
   }, [dateRange]);
 
+  // Retry the Staff / Utility load-back after the rosters arrive.
+  // handleEdit runs immediately on click; if the rosters were still loading
+  // at that moment the picker lookup misses. This effect re-resolves it once
+  // the roster fetch settles, without re-parsing the tag.
+  useEffect(() => {
+    if (!editingExpense) return;
+    const rules = getCategoryFieldRules(editingExpense.expense_category);
+    const desc = editingExpense.description || '';
+    const tagMatch = desc.match(/^\[([^·\]]+?)(?:\s*·\s*([^\]]+))?\]\s*/);
+    if (!tagMatch) return;
+    const name = tagMatch[1].trim();
+    if (rules.staff === 'show' && !selectedStaffId) {
+      const s = staffRoster.find(x => x.full_name === name);
+      if (s) setSelectedStaffId(s.id);
+    } else if (rules.utility === 'show' && !selectedUtilityId) {
+      const u = utilityRoster.find(x => x.provider_name === name);
+      if (u) setSelectedUtilityId(u.id);
+    }
+    // Intentional deps: react to roster arrival, not to editingExpense identity churn.
+  }, [staffRoster, utilityRoster, editingExpense]);
+
   // Realtime subscriptions via shared hook. Patch state from payload instead of
   // reloading the entire list.
   const patchExpense = (payload: any) => {
@@ -928,6 +949,18 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     console.log('Existing URLs:', formData.document_urls);
 
     try {
+      // Dynamic-form validation — Staff / Utility categories require their
+      // respective master row to be picked. Supplier categories keep the
+      // existing behaviour (supplier is optional at the DB level).
+      const preRules = getCategoryFieldRules(formData.expense_category);
+      if (preRules.staff === 'show' && !selectedStaffId) {
+        alert('Please pick a Staff member for this salary / staff expense.');
+        return;
+      }
+      if (preRules.utility === 'show' && !selectedUtilityId) {
+        alert('Please pick a Utility Provider for this utility expense.');
+        return;
+      }
       const category = expenseCategories.find(c => c.value === formData.expense_category);
 
       // PIB Import: validate that the breakdown sums to the payment amount
@@ -1390,11 +1423,37 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     // Set broker items
     setBrokerItems(expense.broker_items ?? []);
 
+    // Dynamic-form load-back — if the expense was saved as Staff or Utility,
+    // reconstruct the picker selection + period from the "[Name · Period]"
+    // description prefix so the form re-opens in the same state.
+    const rules = getCategoryFieldRules(expense.expense_category);
+    const desc = expense.description || '';
+    const tagMatch = desc.match(/^\[([^·\]]+?)(?:\s*·\s*([^\]]+))?\]\s*/);
+    let cleanedDesc = desc;
+    let loadedStaffId = '';
+    let loadedUtilityId = '';
+    let loadedPeriod = '';
+    if (tagMatch) {
+      const [full, name, period] = tagMatch;
+      cleanedDesc = desc.slice(full.length);
+      loadedPeriod = (period ?? '').trim();
+      if (rules.staff === 'show') {
+        const s = staffRoster.find(x => x.full_name === name.trim());
+        if (s) loadedStaffId = s.id;
+      } else if (rules.utility === 'show') {
+        const u = utilityRoster.find(x => x.provider_name === name.trim());
+        if (u) loadedUtilityId = u.id;
+      }
+    }
+    setSelectedStaffId(loadedStaffId);
+    setSelectedUtilityId(loadedUtilityId);
+    setPeriodLabel(loadedPeriod);
+
     setFormData({
       expense_category: expense.expense_category,
       amount: expense.amount,
       expense_date: expense.expense_date,
-      description: expense.description || '',
+      description: cleanedDesc,
       batch_id: expense.batch_id || '',
       import_container_id: expense.import_container_id || '',
       delivery_challan_id: expense.delivery_challan_id || '',
