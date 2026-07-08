@@ -8,6 +8,7 @@ import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 
@@ -770,139 +771,115 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           </>
         }
       >
-        <form id="payment-voucher-form" onSubmit={handleSubmit} className="space-y-2">
+        <form id="payment-voucher-form" onSubmit={handleSubmit} className="flex flex-col gap-1.5">
 
-          {/* Row 1: Date + Supplier */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Date *</label>
-              <input
-                type="date"
-                required
-                value={formData.voucher_date}
+          {/* Row A: Date · Supplier · Method */}
+          <SapRow>
+            <SapField label="Date" required span={4}>
+              <input type="date" required value={formData.voucher_date}
                 onChange={(e) => setFormData({ ...formData, voucher_date: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Supplier *</label>
+                className={SAP_INPUT} />
+            </SapField>
+            <SapField label="Supplier" required span={4}>
               <SearchableSelect
                 value={formData.supplier_id}
                 onChange={(val) => setFormData({ ...formData, supplier_id: val })}
                 options={suppliers.map(s => ({ value: s.id, label: s.company_name }))}
                 placeholder="Select supplier"
               />
-            </div>
-          </div>
-
-          {/* Row 2: Method + Amount */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Payment Method *</label>
-              <select
-                required
-                value={formData.payment_method}
+            </SapField>
+            <SapField label="Method" required span={4}>
+              <select required value={formData.payment_method}
                 onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              >
+                className={SAP_INPUT}>
                 <option value="cash">Cash</option>
                 <option value="bank_transfer">Bank Transfer</option>
                 <option value="check">Check</option>
                 <option value="giro">Giro</option>
                 <option value="other">Other</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                Amount{pendingInvoices.length > 0 ? ` (${invoiceCurrency})` : ''} *
-              </label>
-              <input
-                type="number"
-                required
-                step="0.01"
-                value={formData.amount || ''}
-                onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              />
-            </div>
-          </div>
+            </SapField>
+          </SapRow>
 
-          {/* Row 3: Bank Account + Reference (only for non-cash) */}
-          {formData.payment_method !== 'cash' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                  Bank Account
-                  {selectedBank && (
-                    <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+          {/* Row B: Amount · Bank Account · Reference (bank account/ref only for non-cash) */}
+          <SapRow>
+            <SapField
+              label={`Amount${pendingInvoices.length > 0 ? ` (${invoiceCurrency})` : ''}`}
+              required
+              span={formData.payment_method === 'cash' ? 12 : 4}>
+              <input type="number" required step="0.01" value={formData.amount || ''}
+                onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
+                className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} />
+            </SapField>
+            {formData.payment_method !== 'cash' && (
+              <>
+                <SapField
+                  label="Bank Account"
+                  span={4}
+                  right={selectedBank ? (
+                    <span className={`px-1 py-0.5 text-[9px] font-bold rounded ${
                       isCrossCurrency ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {selectedBank.currency || 'IDR'}
-                    </span>
-                  )}
-                </label>
-                <select
-                  value={formData.bank_account_id}
-                  onChange={(e) => setFormData({ ...formData, bank_account_id: e.target.value })}
-                  className={`w-full px-2.5 py-1.5 text-sm border rounded-lg ${
-                    currencyMismatchWithoutRate
-                      ? 'border-red-400 bg-red-50 focus:ring-red-300'
-                      : isCrossCurrency
-                        ? 'border-amber-400 focus:ring-amber-300'
-                        : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Select account</option>
-                  {pendingInvoices.length > 0 ? (
-                    <>
-                      {matchingBankAccounts.length > 0 && (
-                        <optgroup label={`✓ ${invoiceCurrency} accounts (recommended)`}>
-                          {matchingBankAccounts.map(b => (
-                            <option key={b.id} value={b.id}>
-                              {b.alias || `${b.bank_name} - ${b.account_name}`} ({b.currency || 'IDR'})
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {otherBankAccounts.length > 0 && (
-                        <optgroup label="⚠ Other currency — exchange rate required">
-                          {otherBankAccounts.map(b => (
-                            <option key={b.id} value={b.id}>
-                              {b.alias || `${b.bank_name} - ${b.account_name}`} ({b.currency || 'IDR'})
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </>
-                  ) : (
-                    bankAccounts.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.alias || `${b.bank_name} - ${b.account_name}`} ({b.currency || 'IDR'})
-                      </option>
-                    ))
-                  )}
-                </select>
-                {currencyMismatchWithoutRate && (
-                  <p className="mt-1 text-xs text-red-600 font-medium">
-                    ✗ {selectedBank?.currency} account selected for a {invoiceCurrency} invoice — enter an exchange rate below, or choose a {invoiceCurrency} account.
-                  </p>
-                )}
-                {isCrossCurrency && !currencyMismatchWithoutRate && (
-                  <p className="mt-1 text-xs text-amber-700">
-                    Cross-currency: enter exchange rate in the panel below.
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Reference No.</label>
-                <input
-                  type="text"
-                  value={formData.reference_number}
-                  onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                />
-              </div>
-            </div>
+                    }`}>{selectedBank.currency || 'IDR'}</span>
+                  ) : null}>
+                  <select
+                    value={formData.bank_account_id}
+                    onChange={(e) => setFormData({ ...formData, bank_account_id: e.target.value })}
+                    className={SAP_INPUT + (
+                      currencyMismatchWithoutRate ? ' !border-red-400 !bg-red-50'
+                      : isCrossCurrency ? ' !border-amber-400' : ''
+                    )}>
+                    <option value="">Select account</option>
+                    {pendingInvoices.length > 0 ? (
+                      <>
+                        {matchingBankAccounts.length > 0 && (
+                          <optgroup label={`✓ ${invoiceCurrency} accounts (recommended)`}>
+                            {matchingBankAccounts.map(b => (
+                              <option key={b.id} value={b.id}>
+                                {b.alias || `${b.bank_name} - ${b.account_name}`} ({b.currency || 'IDR'})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {otherBankAccounts.length > 0 && (
+                          <optgroup label="⚠ Other currency — exchange rate required">
+                            {otherBankAccounts.map(b => (
+                              <option key={b.id} value={b.id}>
+                                {b.alias || `${b.bank_name} - ${b.account_name}`} ({b.currency || 'IDR'})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </>
+                    ) : (
+                      bankAccounts.map(b => (
+                        <option key={b.id} value={b.id}>
+                          {b.alias || `${b.bank_name} - ${b.account_name}`} ({b.currency || 'IDR'})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </SapField>
+                <SapField label="Reference No" span={4}>
+                  <input type="text" value={formData.reference_number}
+                    onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
+                    className={SAP_INPUT} />
+                </SapField>
+              </>
+            )}
+          </SapRow>
+          {formData.payment_method !== 'cash' && (
+            <>
+              {currencyMismatchWithoutRate && (
+                <p className="text-[10px] text-red-600 font-medium">
+                  ✗ {selectedBank?.currency} account selected for a {invoiceCurrency} invoice — enter an exchange rate below, or choose a {invoiceCurrency} account.
+                </p>
+              )}
+              {isCrossCurrency && !currencyMismatchWithoutRate && (
+                <p className="text-[10px] text-amber-700">
+                  Cross-currency: enter exchange rate in the panel below.
+                </p>
+              )}
+            </>
           )}
 
           {/* Cross-currency panel */}
@@ -971,64 +948,55 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           )}
 
           {/* PPh + Summary */}
-          <div className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
-            <div className="grid grid-cols-2 gap-3 mb-2">
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">PPh Type</label>
-                <select
-                  value={formData.pph_code_id}
+          <div className="border-t border-gray-200 pt-2">
+            <SapRow>
+              <SapField label="PPh Type" span={6}>
+                <select value={formData.pph_code_id}
                   onChange={(e) => setFormData({ ...formData, pph_code_id: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white bg-white"
-                >
+                  className={SAP_INPUT}>
                   <option value="">No withholding</option>
                   {taxCodes.map(t => (
                     <option key={t.id} value={t.id}>{t.code} - {t.name} ({t.rate}%)</option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">PPh Amount {pendingInvoices.length > 0 ? `(${invoiceCurrency})` : ''}</label>
-                <input
-                  type="number"
-                  value={formData.pph_amount || ''}
+              </SapField>
+              <SapField label={`PPh Amt${pendingInvoices.length > 0 ? ` (${invoiceCurrency})` : ''}`} span={6}>
+                <input type="number" value={formData.pph_amount || ''}
                   onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-2.5 py-1.5 text-sm border border-orange-200 rounded-lg bg-orange-50"
-                />
-              </div>
-            </div>
-            <div className="border-t border-gray-200 pt-2 space-y-0.5 text-xs">
+                  className={SAP_INPUT + ' !text-right !font-mono text-orange-700'} />
+              </SapField>
+            </SapRow>
+            <div className="mt-2 pt-2 border-t border-gray-100 space-y-0.5 text-[11px]">
               <div className="flex justify-between text-gray-600">
                 <span>Gross ({invoiceCurrency}):</span>
-                <span className="font-medium">{fmt(formData.amount, invoiceCurrency)}</span>
+                <span className="font-mono">{fmt(formData.amount, invoiceCurrency)}</span>
               </div>
               {formData.pph_amount > 0 && (
                 <div className="flex justify-between text-orange-600">
                   <span>Less PPh:</span>
-                  <span>−{fmt(formData.pph_amount, invoiceCurrency)}</span>
+                  <span className="font-mono">−{fmt(formData.pph_amount, invoiceCurrency)}</span>
                 </div>
               )}
-              <div className="flex justify-between font-semibold text-sm border-t border-gray-200 pt-1 mt-1">
+              <div className="flex justify-between font-semibold border-t border-gray-200 pt-1 mt-1">
                 <span>Net Payment ({invoiceCurrency}):</span>
-                <span className="text-red-600">{fmt(netInvoiceAmount, invoiceCurrency)}</span>
+                <span className="text-red-600 font-mono">{fmt(netInvoiceAmount, invoiceCurrency)}</span>
               </div>
               {isCrossCurrency && (
-                <div className="flex justify-between font-semibold text-sm text-blue-700">
+                <div className="flex justify-between font-semibold text-blue-700">
                   <span>Bank Debit ({bankCurrency}) incl. charges:</span>
-                  <span>{fmt(netBankDebit, bankCurrency)}</span>
+                  <span className="font-mono">{fmt(netBankDebit, bankCurrency)}</span>
                 </div>
               )}
             </div>
           </div>
 
-          <div>
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              rows={2}
-            />
-          </div>
+          <SapRow>
+            <SapField label="Description" span={12}>
+              <input type="text" value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className={SAP_INPUT} placeholder="Payment description..." />
+            </SapField>
+          </SapRow>
 
           {/* ── Expense Bill Allocations ──────────────────────────────── */}
           {outstandingExpenseBills.length > 0 && (

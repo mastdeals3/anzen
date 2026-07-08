@@ -4,6 +4,7 @@ import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Upload, X, Fil
 import { Modal } from '../Modal';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { showToast } from '../ToastNotification';
@@ -1330,120 +1331,72 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           </>
         }
       >
-        <form id="petty-cash-form" onSubmit={handleSubmit} className="space-y-2" onPaste={handlePaste}>
-          <div>
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Transaction Type</label>
-            <select
-              value={formData.transaction_type}
-              onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value as 'withdraw' | 'expense' })}
-              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              required
-            >
-              <option value="expense">Expense (Cash Out)</option>
-              <option value="withdraw">Withdraw from Bank</option>
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Date</label>
-              <input
-                type="date"
-                value={formData.transaction_date}
+        <form id="petty-cash-form" onSubmit={handleSubmit} className="flex flex-col gap-1.5" onPaste={handlePaste}>
+          <SapRow>
+            <SapField label="Type" required span={4}>
+              <select value={formData.transaction_type}
+                onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value as 'withdraw' | 'expense' })}
+                className={SAP_INPUT} required>
+                <option value="expense">Expense (Cash Out)</option>
+                <option value="withdraw">Withdraw from Bank</option>
+              </select>
+            </SapField>
+            <SapField label="Date" required span={4}>
+              <input type="date" value={formData.transaction_date}
                 onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Amount (Rp)</label>
-              <input
-                type="number"
-                value={formData.amount || ''}
+                className={SAP_INPUT} required />
+            </SapField>
+            <SapField label="Amount (Rp)" required span={4}
+              right={formData.amount > 0 && formData.amount < 100 ? (
+                <span className="text-[9px] text-amber-700 font-semibold">? Rp {(formData.amount * 1000).toLocaleString('id-ID')}?</span>
+              ) : null}>
+              <input type="number" value={formData.amount || ''}
                 onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                required
-                min="1"
-                step="1"
-              />
-              {formData.amount > 0 && formData.amount < 100 && (
-                <p className="mt-1 text-xs text-amber-700 font-medium">
-                  Warning: amount is Rp {formData.amount} — did you mean Rp {(formData.amount * 1000).toLocaleString('id-ID')}?
-                </p>
-              )}
-            </div>
-          </div>
+                className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} required min="1" step="1" />
+            </SapField>
+          </SapRow>
 
           {formData.transaction_type === 'expense' && (
             <>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                  Expense Category <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.expense_category}
-                  onChange={(e) => setFormData({ ...formData, expense_category: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="">Select expense category...</option>
-                  {Object.entries(groupedCategories).map(([group, categories]) => (
-                    <optgroup key={group} label={group}>
-                      {categories.map((cat) => (
-                        <option key={cat.value} value={cat.value}>
-                          {cat.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                {formData.expense_category && selectedCategory && (
-                  <p className="mt-1 text-xs text-gray-600">
-                    {selectedCategory.description}
-                  </p>
-                )}
-              </div>
+              <SapRow>
+                <SapField label="Category" required span={12}>
+                  <select value={formData.expense_category}
+                    onChange={(e) => setFormData({ ...formData, expense_category: e.target.value })}
+                    className={SAP_INPUT} required>
+                    <option value="">Select expense category...</option>
+                    {Object.entries(groupedCategories).map(([group, categories]) => (
+                      <optgroup key={group} label={group}>
+                        {categories.map((cat) => (
+                          <option key={cat.value} value={cat.value}>{cat.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </SapField>
+              </SapRow>
 
               {selectedCategory?.requiresContainer && (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <Package className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <div className="text-sm font-medium text-orange-900">Import Container Required</div>
-                      <div className="text-xs text-orange-700 mt-1">
-                        This expense category requires linking to an import container for proper cost allocation
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <p className="text-[10px] text-orange-800 bg-orange-50 border border-orange-200 rounded px-2 py-1">
+                  <Package className="w-3 h-3 inline mr-1" />
+                  Import Container required for proper cost allocation.
+                </p>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                    Link to Container {selectedCategory?.requiresContainer && <span className="text-red-500">*</span>}
-                  </label>
-                  <select
-                    value={formData.import_container_id}
+              <SapRow>
+                <SapField label={`Container${selectedCategory?.requiresContainer ? ' *' : ''}`} span={6}>
+                  <select value={formData.import_container_id}
                     onChange={(e) => setFormData({ ...formData, import_container_id: e.target.value })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                    required={selectedCategory?.requiresContainer}
-                  >
+                    className={SAP_INPUT} required={selectedCategory?.requiresContainer}>
                     <option value="">None</option>
                     {containers.map((c) => (
                       <option key={c.id} value={c.id}>{c.container_ref}</option>
                     ))}
                   </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Link to Delivery Challan (Sales)</label>
-                  <select
-                    value={formData.delivery_challan_id}
+                </SapField>
+                <SapField label="DC (Sales)" span={6}>
+                  <select value={formData.delivery_challan_id}
                     onChange={(e) => setFormData({ ...formData, delivery_challan_id: e.target.value })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                  >
+                    className={SAP_INPUT}>
                     <option value="">None</option>
                     {challans.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -1451,91 +1404,63 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                       </option>
                     ))}
                   </select>
-                </div>
-              </div>
+                </SapField>
+              </SapRow>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Paid To</label>
-                  <input
-                    type="text"
-                    value={formData.paid_to}
+              <SapRow>
+                <SapField label="Paid To" span={6}>
+                  <input type="text" value={formData.paid_to}
                     onChange={(e) => setFormData({ ...formData, paid_to: e.target.value })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                    placeholder="Vendor/Supplier name"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Paid By (Staff)</label>
-                  <input
-                    type="text"
-                    value={formData.paid_by_staff_name}
+                    className={SAP_INPUT} placeholder="Vendor/Supplier name" />
+                </SapField>
+                <SapField label="Paid By" span={6}>
+                  <input type="text" value={formData.paid_by_staff_name}
                     onChange={(e) => setFormData({ ...formData, paid_by_staff_name: e.target.value })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                    placeholder="Staff member name"
-                  />
-                </div>
-              </div>
+                    className={SAP_INPUT} placeholder="Staff member name" />
+                </SapField>
+              </SapRow>
             </>
           )}
 
           {formData.transaction_type === 'withdraw' && (
             <>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Account</label>
-                <select
-                  value={formData.bank_account_id}
-                  onChange={(e) => setFormData({ ...formData, bank_account_id: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                  required
-                >
-                  <option value="">Select bank account</option>
-                  {bankAccounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.alias || acc.bank_name} - {acc.account_number} ({acc.currency})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SapRow>
+                <SapField label="Bank Account" required span={12}>
+                  <select value={formData.bank_account_id}
+                    onChange={(e) => setFormData({ ...formData, bank_account_id: e.target.value })}
+                    className={SAP_INPUT} required>
+                    <option value="">Select bank account</option>
+                    {bankAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.alias || acc.bank_name} - {acc.account_number} ({acc.currency})
+                      </option>
+                    ))}
+                  </select>
+                </SapField>
+              </SapRow>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Source/Reference</label>
-                  <input
-                    type="text"
-                    value={formData.source}
+              <SapRow>
+                <SapField label="Source Ref" span={6}>
+                  <input type="text" value={formData.source}
                     onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                    placeholder="Check number, transfer ref"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Received By</label>
-                  <input
-                    type="text"
-                    value={formData.received_by_staff_name}
+                    className={SAP_INPUT} placeholder="Check number, transfer ref" />
+                </SapField>
+                <SapField label="Received By" span={6}>
+                  <input type="text" value={formData.received_by_staff_name}
                     onChange={(e) => setFormData({ ...formData, received_by_staff_name: e.target.value })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                    placeholder="Staff member name"
-                  />
-                </div>
-              </div>
+                    className={SAP_INPUT} placeholder="Staff member name" />
+                </SapField>
+              </SapRow>
             </>
           )}
 
-          <div>
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              rows={3}
-              required
-              placeholder="Enter transaction details"
-            />
-          </div>
+          <SapRow>
+            <SapField label="Description" span={12}>
+              <input type="text" value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className={SAP_INPUT} required placeholder="Enter transaction details" />
+            </SapField>
+          </SapRow>
 
           {/* Existing Documents (Edit Mode) */}
           {editingTransaction && existingDocuments.length > 0 && (

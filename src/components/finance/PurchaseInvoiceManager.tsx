@@ -5,6 +5,7 @@ import { showConfirm } from '../ConfirmDialog';
 import { Modal } from '../Modal';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { SearchableSelect } from '../SearchableSelect';
 import { FileUpload } from '../FileUpload';
 import { showToast } from '../ToastNotification';
@@ -759,149 +760,98 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
           </>
         }
       >
-        <form id="purchase-invoice-form" onSubmit={handleSubmit} className="space-y-2">
-          {/* Header Section */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                Supplier *
-              </label>
+        <form id="purchase-invoice-form" onSubmit={handleSubmit} className="flex flex-col gap-1.5">
+          {/* Header — SAP B1 layout */}
+          <SapRow>
+            <SapField label="Supplier" required span={8}
+              right={selectedSupplier?.npwp ? <span className="text-[9px] text-gray-500">NPWP: {selectedSupplier.npwp}</span> : null}>
               <SearchableSelect
                 value={formData.supplier_id}
                 onChange={(val) => setFormData({ ...formData, supplier_id: val })}
                 options={suppliers.map(s => ({ value: s.id, label: `${s.company_name}${s.pkp_status ? ' (PKP)' : ''}` }))}
                 placeholder="Select Supplier"
               />
-              {selectedSupplier && selectedSupplier.npwp && (
-                <p className="text-xs text-gray-500 mt-1">NPWP: {selectedSupplier.npwp}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                Invoice Number *
-              </label>
-              <input
-                type="text"
-                value={formData.invoice_number}
-                onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
-                required
-                placeholder="INV-001"
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                Invoice Date *
-              </label>
-              <input
-                type="date"
-                value={formData.invoice_date}
-                onChange={(e) => setFormData({ ...formData, invoice_date: e.target.value })}
-                required
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                Due Date
-              </label>
-              <input
-                type="date"
-                value={formData.due_date}
-                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                Currency *
-              </label>
-              <select
-                value={formData.currency}
+            </SapField>
+            <SapField label="Currency" required span={4}>
+              <select value={formData.currency}
                 onChange={(e) => setFormData({ ...formData, currency: e.target.value, exchange_rate: e.target.value === 'IDR' ? 1 : formData.exchange_rate })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-              >
+                className={SAP_INPUT}>
                 <option value="IDR">IDR</option>
                 <option value="USD">USD</option>
               </select>
-            </div>
+            </SapField>
+          </SapRow>
 
-            {formData.currency === 'USD' && (
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                  Exchange Rate * (1 USD = ? IDR)
-                </label>
-                <input
-                  type="number"
-                  value={formData.exchange_rate}
+          <SapRow>
+            <SapField label="Invoice #" required span={4}>
+              <input type="text" value={formData.invoice_number}
+                onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
+                required placeholder="INV-001" className={SAP_INPUT} />
+            </SapField>
+            <SapField label="Inv Date" required span={4}>
+              <input type="date" value={formData.invoice_date}
+                onChange={(e) => setFormData({ ...formData, invoice_date: e.target.value })}
+                required className={SAP_INPUT} />
+            </SapField>
+            <SapField label="Due Date" span={4}>
+              <input type="date" value={formData.due_date}
+                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                className={SAP_INPUT} />
+            </SapField>
+          </SapRow>
+
+          {formData.currency === 'USD' && (
+            <SapRow>
+              <SapField label="Rate (USD)" required span={4}>
+                <input type="number" value={formData.exchange_rate}
                   onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 1 })}
-                  min="1"
-                  step="0.01"
-                  required
-                  placeholder="15750"
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            )}
+                  min="1" step="0.01" required placeholder="15750"
+                  className={SAP_INPUT + ' !text-right !font-mono'} />
+              </SapField>
+            </SapRow>
+          )}
 
-            {selectedSupplier?.pkp_status && (
-              <div className="col-span-2">
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                  Faktur Pajak Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.faktur_pajak_number}
+          {selectedSupplier?.pkp_status && (
+            <SapRow>
+              <SapField label="Faktur Pajak" span={12}>
+                <input type="text" value={formData.faktur_pajak_number}
                   onChange={(e) => setFormData({ ...formData, faktur_pajak_number: e.target.value })}
-                  placeholder="010.000-00.00000000"
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-                />
+                  placeholder="010.000-00.00000000" className={SAP_INPUT + ' !font-mono'} />
+              </SapField>
+            </SapRow>
+          )}
+
+          <SapRow>
+            <SapField label="Notes" span={12}>
+              <input type="text" value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className={SAP_INPUT} placeholder="Supplier invoice notes..." />
+            </SapField>
+          </SapRow>
+
+          {/* Attachments — kept as-is, but wrapped tight */}
+          <div>
+            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+              Attachments
+            </div>
+            <FileUpload
+              onUpload={handleFileUpload}
+              accept=".pdf,.jpg,.jpeg,.png"
+              multiple
+              disabled={uploading}
+            />
+            {formData.document_urls.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {formData.document_urls.map((url, index) => (
+                  <span key={index} className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded px-2 py-0.5 text-[11px] text-gray-600">
+                    {url.split('/').pop()}
+                    <button type="button" onClick={() => handleRemoveDocument(index)} className="text-red-600 hover:text-red-800">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
               </div>
             )}
-
-            <div className="col-span-2">
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                Notes
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows={2}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                Attachments (Supplier Invoice)
-              </label>
-              <FileUpload
-                onUpload={handleFileUpload}
-                accept=".pdf,.jpg,.jpeg,.png"
-                multiple
-                disabled={uploading}
-              />
-              {formData.document_urls.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {formData.document_urls.map((url, index) => (
-                    <div key={index} className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded">
-                      <span className="text-sm text-gray-600 truncate">{url.split('/').pop()}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveDocument(index)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Line Items Section */}

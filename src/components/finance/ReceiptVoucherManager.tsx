@@ -6,6 +6,7 @@ import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { showToast } from '../ToastNotification';
@@ -820,22 +821,16 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           </>
         }
       >
-        <form id="receipt-voucher-form" onSubmit={handleSubmit} className="space-y-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Date *</label>
-              <input
-                type="date"
-                required
-                value={formData.voucher_date}
+        <form id="receipt-voucher-form" onSubmit={handleSubmit} className="flex flex-col gap-1.5">
+          <SapRow>
+            <SapField label="Date" required span={4}>
+              <input type="date" required value={formData.voucher_date}
                 onChange={(e) => setFormData({ ...formData, voucher_date: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Customer *</label>
+                className={SAP_INPUT} />
+            </SapField>
+            <SapField label="Customer" required span={4}>
               {editMode ? (
-                <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50">
+                <div className={SAP_INPUT + ' !bg-gray-50 flex items-center'}>
                   {customers.find(c => c.id === formData.customer_id)?.company_name || 'Unknown'}
                 </div>
               ) : (
@@ -846,78 +841,56 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                   placeholder="Select customer"
                 />
               )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Payment Method *</label>
-              <select
-                required
-                value={formData.payment_method}
+            </SapField>
+            <SapField label="Method" required span={4}>
+              <select required value={formData.payment_method}
                 onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              >
+                className={SAP_INPUT}>
                 <option value="cash">Cash</option>
                 <option value="bank_transfer">Bank Transfer</option>
                 <option value="check">Check</option>
                 <option value="giro">Giro</option>
                 <option value="other">Other</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Amount (Rp) *</label>
-              <input
-                type="number"
-                required
-                min="0"
-                step="0.01"
-                value={formData.amount}
+            </SapField>
+          </SapRow>
+
+          <SapRow>
+            <SapField label="Amount (Rp)" required span={formData.payment_method === 'cash' ? 12 : 4}>
+              <input type="number" required min="0" step="0.01" value={formData.amount}
                 onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              />
-            </div>
-          </div>
+                className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} />
+            </SapField>
+            {formData.payment_method !== 'cash' && (
+              <>
+                <SapField label="Bank Account" span={4}>
+                  <select value={formData.bank_account_id}
+                    onChange={(e) => setFormData({ ...formData, bank_account_id: e.target.value })}
+                    className={SAP_INPUT}>
+                    <option value="">Select account</option>
+                    {bankAccounts.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.alias || `${b.bank_name} - ${b.account_name}`} ({b.currency || 'IDR'})
+                      </option>
+                    ))}
+                  </select>
+                </SapField>
+                <SapField label="Reference" span={4}>
+                  <input type="text" value={formData.reference_number}
+                    onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
+                    className={SAP_INPUT} placeholder="Check/Transfer reference" />
+                </SapField>
+              </>
+            )}
+          </SapRow>
 
-          {formData.payment_method !== 'cash' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Account</label>
-                <select
-                  value={formData.bank_account_id}
-                  onChange={(e) => setFormData({ ...formData, bank_account_id: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                >
-                  <option value="">Select account</option>
-                  {bankAccounts.map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.alias || `${b.bank_name} - ${b.account_name}`} ({b.currency || 'IDR'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Reference No.</label>
-                <input
-                  type="text"
-                  value={formData.reference_number}
-                  onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
-                  className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                  placeholder="Check/Transfer reference"
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-              rows={2}
-            />
-          </div>
+          <SapRow>
+            <SapField label="Description" span={12}>
+              <input type="text" value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className={SAP_INPUT} placeholder="Receipt description..." />
+            </SapField>
+          </SapRow>
 
           {(allocationTargets.length > 0 || allocations.length > 0 || editMode) && (
             <div className="border-t pt-4">

@@ -6,6 +6,7 @@ import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
@@ -606,245 +607,158 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
             </>
           }
         >
-          <form id="fund-transfer-form" onSubmit={handleSubmit} className="space-y-2">
+          <form id="fund-transfer-form" onSubmit={handleSubmit} className="flex flex-col gap-1.5">
           <fieldset disabled={viewOnly} className="contents">
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                Transfer Date <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={formData.transfer_date}
-                onChange={(e) => setFormData({ ...formData, transfer_date: e.target.value })}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                required
-              />
-            </div>
-
-            <div className="border-2 border-blue-200 rounded-lg p-4 bg-blue-50">
-              <h3 className="text-sm font-semibold text-blue-900 mb-3">From (Source Account)</h3>
-              <div className="space-y-2">
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                    Account Type <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.from_account_type}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      from_account_type: e.target.value as any,
-                      from_bank_account_id: e.target.value === 'bank' ? formData.from_bank_account_id : ''
-                    })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                    required
-                  >
-                    <option value="bank">Bank Account</option>
-                    <option value="cash_on_hand">Cash on Hand</option>
-                    <option value="petty_cash">Petty Cash</option>
-                  </select>
-                </div>
-                {formData.from_account_type === 'bank' && (
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                      Bank Account <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={formData.from_bank_account_id}
-                      onChange={(e) => {
-                        setFormData({ ...formData, from_bank_account_id: e.target.value, from_bank_statement_line_id: '' });
-                        loadBankStatements(e.target.value, 'from');
-                      }}
-                      className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                      required
-                    >
-                      <option value="">Select Bank Account</option>
-                      {bankAccounts.map((bank) => (
-                        <option key={bank.id} value={bank.id}>
-                          {bank.alias || bank.bank_name} - {bank.account_number} ({bank.currency})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                    Amount ({getFromCurrency()}) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.from_amount || ''}
+            {/* Row A: Date · From Type · From Bank */}
+            <SapRow>
+              <SapField label="Date" required span={4}>
+                <input type="date" value={formData.transfer_date}
+                  onChange={(e) => setFormData({ ...formData, transfer_date: e.target.value })}
+                  className={SAP_INPUT} required />
+              </SapField>
+              <SapField label="From Type" required span={4}>
+                <select value={formData.from_account_type}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    from_account_type: e.target.value as any,
+                    from_bank_account_id: e.target.value === 'bank' ? formData.from_bank_account_id : ''
+                  })}
+                  className={SAP_INPUT} required>
+                  <option value="bank">Bank Account</option>
+                  <option value="cash_on_hand">Cash on Hand</option>
+                  <option value="petty_cash">Petty Cash</option>
+                </select>
+              </SapField>
+              {formData.from_account_type === 'bank' && (
+                <SapField label="From Bank" required span={4}>
+                  <select value={formData.from_bank_account_id}
                     onChange={(e) => {
-                      const newAmount = parseFloat(e.target.value) || 0;
-                      const fromCurrency = getFromCurrency();
-                      const toCurrency = getToCurrency();
-
-                      // Auto-set to_amount if same currency
-                      if (fromCurrency === toCurrency) {
-                        setFormData({ ...formData, from_amount: newAmount, to_amount: newAmount });
-                      } else {
-                        setFormData({ ...formData, from_amount: newAmount });
-                      }
+                      setFormData({ ...formData, from_bank_account_id: e.target.value, from_bank_statement_line_id: '' });
+                      loadBankStatements(e.target.value, 'from');
                     }}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                    required
-                    min="0.01"
-                  />
-                </div>
-                {formData.from_bank_account_id && (
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                      🔗 Link to Bank Statement (Optional)
-                    </label>
-                    {fromBankStatements.length > 0 ? (
-                      <>
-                        <select
-                          value={formData.from_bank_statement_line_id}
-                          onChange={(e) => setFormData({ ...formData, from_bank_statement_line_id: e.target.value })}
-                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                        >
-                          <option value="">No link</option>
-                          {fromBankStatements.map((stmt) => (
-                            <option key={stmt.id} value={stmt.id}>
-                              {formatDateDDMMYY(stmt.transaction_date)} - {stmt.description?.substring(0, 40)} -
-                              {getFromCurrency() === 'USD' ? '$' : 'Rp'} {(stmt.debit_amount || stmt.credit_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-gray-600 mt-1">
-                          {fromBankStatements.length} unlinked transaction{fromBankStatements.length !== 1 ? 's' : ''} available
-                        </p>
-                      </>
-                    ) : (
-                      <div className="text-sm text-gray-500 italic py-2 px-3 bg-gray-50 rounded-lg border border-gray-200">
-                        No unlinked transactions available
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex justify-center">
-              <ArrowRightLeft className="w-6 h-6 text-gray-400" />
-            </div>
-
-            <div className="border-2 border-green-200 rounded-lg p-4 bg-green-50">
-              <h3 className="text-sm font-semibold text-green-900 mb-3">To (Destination Account)</h3>
-              <div className="space-y-2">
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                    Account Type <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.to_account_type}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      to_account_type: e.target.value as any,
-                      to_bank_account_id: e.target.value === 'bank' ? formData.to_bank_account_id : ''
-                    })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                    required
-                  >
-                    <option value="petty_cash">Petty Cash</option>
-                    <option value="cash_on_hand">Cash on Hand</option>
-                    <option value="bank">Bank Account</option>
+                    className={SAP_INPUT} required>
+                    <option value="">Select</option>
+                    {bankAccounts.map((bank) => (
+                      <option key={bank.id} value={bank.id}>
+                        {bank.alias || bank.bank_name} - {bank.account_number} ({bank.currency})
+                      </option>
+                    ))}
                   </select>
-                </div>
-                {formData.to_account_type === 'bank' && (
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                      Bank Account <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={formData.to_bank_account_id}
-                      onChange={(e) => {
-                        setFormData({ ...formData, to_bank_account_id: e.target.value, to_bank_statement_line_id: '' });
-                        loadBankStatements(e.target.value, 'to');
-                      }}
-                      className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                      required
-                    >
-                      <option value="">Select Bank Account</option>
-                      {bankAccounts.map((bank) => (
-                        <option key={bank.id} value={bank.id}>
-                          {bank.alias || bank.bank_name} - {bank.account_number} ({bank.currency})
+                </SapField>
+              )}
+            </SapRow>
+
+            {/* Row B: From Amount · To Type · To Bank */}
+            <SapRow>
+              <SapField label={`From (${getFromCurrency()})`} required span={4}>
+                <input type="number" step="0.01" min="0.01" value={formData.from_amount || ''}
+                  onChange={(e) => {
+                    const newAmount = parseFloat(e.target.value) || 0;
+                    const fromCurrency = getFromCurrency();
+                    const toCurrency = getToCurrency();
+                    if (fromCurrency === toCurrency) {
+                      setFormData({ ...formData, from_amount: newAmount, to_amount: newAmount });
+                    } else {
+                      setFormData({ ...formData, from_amount: newAmount });
+                    }
+                  }}
+                  className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} required />
+              </SapField>
+              <SapField label="To Type" required span={4}>
+                <select value={formData.to_account_type}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    to_account_type: e.target.value as any,
+                    to_bank_account_id: e.target.value === 'bank' ? formData.to_bank_account_id : ''
+                  })}
+                  className={SAP_INPUT} required>
+                  <option value="petty_cash">Petty Cash</option>
+                  <option value="cash_on_hand">Cash on Hand</option>
+                  <option value="bank">Bank Account</option>
+                </select>
+              </SapField>
+              {formData.to_account_type === 'bank' && (
+                <SapField label="To Bank" required span={4}>
+                  <select value={formData.to_bank_account_id}
+                    onChange={(e) => {
+                      setFormData({ ...formData, to_bank_account_id: e.target.value, to_bank_statement_line_id: '' });
+                      loadBankStatements(e.target.value, 'to');
+                    }}
+                    className={SAP_INPUT} required>
+                    <option value="">Select</option>
+                    {bankAccounts.map((bank) => (
+                      <option key={bank.id} value={bank.id}>
+                        {bank.alias || bank.bank_name} - {bank.account_number} ({bank.currency})
+                      </option>
+                    ))}
+                  </select>
+                </SapField>
+              )}
+            </SapRow>
+
+            {/* Row C: To Amount + optional bank statement links */}
+            <SapRow>
+              <SapField label={`To (${getToCurrency()})`} required span={4}
+                right={getFromCurrency() !== getToCurrency() && formData.from_amount > 0 && formData.to_amount > 0 ? (
+                  <span className="text-[9px] text-gray-500">
+                    1 USD = {(getFromCurrency() === 'USD' ? formData.to_amount / formData.from_amount : formData.from_amount / formData.to_amount).toLocaleString('id-ID', { maximumFractionDigits: 2 })}
+                  </span>
+                ) : null}>
+                <input type="number" step="0.01" min="0.01" value={formData.to_amount || ''}
+                  onChange={(e) => setFormData({ ...formData, to_amount: parseFloat(e.target.value) || 0 })}
+                  className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} required />
+              </SapField>
+              {formData.from_bank_account_id && (
+                <SapField label="From Bank Stmt" span={4}>
+                  {fromBankStatements.length > 0 ? (
+                    <select value={formData.from_bank_statement_line_id}
+                      onChange={(e) => setFormData({ ...formData, from_bank_statement_line_id: e.target.value })}
+                      className={SAP_INPUT}>
+                      <option value="">No link</option>
+                      {fromBankStatements.map((stmt) => (
+                        <option key={stmt.id} value={stmt.id}>
+                          {formatDateDDMMYY(stmt.transaction_date)} · {stmt.description?.substring(0, 30)} · {(stmt.debit_amount || stmt.credit_amount || 0).toLocaleString('id-ID', { maximumFractionDigits: 0 })}
                         </option>
                       ))}
                     </select>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                    Amount ({getToCurrency()}) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.to_amount || ''}
-                    onChange={(e) => setFormData({ ...formData, to_amount: parseFloat(e.target.value) || 0 })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                    required
-                    min="0.01"
-                  />
-                  {getFromCurrency() !== getToCurrency() && formData.from_amount > 0 && formData.to_amount > 0 && (
-                    <p className="text-xs text-gray-600 mt-1">
-                      Exchange Rate: 1 USD = {(getFromCurrency() === 'USD' ? formData.to_amount / formData.from_amount : formData.from_amount / formData.to_amount).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} IDR
-                    </p>
+                  ) : (
+                    <div className={SAP_INPUT + ' !bg-gray-50 !text-gray-400 italic flex items-center'}>No unlinked txn</div>
                   )}
-                </div>
-                {formData.to_bank_account_id && (
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                      🔗 Link to Bank Statement (Optional)
-                    </label>
-                    {toBankStatements.length > 0 ? (
-                      <>
-                        <select
-                          value={formData.to_bank_statement_line_id}
-                          onChange={(e) => setFormData({ ...formData, to_bank_statement_line_id: e.target.value })}
-                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                        >
-                          <option value="">No link</option>
-                          {toBankStatements.map((stmt) => (
-                            <option key={stmt.id} value={stmt.id}>
-                              {formatDateDDMMYY(stmt.transaction_date)} - {stmt.description?.substring(0, 40)} -
-                              {getToCurrency() === 'USD' ? '$' : 'Rp'} {(stmt.debit_amount || stmt.credit_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-gray-600 mt-1">
-                          {toBankStatements.length} unlinked transaction{toBankStatements.length !== 1 ? 's' : ''} available
-                        </p>
-                      </>
-                    ) : (
-                      <div className="text-sm text-gray-500 italic py-2 px-3 bg-gray-50 rounded-lg border border-gray-200">
-                        No unlinked transactions available
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+                </SapField>
+              )}
+              {formData.to_bank_account_id && (
+                <SapField label="To Bank Stmt" span={4}>
+                  {toBankStatements.length > 0 ? (
+                    <select value={formData.to_bank_statement_line_id}
+                      onChange={(e) => setFormData({ ...formData, to_bank_statement_line_id: e.target.value })}
+                      className={SAP_INPUT}>
+                      <option value="">No link</option>
+                      {toBankStatements.map((stmt) => (
+                        <option key={stmt.id} value={stmt.id}>
+                          {formatDateDDMMYY(stmt.transaction_date)} · {stmt.description?.substring(0, 30)} · {(stmt.debit_amount || stmt.credit_amount || 0).toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className={SAP_INPUT + ' !bg-gray-50 !text-gray-400 italic flex items-center'}>No unlinked txn</div>
+                  )}
+                </SapField>
+              )}
+            </SapRow>
 
-            <div>
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={2}
-                className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white"
-                placeholder="Purpose of transfer (optional)"
-              />
-            </div>
+            <SapRow>
+              <SapField label="Description" span={12}>
+                <input type="text" value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className={SAP_INPUT} placeholder="Purpose of transfer (optional)" />
+              </SapField>
+            </SapRow>
 
             {!viewOnly && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> The journal entry will be posted automatically when you create this transfer.
-                  Both accounts will be updated immediately.
-                </p>
-              </div>
+              <p className="text-[10px] text-blue-800 bg-blue-50 border border-blue-200 rounded px-2 py-1">
+                <ArrowRightLeft className="w-3 h-3 inline mr-1" />
+                Journal entry will be posted automatically when the transfer is saved. Both accounts update immediately.
+              </p>
             )}
           </fieldset>
 
