@@ -5,6 +5,7 @@ import { DataTable } from '../DataTable';
 import { Modal } from '../Modal';
 import { Plus, Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
 import { formatDate } from '../../utils/dateFormat';
+import { showConfirm } from '../ConfirmDialog';
 
 interface VendorBill {
   id: string;
@@ -360,7 +361,13 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
   };
 
   const handleDeleteBill = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this bill?')) return;
+    const ok = await showConfirm({
+      title: 'Delete bill?',
+      message: 'This will remove the vendor bill. Continue only if no payment has been applied.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       const { error } = await supabase
@@ -377,7 +384,13 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
   };
 
   const handleDeletePayment = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this payment?')) return;
+    const ok = await showConfirm({
+      title: 'Delete payment?',
+      message: 'This will reverse the payment record. The bill balance will be restored.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       const { error } = await supabase
@@ -517,7 +530,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
       label: 'Total Amount',
       render: (bill: VendorBill) => (
         <span className="font-semibold text-red-600">
-          Rp {bill.total_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          Rp {Number(bill.total_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       )
     },
@@ -526,7 +539,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
       label: 'Status',
       render: (bill: VendorBill) => (
         <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getPaymentStatusColor(bill.payment_status)}`}>
-          {bill.payment_status.toUpperCase()}
+          {(bill.payment_status || 'pending').toUpperCase()}
         </span>
       )
     },
@@ -560,7 +573,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
       label: 'Amount',
       render: (payment: VendorPayment) => (
         <span className="font-semibold text-green-600">
-          Rp {payment.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          Rp {Number(payment.amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       )
     },
@@ -747,13 +760,13 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
                         )}
                       </td>
                       <td className="px-1.5 py-1 text-right whitespace-nowrap">
-                        <span className="text-xs text-gray-700">Rp {bill.amount.toLocaleString('id-ID')}</span>
+                        <span className="text-xs text-gray-700">Rp {Number(bill.amount || 0).toLocaleString('id-ID')}</span>
                       </td>
                       <td className="px-1.5 py-1 text-right whitespace-nowrap">
-                        <span className="text-xs text-green-700">Rp {bill.paid_amount.toLocaleString('id-ID')}</span>
+                        <span className="text-xs text-green-700">Rp {Number(bill.paid_amount || 0).toLocaleString('id-ID')}</span>
                       </td>
                       <td className="px-1.5 py-1 text-right whitespace-nowrap">
-                        <span className="text-xs font-semibold text-red-600">Rp {bill.balance_amount.toLocaleString('id-ID')}</span>
+                        <span className="text-xs font-semibold text-red-600">Rp {Number(bill.balance_amount || 0).toLocaleString('id-ID')}</span>
                       </td>
                       <td className="px-1.5 py-1 text-center">
                         {isOverdue ? (
@@ -777,10 +790,10 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
                     TOTAL ({outstandingExpenseBills.length} bills):
                   </td>
                   <td className="px-1.5 py-1 text-right text-xs text-gray-700">
-                    Rp {outstandingExpenseBills.reduce((s, b) => s + b.amount, 0).toLocaleString('id-ID')}
+                    Rp {outstandingExpenseBills.reduce((s, b) => s + (Number(b.amount) || 0), 0).toLocaleString('id-ID')}
                   </td>
                   <td className="px-1.5 py-1 text-right text-xs text-green-700">
-                    Rp {outstandingExpenseBills.reduce((s, b) => s + b.paid_amount, 0).toLocaleString('id-ID')}
+                    Rp {outstandingExpenseBills.reduce((s, b) => s + (Number(b.paid_amount) || 0), 0).toLocaleString('id-ID')}
                   </td>
                   <td className="px-1.5 py-1 text-right text-sm text-red-700 font-bold">
                     Rp {totalExpenseBillsPayable.toLocaleString('id-ID')}
@@ -1018,7 +1031,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
                 <option value="">Select a bill</option>
                 {unpaidBills.map((bill) => (
                   <option key={bill.id} value={bill.id}>
-                    {bill.bill_number} - {bill.vendor_name} (Rp {bill.total_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                    {bill.bill_number} - {bill.vendor_name} (Rp {Number(bill.total_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                   </option>
                 ))}
               </select>

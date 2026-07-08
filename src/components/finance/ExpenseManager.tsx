@@ -8,6 +8,7 @@ import { FinanceModal } from './FinanceModal';
 import { FormSection, F_LABEL, F_INPUT, F_INPUT_MONEY, F_SELECT, F_TEXTAREA, F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { getCategoryFieldRules } from './categoryFieldRules';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
+import { showConfirm } from '../ConfirmDialog';
 
 // Tiny inline helper used inside the SAP header PPN cell — a 3-state
 // selector rendered as a right-side chip so it doesn't consume a column.
@@ -598,25 +599,27 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   }, [dateRange]);
 
   // Retry the Staff / Utility load-back after the rosters arrive.
-  // handleEdit runs immediately on click; if the rosters were still loading
-  // at that moment the picker lookup misses. This effect re-resolves it once
-  // the roster fetch settles, without re-parsing the tag.
+  // Fires ONCE per editingExpense identity change, using a ref so a later
+  // roster refetch does not re-set a field the user has already cleared.
+  const loadbackAppliedForRef = useRef<string | null>(null);
   useEffect(() => {
     if (!editingExpense) return;
+    if (loadbackAppliedForRef.current === editingExpense.id) return;
     const rules = getCategoryFieldRules(editingExpense.expense_category);
     const desc = editingExpense.description || '';
     const tagMatch = desc.match(/^\[([^·\]]+?)(?:\s*·\s*([^\]]+))?\]\s*/);
     if (!tagMatch) return;
     const name = tagMatch[1].trim();
-    if (rules.staff === 'show' && !selectedStaffId) {
+    let applied = false;
+    if (rules.staff === 'show' && !selectedStaffId && staffRoster.length > 0) {
       const s = staffRoster.find(x => x.full_name === name);
-      if (s) setSelectedStaffId(s.id);
-    } else if (rules.utility === 'show' && !selectedUtilityId) {
+      if (s) { setSelectedStaffId(s.id); applied = true; }
+    } else if (rules.utility === 'show' && !selectedUtilityId && utilityRoster.length > 0) {
       const u = utilityRoster.find(x => x.provider_name === name);
-      if (u) setSelectedUtilityId(u.id);
+      if (u) { setSelectedUtilityId(u.id); applied = true; }
     }
-    // Intentional deps: react to roster arrival, not to editingExpense identity churn.
-  }, [staffRoster, utilityRoster, editingExpense]);
+    if (applied) loadbackAppliedForRef.current = editingExpense.id;
+  }, [staffRoster, utilityRoster, editingExpense, selectedStaffId, selectedUtilityId]);
 
   // Realtime subscriptions via shared hook. Patch state from payload instead of
   // reloading the entire list.
@@ -1514,7 +1517,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this expense?')) return;
+    const ok = await showConfirm({
+      title: 'Delete expense?',
+      message: 'This will reverse the linked journal entry. Continue?',
+      confirmText: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       // Reset any bank_statement_lines that link to this expense (or its JE)
@@ -1626,20 +1635,24 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   };
 
   const handleUnlinkFromBankStatement = async (expenseId: string) => {
-    if (!confirm(
-      'Are you sure you want to unlink this expense from the bank statement?\n\n' +
-      'The bank statement line will be set back to "Unmatched" status.'
-    )) return;
+    const ok = await showConfirm({
+      title: 'Unlink from bank statement?',
+      message: 'The bank statement line will be set back to "Unmatched" status.',
+      confirmText: 'Unlink',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       const { error } = await supabase
         .from('bank_statement_lines')
         .update({
-          expense_id: null,
-          status: 'unmatched',
-          matched_date: null
+          matched_expense_id: null,
+          reconciliation_status: 'unmatched',
+          matched_at: null,
+          matched_by: null,
         })
-        .eq('expense_id', expenseId);
+        .eq('matched_expense_id', expenseId);
 
       if (error) throw error;
 
@@ -2818,7 +2831,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         // Rule 3: auto-mode row with no explicit patch → keep formula alive
                         // if amount changes. We do NOT auto-seed DDP from Amount (they're
                         // independent per the user's brief). Legacy fallback preserved.
-                        else if (!inManualMode && 'amount' in patch && merged.dpp_amount == null && merged.ppn_rate == null) {
+                        else if (!inManualMode && 'amount' in patch && !merged.dpp_amount && !merged.ppn_rate) {
                           merged.ppn_amount = computeBrokerLinePpn(merged.amount, merged.ppn_treatment);
                         }
                         return merged;
@@ -3005,9 +3018,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             { label: 'Header DDP',          value: brokerHeaderDdp,     valueColor: 'text-gray-700', op: '+' },
                             { label: 'Reimb. Amount',       value: reimbAmount,         valueColor: 'text-gray-900', op: '+' },
                             { label: 'Reimb. DDP',          value: reimbDpp,            valueColor: 'text-gray-700', op: '+' },
-                            { label: 'PPN (Total)',         value: totalPpn,            valueColor: 'text-blue-700', op: '−' },
-                            { label: 'PPh Withheld',        value: parentPph,           valueColor: 'text-orange-700', op: '+' },
-                            { label: 'Stamp Duty',          value: parentStamp,         valueColor: 'text-gray-900' },
+                            { label: 'PPN (Total)',         value: totalPpn,            valueColor: 'text-blue-700', op: '+' },
+                            { label: 'PPh Withheld',        value: parentPph,           valueColor: 'text-orange-700', op: '−' },
+                            { label: 'Stamp Duty',          value: parentStamp,         valueColor: 'text-gray-900', op: '+' },
                           ];
                           return (
                             <div className="mt-2">
@@ -3131,7 +3144,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           const d = new Date(txn.transaction_date);
                           return (
                             <option key={txn.id} value={txn.id}>
-                              {String(d.getDate()).padStart(2,'0')}/{String(d.getMonth()+1).padStart(2,'0')}/{String(d.getFullYear()).slice(-2)} — {txn.description?.substring(0,30) || '—'} — Rp {txn.debit_amount?.toLocaleString()}
+                              {String(d.getDate()).padStart(2,'0')}/{String(d.getMonth()+1).padStart(2,'0')}/{String(d.getFullYear()).slice(-2)} — {txn.description?.substring(0,30) || '—'} — Rp {Number(txn.debit_amount || 0).toLocaleString()}
                             </option>
                           );
                         })}

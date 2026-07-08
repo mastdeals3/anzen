@@ -1094,8 +1094,8 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             let dupMessage = `⚠️ Found ${duplicates.length} potential duplicate transaction(s):\n\n`;
             duplicates.slice(0, 5).forEach((dup, idx) => {
               const date = new Date(dup.transaction_date).toLocaleDateString('en-GB');
-              const amt = dup.debit_amount || dup.credit_amount;
-              dupMessage += `${idx + 1}. ${date} - ${dup.description.substring(0, 40)} - Rp ${amt.toLocaleString()}\n`;
+              const amt = Number(dup.debit_amount || dup.credit_amount || 0);
+              dupMessage += `${idx + 1}. ${date} - ${(dup.description || '').substring(0, 40)} - Rp ${amt.toLocaleString()}\n`;
             });
             if (duplicates.length > 5) {
               dupMessage += `... and ${duplicates.length - 5} more\n`;
@@ -2241,10 +2241,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       bValue = Number(bValue) || 0;
     }
 
-    // Handle string sorting
-    if (typeof aValue === 'string') {
-      aValue = aValue.toLowerCase();
-      bValue = bValue.toLowerCase();
+    // Handle string sorting (null-safe)
+    if (typeof aValue === 'string' || typeof bValue === 'string') {
+      aValue = (aValue ?? '').toString().toLowerCase();
+      bValue = (bValue ?? '').toString().toLowerCase();
     }
 
     if (aValue < bValue) return direction === 'asc' ? -1 : 1;
@@ -3430,13 +3430,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 <div>
                   <span className="text-gray-600">Opening Balance:</span>
                   <span className="ml-2 font-medium text-gray-900">
-                    {selectedAccount?.currency} {ocrPreview.openingBalance.toLocaleString()}
+                    {selectedAccount?.currency} {Number(ocrPreview.openingBalance || 0).toLocaleString()}
                   </span>
                 </div>
                 <div>
                   <span className="text-gray-600">Closing Balance:</span>
                   <span className="ml-2 font-medium text-gray-900">
-                    {selectedAccount?.currency} {ocrPreview.closingBalance.toLocaleString()}
+                    {selectedAccount?.currency} {Number(ocrPreview.closingBalance || 0).toLocaleString()}
                   </span>
                 </div>
                 <div>
@@ -3463,7 +3463,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                         <td className="px-2 py-1">{txn.date}</td>
                         <td className="px-2 py-1 truncate max-w-xs">{txn.description}</td>
                         <td className="px-2 py-1 text-right">
-                          {selectedAccount?.currency} {(txn.debitAmount || txn.creditAmount).toLocaleString()}
+                          {selectedAccount?.currency} {Number(txn.debitAmount || txn.creditAmount || 0).toLocaleString()}
                         </td>
                       </tr>
                     ))}

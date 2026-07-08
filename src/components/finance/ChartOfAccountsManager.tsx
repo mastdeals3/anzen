@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Plus, Edit, Trash2, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { Modal } from '../Modal';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
+import { showConfirm } from '../ConfirmDialog';
 
 interface Account {
   id: string;
@@ -121,7 +122,13 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this account?')) return;
+    const ok = await showConfirm({
+      title: 'Delete account?',
+      message: 'This will remove the ledger account. Continue only if no transactions are booked against it.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       const { error } = await supabase
@@ -182,23 +189,23 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+      <div className="flex items-center gap-1.5 min-h-8 px-2 py-1 bg-white border border-gray-200 rounded flex-wrap">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
           <input
             type="text"
             placeholder="Search accounts..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="w-full h-7 pl-7 pr-2 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
         {canManage && (
           <button
             onClick={() => { resetForm(); setModalOpen(true); }}
-            className="flex items-center gap-2 bg-blue-600 text-white h-7 px-2 rounded hover:bg-blue-700"
+            className="inline-flex items-center gap-1 h-7 px-2 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="w-3 h-3" />
             Add Account
           </button>
         )}
@@ -209,47 +216,49 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
           <div key={type.value} className="border-b last:border-b-0">
             <button
               onClick={() => toggleGroup(type.value)}
-              className="w-full flex items-center justify-between px-2 py-1.5 bg-gray-50 hover:bg-gray-100"
+              className="w-full flex items-center justify-between px-2 h-8 bg-gray-50 hover:bg-gray-100"
             >
-              <div className="flex items-center gap-2">
-                {expandedGroups.has(type.value) ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                <span className={`px-2 py-1 rounded text-sm font-medium ${type.color}`}>{type.label}</span>
-                <span className="text-gray-500 text-sm">({groupedAccounts[type.value]?.length || 0} accounts)</span>
+              <div className="flex items-center gap-1.5">
+                {expandedGroups.has(type.value) ? <ChevronDown className="w-3.5 h-3.5 text-gray-500" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500" />}
+                <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded ${type.color}`}>{type.label}</span>
+                <span className="text-[10px] text-gray-500">({groupedAccounts[type.value]?.length || 0} accounts)</span>
               </div>
             </button>
-            
+
             {expandedGroups.has(type.value) && groupedAccounts[type.value]?.length > 0 && (
-              <table className="w-full">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                  <tr>
-                    <th className="px-4 py-2 text-left">Code</th>
-                    <th className="px-4 py-2 text-left">Account Name</th>
-                    <th className="px-4 py-2 text-left">Indonesian Name</th>
-                    <th className="px-4 py-2 text-left">Group</th>
-                    <th className="px-4 py-2 text-center">Normal</th>
-                    {canManage && <th className="px-4 py-2 text-right">Actions</th>}
+              <table className="w-full text-xs border-collapse">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr className="h-8">
+                    <th className="px-2 py-1 text-left font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Code</th>
+                    <th className="px-2 py-1 text-left font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Account Name</th>
+                    <th className="px-2 py-1 text-left font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Indonesian Name</th>
+                    <th className="px-2 py-1 text-left font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Group</th>
+                    <th className="px-2 py-1 text-center font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Normal</th>
+                    {canManage && <th className="px-2 py-1 text-center font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Actions</th>}
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody>
                   {groupedAccounts[type.value].map(account => (
-                    <tr key={account.id} className={`hover:bg-gray-50 ${account.is_header ? 'font-semibold bg-gray-50' : ''}`}>
-                      <td className="px-4 py-2 font-mono text-sm">{account.code}</td>
-                      <td className="px-4 py-2">{account.name}</td>
-                      <td className="px-4 py-2 text-gray-500">{account.name_id || '-'}</td>
-                      <td className="px-4 py-2 text-sm text-gray-500">{account.account_group || '-'}</td>
-                      <td className="px-4 py-2 text-center">
-                        <span className={`text-xs px-2 py-1 rounded ${account.normal_balance === 'debit' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                    <tr key={account.id} className={`h-8 border-b border-gray-100 hover:bg-blue-50/40 transition-colors ${account.is_header ? 'font-semibold bg-gray-50' : ''}`}>
+                      <td className="px-2 py-1 font-mono text-gray-900">{account.code}</td>
+                      <td className="px-2 py-1 text-gray-900">{account.name}</td>
+                      <td className="px-2 py-1 text-gray-500">{account.name_id || '—'}</td>
+                      <td className="px-2 py-1 text-gray-500">{account.account_group || '—'}</td>
+                      <td className="px-2 py-1 text-center">
+                        <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded ${account.normal_balance === 'debit' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                           {account.normal_balance}
                         </span>
                       </td>
                       {canManage && (
-                        <td className="px-4 py-2 text-right">
-                          <button onClick={() => handleEdit(account)} className="text-blue-600 hover:text-blue-800 mr-2">
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDelete(account.id)} className="text-red-600 hover:text-red-800">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        <td className="px-1 py-0.5">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <button onClick={() => handleEdit(account)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit">
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleDelete(account.id)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>

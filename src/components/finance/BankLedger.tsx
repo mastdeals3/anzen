@@ -280,9 +280,10 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
     return symbols[currency] || currency;
   };
 
-  const formatAmount = (amount: number, currency: string) => {
-    if (amount === 0) return '-';
-    return `${getCurrencySymbol(currency)} ${amount.toLocaleString('id-ID', {
+  const formatAmount = (amount: number | null | undefined, currency: string) => {
+    const v = Number(amount ?? 0);
+    if (v === 0) return '-';
+    return `${getCurrencySymbol(currency)} ${v.toLocaleString('id-ID', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;

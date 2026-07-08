@@ -437,14 +437,14 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
     {
       key: 'total_amount',
       label: 'Amount',
-      render: (_val: any, inv: SalesInvoice) => `Rp ${inv.total_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      render: (_val: any, inv: SalesInvoice) => `Rp ${Number(inv.total_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     },
     {
       key: 'paid',
       label: 'Paid',
       render: (_val: any, inv: SalesInvoice) => (
         <span className="text-green-600">
-          Rp {(inv.paid_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          Rp {Number(inv.paid_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       )
     },
@@ -453,7 +453,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       label: 'Balance',
       render: (_val: any, inv: SalesInvoice) => (
         <span className="font-semibold text-red-600">
-          Rp {(inv.total_amount - (inv.paid_amount || 0)).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          Rp {(Number(inv.total_amount || 0) - Number(inv.paid_amount || 0)).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       )
     },
@@ -499,7 +499,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       label: 'Amount',
       render: (_val: any, pay: ReceiptVoucher) => (
         <span className="font-semibold text-green-600">
-          Rp {pay.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          Rp {Number(pay.amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       )
     },
@@ -631,7 +631,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
               <div key={label} className={`border rounded-lg p-3 ${color}`}>
                 <div className="text-xs font-medium mb-1">{label}</div>
                 <div className="text-sm font-bold">
-                  Rp {value.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  Rp {Number(value || 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </div>
               </div>
             ))}
@@ -675,19 +675,19 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
                         {row.daysOverdue === 0 ? 'Current' : `${row.daysOverdue}d`}
                       </td>
                       <td className="px-1.5 py-1 text-right text-green-700">
-                        {row.bucket0_30 > 0 ? `Rp ${row.bucket0_30.toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
+                        {Number(row.bucket0_30) > 0 ? `Rp ${Number(row.bucket0_30).toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
                       </td>
                       <td className="px-1.5 py-1 text-right text-yellow-700">
-                        {row.bucket31_60 > 0 ? `Rp ${row.bucket31_60.toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
+                        {Number(row.bucket31_60) > 0 ? `Rp ${Number(row.bucket31_60).toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
                       </td>
                       <td className="px-1.5 py-1 text-right text-orange-700">
-                        {row.bucket61_90 > 0 ? `Rp ${row.bucket61_90.toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
+                        {Number(row.bucket61_90) > 0 ? `Rp ${Number(row.bucket61_90).toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
                       </td>
                       <td className="px-1.5 py-1 text-right text-red-700 font-medium">
-                        {row.bucket90plus > 0 ? `Rp ${row.bucket90plus.toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
+                        {Number(row.bucket90plus) > 0 ? `Rp ${Number(row.bucket90plus).toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
                       </td>
                       <td className="px-1.5 py-1 text-right font-semibold text-gray-900">
-                        Rp {row.balance.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
+                        Rp {Number(row.balance || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                       </td>
                     </tr>
                   ))}
@@ -696,19 +696,19 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
                   <tr>
                     <td colSpan={5} className="px-1.5 py-1 text-gray-700">Total</td>
                     <td className="px-1.5 py-1 text-right text-green-700">
-                      Rp {ageingTotals.bucket0_30.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
+                      Rp {Number(ageingTotals.bucket0_30 || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
                     <td className="px-1.5 py-1 text-right text-yellow-700">
-                      Rp {ageingTotals.bucket31_60.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
+                      Rp {Number(ageingTotals.bucket31_60 || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
                     <td className="px-1.5 py-1 text-right text-orange-700">
-                      Rp {ageingTotals.bucket61_90.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
+                      Rp {Number(ageingTotals.bucket61_90 || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
                     <td className="px-1.5 py-1 text-right text-red-700">
-                      Rp {ageingTotals.bucket90plus.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
+                      Rp {Number(ageingTotals.bucket90plus || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
                     <td className="px-1.5 py-1 text-right text-gray-900">
-                      Rp {ageingTotals.balance.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
+                      Rp {Number(ageingTotals.balance || 0).toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
                   </tr>
                 </tfoot>
@@ -867,8 +867,8 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
                         <div className="flex-1">
                           <div className="font-medium text-sm">{invoice.invoice_number}</div>
                           <div className="text-xs text-gray-600">Date: {formatDate(invoice.invoice_date)}</div>
-                          <div className="text-xs mt-1">Total: Rp {invoice.total_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                          <div className="text-xs text-orange-600 font-medium">Balance: Rp {balance.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                          <div className="text-xs mt-1">Total: Rp {Number(invoice.total_amount || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                          <div className="text-xs text-orange-600 font-medium">Balance: Rp {Number(balance || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         </div>
                       </div>
                       {isSelected && (
