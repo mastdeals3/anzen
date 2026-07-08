@@ -7,6 +7,27 @@ import { SearchableSelect } from '../SearchableSelect';
 import { FinanceModal } from './FinanceModal';
 import { FormSection, F_LABEL, F_INPUT, F_INPUT_MONEY, F_SELECT, F_TEXTAREA, F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { getCategoryFieldRules } from './categoryFieldRules';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
+
+// Tiny inline helper used inside the SAP header PPN cell — a 3-state
+// selector rendered as a right-side chip so it doesn't consume a column.
+function PpnModeToggle({ value, onChange }: {
+  value: 'standard' | 'dpp_nilai_lain' | 'manual' | undefined;
+  onChange: (mode: 'standard' | 'dpp_nilai_lain' | 'manual') => void;
+}) {
+  return (
+    <select
+      value={value || 'standard'}
+      onChange={(e) => onChange(e.target.value as 'standard' | 'dpp_nilai_lain' | 'manual')}
+      title="PPN calculation mode"
+      className="h-6 px-1 text-[9px] font-semibold border border-gray-200 bg-white rounded-none"
+    >
+      <option value="standard">STD</option>
+      <option value="dpp_nilai_lain">DPP</option>
+      <option value="manual">MAN</option>
+    </select>
+  );
+}
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -2435,299 +2456,198 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           }
         >
           <form id="expense-form" onSubmit={handleSubmit}>
-            {/* ── Horizontal header rows (matches the mockup layout) ── */}
-            <div className="pb-2 border-b space-y-2">
-
-              {/* Row 1: Category-driven picker | Inv No | Inv Date | Due Date | Category */}
-              {(() => {
-                const rules = getCategoryFieldRules(formData.expense_category);
-                return (
-              <div className="grid grid-cols-12 gap-2">
-                {/* Column 1 (4 cols) — driven by category rules */}
-                <div className="col-span-4">
-                  {rules.staff === 'show' ? (
-                    <>
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Staff <span className="text-red-500">*</span></label>
+            {/* ══════════════════════════════════════════════════════════════
+                 SAP Business One – style header
+                 Horizontal-label 3-column grid. Every field is `label | input`
+                 on ONE line. Fields flow left-to-right in the 12-col grid.
+                 Same handlers as before — pure layout change (STEP 4).
+                 ══════════════════════════════════════════════════════════════ */}
+            {(() => {
+              const rules   = getCategoryFieldRules(formData.expense_category);
+              const taxCfg  = selectedDocType ? DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType] : null;
+              const isBroker = formData.expense_category === 'import_broker';
+              const isOverdue = !!formData.due_date && formData.due_date < new Date().toISOString().split('T')[0];
+              return (
+                <div className="pb-2 mb-2 border-b border-gray-200 flex flex-col gap-1.5">
+                  {/* ── Row A: Category · Doc Date · Due Date ── */}
+                  <SapRow>
+                    <SapField label="Category" required span={4}>
                       <SearchableSelect
-                        value={selectedStaffId}
+                        value={formData.expense_category}
                         onChange={(val) => {
-                          setSelectedStaffId(val);
-                          // Staff rows do NOT set finance_expenses.supplier_id — leave it null.
-                          // The staff name flows into the description on save for ledger traceability.
-                          setFormData(prev => ({ ...prev, supplier_id: '' }));
-                          setSelectedSupplier(null);
+                          const cat = val || '';
+                          let dt: DocumentType | '' = '';
+                          for (const [docType, cats] of Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]) {
+                            if (cats.includes(cat)) { dt = docType; break; }
+                          }
+                          setSelectedDocType(dt);
+                          setFormData(prev => ({ ...prev, expense_category: cat }));
                         }}
-                        options={[
-                          { value: '', label: '— None —' },
-                          ...staffRoster.map(s => ({ value: s.id, label: `${s.full_name}${s.department ? ' · ' + s.department : ''}` })),
-                        ]}
-                        placeholder="Search staff..."
+                        options={(Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]).flatMap(([docType, cats]) =>
+                          cats.map(cat => {
+                            const translated = expenseCategories.find(c => c.value === cat)?.label;
+                            return { value: cat, label: translated || EXPENSE_CATEGORY_LABELS[cat] || cat, group: docType };
+                          })
+                        )}
+                        placeholder="Select category"
                       />
-                    </>
-                  ) : rules.utility === 'show' ? (
-                    <>
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Utility Provider <span className="text-red-500">*</span></label>
-                      <SearchableSelect
-                        value={selectedUtilityId}
-                        onChange={(val) => {
-                          setSelectedUtilityId(val);
-                          // Utility rows resolve to a supplier when the master has one linked.
-                          // Otherwise leave supplier_id null; the provider name goes into description.
-                          const util = utilityRoster.find(u => u.id === val);
-                          if (util?.supplier_id) {
-                            handleSupplierSelect(util.supplier_id);
-                          } else {
+                    </SapField>
+                    <SapField label="Doc Date" required span={4}>
+                      <input type="date" value={formData.expense_date}
+                        onChange={(e) => {
+                          const d = e.target.value;
+                          setFormData(prev => ({
+                            ...prev, expense_date: d,
+                            due_date: selectedSupplier?.payment_terms_days ? getDueDateFromTerms(d, selectedSupplier.payment_terms_days) : prev.due_date,
+                          }));
+                        }}
+                        className={SAP_INPUT} required />
+                    </SapField>
+                    <SapField label="Due Date" span={4}
+                      right={isOverdue ? <span className="text-[9px] text-red-600 font-semibold px-1">⚠ Overdue</span> : null}>
+                      <input type="date" value={formData.due_date}
+                        onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                        className={SAP_INPUT + (isOverdue ? ' !border-red-400 !bg-red-50' : '')} />
+                    </SapField>
+                  </SapRow>
+
+                  {/* ── Row B: Category-driven picker (Supplier/Staff/Utility) · Inv No · Period ── */}
+                  <SapRow>
+                    <SapField
+                      label={rules.staff === 'show' ? 'Staff' : rules.utility === 'show' ? 'Utility' : (isBroker ? 'Broker' : 'Supplier')}
+                      required={rules.staff === 'show' || rules.utility === 'show' || rules.supplier === 'show'}
+                      span={4}
+                      right={selectedSupplier && rules.staff !== 'show' && rules.utility !== 'show' ? (
+                        <div className="flex gap-1 text-[9px] shrink-0">
+                          {selectedSupplier.pkp_status && <span className="px-1 py-0.5 bg-green-100 text-green-700 rounded font-medium">PKP</span>}
+                          {selectedSupplier.payment_terms_days ? <span className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">N{selectedSupplier.payment_terms_days}</span> : null}
+                        </div>
+                      ) : null}>
+                      {rules.staff === 'show' ? (
+                        <SearchableSelect
+                          value={selectedStaffId}
+                          onChange={(val) => {
+                            setSelectedStaffId(val);
                             setFormData(prev => ({ ...prev, supplier_id: '' }));
                             setSelectedSupplier(null);
-                          }
-                        }}
-                        options={[
-                          { value: '', label: '— None —' },
-                          ...utilityRoster.map(u => ({ value: u.id, label: `${u.provider_name} · ${u.utility_type}` })),
-                        ]}
-                        placeholder="Search utility..."
-                      />
-                    </>
-                  ) : rules.supplier !== 'hide' && (
-                    <>
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Supplier{selectedDocType === 'Import / Customs Broker Invoice' ? ' (Broker)' : ''}{rules.supplier === 'show' ? '' : ' (optional)'}</label>
-                      <div className="flex-1 min-w-0">
+                          }}
+                          options={[{ value: '', label: '— None —' }, ...staffRoster.map(s => ({ value: s.id, label: `${s.full_name}${s.department ? ' · ' + s.department : ''}` }))]}
+                          placeholder="Search staff..."
+                        />
+                      ) : rules.utility === 'show' ? (
+                        <SearchableSelect
+                          value={selectedUtilityId}
+                          onChange={(val) => {
+                            setSelectedUtilityId(val);
+                            const util = utilityRoster.find(u => u.id === val);
+                            if (util?.supplier_id) handleSupplierSelect(util.supplier_id);
+                            else { setFormData(prev => ({ ...prev, supplier_id: '' })); setSelectedSupplier(null); }
+                          }}
+                          options={[{ value: '', label: '— None —' }, ...utilityRoster.map(u => ({ value: u.id, label: `${u.provider_name} · ${u.utility_type}` }))]}
+                          placeholder="Search utility..."
+                        />
+                      ) : (
                         <SearchableSelect
                           value={formData.supplier_id}
                           onChange={(val) => handleSupplierSelect(val)}
-                          options={[
-                            { value: '', label: '— None (misc / petty cash) —' },
-                            ...suppliers.map((s) => ({
-                              value: s.id,
-                              label: `${s.company_name}${s.pkp_status ? ' ✓PKP' : ''}`,
-                            })),
-                          ]}
+                          options={[{ value: '', label: '— None —' }, ...suppliers.map((s) => ({ value: s.id, label: `${s.company_name}${s.pkp_status ? ' ✓PKP' : ''}` }))]}
                           placeholder="Search supplier..."
-                          className="border-gray-300 text-sm py-1.5"
-                          onCreateNew={(name) => {
-                            setQuickAddSupplierName(name);
-                            setShowQuickAddSupplier(true);
-                          }}
+                          onCreateNew={(name) => { setQuickAddSupplierName(name); setShowQuickAddSupplier(true); }}
                         />
-                      </div>
-                      {selectedSupplier && (
-                        <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
-                          {selectedSupplier.pkp_status && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded font-medium">PKP 11%</span>}
-                          {selectedSupplier.payment_terms_days ? <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">Net {selectedSupplier.payment_terms_days}d</span> : null}
-                          {selectedSupplier.tax_preference && selectedSupplier.tax_preference !== 'none' && (
-                            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-medium capitalize">{selectedSupplier.tax_preference.replace(/_/g,' ')}</span>
-                          )}
-                        </div>
                       )}
-                    </>
-                  )}
-                </div>
-
-                {/* Inv No (2 cols) */}
-                <div className="col-span-2">
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Inv. No.</label>
-                  <input type="text" value={formData.invoice_number}
-                    onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" placeholder="—" />
-                </div>
-
-                {/* Inv Date (2 cols) */}
-                <div className="col-span-2">
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Inv. Date <span className="text-red-500">*</span></label>
-                  <input type="date" value={formData.expense_date}
-                    onChange={(e) => {
-                      const d = e.target.value;
-                      setFormData(prev => ({
-                        ...prev, expense_date: d,
-                        due_date: selectedSupplier?.payment_terms_days ? getDueDateFromTerms(d, selectedSupplier.payment_terms_days) : prev.due_date,
-                      }));
-                    }}
-                    className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" required />
-                </div>
-
-                {/* Due Date (2 cols) */}
-                <div className="col-span-2">
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Due Date</label>
-                  <input type="date" value={formData.due_date}
-                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                    className={`w-full px-2.5 py-1.5 border rounded-lg text-sm ${formData.due_date && formData.due_date < new Date().toISOString().split('T')[0] ? 'border-red-400 bg-red-50' : 'border-gray-300'}`} />
-                  {formData.due_date && formData.due_date < new Date().toISOString().split('T')[0] && (
-                    <p className="text-[9px] text-red-600 mt-0.5 font-semibold">⚠ Overdue</p>
-                  )}
-                </div>
-
-                {/* Category (2 cols) — grouped by Doc Type, sets both on change */}
-                <div className="col-span-2">
-                  <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Category <span className="text-red-500">*</span></label>
-                  <SearchableSelect
-                    value={formData.expense_category}
-                    onChange={(val) => {
-                      const cat = val || '';
-                      let dt: DocumentType | '' = '';
-                      for (const [docType, cats] of Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]) {
-                        if (cats.includes(cat)) { dt = docType; break; }
-                      }
-                      setSelectedDocType(dt);
-                      setFormData(prev => ({ ...prev, expense_category: cat }));
-                    }}
-                    options={(Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]).flatMap(([docType, cats]) =>
-                      cats.map(cat => {
-                        // Prefer the i18n label so the dropdown follows the active UI language.
-                        const translated = expenseCategories.find(c => c.value === cat)?.label;
-                        return { value: cat, label: translated || EXPENSE_CATEGORY_LABELS[cat] || cat, group: docType };
-                      })
+                    </SapField>
+                    <SapField label="Invoice #" span={4}>
+                      <input type="text" value={formData.invoice_number}
+                        onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
+                        className={SAP_INPUT} placeholder="—" />
+                    </SapField>
+                    {(rules.salaryMonth === 'show' || rules.billingMonth === 'show') ? (
+                      <SapField label={rules.salaryMonth === 'show' ? 'Salary Mo' : 'Billing Mo'} required span={4}>
+                        <input type="month" value={periodLabel}
+                          onChange={(e) => setPeriodLabel(e.target.value)}
+                          className={SAP_INPUT} />
+                      </SapField>
+                    ) : (
+                      <SapField label="Reference" span={4}>
+                        <input type="text" value={formData.payment_reference}
+                          onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
+                          className={SAP_INPUT} placeholder="TT ref / cheque #" />
+                      </SapField>
                     )}
-                    placeholder="Select category"
-                    className="border-gray-300 text-sm py-1.5"
-                  />
-                </div>
-              </div>
-                );
-              })()}
+                  </SapRow>
 
-              {/* Row 1b (conditional) — Salary Month / Billing Month */}
-              {(() => {
-                const rules = getCategoryFieldRules(formData.expense_category);
-                if (rules.salaryMonth !== 'show' && rules.billingMonth !== 'show') return null;
-                return (
-                  <div className="grid grid-cols-12 gap-2">
-                    <div className="col-span-4">
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                        {rules.salaryMonth === 'show' ? 'Salary Month' : 'Billing Month'}
-                      </label>
-                      <input type="month" value={periodLabel}
-                        onChange={(e) => setPeriodLabel(e.target.value)}
-                        className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" />
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Row 2: Invoice Amount | PPN | PPh Withheld | PPh Code | Stamp Duty | Reference | Description */}
-              {(() => {
-                const taxCfg = selectedDocType ? DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType] : null;
-                const isBrokerRow = formData.expense_category === 'import_broker';
-                return (
-                  <div className="grid grid-cols-12 gap-2">
-                    {/* Invoice Amount */}
-                    <div className="col-span-2">
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                        {isBrokerRow ? 'Broker Invoice' : 'Invoice Amount'} <span className="text-red-500">*</span>
-                      </label>
+                  {/* ── Row C: Invoice Amount · Header DDP (broker) · PPN · PPh · Stamp · Bank Chg ── */}
+                  <SapRow>
+                    <SapField label={isBroker ? 'Broker Inv' : 'Amount'} required span={4}>
                       <MoneyInput value={formData.amount} required placeholder="0"
                         onChange={(amt) => {
                           setFormData(prev => {
                             const mode = prev.ppn_calc_mode || 'standard';
                             const rate = prev.ppn_rate || 11;
-                            // Broker invoice PPN is INDEPENDENT of the line PPNs.
-                            // For non-broker rows we still auto-derive PPN from the
-                            // supplier's PKP status; for broker rows we leave PPN alone
-                            // — the user types it directly.
-                            const ppn = !isBrokerRow && mode === 'standard' && selectedSupplier?.pkp_status
-                              ? Math.round(amt * rate / 100)
-                              : prev.ppn_amount;
-                            // PPh auto-recalc when a code is picked (unchanged).
+                            const ppn = !isBroker && mode === 'standard' && selectedSupplier?.pkp_status
+                              ? Math.round(amt * rate / 100) : prev.ppn_amount;
                             const tc = prev.pph_code_id ? taxCodes.find(t => t.id === prev.pph_code_id) : null;
                             const pph = tc ? Math.round(amt * tc.rate / 100) : prev.pph_amount;
                             return { ...prev, amount: amt, ppn_amount: ppn, pph_amount: pph };
                           });
                         }}
-                        className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white font-semibold text-right font-mono" />
-                    </div>
-
-                    {/* Header DDP — broker only. Independent additive scalar in Total Payable. */}
-                    {isBrokerRow && (
-                      <div className="col-span-2">
-                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Header DDP</label>
+                        className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} />
+                    </SapField>
+                    {isBroker && (
+                      <SapField label="Header DDP" span={4}>
                         <MoneyInput value={formData.dpp_amount} placeholder="0"
                           onChange={(v) => setFormData(prev => ({ ...prev, dpp_amount: v }))}
-                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono" />
-                      </div>
+                          className={SAP_INPUT + ' !text-right !font-mono'} />
+                      </SapField>
                     )}
-
-                    {/* PPN with mode selector */}
-                    {taxCfg?.ppn && (
-                      <div className={formData.ppn_calc_mode === 'dpp_nilai_lain' ? 'col-span-3' : 'col-span-2'}>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="text-xs font-medium text-gray-700">
-                            PPN{isBrokerRow ? ' (from Broker)' : ''}
-                          </label>
-                          {!isBrokerRow && (
-                            <select
-                              value={formData.ppn_calc_mode || 'standard'}
-                              onChange={(e) => {
-                                const mode = e.target.value as 'standard' | 'dpp_nilai_lain' | 'manual';
-                                setFormData(prev => {
-                                  const rate = prev.ppn_rate || 11;
-                                  let ppn = prev.ppn_amount;
-                                  if (mode === 'standard') {
-                                    ppn = selectedSupplier?.pkp_status ? Math.round((prev.amount || 0) * rate / 100) : 0;
-                                  } else if (mode === 'dpp_nilai_lain') {
-                                    ppn = Math.round((prev.dpp_amount || 0) * rate / 100);
-                                  }
-                                  return {
-                                    ...prev,
-                                    ppn_calc_mode: mode,
-                                    ppn_amount: ppn,
-                                    ppn_manual_override: mode === 'manual',
-                                    // reset DPP when leaving DPP mode
-                                    dpp_amount: mode === 'dpp_nilai_lain' ? (prev.dpp_amount || prev.amount || 0) : 0,
-                                  };
-                                });
-                              }}
-                              className="text-[10px] font-semibold border border-gray-200 rounded px-1 py-0.5 bg-white"
-                              title="PPN calculation mode"
-                            >
-                              <option value="standard">Standard</option>
-                              <option value="dpp_nilai_lain">DPP</option>
-                              <option value="manual">Manual</option>
-                            </select>
-                          )}
-                        </div>
-                        {formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBrokerRow ? (
-                          <div className="grid grid-cols-2 gap-1">
-                            <MoneyInput value={formData.dpp_amount} placeholder="DPP" title="DPP Nilai Lain"
-                              onChange={(dpp) => {
-                                setFormData(prev => ({
-                                  ...prev,
-                                  dpp_amount: dpp,
-                                  ppn_amount: Math.round(dpp * (prev.ppn_rate || 11) / 100),
-                                }));
-                              }}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono" />
-                            <MoneyInput value={formData.ppn_amount} placeholder="PPN" title="PPN Amount (auto from DPP)"
-                              onChange={(v) => setFormData(prev => ({ ...prev, ppn_amount: v }))}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right font-mono text-blue-700" />
-                          </div>
-                        ) : (
-                          <MoneyInput value={formData.ppn_amount} placeholder="0" readOnly={isBrokerRow}
-                            onChange={(v) => setFormData(prev => ({
-                              ...prev,
-                              ppn_amount: v,
-                              ppn_calc_mode: prev.expense_category === 'import_broker' ? prev.ppn_calc_mode : 'manual',
-                              ppn_manual_override: prev.expense_category !== 'import_broker',
-                            }))}
-                            className={`w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono ${isBrokerRow ? 'bg-gray-100 text-gray-600' : ''}`} />
-                        )}
-                        {formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBrokerRow && (
-                          <p className="text-[9px] text-gray-500 mt-0.5">DPP × {formData.ppn_rate || 11}% → PPN</p>
-                        )}
-                      </div>
+                    {taxCfg?.ppn && !isBroker && formData.ppn_calc_mode === 'dpp_nilai_lain' && (
+                      <>
+                        <SapField label="DPP (Nilai Lain)" span={4}>
+                          <MoneyInput value={formData.dpp_amount} placeholder="0"
+                            onChange={(dpp) => setFormData(prev => ({ ...prev, dpp_amount: dpp, ppn_amount: Math.round(dpp * (prev.ppn_rate || 11) / 100) }))}
+                            className={SAP_INPUT + ' !text-right !font-mono'} />
+                        </SapField>
+                        <SapField label="PPN" span={4}
+                          right={<PpnModeToggle value={formData.ppn_calc_mode} onChange={(mode) => setFormData(prev => {
+                            const rate = prev.ppn_rate || 11;
+                            let ppn = prev.ppn_amount;
+                            if (mode === 'standard') ppn = selectedSupplier?.pkp_status ? Math.round((prev.amount || 0) * rate / 100) : 0;
+                            else if (mode === 'dpp_nilai_lain') ppn = Math.round((prev.dpp_amount || 0) * rate / 100);
+                            return { ...prev, ppn_calc_mode: mode, ppn_amount: ppn, ppn_manual_override: mode === 'manual', dpp_amount: mode === 'dpp_nilai_lain' ? (prev.dpp_amount || prev.amount || 0) : 0 };
+                          })} />}>
+                          <MoneyInput value={formData.ppn_amount} placeholder="0"
+                            onChange={(v) => setFormData(prev => ({ ...prev, ppn_amount: v }))}
+                            className={SAP_INPUT + ' !text-right !font-mono text-blue-700'} />
+                        </SapField>
+                      </>
                     )}
-
-                    {/* PPh Withheld (amount) + PPh Code (side by side) */}
+                    {taxCfg?.ppn && !(formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBroker) && (
+                      <SapField label={isBroker ? 'PPN (Broker)' : 'PPN'} span={4}
+                        right={!isBroker ? <PpnModeToggle value={formData.ppn_calc_mode} onChange={(mode) => setFormData(prev => {
+                          const rate = prev.ppn_rate || 11;
+                          let ppn = prev.ppn_amount;
+                          if (mode === 'standard') ppn = selectedSupplier?.pkp_status ? Math.round((prev.amount || 0) * rate / 100) : 0;
+                          else if (mode === 'dpp_nilai_lain') ppn = Math.round((prev.dpp_amount || 0) * rate / 100);
+                          return { ...prev, ppn_calc_mode: mode, ppn_amount: ppn, ppn_manual_override: mode === 'manual', dpp_amount: mode === 'dpp_nilai_lain' ? (prev.dpp_amount || prev.amount || 0) : 0 };
+                        })} /> : null}>
+                        <MoneyInput value={formData.ppn_amount} placeholder="0" readOnly={isBroker}
+                          onChange={(v) => setFormData(prev => ({
+                            ...prev,
+                            ppn_amount: v,
+                            ppn_calc_mode: prev.expense_category === 'import_broker' ? prev.ppn_calc_mode : 'manual',
+                            ppn_manual_override: prev.expense_category !== 'import_broker',
+                          }))}
+                          className={SAP_INPUT + ' !text-right !font-mono text-blue-700' + (isBroker ? ' !bg-gray-100 !text-gray-600' : '')} />
+                      </SapField>
+                    )}
                     {(taxCfg?.pph23 || taxCfg?.pph21) && (
                       <>
-                        <div className="col-span-1">
-                          <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                            {taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'}
-                          </label>
+                        <SapField label={taxCfg?.pph23 ? 'PPh' : 'PPh 21'} span={4}>
                           <MoneyInput value={formData.pph_amount} placeholder="0"
                             onChange={(v) => setFormData({ ...formData, pph_amount: v })}
-                            className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono" />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">PPh Code</label>
+                            className={SAP_INPUT + ' !text-right !font-mono text-orange-700'} />
+                        </SapField>
+                        <SapField label="PPh Code" span={4}>
                           <SearchableSelect
                             value={formData.pph_code_id}
                             onChange={(val) => {
@@ -2736,96 +2656,73 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             }}
                             options={[{ value: '', label: 'None' }, ...taxCodes.map(tc => ({ value: tc.id, label: `${tc.code} — ${tc.rate}%` }))]}
                             placeholder="None"
-                            className="border-gray-300 text-sm py-1.5"
                           />
-                        </div>
+                        </SapField>
                       </>
                     )}
-
-                    {/* Stamp Duty */}
                     {taxCfg?.stamp && (
-                      <div className="col-span-1">
-                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Stamp Duty</label>
+                      <SapField label="Stamp Duty" span={4}>
                         <MoneyInput value={formData.stamp_duty_amount} placeholder="0"
                           onChange={(v) => setFormData({ ...formData, stamp_duty_amount: v })}
-                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono" />
-                      </div>
+                          className={SAP_INPUT + ' !text-right !font-mono'} />
+                      </SapField>
                     )}
-
-                    {/* Bank Charges (Utility only) */}
                     {formData.expense_category === 'utilities' && (
-                      <div className="col-span-1">
-                        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Chg</label>
+                      <SapField label="Bank Charge" span={4}>
                         <MoneyInput value={formData.bank_charges_amount} placeholder="0"
                           onChange={(v) => setFormData({ ...formData, bank_charges_amount: v })}
-                          className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white text-right font-mono" />
-                      </div>
+                          className={SAP_INPUT + ' !text-right !font-mono'} />
+                      </SapField>
                     )}
+                  </SapRow>
 
-                    {/* Reference — fills remaining */}
-                    <div className="col-span-2">
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Reference</label>
-                      <input type="text" value={formData.payment_reference}
-                        onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
-                        className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" placeholder="TT ref / cheque #" />
-                    </div>
+                  {/* ── Row D: Contextual — Container · DC · Fixed Asset ── */}
+                  {((requiresContainer || isBroker) || requiresDC || formData.expense_category === 'fixed_asset') && (
+                    <SapRow>
+                      {(requiresContainer || isBroker) && (
+                        <SapField label="Container" required={requiresContainer} span={4}>
+                          <SearchableSelect
+                            value={formData.import_container_id}
+                            onChange={(val) => setFormData({ ...formData, import_container_id: val })}
+                            options={[{ value: '', label: 'Select Container' }, ...containers.map(c => ({ value: c.id, label: c.container_ref }))]}
+                            placeholder="Select Container"
+                          />
+                        </SapField>
+                      )}
+                      {requiresDC && (
+                        <SapField label="DC" span={4}>
+                          <SearchableSelect
+                            value={formData.delivery_challan_id}
+                            onChange={(val) => setFormData({ ...formData, delivery_challan_id: val })}
+                            options={[{ value: '', label: 'None' }, ...challans.map(ch => ({ value: ch.id, label: `${ch.challan_number} — ${new Date(ch.challan_date).toLocaleDateString('en-GB')} — ${ch.customers?.company_name || ''}` }))]}
+                            placeholder="None"
+                          />
+                        </SapField>
+                      )}
+                      {formData.expense_category === 'fixed_asset' && (
+                        <SapField label="Asset Acct" required span={4}>
+                          <SearchableSelect
+                            value={formData.fixed_asset_account_id}
+                            onChange={(val) => setFormData({ ...formData, fixed_asset_account_id: val })}
+                            options={[{ value: '', label: 'Select account' }, ...coaAssets.map(a => ({ value: a.id, label: `${a.code} — ${a.name}` }))]}
+                            placeholder="Select account"
+                          />
+                        </SapField>
+                      )}
+                    </SapRow>
+                  )}
 
-                    {/* Description — fills remaining */}
-                    <div className="col-span-2">
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Description</label>
+                  {/* ── Row E: Description (full width) ── */}
+                  <SapRow>
+                    <SapField label="Description" span={12}>
                       <input type="text" value={formData.description}
                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        className="w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white" placeholder="Invoice description..." />
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Row 3: contextual — Container / DC / Fixed Asset */}
-              {((requiresContainer || formData.expense_category === 'import_broker') || requiresDC || formData.expense_category === 'fixed_asset') && (
-                <div className="grid grid-cols-12 gap-2">
-                  {(requiresContainer || formData.expense_category === 'import_broker') && (
-                    <div className="col-span-6">
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                        <Package className="w-3 h-3 inline mr-1" />
-                        Import Container{requiresContainer ? <span className="text-red-500"> *</span> : <span className="text-gray-400"> (optional)</span>}
-                      </label>
-                      <SearchableSelect
-                        value={formData.import_container_id}
-                        onChange={(val) => setFormData({ ...formData, import_container_id: val })}
-                        options={[{ value: '', label: 'Select Container' }, ...containers.map(c => ({ value: c.id, label: c.container_ref }))]}
-                        placeholder="Select Container"
-                        className="border-gray-300 text-sm py-1.5"
-                      />
-                    </div>
-                  )}
-                  {requiresDC && (
-                    <div className="col-span-6">
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Delivery Challan (optional)</label>
-                      <SearchableSelect
-                        value={formData.delivery_challan_id}
-                        onChange={(val) => setFormData({ ...formData, delivery_challan_id: val })}
-                        options={[{ value: '', label: 'None' }, ...challans.map(ch => ({ value: ch.id, label: `${ch.challan_number} — ${new Date(ch.challan_date).toLocaleDateString('en-GB')} — ${ch.customers?.company_name || ''}` }))]}
-                        placeholder="None"
-                        className="border-gray-300 text-sm py-1.5"
-                      />
-                    </div>
-                  )}
-                  {formData.expense_category === 'fixed_asset' && (
-                    <div className="col-span-6">
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Asset Account <span className="text-red-500">*</span></label>
-                      <SearchableSelect
-                        value={formData.fixed_asset_account_id}
-                        onChange={(val) => setFormData({ ...formData, fixed_asset_account_id: val })}
-                        options={[{ value: '', label: 'Select account' }, ...coaAssets.map(a => ({ value: a.id, label: `${a.code} — ${a.name}` }))]}
-                        placeholder="Select account"
-                        className="border-gray-300 text-sm py-1.5"
-                      />
-                    </div>
-                  )}
+                        className={SAP_INPUT} placeholder="Invoice description..." />
+                    </SapField>
+                  </SapRow>
                 </div>
-              )}
-            </div>
+              );
+            })()}
 
             {/* ── Tax Section (conditional, full width) ── */}
             {selectedDocType && (() => {
