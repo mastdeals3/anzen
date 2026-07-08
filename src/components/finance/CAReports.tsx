@@ -824,7 +824,7 @@ export function CAReports() {
             <select
               value={selectedBankAccount}
               onChange={(e) => setSelectedBankAccount(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              className="px-1.5 py-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             >
               <option value="">All Bank Accounts</option>
               {bankAccounts.map((bank) => (
@@ -861,105 +861,105 @@ export function CAReports() {
                 <tr>
                   {selectedReport === 'inventory_movement' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Product Code</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Product Name</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Unit</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Opening</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700 bg-green-50">In</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700 bg-red-50">Out</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700 bg-blue-50">Closing</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700 bg-amber-50">Reserved</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Product Code</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Product Name</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Unit</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Opening</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700 bg-green-50">In</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700 bg-red-50">Out</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700 bg-blue-50">Closing</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700 bg-amber-50">Reserved</th>
                     </>
                   )}
                   {selectedReport === 'coa' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Code</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Account Name</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Type</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Code</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Account Name</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Type</th>
                     </>
                   )}
                   {selectedReport === 'sales_register' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Date</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Invoice No</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Customer</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Due Date</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Payment Receipt</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Net</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">PPN</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Total</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Date</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Invoice No</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Customer</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Due Date</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Payment Receipt</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Net</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">PPN</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Total</th>
                     </>
                   )}
                   {selectedReport === 'purchase_register' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Date</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">PO No</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Supplier</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Net</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">PPN</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Total</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Currency</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Date</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">PO No</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Supplier</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Net</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">PPN</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Total</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Currency</th>
                     </>
                   )}
                   {selectedReport === 'cash_ledger' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Date</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Voucher No</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Account</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Debit</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Credit</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Narration</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Date</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Voucher No</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Account</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Debit</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Credit</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Narration</th>
                     </>
                   )}
                   {selectedReport === 'bank_ledger' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Date</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Voucher No</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Bank Account</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Debit</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Credit</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Narration</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Date</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Voucher No</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Bank Account</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Debit</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Credit</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Narration</th>
                     </>
                   )}
                   {selectedReport === 'journal_register' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Date</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Entry No</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Voucher Type</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Account Code</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Account Name</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Debit</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Credit</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Narration</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Date</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Entry No</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Voucher Type</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Account Code</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Account Name</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Debit</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Credit</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Narration</th>
                     </>
                   )}
                   {selectedReport === 'general_ledger' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Account Code</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Account Name</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Date</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Voucher No</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Debit</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Credit</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Description</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Account Code</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Account Name</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Date</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Voucher No</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Debit</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Credit</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Description</th>
                     </>
                   )}
                   {selectedReport === 'trial_balance' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Code</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Account Name</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Debit</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Credit</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Code</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Account Name</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Debit</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Credit</th>
                     </>
                   )}
                   {selectedReport === 'fixed_assets' && (
                     <>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Asset Code</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Asset Name</th>
-                      <th className="px-2 py-1.5 text-left font-medium text-slate-700">Acquisition Date</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Cost</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Acc. Depreciation</th>
-                      <th className="px-2 py-1.5 text-right font-medium text-slate-700">Net Book Value</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Asset Code</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Asset Name</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Acquisition Date</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Cost</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Acc. Depreciation</th>
+                      <th className="px-1.5 py-1 text-right font-medium text-slate-700">Net Book Value</th>
                     </>
                   )}
                 </tr>
@@ -967,33 +967,33 @@ export function CAReports() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {selectedReport === 'inventory_movement' && reportData.slice(0, 200).map((row: any, idx: number) => (
                   <tr key={idx} className={`hover:bg-slate-50 ${row.closing < 0 ? 'bg-red-50' : ''}`}>
-                    <td className="px-2 py-1.5 text-slate-900 font-mono text-xs">{row.product_code}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.product_name}</td>
-                    <td className="px-2 py-1.5 text-slate-600">{row.unit}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{row.opening % 1 === 0 ? row.opening : parseFloat(row.opening).toFixed(3)}</td>
-                    <td className="px-2 py-1.5 text-right text-green-700 font-medium bg-green-50">{row.in_qty % 1 === 0 ? row.in_qty : parseFloat(row.in_qty).toFixed(3)}</td>
-                    <td className="px-2 py-1.5 text-right text-red-600 font-medium bg-red-50">{row.out_qty % 1 === 0 ? row.out_qty : parseFloat(row.out_qty).toFixed(3)}</td>
+                    <td className="px-1.5 py-1 text-slate-900 font-mono text-xs">{row.product_code}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.product_name}</td>
+                    <td className="px-1.5 py-1 text-slate-600">{row.unit}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{row.opening % 1 === 0 ? row.opening : parseFloat(row.opening).toFixed(3)}</td>
+                    <td className="px-1.5 py-1 text-right text-green-700 font-medium bg-green-50">{row.in_qty % 1 === 0 ? row.in_qty : parseFloat(row.in_qty).toFixed(3)}</td>
+                    <td className="px-1.5 py-1 text-right text-red-600 font-medium bg-red-50">{row.out_qty % 1 === 0 ? row.out_qty : parseFloat(row.out_qty).toFixed(3)}</td>
                     <td className={`px-2 py-1.5 text-right font-semibold bg-blue-50 ${row.closing < 0 ? 'text-red-700' : 'text-blue-700'}`}>
                       {row.closing % 1 === 0 ? row.closing : parseFloat(row.closing).toFixed(3)}
                     </td>
-                    <td className="px-2 py-1.5 text-right text-amber-700 bg-amber-50">
+                    <td className="px-1.5 py-1 text-right text-amber-700 bg-amber-50">
                       {row.reserved_qty > 0 ? (row.reserved_qty % 1 === 0 ? row.reserved_qty : parseFloat(row.reserved_qty).toFixed(3)) : '-'}
                     </td>
                   </tr>
                 ))}
                 {selectedReport === 'coa' && reportData.map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900 font-mono">{row.code}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.name}</td>
-                    <td className="px-2 py-1.5 text-slate-600">{row.account_type}</td>
+                    <td className="px-1.5 py-1 text-slate-900 font-mono">{row.code}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.name}</td>
+                    <td className="px-1.5 py-1 text-slate-600">{row.account_type}</td>
                   </tr>
                 ))}
                 {selectedReport === 'sales_register' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900">{row.invoice_date}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.invoice_number}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.customer_name}</td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-1.5 py-1 text-slate-900">{row.invoice_date}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.invoice_number}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.customer_name}</td>
+                    <td className="px-1.5 py-1">
                       {row.payment_status === 'paid' ? (
                         <span className="text-slate-400">-</span>
                       ) : (
@@ -1002,88 +1002,88 @@ export function CAReports() {
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-1.5 py-1">
                       {row.payment_receipt ? (
                         <span className="text-green-600 font-medium">{row.payment_receipt}</span>
                       ) : (
                         <span className="text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.net_amount || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.ppn || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-right font-semibold text-slate-900">{parseFloat(row.total_amount || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.net_amount || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.ppn || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right font-semibold text-slate-900">{parseFloat(row.total_amount || 0).toFixed(2)}</td>
                   </tr>
                 ))}
                 {selectedReport === 'purchase_register' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900">{row.po_date}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.po_number}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.supplier_name}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.net_amount || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.ppn || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-right font-semibold text-slate-900">{parseFloat(row.total_amount || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-slate-600">{row.currency}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.po_date}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.po_number}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.supplier_name}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.net_amount || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.ppn || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right font-semibold text-slate-900">{parseFloat(row.total_amount || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-slate-600">{row.currency}</td>
                   </tr>
                 ))}
                 {selectedReport === 'cash_ledger' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900">{row.date}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.voucher_no}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.account_name}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-slate-600">{row.narration}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.date}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.voucher_no}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.account_name}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-slate-600">{row.narration}</td>
                   </tr>
                 ))}
                 {selectedReport === 'bank_ledger' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900">{row.date}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.voucher_no}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.account_name}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-slate-600">{row.narration}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.date}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.voucher_no}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.account_name}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-slate-600">{row.narration}</td>
                   </tr>
                 ))}
                 {selectedReport === 'journal_register' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900">{row.entry_date}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.entry_number}</td>
-                    <td className="px-2 py-1.5 text-slate-600">{row.voucher_type}</td>
-                    <td className="px-2 py-1.5 text-slate-900 font-mono">{row.account_code}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.account_name}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-slate-600">{row.narration}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.entry_date}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.entry_number}</td>
+                    <td className="px-1.5 py-1 text-slate-600">{row.voucher_type}</td>
+                    <td className="px-1.5 py-1 text-slate-900 font-mono">{row.account_code}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.account_name}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-slate-600">{row.narration}</td>
                   </tr>
                 ))}
                 {selectedReport === 'general_ledger' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900 font-mono">{row.account_code}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.account_name}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.entry_date}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.voucher_number}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-slate-600">{row.description}</td>
+                    <td className="px-1.5 py-1 text-slate-900 font-mono">{row.account_code}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.account_name}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.entry_date}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.voucher_number}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-slate-600">{row.description}</td>
                   </tr>
                 ))}
                 {selectedReport === 'trial_balance' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900 font-mono">{row.code}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.name}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-slate-900 font-mono">{row.code}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.name}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
                   </tr>
                 ))}
                 {selectedReport === 'fixed_assets' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900 font-mono">{row.asset_code}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.asset_name}</td>
-                    <td className="px-2 py-1.5 text-slate-900">{row.acquisition_date}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{row.cost}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{row.accumulated_depreciation}</td>
-                    <td className="px-2 py-1.5 text-right text-slate-900">{row.net_book_value}</td>
+                    <td className="px-1.5 py-1 text-slate-900 font-mono">{row.asset_code}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.asset_name}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.acquisition_date}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{row.cost}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{row.accumulated_depreciation}</td>
+                    <td className="px-1.5 py-1 text-right text-slate-900">{row.net_book_value}</td>
                   </tr>
                 ))}
               </tbody>

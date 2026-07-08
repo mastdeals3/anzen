@@ -218,7 +218,7 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
         <select
           value={filterModule}
           onChange={(e) => setFilterModule(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg"
+          className="px-1.5 py-1 border border-gray-300 rounded-lg"
         >
           <option value="all">All Sources</option>
           <option value="sales_invoice">Sales Invoices</option>
@@ -239,49 +239,49 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Date</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Type</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Debit Account</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Credit Account</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Amount</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Narration</th>
-                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Date</th>
+                <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Type</th>
+                <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Debit Account</th>
+                <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Credit Account</th>
+                <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Amount</th>
+                <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Narration</th>
+                <th className="px-1.5 py-1 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
               {filteredVouchers.map((voucher) => (
                 <tr key={voucher.journal_entry_id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-900 border-r">
+                  <td className="px-1.5 py-1 whitespace-nowrap text-gray-900 border-r">
                     <div className="text-xs">
                       {new Date(voucher.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                     </div>
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap border-r">
+                  <td className="px-1.5 py-1 whitespace-nowrap border-r">
                     <span className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
                       {voucher.voucher_type}
                     </span>
                   </td>
-                  <td className="px-3 py-2 border-r">
+                  <td className="px-1.5 py-1 border-r">
                     <div className="text-xs text-gray-900 max-w-xs truncate">
                       {voucher.debit_account || '-'}
                     </div>
                   </td>
-                  <td className="px-3 py-2 border-r">
+                  <td className="px-1.5 py-1 border-r">
                     <div className="text-xs text-gray-900 max-w-xs truncate">
                       {voucher.credit_account || '-'}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap border-r">
+                  <td className="px-1.5 py-1 text-right whitespace-nowrap border-r">
                     <span className="text-gray-900 font-medium text-xs">
                       Rp {voucher.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-gray-600 text-xs border-r">
+                  <td className="px-1.5 py-1 text-gray-600 text-xs border-r">
                     <div className="max-w-md truncate">
                       {voucher.narration || '-'}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="px-1.5 py-1 text-center">
                     <div className="flex items-center justify-center gap-2">
                       <button
                         onClick={() => handleViewVoucher(voucher)}
@@ -322,8 +322,8 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
             </tbody>
             <tfoot className="bg-gray-50 font-bold">
               <tr>
-                <td colSpan={4} className="px-3 py-2 text-right">Total:</td>
-                <td className="px-3 py-2 text-right text-gray-900 border-r">
+                <td colSpan={4} className="px-1.5 py-1 text-right">Total:</td>
+                <td className="px-1.5 py-1 text-right text-gray-900 border-r">
                   Rp {totals.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
                 <td colSpan={2}></td>
@@ -366,26 +366,26 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-2 text-left">Account</th>
-                    <th className="px-3 py-2 text-left">Description</th>
-                    <th className="px-3 py-2 text-right">Debit</th>
-                    <th className="px-3 py-2 text-right">Credit</th>
+                    <th className="px-1.5 py-1 text-left">Account</th>
+                    <th className="px-1.5 py-1 text-left">Description</th>
+                    <th className="px-1.5 py-1 text-right">Debit</th>
+                    <th className="px-1.5 py-1 text-right">Credit</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {entryLines.map(line => (
                     <tr key={line.id}>
-                      <td className="px-3 py-2">
+                      <td className="px-1.5 py-1">
                         <div className="font-mono text-xs text-gray-500">{line.chart_of_accounts?.code}</div>
                         <div>{line.chart_of_accounts?.name}</div>
                         {line.customers && <div className="text-xs text-blue-600">{line.customers.company_name}</div>}
                         {line.suppliers && <div className="text-xs text-orange-600">{line.suppliers.company_name}</div>}
                       </td>
-                      <td className="px-3 py-2 text-gray-600">{line.description || '-'}</td>
-                      <td className="px-3 py-2 text-right text-blue-600">
+                      <td className="px-1.5 py-1 text-gray-600">{line.description || '-'}</td>
+                      <td className="px-1.5 py-1 text-right text-blue-600">
                         {line.debit > 0 ? `Rp ${line.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
                       </td>
-                      <td className="px-3 py-2 text-right text-green-600">
+                      <td className="px-1.5 py-1 text-right text-green-600">
                         {line.credit > 0 ? `Rp ${line.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
                       </td>
                     </tr>
@@ -393,11 +393,11 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
                 </tbody>
                 <tfoot className="bg-gray-50 font-medium">
                   <tr>
-                    <td colSpan={2} className="px-3 py-2 text-right">Total:</td>
-                    <td className="px-3 py-2 text-right text-blue-700">
+                    <td colSpan={2} className="px-1.5 py-1 text-right">Total:</td>
+                    <td className="px-1.5 py-1 text-right text-blue-700">
                       Rp {selectedEntry.total_debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="px-3 py-2 text-right text-green-700">
+                    <td className="px-1.5 py-1 text-right text-green-700">
                       Rp {selectedEntry.total_credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                   </tr>

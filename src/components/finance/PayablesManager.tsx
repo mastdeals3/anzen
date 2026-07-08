@@ -698,16 +698,16 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Supplier</th>
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Invoice #</th>
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Category</th>
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Description</th>
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Invoice Date</th>
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold text-gray-600">Due Date</th>
-                  <th className="px-2 py-1.5 text-right text-xs font-semibold text-gray-600">Amount</th>
-                  <th className="px-2 py-1.5 text-right text-xs font-semibold text-gray-600">Paid</th>
-                  <th className="px-2 py-1.5 text-right text-xs font-semibold text-gray-600">Balance</th>
-                  <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Aging</th>
+                  <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Supplier</th>
+                  <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Invoice #</th>
+                  <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Category</th>
+                  <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Description</th>
+                  <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Invoice Date</th>
+                  <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Due Date</th>
+                  <th className="px-1.5 py-1 text-right text-xs font-semibold text-gray-600">Amount</th>
+                  <th className="px-1.5 py-1 text-right text-xs font-semibold text-gray-600">Paid</th>
+                  <th className="px-1.5 py-1 text-right text-xs font-semibold text-gray-600">Balance</th>
+                  <th className="px-1.5 py-1 text-center text-xs font-semibold text-gray-600">Aging</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -715,28 +715,28 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
                   const isOverdue = bill.days_overdue > 0;
                   return (
                     <tr key={bill.id} className={`hover:bg-purple-50/40 ${isOverdue ? 'bg-red-50/30' : ''}`}>
-                      <td className="px-2 py-1.5">
+                      <td className="px-1.5 py-1">
                         <span className="font-medium text-gray-900 text-xs">
                           {bill.supplier_name || <span className="text-gray-400 italic">No Supplier</span>}
                         </span>
                       </td>
-                      <td className="px-2 py-1.5">
+                      <td className="px-1.5 py-1">
                         <span className="font-mono text-xs text-gray-600">
                           {bill.invoice_number || '—'}
                         </span>
                       </td>
-                      <td className="px-2 py-1.5">
+                      <td className="px-1.5 py-1">
                         <span className="text-xs text-gray-700">{categoryLabel(bill.expense_category)}</span>
                       </td>
-                      <td className="px-2 py-1.5">
+                      <td className="px-1.5 py-1">
                         <span className="text-xs text-gray-600 line-clamp-1">{bill.description || '—'}</span>
                       </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">
+                      <td className="px-1.5 py-1 whitespace-nowrap">
                         <span className="text-xs text-gray-700">
                           {new Date(bill.invoice_date).toLocaleDateString('en-GB')}
                         </span>
                       </td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">
+                      <td className="px-1.5 py-1 whitespace-nowrap">
                         {bill.due_date ? (
                           <span className={`text-xs font-medium ${isOverdue ? 'text-red-600' : 'text-gray-700'}`}>
                             {new Date(bill.due_date).toLocaleDateString('en-GB')}
@@ -746,16 +746,16 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
                           <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      <td className="px-1.5 py-1 text-right whitespace-nowrap">
                         <span className="text-xs text-gray-700">Rp {bill.amount.toLocaleString('id-ID')}</span>
                       </td>
-                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      <td className="px-1.5 py-1 text-right whitespace-nowrap">
                         <span className="text-xs text-green-700">Rp {bill.paid_amount.toLocaleString('id-ID')}</span>
                       </td>
-                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      <td className="px-1.5 py-1 text-right whitespace-nowrap">
                         <span className="text-xs font-semibold text-red-600">Rp {bill.balance_amount.toLocaleString('id-ID')}</span>
                       </td>
-                      <td className="px-2 py-1.5 text-center">
+                      <td className="px-1.5 py-1 text-center">
                         {isOverdue ? (
                           <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 rounded">
                             {bill.days_overdue}d overdue
@@ -773,16 +773,16 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
                 })}
                 {/* Totals row */}
                 <tr className="bg-purple-50 border-t-2 border-purple-200 font-bold">
-                  <td colSpan={6} className="px-2 py-1.5 text-right text-xs text-gray-700">
+                  <td colSpan={6} className="px-1.5 py-1 text-right text-xs text-gray-700">
                     TOTAL ({outstandingExpenseBills.length} bills):
                   </td>
-                  <td className="px-2 py-1.5 text-right text-xs text-gray-700">
+                  <td className="px-1.5 py-1 text-right text-xs text-gray-700">
                     Rp {outstandingExpenseBills.reduce((s, b) => s + b.amount, 0).toLocaleString('id-ID')}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-xs text-green-700">
+                  <td className="px-1.5 py-1 text-right text-xs text-green-700">
                     Rp {outstandingExpenseBills.reduce((s, b) => s + b.paid_amount, 0).toLocaleString('id-ID')}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-sm text-red-700 font-bold">
+                  <td className="px-1.5 py-1 text-right text-sm text-red-700 font-bold">
                     Rp {totalExpenseBillsPayable.toLocaleString('id-ID')}
                   </td>
                   <td />

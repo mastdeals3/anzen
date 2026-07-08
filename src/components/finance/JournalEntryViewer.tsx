@@ -141,7 +141,7 @@ export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
         <select
           value={filterModule}
           onChange={(e) => setFilterModule(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg"
+          className="px-1.5 py-1 border border-gray-300 rounded-lg"
         >
           <option value="all">All Sources</option>
           <option value="sales_invoice">Sales Invoices</option>
@@ -168,31 +168,31 @@ export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Entry No</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
-              <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Debit</th>
-              <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase">Credit</th>
-              <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-500 uppercase">View</th>
+              <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase">Entry No</th>
+              <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+              <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+              <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+              <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+              <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-500 uppercase">Debit</th>
+              <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-500 uppercase">Credit</th>
+              <th className="px-1.5 py-1 text-center text-xs font-medium text-gray-500 uppercase">View</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {filteredEntries.map(entry => (
               <tr key={entry.id} className="hover:bg-gray-50">
-                <td className="px-2 py-1.5 font-mono text-sm">{entry.entry_number}</td>
-                <td className="px-2 py-1.5">{new Date(entry.entry_date).toLocaleDateString('id-ID')}</td>
-                <td className="px-2 py-1.5">
+                <td className="px-1.5 py-1 font-mono text-sm">{entry.entry_number}</td>
+                <td className="px-1.5 py-1">{new Date(entry.entry_date).toLocaleDateString('id-ID')}</td>
+                <td className="px-1.5 py-1">
                   <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
                     {entry.source_module ? sourceModuleLabels[entry.source_module] || entry.source_module : 'Manual'}
                   </span>
                 </td>
-                <td className="px-2 py-1.5 font-mono text-sm">{entry.reference_number || '-'}</td>
-                <td className="px-2 py-1.5 text-sm text-gray-600 max-w-xs truncate">{entry.description || '-'}</td>
-                <td className="px-2 py-1.5 text-right text-blue-600">Rp {entry.total_debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className="px-2 py-1.5 text-right text-green-600">Rp {entry.total_credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td className="px-2 py-1.5 text-center">
+                <td className="px-1.5 py-1 font-mono text-sm">{entry.reference_number || '-'}</td>
+                <td className="px-1.5 py-1 text-sm text-gray-600 max-w-xs truncate">{entry.description || '-'}</td>
+                <td className="px-1.5 py-1 text-right text-blue-600">Rp {entry.total_debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className="px-1.5 py-1 text-right text-green-600">Rp {entry.total_credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className="px-1.5 py-1 text-center">
                   <button
                     onClick={() => handleViewEntry(entry)}
                     className="text-blue-600 hover:text-blue-800"
@@ -245,26 +245,26 @@ export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-2 text-left">Account</th>
-                    <th className="px-3 py-2 text-left">Description</th>
-                    <th className="px-3 py-2 text-right">Debit</th>
-                    <th className="px-3 py-2 text-right">Credit</th>
+                    <th className="px-1.5 py-1 text-left">Account</th>
+                    <th className="px-1.5 py-1 text-left">Description</th>
+                    <th className="px-1.5 py-1 text-right">Debit</th>
+                    <th className="px-1.5 py-1 text-right">Credit</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {entryLines.map(line => (
                     <tr key={line.id}>
-                      <td className="px-3 py-2">
+                      <td className="px-1.5 py-1">
                         <div className="font-mono text-xs text-gray-500">{line.chart_of_accounts?.code}</div>
                         <div>{line.chart_of_accounts?.name}</div>
                         {line.customers && <div className="text-xs text-blue-600">{line.customers.company_name}</div>}
                         {line.suppliers && <div className="text-xs text-purple-600">{line.suppliers.company_name}</div>}
                       </td>
-                      <td className="px-3 py-2 text-gray-600">{line.description || '-'}</td>
-                      <td className="px-3 py-2 text-right text-blue-600">
+                      <td className="px-1.5 py-1 text-gray-600">{line.description || '-'}</td>
+                      <td className="px-1.5 py-1 text-right text-blue-600">
                         {line.debit > 0 ? `Rp ${line.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
                       </td>
-                      <td className="px-3 py-2 text-right text-green-600">
+                      <td className="px-1.5 py-1 text-right text-green-600">
                         {line.credit > 0 ? `Rp ${line.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
                       </td>
                     </tr>
@@ -272,11 +272,11 @@ export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
                 </tbody>
                 <tfoot className="bg-gray-50 font-medium">
                   <tr>
-                    <td colSpan={2} className="px-3 py-2 text-right">Total:</td>
-                    <td className="px-3 py-2 text-right text-blue-700">
+                    <td colSpan={2} className="px-1.5 py-1 text-right">Total:</td>
+                    <td className="px-1.5 py-1 text-right text-blue-700">
                       Rp {selectedEntry.total_debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="px-3 py-2 text-right text-green-700">
+                    <td className="px-1.5 py-1 text-right text-green-700">
                       Rp {selectedEntry.total_credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                   </tr>

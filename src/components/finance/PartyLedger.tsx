@@ -405,22 +405,22 @@ export default function PartyLedger() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Date
                     </th>
-                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Particulars
                     </th>
-                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Ref No
                     </th>
-                    <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Debit (Dr)
                     </th>
-                    <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Credit (Cr)
                     </th>
-                    <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
                       Balance
                     </th>
                   </tr>

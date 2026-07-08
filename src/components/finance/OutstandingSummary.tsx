@@ -176,28 +176,28 @@ export default function OutstandingSummary() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-2 py-1.5 text-left text-[10px] font-medium text-gray-700 uppercase tracking-wider">
+                <th className="px-1.5 py-1 text-left text-[10px] font-medium text-gray-700 uppercase tracking-wider">
                   {partyType === 'customer' ? t('common.customer') || 'Customer' : t('common.supplier') || 'Supplier'}
                 </th>
-                <th className="px-2 py-1.5 text-left text-[10px] font-medium text-gray-700 uppercase tracking-wider">
+                <th className="px-1.5 py-1 text-left text-[10px] font-medium text-gray-700 uppercase tracking-wider">
                   {t('common.email') || 'Email'}
                 </th>
-                <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
+                <th className="px-1.5 py-1 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
                   {t('finance.totalOutstanding') || 'Total'}
                 </th>
-                <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
+                <th className="px-1.5 py-1 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
                   0-30
                 </th>
-                <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
+                <th className="px-1.5 py-1 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
                   31-60
                 </th>
-                <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
+                <th className="px-1.5 py-1 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
                   61-90
                 </th>
-                <th className="px-2 py-1.5 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
+                <th className="px-1.5 py-1 text-right text-[10px] font-medium text-gray-700 uppercase tracking-wider">
                   &gt;90
                 </th>
-                <th className="px-2 py-1.5 text-left text-[10px] font-medium text-gray-700 uppercase tracking-wider">
+                <th className="px-1.5 py-1 text-left text-[10px] font-medium text-gray-700 uppercase tracking-wider">
                   {t('finance.oldestInvoice') || 'Oldest'}
                 </th>
               </tr>

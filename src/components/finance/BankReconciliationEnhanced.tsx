@@ -2572,7 +2572,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               <tr>
                 <th
                   onClick={() => handleSort('date')}
-                  className="px-3 py-2 text-left font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                  className="px-1.5 py-1 text-left font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
                 >
                   <div className="flex items-center gap-1">
                     Date
@@ -2583,7 +2583,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 </th>
                 <th
                   onClick={() => handleSort('description')}
-                  className="px-3 py-2 text-left font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                  className="px-1.5 py-1 text-left font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
                 >
                   <div className="flex items-center gap-1">
                     Description
@@ -2594,7 +2594,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 </th>
                 <th
                   onClick={() => handleSort('debit')}
-                  className="px-3 py-2 text-right font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                  className="px-1.5 py-1 text-right font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
                 >
                   <div className="flex items-center justify-end gap-1">
                     Debit
@@ -2605,7 +2605,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 </th>
                 <th
                   onClick={() => handleSort('credit')}
-                  className="px-3 py-2 text-right font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                  className="px-1.5 py-1 text-right font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
                 >
                   <div className="flex items-center justify-end gap-1">
                     Credit
@@ -2616,7 +2616,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 </th>
                 <th
                   onClick={() => handleSort('status')}
-                  className="px-3 py-2 text-center font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                  className="px-1.5 py-1 text-center font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
                 >
                   <div className="flex items-center justify-center gap-1">
                     Status
@@ -2625,28 +2625,28 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                     )}
                   </div>
                 </th>
-                <th className="px-3 py-2 text-center font-medium text-gray-600">Actions</th>
+                <th className="px-1.5 py-1 text-center font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sortedLines.map(line => (
                 <tr key={line.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                  <td className="px-1.5 py-1 text-gray-700 whitespace-nowrap">
                     {new Date(line.date).toLocaleDateString('id-ID')}
                   </td>
-                  <td className="px-3 py-2 text-gray-700 max-w-md">
+                  <td className="px-1.5 py-1 text-gray-700 max-w-md">
                     <div className="whitespace-pre-wrap text-sm leading-tight">{line.description}</div>
                     {line.reference && (
                       <div className="text-xs text-gray-500 font-mono mt-1">{line.reference}</div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right text-red-600 font-medium whitespace-nowrap">
+                  <td className="px-1.5 py-1 text-right text-red-600 font-medium whitespace-nowrap">
                     {line.debit > 0 ? `${getCurrencySymbol(line.currency)} ${line.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                   </td>
-                  <td className="px-3 py-2 text-right text-green-600 font-medium whitespace-nowrap">
+                  <td className="px-1.5 py-1 text-right text-green-600 font-medium whitespace-nowrap">
                     {line.credit > 0 ? `${getCurrencySymbol(line.currency)} ${line.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-1.5 py-1">
                     <div className="flex flex-col gap-1">
                       {(line.status === 'matched' || line.status === 'recorded') && (() => {
                         // Two separate concepts:
@@ -2786,7 +2786,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="px-1.5 py-1 text-center">
                     <div className="flex items-center justify-center gap-1">
                       {line.status === 'suggested' && (
                         <>
@@ -2831,16 +2831,16 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               ))}
               {/* Totals Row */}
               <tr className="bg-blue-50 border-t-2 border-blue-200 font-bold">
-                <td colSpan={2} className="px-2 py-1.5 text-right text-gray-900">
+                <td colSpan={2} className="px-1.5 py-1 text-right text-gray-900">
                   TOTAL ({sortedLines.length} transactions):
                 </td>
-                <td className="px-2 py-1.5 text-right text-red-700 font-bold whitespace-nowrap">
+                <td className="px-1.5 py-1 text-right text-red-700 font-bold whitespace-nowrap">
                   {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {sortedLines.reduce((sum, line) => sum + line.debit, 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
-                <td className="px-2 py-1.5 text-right text-green-700 font-bold whitespace-nowrap">
+                <td className="px-1.5 py-1 text-right text-green-700 font-bold whitespace-nowrap">
                   {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {sortedLines.reduce((sum, line) => sum + line.credit, 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
-                <td colSpan={2} className="px-2 py-1.5 text-center text-gray-600 text-sm">
+                <td colSpan={2} className="px-1.5 py-1 text-center text-gray-600 text-sm">
                   Net: {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {(sortedLines.reduce((sum, line) => sum + line.credit, 0) - sortedLines.reduce((sum, line) => sum + line.debit, 0)).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
@@ -3893,7 +3893,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                     const amt = e.debit_amount || e.credit_amount;
                     const isDebit = !!e.debit_amount;
                     return (
-                      <div key={i} className="px-3 py-2 flex items-center justify-between text-sm">
+                      <div key={i} className="px-1.5 py-1 flex items-center justify-between text-sm">
                         <div>
                           <span className="text-gray-500 text-xs font-mono">{d}</span>
                           <span className="ml-2 text-gray-800">{String(e.description).substring(0, 55)}</span>

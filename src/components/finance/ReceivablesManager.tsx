@@ -663,10 +663,10 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
                 <tbody className="divide-y divide-gray-100">
                   {ageingRows.map((row) => (
                     <tr key={row.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2">{row.customers?.company_name || 'N/A'}</td>
-                      <td className="px-3 py-2 font-medium">{row.invoice_number}</td>
-                      <td className="px-3 py-2 text-gray-600">{formatDate(row.invoice_date)}</td>
-                      <td className="px-3 py-2 text-gray-600">{formatDate(row.due_date)}</td>
+                      <td className="px-1.5 py-1">{row.customers?.company_name || 'N/A'}</td>
+                      <td className="px-1.5 py-1 font-medium">{row.invoice_number}</td>
+                      <td className="px-1.5 py-1 text-gray-600">{formatDate(row.invoice_date)}</td>
+                      <td className="px-1.5 py-1 text-gray-600">{formatDate(row.due_date)}</td>
                       <td className={`px-3 py-2 text-right font-semibold ${
                         row.daysOverdue > 90 ? 'text-red-600' :
                         row.daysOverdue > 60 ? 'text-orange-600' :
@@ -674,19 +674,19 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
                       }`}>
                         {row.daysOverdue === 0 ? 'Current' : `${row.daysOverdue}d`}
                       </td>
-                      <td className="px-3 py-2 text-right text-green-700">
+                      <td className="px-1.5 py-1 text-right text-green-700">
                         {row.bucket0_30 > 0 ? `Rp ${row.bucket0_30.toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right text-yellow-700">
+                      <td className="px-1.5 py-1 text-right text-yellow-700">
                         {row.bucket31_60 > 0 ? `Rp ${row.bucket31_60.toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right text-orange-700">
+                      <td className="px-1.5 py-1 text-right text-orange-700">
                         {row.bucket61_90 > 0 ? `Rp ${row.bucket61_90.toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right text-red-700 font-medium">
+                      <td className="px-1.5 py-1 text-right text-red-700 font-medium">
                         {row.bucket90plus > 0 ? `Rp ${row.bucket90plus.toLocaleString('id-ID', { minimumFractionDigits: 0 })}` : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                      <td className="px-1.5 py-1 text-right font-semibold text-gray-900">
                         Rp {row.balance.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                       </td>
                     </tr>
@@ -694,20 +694,20 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
                 </tbody>
                 <tfoot className="bg-gray-50 border-t-2 border-gray-300 font-bold">
                   <tr>
-                    <td colSpan={5} className="px-3 py-2 text-gray-700">Total</td>
-                    <td className="px-3 py-2 text-right text-green-700">
+                    <td colSpan={5} className="px-1.5 py-1 text-gray-700">Total</td>
+                    <td className="px-1.5 py-1 text-right text-green-700">
                       Rp {ageingTotals.bucket0_30.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
-                    <td className="px-3 py-2 text-right text-yellow-700">
+                    <td className="px-1.5 py-1 text-right text-yellow-700">
                       Rp {ageingTotals.bucket31_60.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
-                    <td className="px-3 py-2 text-right text-orange-700">
+                    <td className="px-1.5 py-1 text-right text-orange-700">
                       Rp {ageingTotals.bucket61_90.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
-                    <td className="px-3 py-2 text-right text-red-700">
+                    <td className="px-1.5 py-1 text-right text-red-700">
                       Rp {ageingTotals.bucket90plus.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
-                    <td className="px-3 py-2 text-right text-gray-900">
+                    <td className="px-1.5 py-1 text-right text-gray-900">
                       Rp {ageingTotals.balance.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     </td>
                   </tr>

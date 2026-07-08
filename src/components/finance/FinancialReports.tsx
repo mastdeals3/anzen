@@ -457,11 +457,11 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
             <table className="w-full text-xs">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-700 text-white">
-                  <th className="px-3 py-2 text-left font-semibold w-20 text-[10px] uppercase tracking-wide">Code</th>
-                  <th className="px-3 py-2 text-left font-semibold text-[10px] uppercase tracking-wide">Account Name</th>
-                  <th className="px-3 py-2 text-right font-semibold text-[10px] uppercase tracking-wide w-32" colSpan={2}>Opening Balance</th>
-                  <th className="px-3 py-2 text-right font-semibold text-[10px] uppercase tracking-wide w-32" colSpan={2}>Period Movements</th>
-                  <th className="px-3 py-2 text-right font-semibold text-[10px] uppercase tracking-wide w-32" colSpan={2}>Closing Balance</th>
+                  <th className="px-1.5 py-1 text-left font-semibold w-20 text-[10px] uppercase tracking-wide">Code</th>
+                  <th className="px-1.5 py-1 text-left font-semibold text-[10px] uppercase tracking-wide">Account Name</th>
+                  <th className="px-1.5 py-1 text-right font-semibold text-[10px] uppercase tracking-wide w-32" colSpan={2}>Opening Balance</th>
+                  <th className="px-1.5 py-1 text-right font-semibold text-[10px] uppercase tracking-wide w-32" colSpan={2}>Period Movements</th>
+                  <th className="px-1.5 py-1 text-right font-semibold text-[10px] uppercase tracking-wide w-32" colSpan={2}>Closing Balance</th>
                 </tr>
                 <tr className="bg-slate-600 text-slate-200">
                   <th className="px-3 py-1" />
@@ -494,7 +494,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                         className={`${bgClass} cursor-pointer select-none`}
                         onClick={() => toggleSection(section.id)}
                       >
-                        <td className="px-3 py-2" colSpan={2}>
+                        <td className="px-1.5 py-1" colSpan={2}>
                           <div className="flex items-center gap-1.5">
                             {isCollapsed
                               ? <ChevronRight className="w-3.5 h-3.5 opacity-60" />
@@ -557,9 +557,9 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
               {/* Grand Total */}
               <tfoot>
                 <tr className="bg-slate-800 text-white font-bold border-t-2 border-slate-600">
-                  <td className="px-2 py-1.5 text-right text-[10px] uppercase tracking-widest" colSpan={2}>GRAND TOTAL</td>
+                  <td className="px-1.5 py-1 text-right text-[10px] uppercase tracking-widest" colSpan={2}>GRAND TOTAL</td>
                   {[tbGrandTotals.openingDr, tbGrandTotals.openingCr, tbGrandTotals.periodDr, tbGrandTotals.periodCr, tbGrandTotals.closingDr, tbGrandTotals.closingCr].map((v, i) => (
-                    <td key={i} className="px-2 py-1.5 text-right text-xs tabular-nums">{fmt(v)}</td>
+                    <td key={i} className="px-1.5 py-1 text-right text-xs tabular-nums">{fmt(v)}</td>
                   ))}
                 </tr>
                 {(() => {
@@ -615,17 +615,17 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
             <table className="w-full text-xs">
               <thead className="sticky top-0 z-10 bg-slate-700 text-white">
                 <tr>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide w-16">Code</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide">Description</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide w-40">Amount (Rp)</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide w-20">% Rev</th>
+                  <th className="px-1.5 py-1 text-left text-[10px] font-semibold uppercase tracking-wide w-16">Code</th>
+                  <th className="px-1.5 py-1 text-left text-[10px] font-semibold uppercase tracking-wide">Description</th>
+                  <th className="px-1.5 py-1 text-right text-[10px] font-semibold uppercase tracking-wide w-40">Amount (Rp)</th>
+                  <th className="px-1.5 py-1 text-right text-[10px] font-semibold uppercase tracking-wide w-20">% Rev</th>
                 </tr>
               </thead>
               <tbody>
 
                 {/* REVENUE */}
                 <tr className="bg-green-50 cursor-pointer select-none" onClick={() => toggleSection('pnl-revenue')}>
-                  <td colSpan={4} className="px-3 py-2">
+                  <td colSpan={4} className="px-1.5 py-1">
                     <div className="flex items-center gap-1.5">
                       {collapsedSections.has('pnl-revenue') ? <ChevronRight className="w-3.5 h-3.5 text-green-600 opacity-70" /> : <ChevronDown className="w-3.5 h-3.5 text-green-600 opacity-70" />}
                       <span className="text-[10px] font-bold uppercase tracking-widest text-green-800">Revenue (Pendapatan)</span>
@@ -638,16 +638,16 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                 {/* NET REVENUE subtotal */}
                 <tr className="bg-green-100 border-t border-green-300">
                   <td />
-                  <td className="px-3 py-2 text-xs font-bold text-green-900">Net Revenue</td>
-                  <td className="px-3 py-2 text-right text-xs font-bold text-green-900 tabular-nums">Rp {fmt(netRevenue)}</td>
-                  <td className="px-3 py-2 text-right text-[10px] text-green-700">100.0%</td>
+                  <td className="px-1.5 py-1 text-xs font-bold text-green-900">Net Revenue</td>
+                  <td className="px-1.5 py-1 text-right text-xs font-bold text-green-900 tabular-nums">Rp {fmt(netRevenue)}</td>
+                  <td className="px-1.5 py-1 text-right text-[10px] text-green-700">100.0%</td>
                 </tr>
 
                 {/* COGS */}
                 {cogsRows.length > 0 && (
                   <>
                     <tr className="bg-orange-50 cursor-pointer select-none" onClick={() => toggleSection('pnl-cogs')}>
-                      <td colSpan={4} className="px-3 py-2">
+                      <td colSpan={4} className="px-1.5 py-1">
                         <div className="flex items-center gap-1.5">
                           {collapsedSections.has('pnl-cogs') ? <ChevronRight className="w-3.5 h-3.5 text-orange-600 opacity-70" /> : <ChevronDown className="w-3.5 h-3.5 text-orange-600 opacity-70" />}
                           <span className="text-[10px] font-bold uppercase tracking-widest text-orange-800">Less: Cost of Goods Sold (HPP)</span>
@@ -657,9 +657,9 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                     {!collapsedSections.has('pnl-cogs') && cogsRows.map(r => <PnLAccountRow key={r.code} row={r} getAmt={r => r.balance} />)}
                     <tr className="bg-orange-50 border-t border-orange-200">
                       <td />
-                      <td className="px-3 py-2 text-xs font-semibold text-orange-900">Total COGS</td>
-                      <td className="px-3 py-2 text-right text-xs font-semibold text-orange-900 tabular-nums">({fmt(totalCOGS)})</td>
-                      <td className="px-3 py-2 text-right text-[10px] text-orange-700">{pctStr(totalCOGS, netRevenue)}</td>
+                      <td className="px-1.5 py-1 text-xs font-semibold text-orange-900">Total COGS</td>
+                      <td className="px-1.5 py-1 text-right text-xs font-semibold text-orange-900 tabular-nums">({fmt(totalCOGS)})</td>
+                      <td className="px-1.5 py-1 text-right text-[10px] text-orange-700">{pctStr(totalCOGS, netRevenue)}</td>
                     </tr>
                   </>
                 )}
@@ -681,7 +681,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                 {opexRows.length > 0 && (
                   <>
                     <tr className="bg-red-50 cursor-pointer select-none" onClick={() => toggleSection('pnl-opex')}>
-                      <td colSpan={4} className="px-3 py-2">
+                      <td colSpan={4} className="px-1.5 py-1">
                         <div className="flex items-center gap-1.5">
                           {collapsedSections.has('pnl-opex') ? <ChevronRight className="w-3.5 h-3.5 text-red-500 opacity-70" /> : <ChevronDown className="w-3.5 h-3.5 text-red-500 opacity-70" />}
                           <span className="text-[10px] font-bold uppercase tracking-widest text-red-800">Less: Operating Expenses (Beban Operasional)</span>
@@ -691,9 +691,9 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                     {!collapsedSections.has('pnl-opex') && opexRows.map(r => <PnLAccountRow key={r.code} row={r} getAmt={r => r.balance} />)}
                     <tr className="bg-red-50 border-t border-red-200">
                       <td />
-                      <td className="px-3 py-2 text-xs font-semibold text-red-900">Total Operating Expenses</td>
-                      <td className="px-3 py-2 text-right text-xs font-semibold text-red-900 tabular-nums">({fmt(totalOpex)})</td>
-                      <td className="px-3 py-2 text-right text-[10px] text-red-700">{pctStr(totalOpex, netRevenue)}</td>
+                      <td className="px-1.5 py-1 text-xs font-semibold text-red-900">Total Operating Expenses</td>
+                      <td className="px-1.5 py-1 text-right text-xs font-semibold text-red-900 tabular-nums">({fmt(totalOpex)})</td>
+                      <td className="px-1.5 py-1 text-right text-[10px] text-red-700">{pctStr(totalOpex, netRevenue)}</td>
                     </tr>
                   </>
                 )}
@@ -715,7 +715,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                 {otherExpRows.length > 0 && (
                   <>
                     <tr className="bg-gray-50 cursor-pointer select-none" onClick={() => toggleSection('pnl-other')}>
-                      <td colSpan={4} className="px-3 py-2">
+                      <td colSpan={4} className="px-1.5 py-1">
                         <div className="flex items-center gap-1.5">
                           {collapsedSections.has('pnl-other') ? <ChevronRight className="w-3.5 h-3.5 text-gray-500 opacity-70" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-500 opacity-70" />}
                           <span className="text-[10px] font-bold uppercase tracking-widest text-gray-700">Less: Other Expenses (Beban Lain-lain)</span>
@@ -725,9 +725,9 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                     {!collapsedSections.has('pnl-other') && otherExpRows.map(r => <PnLAccountRow key={r.code} row={r} getAmt={r => r.balance} />)}
                     <tr className="bg-gray-50 border-t border-gray-200">
                       <td />
-                      <td className="px-3 py-2 text-xs font-semibold text-gray-700">Total Other Expenses</td>
-                      <td className="px-3 py-2 text-right text-xs font-semibold text-gray-700 tabular-nums">({fmt(totalOtherExp)})</td>
-                      <td className="px-3 py-2 text-right text-[10px] text-gray-500">{pctStr(totalOtherExp, netRevenue)}</td>
+                      <td className="px-1.5 py-1 text-xs font-semibold text-gray-700">Total Other Expenses</td>
+                      <td className="px-1.5 py-1 text-right text-xs font-semibold text-gray-700 tabular-nums">({fmt(totalOtherExp)})</td>
+                      <td className="px-1.5 py-1 text-right text-[10px] text-gray-500">{pctStr(totalOtherExp, netRevenue)}</td>
                     </tr>
                   </>
                 )}
@@ -737,14 +737,14 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
               {/* NET INCOME footer */}
               <tfoot>
                 <tr className={`border-t-2 ${netIncome >= 0 ? 'bg-green-700 border-green-500' : 'bg-red-700 border-red-500'} text-white`}>
-                  <td colSpan={2} className="px-2 py-1.5 text-sm font-bold uppercase tracking-wide">
+                  <td colSpan={2} className="px-1.5 py-1 text-sm font-bold uppercase tracking-wide">
                     Net Income — Provisional
                     <span className="block text-[10px] font-normal opacity-75">Laba Bersih (Sementara)</span>
                   </td>
-                  <td className="px-2 py-1.5 text-right text-base font-bold tabular-nums">
+                  <td className="px-1.5 py-1 text-right text-base font-bold tabular-nums">
                     Rp {fmt(netIncome)}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-xs font-semibold">
+                  <td className="px-1.5 py-1 text-right text-xs font-semibold">
                     {pctStr(netIncome, netRevenue)}
                   </td>
                 </tr>
@@ -837,7 +837,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                 {/* Total Assets */}
                 <tr className="bg-blue-900 text-white border-t-2 border-blue-700">
                   <td colSpan={2} className="px-5 py-2.5 text-xs font-bold uppercase tracking-wide">TOTAL ASSETS</td>
-                  <td className="px-2 py-1.5 text-right text-sm font-bold tabular-nums">Rp {fmt(totalAssets)}</td>
+                  <td className="px-1.5 py-1 text-right text-sm font-bold tabular-nums">Rp {fmt(totalAssets)}</td>
                 </tr>
 
                 {/* Spacer */}
@@ -891,7 +891,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                 {/* Total Liabilities */}
                 <tr className="bg-red-900 text-white border-t-2 border-red-700">
                   <td colSpan={2} className="px-5 py-2.5 text-xs font-bold uppercase tracking-wide">TOTAL LIABILITIES</td>
-                  <td className="px-2 py-1.5 text-right text-sm font-bold tabular-nums">Rp {fmt(totalLiabilities)}</td>
+                  <td className="px-1.5 py-1 text-right text-sm font-bold tabular-nums">Rp {fmt(totalLiabilities)}</td>
                 </tr>
 
                 <tr><td colSpan={3} className="py-1 bg-gray-50 border-t border-gray-200" /></tr>
@@ -933,7 +933,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                 {/* Total Liabilities + Equity */}
                 <tr className="bg-purple-900 text-white border-t-2 border-purple-700">
                   <td colSpan={2} className="px-5 py-2.5 text-xs font-bold uppercase tracking-wide">TOTAL LIABILITIES + EQUITY</td>
-                  <td className="px-2 py-1.5 text-right text-sm font-bold tabular-nums">Rp {fmt(totalLiabEquity)}</td>
+                  <td className="px-1.5 py-1 text-right text-sm font-bold tabular-nums">Rp {fmt(totalLiabEquity)}</td>
                 </tr>
 
                 {/* Balance Check */}

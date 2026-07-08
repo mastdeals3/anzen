@@ -533,41 +533,41 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b-2 border-gray-200">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase">Date</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase">Voucher No</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase">Type</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-700 uppercase">Debit</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-700 uppercase">Credit</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-700 uppercase">Balance</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase">Narration</th>
+                    <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase">Date</th>
+                    <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase">Voucher No</th>
+                    <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase">Type</th>
+                    <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-700 uppercase">Debit</th>
+                    <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-700 uppercase">Credit</th>
+                    <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-700 uppercase">Balance</th>
+                    <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase">Narration</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {ledgerData.map((line) => (
                     <tr key={line.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 whitespace-nowrap">
+                      <td className="px-1.5 py-1 whitespace-nowrap">
                         {new Date(line.entry_date).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap font-mono text-blue-600" title={line.entry_number !== line.canonical_number ? `Journal: ${line.entry_number}` : undefined}>
+                      <td className="px-1.5 py-1 whitespace-nowrap font-mono text-blue-600" title={line.entry_number !== line.canonical_number ? `Journal: ${line.entry_number}` : undefined}>
                         {line.canonical_number}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
+                      <td className="px-1.5 py-1 whitespace-nowrap">
                         <span className="px-2 py-1 text-xs bg-gray-100 rounded">
                           {sourceLabel(line.source_module)}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap text-blue-600">
+                      <td className="px-1.5 py-1 text-right whitespace-nowrap text-blue-600">
                         {line.debit > 0 ? `Rp ${line.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
                       </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap text-green-600">
+                      <td className="px-1.5 py-1 text-right whitespace-nowrap text-green-600">
                         {line.credit > 0 ? `Rp ${line.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
                       </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap font-medium">
+                      <td className="px-1.5 py-1 text-right whitespace-nowrap font-medium">
                         <span className={line.balance >= 0 ? 'text-green-600' : 'text-red-600'}>
                           Rp {Math.abs(line.balance).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-gray-600 text-xs max-w-xs truncate">
+                      <td className="px-1.5 py-1 text-gray-600 text-xs max-w-xs truncate">
                         {line.description || line.reference_number || '-'}
                       </td>
                     </tr>
@@ -575,18 +575,18 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
                 </tbody>
                 <tfoot className="bg-gray-50 border-t-2 border-gray-200 font-bold">
                   <tr>
-                    <td colSpan={3} className="px-3 py-2 text-right">Total:</td>
-                    <td className="px-3 py-2 text-right text-blue-700">
+                    <td colSpan={3} className="px-1.5 py-1 text-right">Total:</td>
+                    <td className="px-1.5 py-1 text-right text-blue-700">
                       Rp {totals.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="px-3 py-2 text-right text-green-700">
+                    <td className="px-1.5 py-1 text-right text-green-700">
                       Rp {totals.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td colSpan={2}></td>
                   </tr>
                   <tr>
-                    <td colSpan={5} className="px-3 py-2 text-right">Closing Balance:</td>
-                    <td className="px-3 py-2 text-right">
+                    <td colSpan={5} className="px-1.5 py-1 text-right">Closing Balance:</td>
+                    <td className="px-1.5 py-1 text-right">
                       <span className={closingBalance >= 0 ? 'text-green-700' : 'text-red-700'}>
                         Rp {Math.abs(closingBalance).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         {closingBalance < 0 && ' (Cr)'}
