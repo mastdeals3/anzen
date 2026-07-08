@@ -54,9 +54,8 @@ export default function OutstandingSummary() {
     }
   };
 
-  const formatAmount = (amount: number | null | undefined) => {
-    const v = Number(amount ?? 0);
-    return `Rp ${v.toLocaleString('id-ID', {
+  const formatAmount = (amount: number) => {
+    return `Rp ${amount.toLocaleString('id-ID', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;

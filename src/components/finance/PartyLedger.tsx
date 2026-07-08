@@ -4,7 +4,6 @@ import { Users, Building2, Download, Mail, RefreshCw } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useFinance } from '../../contexts/FinanceContext';
-import { showConfirm } from '../ConfirmDialog';
 
 interface Party {
   id: string;
@@ -213,10 +212,9 @@ export default function PartyLedger() {
     }
   };
 
-  const formatAmount = (amount: number | null | undefined) => {
-    const v = Number(amount ?? 0);
-    if (v === 0) return '-';
-    return `Rp ${v.toLocaleString('id-ID', {
+  const formatAmount = (amount: number) => {
+    if (amount === 0) return '-';
+    return `Rp ${amount.toLocaleString('id-ID', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
@@ -287,13 +285,9 @@ export default function PartyLedger() {
       return;
     }
 
-    const ok = await showConfirm({
-      title: 'Send statement?',
-      message: `Send Statement of Account to ${selectedPartyData.email}?`,
-      confirmText: 'Send',
-      variant: 'info',
-    });
-    if (!ok) return;
+    if (!confirm(`Send Statement of Account to ${selectedPartyData.email}?`)) {
+      return;
+    }
 
     setSendingEmail(true);
     await exportToPDF();

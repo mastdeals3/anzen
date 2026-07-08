@@ -701,7 +701,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
               <SapField label={`To (${getToCurrency()})`} required span={4}
                 right={getFromCurrency() !== getToCurrency() && formData.from_amount > 0 && formData.to_amount > 0 ? (
                   <span className="text-[9px] text-gray-500">
-                    1 {getFromCurrency()} = {(formData.to_amount / formData.from_amount).toLocaleString('id-ID', { maximumFractionDigits: 4 })} {getToCurrency()}
+                    1 USD = {(getFromCurrency() === 'USD' ? formData.to_amount / formData.from_amount : formData.from_amount / formData.to_amount).toLocaleString('id-ID', { maximumFractionDigits: 2 })}
                   </span>
                 ) : null}>
                 <input type="number" step="0.01" min="0.01" value={formData.to_amount || ''}

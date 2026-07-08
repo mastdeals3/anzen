@@ -1348,10 +1348,10 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
             </SapField>
             <SapField label="Amount (Rp)" required span={4}
               right={formData.amount > 0 && formData.amount < 100 ? (
-                <span className="text-[9px] text-amber-700 font-semibold">≈ Rp {(formData.amount * 1000).toLocaleString('id-ID')}?</span>
+                <span className="text-[9px] text-amber-700 font-semibold">? Rp {(formData.amount * 1000).toLocaleString('id-ID')}?</span>
               ) : null}>
               <input type="number" value={formData.amount || ''}
-                onChange={(e) => setFormData({ ...formData, amount: Math.round(parseFloat(e.target.value) || 0) })}
+                onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
                 className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} required min="1" step="1" />
             </SapField>
           </SapRow>

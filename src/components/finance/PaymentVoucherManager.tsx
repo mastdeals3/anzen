@@ -11,7 +11,6 @@ import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
-import { showConfirm } from '../ConfirmDialog';
 
 interface Supplier {
   id: string;
@@ -520,13 +519,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       alert('This payment voucher has been posted to the GL. Cancel posting first to delete it.');
       return;
     }
-    const ok = await showConfirm({
-      title: 'Delete payment voucher?',
-      message: `Delete payment ${v.voucher_number}? This will reverse all invoice allocations.`,
-      confirmText: 'Delete',
-      variant: 'danger',
-    });
-    if (!ok) return;
+    if (!confirm(`Delete payment ${v.voucher_number}? This will reverse all invoice allocations.`)) return;
     try {
       const { error } = await supabase.rpc('delete_payment_voucher_with_allocations', {
         p_voucher_id: v.id,

@@ -555,11 +555,10 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
     ]);
   };
 
-  const filteredInvoices = invoices.filter(inv => {
-    const q = searchTerm.toLowerCase();
-    return (inv.invoice_number || '').toLowerCase().includes(q) ||
-      (inv.suppliers?.company_name || '').toLowerCase().includes(q);
-  });
+  const filteredInvoices = invoices.filter(inv =>
+    inv.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    inv.suppliers?.company_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const totals = calculateTotals();
 
@@ -658,24 +657,24 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       <span>{invoice.currency}</span>
                       {invoice.currency === 'USD' && (
                         <span className="text-xs text-gray-400">
-                          @ {Number(invoice.exchange_rate || 0).toLocaleString()}
+                          @ {invoice.exchange_rate.toLocaleString()}
                         </span>
                       )}
                     </div>
                   </td>
                   <td className="px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm text-right text-gray-900 font-medium">
                     <div className="flex flex-col items-end">
-                      <span>{invoice.currency} {Number(invoice.total_amount || 0).toLocaleString()}</span>
+                      <span>{invoice.currency} {invoice.total_amount.toLocaleString()}</span>
                       <span className="lg:hidden text-xs">
-                        <span className={Number(invoice.balance_amount) > 0 ? 'text-red-600' : 'text-green-600'}>
-                          Bal: {Number(invoice.balance_amount || 0).toLocaleString()}
+                        <span className={invoice.balance_amount > 0 ? 'text-red-600' : 'text-green-600'}>
+                          Bal: {invoice.balance_amount.toLocaleString()}
                         </span>
                       </span>
                     </div>
                   </td>
                   <td className="hidden xl:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm text-right font-medium">
-                    <span className={Number(invoice.balance_amount) > 0 ? 'text-red-600' : 'text-green-600'}>
-                      {invoice.currency} {Number(invoice.balance_amount || 0).toLocaleString()}
+                    <span className={invoice.balance_amount > 0 ? 'text-red-600' : 'text-green-600'}>
+                      {invoice.currency} {invoice.balance_amount.toLocaleString()}
                     </span>
                   </td>
                   <td className="hidden lg:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap">
