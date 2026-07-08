@@ -75,7 +75,7 @@ export function PricingLedger() {
     const q = search.toLowerCase();
     const matchSearch = !q
       || (e.customer_name || '').toLowerCase().includes(q)
-      || e.product_name.toLowerCase().includes(q)
+      || (e.product_name || '').toLowerCase().includes(q)
       || (e.inquiry_number || '').toLowerCase().includes(q)
       || (e.price_request?.pr_number || '').toLowerCase().includes(q);
     const matchWl = wlFilter === 'all' || e.won_lost === wlFilter;

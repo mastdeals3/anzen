@@ -132,11 +132,12 @@ export default function StockRejections() {
     }
 
     if (searchTerm) {
+      const q = searchTerm.toLowerCase();
       filtered = filtered.filter(r =>
-        r.rejection_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.product.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.batch.batch_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.rejection_details.toLowerCase().includes(searchTerm.toLowerCase())
+        (r.rejection_number || '').toLowerCase().includes(q) ||
+        (r.product?.product_name || '').toLowerCase().includes(q) ||
+        (r.batch?.batch_number || '').toLowerCase().includes(q) ||
+        (r.rejection_details || '').toLowerCase().includes(q)
       );
     }
 
