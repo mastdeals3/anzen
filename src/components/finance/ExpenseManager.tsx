@@ -28,6 +28,55 @@ function PpnModeToggle({ value, onChange }: {
     </select>
   );
 }
+
+// Broker Invoice PPN % selector — Indonesian tax practice: 0 / 11 / 12 / Custom.
+// - 0/11/12: PPN Amount is auto-calculated from Invoice DPP × rate (read-only).
+// - Custom: user types both rate (optional) and PPN Amount manually.
+function BrokerPpnRateSelector({ rate, isCustom, onChange }: {
+  rate: number;
+  isCustom: boolean;
+  onChange: (v: { rate: number; custom: boolean }) => void;
+}) {
+  // Preset only reflects the selector when NOT in Custom mode and the rate is a known preset.
+  const preset: string = isCustom ? 'custom'
+    : rate === 0 ? '0'
+    : rate === 11 ? '11'
+    : rate === 12 ? '12'
+    : 'custom';
+  return (
+    <div className="flex items-center gap-1 w-full">
+      <select
+        value={preset}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === 'custom')      onChange({ rate: rate || 0, custom: true });
+          else if (v === '0')      onChange({ rate: 0,  custom: false });
+          else if (v === '11')     onChange({ rate: 11, custom: false });
+          else if (v === '12')     onChange({ rate: 12, custom: false });
+        }}
+        className={SAP_INPUT + ' !flex-none !w-20'}
+        title="PPN rate — 0 / 11 / 12 / Custom"
+      >
+        <option value="0">0%</option>
+        <option value="11">11%</option>
+        <option value="12">12%</option>
+        <option value="custom">Custom</option>
+      </select>
+      {isCustom && (
+        <input
+          type="number" min="0" max="100" step="0.5"
+          value={rate === 0 ? '' : rate}
+          onChange={(e) => {
+            const r = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+            onChange({ rate: r, custom: true });
+          }}
+          className={SAP_INPUT + ' !flex-1 !text-right !font-mono'}
+          placeholder="Custom %"
+        />
+      )}
+    </div>
+  );
+}
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -2492,7 +2541,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         placeholder="Select category"
                       />
                     </SapField>
-                    <SapField label="Doc Date" required span={4}>
+                    <SapField
+                      label={rules.billingMonth === 'show' ? 'Billing Date' : 'Doc Date'}
+                      required span={4}
+                    >
                       <input type="date" value={formData.expense_date}
                         onChange={(e) => {
                           const d = e.target.value;
@@ -2501,7 +2553,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             due_date: selectedSupplier?.payment_terms_days ? getDueDateFromTerms(d, selectedSupplier.payment_terms_days) : prev.due_date,
                           }));
                         }}
-                        className={SAP_INPUT} required />
+                        className={SAP_INPUT} required
+                        title={rules.billingMonth === 'show' ? 'Date printed on the utility bill' : undefined} />
                     </SapField>
                     <SapField label="Due Date" span={4}
                       right={isOverdue ? <span className="text-[9px] text-red-600 font-semibold px-1">⚠ Overdue</span> : null}>
@@ -2556,19 +2609,29 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         />
                       )}
                     </SapField>
-                    <SapField label="Invoice #" span={4}>
+                    <SapField
+                      label={rules.billingMonth === 'show' ? 'Billing Reference' : 'Supplier Invoice Number'}
+                      span={4}
+                    >
                       <input type="text" value={formData.invoice_number}
                         onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
-                        className={SAP_INPUT} placeholder="—" />
+                        className={SAP_INPUT}
+                        placeholder={rules.billingMonth === 'show' ? 'Bill number / account ref' : 'Enter invoice number'} />
                     </SapField>
-                    {(rules.salaryMonth === 'show' || rules.billingMonth === 'show') ? (
-                      <SapField label={rules.salaryMonth === 'show' ? 'Salary Mo' : 'Billing Mo'} required span={4}>
+                    {rules.salaryMonth === 'show' ? (
+                      <SapField label="Salary Month" required span={4}>
                         <input type="month" value={periodLabel}
                           onChange={(e) => setPeriodLabel(e.target.value)}
                           className={SAP_INPUT} />
                       </SapField>
+                    ) : rules.billingMonth === 'show' ? (
+                      <SapField label="Billing Month" required span={4}>
+                        <input type="month" value={periodLabel}
+                          onChange={(e) => setPeriodLabel(e.target.value)}
+                          className={SAP_INPUT} title="The month this bill covers" />
+                      </SapField>
                     ) : (
-                      <SapField label="Reference" span={4}>
+                      <SapField label="Reference / Cheque No." span={4}>
                         <input type="text" value={formData.payment_reference}
                           onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
                           className={SAP_INPUT} placeholder="TT ref / cheque #" />
@@ -2576,10 +2639,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     )}
                   </SapRow>
 
-                  {/* ── Row C: Invoice Amount · Header DDP (broker) · PPN · PPh · Stamp · Bank Chg ── */}
+                  {/* ── Row C: Invoice Amount · Invoice DPP (broker) · PPN · PPh · Stamp · Bank Chg ── */}
                   <SapRow>
-                    <SapField label={isBroker ? 'Broker Inv' : 'Amount'} required span={4}>
-                      <MoneyInput value={formData.amount} required placeholder="0"
+                    <SapField label={isBroker ? 'Broker Invoice Amount' : 'Amount'} required span={4}>
+                      <MoneyInput value={formData.amount} required placeholder="0.00"
                         onChange={(amt) => {
                           setFormData(prev => {
                             const mode = prev.ppn_calc_mode || 'standard';
@@ -2594,9 +2657,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} />
                     </SapField>
                     {isBroker && (
-                      <SapField label="Header DDP" span={4}>
-                        <MoneyInput value={formData.dpp_amount} placeholder="0"
-                          onChange={(v) => setFormData(prev => ({ ...prev, dpp_amount: v }))}
+                      <SapField label="Invoice DPP (Tax Base)" span={4}>
+                        <MoneyInput value={formData.dpp_amount} placeholder="0.00"
+                          onChange={(dpp) => setFormData(prev => {
+                            // If a preset PPN rate is active (not manual), recompute PPN from new DPP.
+                            const rate = prev.ppn_rate ?? 11;
+                            const isManual = prev.ppn_calc_mode === 'manual';
+                            const ppn = isManual ? prev.ppn_amount : Math.round(dpp * rate / 100);
+                            return { ...prev, dpp_amount: dpp, ppn_amount: ppn };
+                          })}
                           className={SAP_INPUT + ' !text-right !font-mono'} />
                       </SapField>
                     )}
@@ -2622,28 +2691,64 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       </>
                     )}
                     {taxCfg?.ppn && !(formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBroker) && (
-                      <SapField label={isBroker ? 'PPN (Broker)' : 'PPN'} span={4}
-                        right={!isBroker ? <PpnModeToggle value={formData.ppn_calc_mode} onChange={(mode) => setFormData(prev => {
-                          const rate = prev.ppn_rate || 11;
-                          let ppn = prev.ppn_amount;
-                          if (mode === 'standard') ppn = selectedSupplier?.pkp_status ? Math.round((prev.amount || 0) * rate / 100) : 0;
-                          else if (mode === 'dpp_nilai_lain') ppn = Math.round((prev.dpp_amount || 0) * rate / 100);
-                          return { ...prev, ppn_calc_mode: mode, ppn_amount: ppn, ppn_manual_override: mode === 'manual', dpp_amount: mode === 'dpp_nilai_lain' ? (prev.dpp_amount || prev.amount || 0) : 0 };
-                        })} /> : null}>
-                        <MoneyInput value={formData.ppn_amount} placeholder="0" readOnly={isBroker}
-                          onChange={(v) => setFormData(prev => ({
-                            ...prev,
-                            ppn_amount: v,
-                            ppn_calc_mode: prev.expense_category === 'import_broker' ? prev.ppn_calc_mode : 'manual',
-                            ppn_manual_override: prev.expense_category !== 'import_broker',
-                          }))}
-                          className={SAP_INPUT + ' !text-right !font-mono text-blue-700' + (isBroker ? ' !bg-gray-100 !text-gray-600' : '')} />
-                      </SapField>
+                      <>
+                        {isBroker && (
+                          <SapField label="PPN %" span={4}>
+                            <BrokerPpnRateSelector
+                              rate={formData.ppn_rate ?? 11}
+                              isCustom={formData.ppn_calc_mode === 'manual'}
+                              onChange={({ rate, custom }) => setFormData(prev => {
+                                const dpp = prev.dpp_amount || 0;
+                                if (custom) {
+                                  return {
+                                    ...prev,
+                                    ppn_rate: rate,
+                                    ppn_calc_mode: 'manual',
+                                    ppn_manual_override: true,
+                                  };
+                                }
+                                return {
+                                  ...prev,
+                                  ppn_rate: rate,
+                                  ppn_calc_mode: 'standard',
+                                  ppn_manual_override: false,
+                                  ppn_amount: Math.round(dpp * rate / 100),
+                                };
+                              })}
+                            />
+                          </SapField>
+                        )}
+                        <SapField label={isBroker ? 'Invoice PPN' : 'PPN'} span={4}
+                          right={!isBroker ? <PpnModeToggle value={formData.ppn_calc_mode} onChange={(mode) => setFormData(prev => {
+                            const rate = prev.ppn_rate || 11;
+                            let ppn = prev.ppn_amount;
+                            if (mode === 'standard') ppn = selectedSupplier?.pkp_status ? Math.round((prev.amount || 0) * rate / 100) : 0;
+                            else if (mode === 'dpp_nilai_lain') ppn = Math.round((prev.dpp_amount || 0) * rate / 100);
+                            return { ...prev, ppn_calc_mode: mode, ppn_amount: ppn, ppn_manual_override: mode === 'manual', dpp_amount: mode === 'dpp_nilai_lain' ? (prev.dpp_amount || prev.amount || 0) : 0 };
+                          })} /> : null}>
+                          <MoneyInput value={formData.ppn_amount} placeholder="0.00"
+                            readOnly={isBroker && formData.ppn_calc_mode !== 'manual'}
+                            onChange={(v) => setFormData(prev => {
+                              if (prev.expense_category === 'import_broker') {
+                                // Broker: manual-only mode allows edit; preset modes are read-only above.
+                                return { ...prev, ppn_amount: v };
+                              }
+                              return {
+                                ...prev,
+                                ppn_amount: v,
+                                ppn_calc_mode: 'manual',
+                                ppn_manual_override: true,
+                              };
+                            })}
+                            className={SAP_INPUT + ' !text-right !font-mono text-blue-700'
+                              + (isBroker && formData.ppn_calc_mode !== 'manual' ? ' !bg-gray-100 !text-gray-600' : '')} />
+                        </SapField>
+                      </>
                     )}
                     {(taxCfg?.pph23 || taxCfg?.pph21) && (
                       <>
-                        <SapField label={taxCfg?.pph23 ? 'PPh' : 'PPh 21'} span={4}>
-                          <MoneyInput value={formData.pph_amount} placeholder="0"
+                        <SapField label={taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'} span={4}>
+                          <MoneyInput value={formData.pph_amount} placeholder="0.00"
                             onChange={(v) => setFormData({ ...formData, pph_amount: v })}
                             className={SAP_INPUT + ' !text-right !font-mono text-orange-700'} />
                         </SapField>
@@ -2668,8 +2773,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       </SapField>
                     )}
                     {formData.expense_category === 'utilities' && (
-                      <SapField label="Bank Charge" span={4}>
-                        <MoneyInput value={formData.bank_charges_amount} placeholder="0"
+                      <SapField label="Bank Charges" span={4}>
+                        <MoneyInput value={formData.bank_charges_amount} placeholder="0.00"
                           onChange={(v) => setFormData({ ...formData, bank_charges_amount: v })}
                           className={SAP_INPUT + ' !text-right !font-mono'} />
                       </SapField>
@@ -2680,12 +2785,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   {((requiresContainer || isBroker) || requiresDC || formData.expense_category === 'fixed_asset') && (
                     <SapRow>
                       {(requiresContainer || isBroker) && (
-                        <SapField label="Container" required={requiresContainer} span={4}>
+                        <SapField label="Import Container" required={requiresContainer} span={4}>
                           <SearchableSelect
                             value={formData.import_container_id}
                             onChange={(val) => setFormData({ ...formData, import_container_id: val })}
-                            options={[{ value: '', label: 'Select Container' }, ...containers.map(c => ({ value: c.id, label: c.container_ref }))]}
-                            placeholder="Select Container"
+                            options={[{ value: '', label: 'Select import container' }, ...containers.map(c => ({ value: c.id, label: c.container_ref }))]}
+                            placeholder="Select import container"
                           />
                         </SapField>
                       )}
@@ -2714,10 +2819,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                   {/* ── Row E: Description (full width) ── */}
                   <SapRow>
-                    <SapField label="Description" span={12}>
+                    <SapField label="Invoice Description" span={12}>
                       <input type="text" value={formData.description}
                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        className={SAP_INPUT} placeholder="Invoice description..." />
+                        className={SAP_INPUT} placeholder="Describe what this invoice covers..." />
                     </SapField>
                   </SapRow>
                 </div>
@@ -2878,14 +2983,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             <div className={`${grid} bg-gray-100 border-b border-gray-300 text-[10px] font-semibold text-gray-600 uppercase tracking-wide`}>
                               <div className="px-1 py-1 border-r border-gray-300 text-center">#</div>
                               <div className="px-1.5 py-1 border-r border-gray-300">Supplier</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300">Invoice No</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300">Tax Inv #</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300">Inv Date</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300">Invoice Number</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300">Tax Invoice #</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300">Invoice Date</div>
                               <div className="px-1.5 py-1 border-r border-gray-300 text-right">Amount</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300 text-right">DDP</div>
-                              <div className="px-1 py-1 border-r border-gray-300 text-center">PPN%</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300 text-right">PPN Amt</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300 text-right">Total</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300 text-right">DPP</div>
+                              <div className="px-1 py-1 border-r border-gray-300 text-center">PPN %</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300 text-right">PPN Amount</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300 text-right">Line Total</div>
                               <div className="px-0.5 py-1 text-center">✕</div>
                             </div>
                             {brokerItems.map((item, idx) => {
@@ -2920,33 +3025,33 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                   <div className="border-r border-gray-200">
                                     <input type="text" value={item.invoice_number || ''}
                                       onChange={(e) => updateLine(idx, { invoice_number: e.target.value })}
-                                      className={cellInputCls} placeholder="—" />
+                                      className={cellInputCls} placeholder="Enter invoice number" />
                                   </div>
                                   {/* Tax Invoice # (Faktur Pajak) */}
                                   <div className="border-r border-gray-200">
                                     <input type="text" value={item.tax_invoice_number || ''}
                                       onChange={(e) => updateLine(idx, { tax_invoice_number: e.target.value })}
-                                      className={cellInputCls} placeholder="—" title="Faktur Pajak number" />
+                                      className={cellInputCls} placeholder="Faktur Pajak #" title="Faktur Pajak number" />
                                   </div>
                                   {/* Invoice Date */}
                                   <div className="border-r border-gray-200">
                                     <input type="date" value={item.invoice_date || ''}
                                       onChange={(e) => updateLine(idx, { invoice_date: e.target.value })}
-                                      className={cellInputCls + ' font-mono'} />
+                                      className={cellInputCls + ' font-mono'} title="Select invoice date" />
                                   </div>
                                   {/* Amount — independent input */}
                                   <div className="border-r border-gray-200">
-                                    <MoneyInput value={item.amount} placeholder="0"
+                                    <MoneyInput value={item.amount} placeholder="0.00"
                                       onChange={(amt) => updateLine(idx, { amount: amt })}
                                       className={cellInputCls + ' text-right font-mono'} />
                                   </div>
-                                  {/* DDP — independent input; Auto mode PPN recomputes from this */}
+                                  {/* DPP — independent input; Auto mode PPN recomputes from this */}
                                   <div className="border-r border-gray-200">
-                                    <MoneyInput value={item.dpp_amount ?? 0} placeholder="0"
+                                    <MoneyInput value={item.dpp_amount ?? 0} placeholder="0.00"
                                       onChange={(v) => updateLine(idx, { dpp_amount: v })}
                                       className={cellInputCls + ' text-right font-mono text-gray-700'} />
                                   </div>
-                                  {/* PPN % — typing 11 → PPN Amt = DDP × 11% (Auto) */}
+                                  {/* PPN % — typing 11 → PPN Amt = DPP × 11% (Auto) */}
                                   <div className="border-r border-gray-200">
                                     <input type="number" min="0" max="100" step="0.5"
                                       value={rateDisplay === 0 ? '' : rateDisplay}
@@ -2958,10 +3063,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                   </div>
                                   {/* PPN Amount — editing this flips row to Manual mode */}
                                   <div className="border-r border-gray-200 relative">
-                                    <MoneyInput value={item.ppn_amount} placeholder="0"
+                                    <MoneyInput value={item.ppn_amount} placeholder="0.00"
                                       onChange={(v) => updateLine(idx, { ppn_amount: v })}
                                       className={cellInputCls + ` text-right font-mono ${isManual ? 'text-amber-700' : 'text-blue-700'}`}
-                                      title={isManual ? 'Manual mode — edit DDP or PPN% to return to Auto' : 'Auto = DDP × PPN%'} />
+                                      title={isManual ? 'Manual mode — edit DPP or PPN% to return to Auto' : 'Auto = DPP × PPN%'} />
                                     {isManual && (
                                       <span className="absolute right-1 top-0.5 text-[8px] font-bold text-amber-600 uppercase tracking-wide pointer-events-none">M</span>
                                     )}
@@ -3001,13 +3106,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         {(() => {
                           type FormulaCell = { label: string; value: number; valueColor: string; op?: string };
                           const cells: FormulaCell[] = [
-                            { label: 'Broker Invoice',      value: brokerInvoiceAmount, valueColor: 'text-gray-900', op: '+' },
-                            { label: 'Header DDP',          value: brokerHeaderDdp,     valueColor: 'text-gray-700', op: '+' },
-                            { label: 'Reimb. Amount',       value: reimbAmount,         valueColor: 'text-gray-900', op: '+' },
-                            { label: 'Reimb. DDP',          value: reimbDpp,            valueColor: 'text-gray-700', op: '+' },
-                            { label: 'PPN (Total)',         value: totalPpn,            valueColor: 'text-blue-700', op: '−' },
-                            { label: 'PPh Withheld',        value: parentPph,           valueColor: 'text-orange-700', op: '+' },
-                            { label: 'Stamp Duty',          value: parentStamp,         valueColor: 'text-gray-900' },
+                            { label: 'Broker Invoice Amount', value: brokerInvoiceAmount, valueColor: 'text-gray-900', op: '+' },
+                            { label: 'Invoice DPP',           value: brokerHeaderDdp,     valueColor: 'text-gray-700', op: '+' },
+                            { label: 'Reimb. Amount',         value: reimbAmount,         valueColor: 'text-gray-900', op: '+' },
+                            { label: 'Reimb. DPP',            value: reimbDpp,            valueColor: 'text-gray-700', op: '+' },
+                            { label: 'PPN (Total)',           value: totalPpn,            valueColor: 'text-blue-700', op: '−' },
+                            { label: 'PPh Withheld',          value: parentPph,           valueColor: 'text-orange-700', op: '+' },
+                            { label: 'Stamp Duty',            value: parentStamp,         valueColor: 'text-gray-900' },
                           ];
                           return (
                             <div className="mt-2">
