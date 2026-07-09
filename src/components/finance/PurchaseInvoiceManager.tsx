@@ -358,16 +358,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
 
     setDeleting(true);
     try {
-      const { error: itemsErr } = await supabase
-        .from('purchase_invoice_items')
-        .delete()
-        .eq('purchase_invoice_id', invoice.id);
-      if (itemsErr) throw itemsErr;
-
-      const { error } = await supabase
-        .from('purchase_invoices')
-        .delete()
-        .eq('id', invoice.id);
+      const { error } = await supabase.rpc('delete_purchase_invoice', { p_id: invoice.id });
       if (error) throw error;
 
       showToast({ type: 'success', title: 'Deleted', message: 'Purchase invoice deleted successfully.' });
