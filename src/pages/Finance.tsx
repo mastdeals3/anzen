@@ -357,22 +357,22 @@ function FinanceContent() {
         <div
           className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col md:relative md:z-auto overflow-hidden transition-[width,transform] duration-300 ${
             sidebarCollapsed
-              ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 w-36'
-              : 'translate-x-0 w-36 md:w-36'
+              ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 w-40'
+              : 'translate-x-0 w-40 md:w-40'
           }`}
         >
-            {/* Menu Groups — compact ERP sidebar */}
+            {/* Menu Groups */}
             <div className="flex-1 overflow-y-auto">
               {financeMenu.map((group, groupIdx) => {
                 const isCollapsed = collapsedGroups.has(group.label);
                 const isCollapsible = group.collapsible;
 
                 return (
-                  <div key={group.label} className={groupIdx > 0 ? 'mt-0.5' : ''}>
+                  <div key={group.label} className={groupIdx > 0 ? 'border-t border-gray-200' : ''}>
                     {isCollapsible ? (
                       <button
                         onClick={() => toggleGroup(group.label)}
-                        className="w-full px-2 h-4 text-[8px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between hover:bg-gray-50 bg-gray-50/60"
+                        className="w-full px-2 py-0.5 text-[8px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between hover:bg-gray-50"
                       >
                         <span>{group.label}</span>
                         {isCollapsed ? (
@@ -382,7 +382,7 @@ function FinanceContent() {
                         )}
                       </button>
                     ) : (
-                      <div className="px-2 h-4 text-[8px] font-bold text-gray-400 uppercase tracking-wider flex items-center bg-gray-50/60">
+                      <div className="px-2 py-0.5 text-[8px] font-bold text-gray-400 uppercase tracking-wider">
                         {group.label}
                       </div>
                     )}
@@ -396,16 +396,16 @@ function FinanceContent() {
                               setActiveTab(item.id);
                               if (window.innerWidth < 768) setSidebarCollapsed(true);
                             }}
-                            className={`w-full text-left px-2 h-5 text-[10px] leading-tight transition-colors flex items-center ${
+                            className={`w-full text-left px-2 py-[3px] text-[10px] leading-tight transition-colors ${
                               activeTab === item.id
                                 ? 'bg-blue-50 text-blue-700 font-medium border-l-2 border-blue-600'
                                 : 'text-gray-700 hover:bg-gray-50 border-l-2 border-transparent'
                             }`}
                           >
-                            <div className="flex items-center justify-between w-full">
-                              <span className="truncate">{item.label}</span>
+                            <div className="flex items-center justify-between">
+                              <span>{item.label}</span>
                               {item.shortcut && (
-                                <span className="text-[8px] text-gray-400 ml-1 shrink-0">{item.shortcut}</span>
+                                <span className="text-[8px] text-gray-400">{item.shortcut}</span>
                               )}
                             </div>
                           </button>
