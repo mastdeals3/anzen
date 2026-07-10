@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Edit, Trash2, Search, Building2 } from 'lucide-react';
-import { Modal } from '../Modal';
-import { SapRow, SapField, SAP_INPUT } from './SapLayout';
+import { FinanceModal } from './FinanceModal';
+import {
+  SapRow, SapField, SAP_INPUT,
+  SAP_BTN_PRIMARY, SAP_BTN_SECONDARY,
+} from './SapLayout';
 import { SUPPLIER_TYPES } from '../../utils/taxCalculations';
 
 interface Supplier {
@@ -356,8 +359,24 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
         </table>
       </div>
 
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingSupplier ? 'Edit Supplier' : 'Add Supplier'} maxWidth="max-w-3xl">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-1.5">
+      <FinanceModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editingSupplier ? 'Edit Supplier' : 'New Supplier'}
+        subtitle={editingSupplier?.company_name || undefined}
+        size="lg"
+        footer={
+          <>
+            <button type="button" onClick={() => setModalOpen(false)} className={SAP_BTN_SECONDARY}>
+              Cancel
+            </button>
+            <button type="submit" form="supplier-form" className={SAP_BTN_PRIMARY}>
+              {editingSupplier ? 'Update' : 'Create'} Supplier
+            </button>
+          </>
+        }
+      >
+        <form id="supplier-form" onSubmit={handleSubmit} className="flex flex-col gap-2">
           {/* Identification */}
           <SapRow>
             <SapField label="Code" span={4}>
@@ -500,16 +519,8 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
             )}
           </SapRow>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
-            <button type="button" onClick={() => setModalOpen(false)}
-              className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
-            <button type="submit"
-              className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
-              {editingSupplier ? 'Update' : 'Create'} Supplier
-            </button>
-          </div>
         </form>
-      </Modal>
+      </FinanceModal>
     </div>
   );
 }

@@ -62,14 +62,14 @@ export function ApprovalNotifications() {
 
         supabase
           .from('finance_expenses')
-          .select('id, voucher_number, expense_date, amount, description')
+          .select('id, voucher_number, expense_date, amount, description, bank_accounts(currency)')
           .eq('approval_status', 'pending_approval')
           .order('created_at', { ascending: false })
           .limit(5),
 
         supabase
           .from('petty_cash_transactions')
-          .select('id, transaction_number, transaction_date, amount, description')
+          .select('id, transaction_number, transaction_date, amount, description, bank_accounts(currency)')
           .eq('approval_status', 'pending_approval')
           .order('created_at', { ascending: false })
           .limit(5),
@@ -87,16 +87,23 @@ export function ApprovalNotifications() {
         date: ch.challan_date,
       }));
 
-      expRes.data?.forEach(e => approvals.push({
+      // Expenses / petty cash inherit currency from their linked bank account —
+      // display "USD 5,000" when paid from a USD account, "Rp 5,000" for IDR.
+      // Fall back to IDR only when no bank account is linked (cash-only entries).
+      expRes.data?.forEach((e: any) => approvals.push({
         id: e.id, type: 'expense', number: e.voucher_number || '—',
         description: e.description || 'Expense',
-        amount: e.amount, date: e.expense_date,
+        amount: e.amount,
+        currency: e.bank_accounts?.currency || 'IDR',
+        date: e.expense_date,
       }));
 
-      pcRes.data?.forEach(pc => approvals.push({
+      pcRes.data?.forEach((pc: any) => approvals.push({
         id: pc.id, type: 'petty_cash', number: pc.transaction_number,
         description: pc.description || 'Petty Cash',
-        amount: pc.amount, date: pc.transaction_date,
+        amount: pc.amount,
+        currency: pc.bank_accounts?.currency || 'IDR',
+        date: pc.transaction_date,
       }));
 
       setPendingApprovals(approvals);

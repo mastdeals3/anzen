@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
-import { Modal } from '../Modal';
-import { SapRow, SapField, SAP_INPUT } from './SapLayout';
+import { FinanceModal } from './FinanceModal';
+import { SearchableSelect } from '../SearchableSelect';
+import {
+  SapRow, SapField, SAP_INPUT,
+  SAP_BTN_PRIMARY, SAP_BTN_SECONDARY,
+} from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 
@@ -11,8 +15,7 @@ import { showConfirm } from '../ConfirmDialog';
  *
  * Payroll / staff-expense targets. Used by the Expense form when the
  * category is one of salary / staff_overtime / staff_welfare /
- * travel_conveyance. This screen is a pure lookup admin — no
- * calculations, no journal side-effects.
+ * travel_conveyance. Pure lookup admin — no accounting side-effects.
  */
 
 interface Staff {
@@ -28,6 +31,12 @@ interface Staff {
   created_at: string;
 }
 
+interface CoaAccount {
+  id: string;
+  code: string;
+  name: string;
+}
+
 interface Props {
   canManage: boolean;
 }
@@ -38,6 +47,10 @@ export function StaffMasterManager({ canManage }: Props) {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Staff | null>(null);
+
+  // Chart-of-accounts list for the GL Code selector.
+  const [coa, setCoa] = useState<CoaAccount[]>([]);
+
   const [form, setForm] = useState({
     full_name: '',
     employee_code: '',
@@ -48,8 +61,10 @@ export function StaffMasterManager({ canManage }: Props) {
     status: 'active' as 'active' | 'inactive',
     notes: '',
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadCoa(); }, []);
 
   const load = async () => {
     setLoading(true);
@@ -62,8 +77,20 @@ export function StaffMasterManager({ canManage }: Props) {
     setLoading(false);
   };
 
+  const loadCoa = async () => {
+    // Expense-side accounts only — salary / welfare / travel are all "expense".
+    const { data } = await supabase
+      .from('chart_of_accounts')
+      .select('id, code, name, account_type, is_active')
+      .in('account_type', ['expense', 'Expense'])
+      .eq('is_active', true)
+      .order('code');
+    setCoa((data as CoaAccount[]) || []);
+  };
+
   const reset = () => {
     setEditing(null);
+    setErrors({});
     setForm({
       full_name: '', employee_code: '', department: '',
       default_gl_code: '', default_gl_name: '',
@@ -73,6 +100,7 @@ export function StaffMasterManager({ canManage }: Props) {
 
   const openEdit = (r: Staff) => {
     setEditing(r);
+    setErrors({});
     setForm({
       full_name: r.full_name,
       employee_code: r.employee_code || '',
@@ -86,12 +114,18 @@ export function StaffMasterManager({ canManage }: Props) {
     setModalOpen(true);
   };
 
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.full_name.trim()) {
-      showToast({ type: 'error', title: 'Name required', message: 'Enter the staff name.' });
-      return;
-    }
+  const validate = (): boolean => {
+    const e: Record<string, string> = {};
+    if (!form.full_name.trim()) e.full_name = 'Full name is required';
+    if (form.npwp && form.npwp.length < 15) e.npwp = 'NPWP looks incomplete (15+ chars)';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const save = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (!validate()) return;
+    setSaving(true);
     const payload: Partial<Staff> = {
       full_name: form.full_name.trim(),
       employee_code: form.employee_code.trim() || null,
@@ -105,6 +139,7 @@ export function StaffMasterManager({ canManage }: Props) {
     const { error } = editing
       ? await supabase.from('finance_staff_master').update(payload).eq('id', editing.id)
       : await supabase.from('finance_staff_master').insert(payload);
+    setSaving(false);
     if (error) {
       showToast({ type: 'error', title: 'Save failed', message: error.message });
       return;
@@ -119,7 +154,7 @@ export function StaffMasterManager({ canManage }: Props) {
     const ok = await showConfirm({
       title: 'Delete staff record?',
       message: `Delete ${r.full_name}? Expenses already booked against this staff are NOT affected — this only removes the master record.`,
-      confirmText: 'Delete',
+      confirmLabel: 'Delete',
       variant: 'danger',
     });
     if (!ok) return;
@@ -163,7 +198,7 @@ export function StaffMasterManager({ canManage }: Props) {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search name / code / dept..."
+            placeholder="Search name / code / department..."
             className="w-full h-7 pl-7 pr-2 text-xs border border-gray-300 rounded"
           />
         </div>
@@ -219,67 +254,129 @@ export function StaffMasterManager({ canManage }: Props) {
         </table>
       </div>
 
-      {/* Modal */}
-      {modalOpen && (
-        <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); reset(); }}
-          title={editing ? `Edit Staff: ${editing.full_name}` : 'New Staff'} maxWidth="max-w-lg">
-          <form onSubmit={save} className="flex flex-col gap-1.5">
-            <SapRow>
-              <SapField label="Full Name" required span={8}>
-                <input required value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })}
-                  className={SAP_INPUT} />
-              </SapField>
-              <SapField label="Emp Code" span={4}>
-                <input value={form.employee_code} onChange={e => setForm({ ...form, employee_code: e.target.value })}
-                  className={SAP_INPUT} />
-              </SapField>
-            </SapRow>
-            <SapRow>
-              <SapField label="Department" span={6}>
-                <input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}
-                  className={SAP_INPUT} />
-              </SapField>
-              <SapField label="Status" span={6}>
-                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as 'active' | 'inactive' })}
-                  className={SAP_INPUT}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </SapField>
-            </SapRow>
-            <SapRow>
-              <SapField label="GL Code" span={4}>
-                <input value={form.default_gl_code} onChange={e => setForm({ ...form, default_gl_code: e.target.value })}
-                  placeholder="e.g. 6100"
-                  className={SAP_INPUT + ' !font-mono'} />
-              </SapField>
-              <SapField label="GL Name" span={4}>
-                <input value={form.default_gl_name} onChange={e => setForm({ ...form, default_gl_name: e.target.value })}
-                  placeholder="Salary Expense"
-                  className={SAP_INPUT} />
-              </SapField>
-              <SapField label="NPWP" span={4}>
-                <input value={form.npwp} onChange={e => setForm({ ...form, npwp: e.target.value })}
-                  className={SAP_INPUT + ' !font-mono'} />
-              </SapField>
-            </SapRow>
-            <SapRow>
-              <SapField label="Notes" span={12}>
-                <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
-                  className={SAP_INPUT} />
-              </SapField>
-            </SapRow>
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
-              <button type="button" onClick={() => { setModalOpen(false); reset(); }}
-                className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
-              <button type="submit"
-                className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
-                {editing ? 'Update' : 'Create'}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
+      {/* Modal — FinanceModal shell, SAP grid, single validation style */}
+      <FinanceModal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); reset(); }}
+        title={editing ? 'Edit Staff' : 'New Staff'}
+        subtitle={editing?.employee_code || undefined}
+        size="md"
+        footer={
+          <>
+            <button type="button" onClick={() => { setModalOpen(false); reset(); }}
+              className={SAP_BTN_SECONDARY}>Cancel</button>
+            <button type="submit" form="staff-master-form" disabled={saving}
+              className={SAP_BTN_PRIMARY}>
+              {saving ? 'Saving…' : editing ? 'Update' : 'Create'}
+            </button>
+          </>
+        }
+      >
+        <form id="staff-master-form" onSubmit={save} className="flex flex-col gap-2">
+          {/* Row 1 — Full Name full width */}
+          <SapRow>
+            <SapField label="Full Name" required span={12} error={errors.full_name}>
+              <input
+                type="text" required
+                value={form.full_name}
+                onChange={e => setForm({ ...form, full_name: e.target.value })}
+                className={SAP_INPUT + (errors.full_name ? ' !border-red-400 focus:!border-red-500 focus:!ring-red-200' : '')}
+                placeholder="e.g. Budi Santoso"
+                autoFocus
+              />
+            </SapField>
+          </SapRow>
+
+          {/* Row 2 — Employee Code | Department */}
+          <SapRow>
+            <SapField label="Employee Code" span={6} hint="Internal HR code (optional)">
+              <input
+                type="text"
+                value={form.employee_code}
+                onChange={e => setForm({ ...form, employee_code: e.target.value })}
+                className={SAP_INPUT + ' !font-mono'}
+                placeholder="e.g. EMP-001"
+              />
+            </SapField>
+            <SapField label="Department" span={6} hint="Cost centre grouping">
+              <input
+                type="text"
+                value={form.department}
+                onChange={e => setForm({ ...form, department: e.target.value })}
+                className={SAP_INPUT}
+                placeholder="e.g. Warehouse"
+              />
+            </SapField>
+          </SapRow>
+
+          {/* Row 3 — Status | NPWP */}
+          <SapRow>
+            <SapField label="Status" span={6}>
+              <select
+                value={form.status}
+                onChange={e => setForm({ ...form, status: e.target.value as 'active' | 'inactive' })}
+                className={SAP_INPUT}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </SapField>
+            <SapField label="NPWP" span={6} error={errors.npwp} hint={errors.npwp ? undefined : 'Indonesian tax ID (optional)'}>
+              <input
+                type="text"
+                value={form.npwp}
+                onChange={e => setForm({ ...form, npwp: e.target.value })}
+                className={SAP_INPUT + ' !font-mono' + (errors.npwp ? ' !border-red-400 focus:!border-red-500 focus:!ring-red-200' : '')}
+                placeholder="00.000.000.0-000.000"
+              />
+            </SapField>
+          </SapRow>
+
+          {/* Row 4 — Default GL Code (searchable) | GL Name (auto-populated, read-only) */}
+          <SapRow>
+            <SapField label="Default GL Code" span={6} hint="Optional — auto-fills GL Name">
+              <SearchableSelect
+                value={form.default_gl_code}
+                onChange={(val) => {
+                  const acct = coa.find(a => a.code === val);
+                  setForm(f => ({
+                    ...f,
+                    default_gl_code: val || '',
+                    default_gl_name: acct?.name || '',
+                  }));
+                }}
+                options={[
+                  { value: '', label: '— None —' },
+                  ...coa.map(a => ({ value: a.code, label: `${a.code} — ${a.name}` })),
+                ]}
+                placeholder="Search account..."
+              />
+            </SapField>
+            <SapField label="GL Name" span={6} hint="Populated from GL Code">
+              <input
+                type="text"
+                value={form.default_gl_name}
+                readOnly
+                className={SAP_INPUT + ' !bg-gray-50 !text-gray-600'}
+                placeholder="Auto-populated"
+              />
+            </SapField>
+          </SapRow>
+
+          {/* Row 5 — Notes full width */}
+          <SapRow>
+            <SapField label="Notes" span={12} hint="Free-text (optional)">
+              <input
+                type="text"
+                value={form.notes}
+                onChange={e => setForm({ ...form, notes: e.target.value })}
+                className={SAP_INPUT}
+                placeholder="Anything Accounts should know about this staff record"
+              />
+            </SapField>
+          </SapRow>
+        </form>
+      </FinanceModal>
     </div>
   );
 }

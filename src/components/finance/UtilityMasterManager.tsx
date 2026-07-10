@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Pencil, Trash2, Search, Zap } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
-import { SapRow, SapField, SAP_INPUT } from './SapLayout';
+import {
+  SapRow, SapField, SAP_INPUT,
+  SAP_BTN_PRIMARY, SAP_BTN_SECONDARY,
+} from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 
@@ -43,6 +46,7 @@ interface Utility {
 }
 
 interface Supplier { id: string; company_name: string; }
+interface CoaAccount { id: string; code: string; name: string; }
 
 interface Props {
   canManage: boolean;
@@ -51,6 +55,7 @@ interface Props {
 export function UtilityMasterManager({ canManage }: Props) {
   const [rows, setRows] = useState<Utility[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [coa, setCoa] = useState<CoaAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -65,8 +70,10 @@ export function UtilityMasterManager({ canManage }: Props) {
     status: 'active' as 'active' | 'inactive',
     notes: '',
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { load(); loadSuppliers(); }, []);
+  useEffect(() => { load(); loadSuppliers(); loadCoa(); }, []);
 
   const load = async () => {
     setLoading(true);
@@ -84,8 +91,19 @@ export function UtilityMasterManager({ canManage }: Props) {
     setSuppliers(data || []);
   };
 
+  const loadCoa = async () => {
+    const { data } = await supabase
+      .from('chart_of_accounts')
+      .select('id, code, name, account_type, is_active')
+      .in('account_type', ['expense', 'Expense'])
+      .eq('is_active', true)
+      .order('code');
+    setCoa((data as CoaAccount[]) || []);
+  };
+
   const reset = () => {
     setEditing(null);
+    setErrors({});
     setForm({
       provider_name: '', utility_type: 'electricity',
       account_number: '', default_gl_code: '', default_gl_name: '',
@@ -95,6 +113,7 @@ export function UtilityMasterManager({ canManage }: Props) {
 
   const openEdit = (r: Utility) => {
     setEditing(r);
+    setErrors({});
     setForm({
       provider_name: r.provider_name,
       utility_type: r.utility_type,
@@ -108,12 +127,17 @@ export function UtilityMasterManager({ canManage }: Props) {
     setModalOpen(true);
   };
 
+  const validate = (): boolean => {
+    const e: Record<string, string> = {};
+    if (!form.provider_name.trim()) e.provider_name = 'Provider name is required';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.provider_name.trim()) {
-      showToast({ type: 'error', title: 'Provider required', message: 'Enter the provider name.' });
-      return;
-    }
+    if (!validate()) return;
+    setSaving(true);
     const payload = {
       provider_name: form.provider_name.trim(),
       utility_type: form.utility_type,
@@ -127,6 +151,7 @@ export function UtilityMasterManager({ canManage }: Props) {
     const { error } = editing
       ? await supabase.from('finance_utility_master').update(payload).eq('id', editing.id)
       : await supabase.from('finance_utility_master').insert(payload);
+    setSaving(false);
     if (error) {
       showToast({ type: 'error', title: 'Save failed', message: error.message });
       return;
@@ -141,7 +166,7 @@ export function UtilityMasterManager({ canManage }: Props) {
     const ok = await showConfirm({
       title: 'Delete utility record?',
       message: `Delete ${r.provider_name}? Utility expenses already booked are NOT affected — this only removes the master record.`,
-      confirmText: 'Delete',
+      confirmLabel: 'Delete',
       variant: 'danger',
     });
     if (!ok) return;
@@ -241,75 +266,128 @@ export function UtilityMasterManager({ canManage }: Props) {
         </table>
       </div>
 
-      {/* Modal */}
-      {modalOpen && (
-        <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); reset(); }}
-          title={editing ? `Edit Utility: ${editing.provider_name}` : 'New Utility Provider'} maxWidth="max-w-lg">
-          <form onSubmit={save} className="flex flex-col gap-1.5">
-            <SapRow>
-              <SapField label="Provider" required span={8}>
-                <input required value={form.provider_name} onChange={e => setForm({ ...form, provider_name: e.target.value })}
-                  className={SAP_INPUT} />
-              </SapField>
-              <SapField label="Type" span={4}>
-                <select value={form.utility_type} onChange={e => setForm({ ...form, utility_type: e.target.value })}
-                  className={SAP_INPUT}>
-                  {UTILITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </SapField>
-            </SapRow>
-            <SapRow>
-              <SapField label="Acct #" span={6}>
-                <input value={form.account_number} onChange={e => setForm({ ...form, account_number: e.target.value })}
-                  className={SAP_INPUT + ' !font-mono'} />
-              </SapField>
-              <SapField label="Status" span={6}>
-                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as 'active' | 'inactive' })}
-                  className={SAP_INPUT}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </SapField>
-            </SapRow>
-            <SapRow>
-              <SapField label="GL Code" span={4}>
-                <input value={form.default_gl_code} onChange={e => setForm({ ...form, default_gl_code: e.target.value })}
-                  placeholder="e.g. 6200"
-                  className={SAP_INPUT + ' !font-mono'} />
-              </SapField>
-              <SapField label="GL Name" span={8}>
-                <input value={form.default_gl_name} onChange={e => setForm({ ...form, default_gl_name: e.target.value })}
-                  placeholder="Utilities Expense"
-                  className={SAP_INPUT} />
-              </SapField>
-            </SapRow>
-            <SapRow>
-              <SapField label="Supplier" span={12}>
-                <SearchableSelect
-                  value={form.supplier_id}
-                  onChange={(v) => setForm({ ...form, supplier_id: v })}
-                  options={[{ value: '', label: '— None —' }, ...suppliers.map(s => ({ value: s.id, label: s.company_name }))]}
-                  placeholder="Optional — links utility to AP..."
-                />
-              </SapField>
-            </SapRow>
-            <SapRow>
-              <SapField label="Notes" span={12}>
-                <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
-                  className={SAP_INPUT} />
-              </SapField>
-            </SapRow>
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
-              <button type="button" onClick={() => { setModalOpen(false); reset(); }}
-                className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
-              <button type="submit"
-                className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
-                {editing ? 'Update' : 'Create'}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
+      {/* Modal — FinanceModal shell, SAP grid, unified footer */}
+      <FinanceModal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); reset(); }}
+        title={editing ? 'Edit Utility Provider' : 'New Utility Provider'}
+        subtitle={editing?.provider_name || undefined}
+        size="md"
+        footer={
+          <>
+            <button type="button" onClick={() => { setModalOpen(false); reset(); }}
+              className={SAP_BTN_SECONDARY}>Cancel</button>
+            <button type="submit" form="utility-master-form" disabled={saving}
+              className={SAP_BTN_PRIMARY}>
+              {saving ? 'Saving…' : editing ? 'Update' : 'Create'}
+            </button>
+          </>
+        }
+      >
+        <form id="utility-master-form" onSubmit={save} className="flex flex-col gap-2">
+          {/* Row 1 — Provider Name full width */}
+          <SapRow>
+            <SapField label="Provider Name" required span={12} error={errors.provider_name}
+              hint={errors.provider_name ? undefined : 'e.g. PLN Jakarta, Telkom Indihome'}>
+              <input
+                type="text" required autoFocus
+                value={form.provider_name}
+                onChange={e => setForm({ ...form, provider_name: e.target.value })}
+                className={SAP_INPUT + (errors.provider_name ? ' !border-red-400 focus:!border-red-500 focus:!ring-red-200' : '')}
+                placeholder="Utility provider name"
+              />
+            </SapField>
+          </SapRow>
+
+          {/* Row 2 — Utility Type | Account Number */}
+          <SapRow>
+            <SapField label="Utility Type" span={6}>
+              <select
+                value={form.utility_type}
+                onChange={e => setForm({ ...form, utility_type: e.target.value })}
+                className={SAP_INPUT}
+              >
+                {UTILITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </SapField>
+            <SapField label="Account Number" span={6} hint="Customer / subscriber ID at the provider">
+              <input
+                type="text"
+                value={form.account_number}
+                onChange={e => setForm({ ...form, account_number: e.target.value })}
+                className={SAP_INPUT + ' !font-mono'}
+                placeholder="e.g. 5411-2001-234"
+              />
+            </SapField>
+          </SapRow>
+
+          {/* Row 3 — Linked Supplier (optional) | Status */}
+          <SapRow>
+            <SapField label="Linked Supplier" span={6} hint="Optional — enables the AP pipeline for this utility">
+              <SearchableSelect
+                value={form.supplier_id}
+                onChange={(v) => setForm({ ...form, supplier_id: v })}
+                options={[{ value: '', label: '— None —' }, ...suppliers.map(s => ({ value: s.id, label: s.company_name }))]}
+                placeholder="Search supplier..."
+              />
+            </SapField>
+            <SapField label="Status" span={6}>
+              <select
+                value={form.status}
+                onChange={e => setForm({ ...form, status: e.target.value as 'active' | 'inactive' })}
+                className={SAP_INPUT}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </SapField>
+          </SapRow>
+
+          {/* Row 4 — Default GL Account (searchable) | GL Name (auto-populated) */}
+          <SapRow>
+            <SapField label="Default GL Account" span={6} hint="Optional — auto-fills GL Name">
+              <SearchableSelect
+                value={form.default_gl_code}
+                onChange={(val) => {
+                  const acct = coa.find(a => a.code === val);
+                  setForm(f => ({
+                    ...f,
+                    default_gl_code: val || '',
+                    default_gl_name: acct?.name || '',
+                  }));
+                }}
+                options={[
+                  { value: '', label: '— None —' },
+                  ...coa.map(a => ({ value: a.code, label: `${a.code} — ${a.name}` })),
+                ]}
+                placeholder="Search account..."
+              />
+            </SapField>
+            <SapField label="GL Name" span={6} hint="Populated from GL Account">
+              <input
+                type="text"
+                value={form.default_gl_name}
+                readOnly
+                className={SAP_INPUT + ' !bg-gray-50 !text-gray-600'}
+                placeholder="Auto-populated"
+              />
+            </SapField>
+          </SapRow>
+
+          {/* Row 5 — Notes full width */}
+          <SapRow>
+            <SapField label="Notes" span={12} hint="Free-text (optional)">
+              <input
+                type="text"
+                value={form.notes}
+                onChange={e => setForm({ ...form, notes: e.target.value })}
+                className={SAP_INPUT}
+                placeholder="e.g. Auto-debit on 15th, bill covers HQ + Warehouse"
+              />
+            </SapField>
+          </SapRow>
+        </form>
+      </FinanceModal>
     </div>
   );
 }
