@@ -748,4 +748,163 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
                       } else {
                         const num = parseFloat(val);
                         if (!isNaN(num)) {
-                
+                          handleItemChange(index, 'unit_price', num);
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '') {
+                        handleItemChange(index, 'unit_price', 0);
+                      }
+                    }}
+                    className="w-full border rounded px-2 py-1 text-sm"
+                    placeholder="Enter price"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-600">{t('salesOrders.discountPercent')}</label>
+                  <input
+                    type="text"
+                    value={item.discount_percent === 0 ? '' : item.discount_percent}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        handleItemChange(index, 'discount_percent', 0);
+                      } else {
+                        const num = parseFloat(val);
+                        if (!isNaN(num) && num >= 0 && num <= 100) {
+                          handleItemChange(index, 'discount_percent', num);
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '') {
+                        handleItemChange(index, 'discount_percent', 0);
+                      }
+                    }}
+                    className="w-full border rounded px-2 py-1 text-sm"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-600">{t('salesOrders.taxPercent')}</label>
+                  <input
+                    type="text"
+                    value={item.tax_percent === 0 ? '' : item.tax_percent}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        handleItemChange(index, 'tax_percent', 0);
+                      } else {
+                        const num = parseFloat(val);
+                        if (!isNaN(num) && num >= 0 && num <= 100) {
+                          handleItemChange(index, 'tax_percent', num);
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === '') {
+                        handleItemChange(index, 'tax_percent', 0);
+                      }
+                    }}
+                    className="w-full border rounded px-2 py-1 text-sm"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-6 gap-2 mt-2">
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-600">Item Delivery Date</label>
+                  <input
+                    type="date"
+                    value={item.item_delivery_date}
+                    onChange={(e) => handleItemChange(index, 'item_delivery_date', e.target.value)}
+                    className="w-full border rounded px-2 py-1 text-sm"
+                  />
+                </div>
+
+                <div className="col-span-3">
+                  <label className="text-xs text-gray-600">Notes</label>
+                  <input
+                    type="text"
+                    value={item.notes}
+                    onChange={(e) => handleItemChange(index, 'notes', e.target.value)}
+                    className="w-full border rounded px-2 py-1 text-sm"
+                  />
+                </div>
+
+                <div className="flex items-end justify-between">
+                  <div>
+                    <label className="text-xs text-gray-600">{t('salesOrders.lineTotal')}</label>
+                    <div className="text-sm font-medium">{formatCurrency(item.line_total)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(index)}
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span>{t('sales.subtotal')}:</span>
+            <span className="font-medium">{formatCurrency(subtotal)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span>{t('sales.tax')}:</span>
+            <span className="font-medium">{formatCurrency(totalTax)}</span>
+          </div>
+          <div className="flex justify-between text-lg font-bold border-t pt-2">
+            <span>{t('salesOrders.grandTotal')}:</span>
+            <span>{formatCurrency(grandTotal)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+          disabled={loading}
+        >
+          {t('common.cancel')}
+        </button>
+        {/* Hide Save as Draft button if editing an approved/pending order */}
+        {!(existingOrder && ['approved', 'stock_reserved', 'shortage', 'pending_approval'].includes(existingOrder.status)) && (
+          <button
+            type="button"
+            onClick={(e) => handleSubmit(e, false)}
+            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+            disabled={loading}
+          >
+            {loading ? t('common.loading') : t('salesOrders.saveAsDraft')}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={(e) => handleSubmit(e, true)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          disabled={loading}
+        >
+          {loading
+            ? `${t('common.submit')}...`
+            : existingOrder && ['approved', 'stock_reserved', 'shortage', 'pending_approval'].includes(existingOrder.status)
+              ? 'Submit for Re-Approval'
+              : t('salesOrders.submitForApproval')}
+        </button>
+      </div>
+    </form>
+  );
+}
