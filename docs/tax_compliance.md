@@ -14,6 +14,17 @@ Indonesian tax handling for Anzen. Ships with the Tax Compliance Centre
   typed FK, live snapshot recompute triggers, hardened `close_tax_period`
   preconditions, `compute_period_ppn` now sums purchase invoices +
   expenses for Input PPN)
+- `20260713170000_tax_compliance_engine_fixes.sql` (bug fixes — schema
+  cache `NOTIFY pgrst`, `auto_reconcile_tax_payment_from_bsl` hardened with
+  `source_module='tax_payment'` guard, snapshot backfill re-run, re-grants)
+- `20260713180000_recon_engine_hardening.sql` (universal reconciliation
+  status-sync trigger `z_bsl_sync_reconciliation_status` on
+  `bank_statement_lines` — ensures all modules share one engine)
+- `20260713190000_tax_compliance_single_engine.sql` (single engine
+  migration — adds `payment_vouchers.tax_period_id`, extends
+  `compute_period_ppn` to include PV PPh, fixes `vw_pph_by_period_type`
+  to use `tax_payments` for paid amounts, rewrites `vw_monthly_tax_summary`
+  to read from the same snapshot as PPN Periods)
 
 ## 1. Coverage
 
@@ -50,6 +61,8 @@ Indonesian tax handling for Anzen. Ships with the Tax Compliance Centre
 
 - `sales_invoices.tax_period_id → tax_periods.id`
 - `finance_expenses.tax_period_id → tax_periods.id`
+- `purchase_invoices.tax_period_id → tax_periods.id`
+- `payment_vouchers.tax_period_id → tax_periods.id` (added 2026-07-13 single-engine migration)
 
 ### Views
 
