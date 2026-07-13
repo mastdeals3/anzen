@@ -810,6 +810,7 @@ export function CreditNotes() {
               setSelectedCreditNote(null);
               setSelectedCreditNoteItems([]);
             }}
+            companyProfile={(selectedCreditNote as any).company_snapshot ?? undefined}
           />
         )}
       </div>

@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import { X, Printer, Download } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { type CompanySnapshot, FALLBACK_COMPANY } from '../types/company';
 
 interface ChallanItem {
   id: string;
@@ -44,19 +45,11 @@ interface DeliveryChallanViewProps {
   };
   items: ChallanItem[];
   onClose: () => void;
-  companySettings?: {
-    company_name: string;
-    address: string;
-    city: string;
-    phone: string;
-    email: string;
-    website: string;
-    npwp: string;
-    logo_url: string | null;
-  } | null;
+  companyProfile?: CompanySnapshot | null;
 }
 
-export function DeliveryChallanView({ challan, items, onClose }: DeliveryChallanViewProps) {
+export function DeliveryChallanView({ challan, items, onClose, companyProfile }: DeliveryChallanViewProps) {
+  const co = companyProfile ?? FALLBACK_COMPANY;
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -192,10 +185,9 @@ export function DeliveryChallanView({ challan, items, onClose }: DeliveryChallan
                     </svg>
                   </div>
                   <div>
-                    <h1 className="text-base font-bold print:text-sm">PT. SHUBHAM ANZEN PHARMA JAYA</h1>
-                    <p className="text-xs print:text-[10px]">Komplek Ruko Metro Sunter Blok A1 NO.15, Jl. Metro Indah Raya,</p>
-                    <p className="text-xs print:text-[10px]">Kelurahan Papanggo, Kec. Tanjung Priok, Jakarta Utara - 14340</p>
-                    <p className="text-xs print:text-[10px]">Telp: (+62 21) 65832426</p>
+                    <h1 className="text-base font-bold print:text-sm">{co.company_name}</h1>
+                    {co.company_address && <p className="text-xs print:text-[10px]">{co.company_address}</p>}
+                    {co.company_phone && <p className="text-xs print:text-[10px]">Telp: {co.company_phone}</p>}
                   </div>
                 </div>
 
@@ -209,11 +201,11 @@ export function DeliveryChallanView({ challan, items, onClose }: DeliveryChallan
               <div className="text-xs space-y-0.5 print:text-[10px] print:space-y-0">
                 <div>
                   <span className="font-semibold">No izin PBF</span>
-                  <span className="ml-16">: 27092400534390007</span>
+                  <span className="ml-16">: {co.pbf_license?.replace(/^No izin PBF:\s*/i, '') ?? '—'}</span>
                 </div>
                 <div>
                   <span className="font-semibold">No Sertifikasi CDOB</span>
-                  <span className="ml-4">: 270924005343900070001</span>
+                  <span className="ml-4">: {co.cdob_certificate?.replace(/^No Sertifikasi CDOB:\s*/i, '') ?? '—'}</span>
                 </div>
               </div>
             </div>
@@ -336,7 +328,7 @@ export function DeliveryChallanView({ challan, items, onClose }: DeliveryChallan
                 <div className="border-t-2 border-black pt-1.5 print:pt-1">
                   <p className="text-[9px] print:text-[8px]">Tanda Tangan & Tanggal</p>
                   <p className="text-[9px] print:text-[8px]">Signature & Date</p>
-                  <p className="text-[8px] font-semibold mt-0.5 print:text-[7px] print:mt-0">PT. SHUBHAM ANZEN PHARMA JAYA</p>
+                  <p className="text-[8px] font-semibold mt-0.5 print:text-[7px] print:mt-0">{co.company_name}</p>
                 </div>
               </div>
               <div className="border-2 border-black p-1.5 text-center print:p-1">
@@ -349,7 +341,7 @@ export function DeliveryChallanView({ challan, items, onClose }: DeliveryChallan
                 <div className="border-t-2 border-black pt-1.5 print:pt-1">
                   <p className="text-[9px] print:text-[8px]">Tanda Tangan & Tanggal</p>
                   <p className="text-[9px] print:text-[8px]">Signature & Date</p>
-                  <p className="text-[8px] font-semibold mt-0.5 print:text-[7px] print:mt-0">PT. SHUBHAM ANZEN PHARMA JAYA</p>
+                  <p className="text-[8px] font-semibold mt-0.5 print:text-[7px] print:mt-0">{co.company_name}</p>
                 </div>
               </div>
               <div className="border-2 border-black p-1.5 text-center print:p-1">
@@ -362,7 +354,7 @@ export function DeliveryChallanView({ challan, items, onClose }: DeliveryChallan
                 <div className="border-t-2 border-black pt-1.5 print:pt-1">
                   <p className="text-[9px] print:text-[8px]">Tanda Tangan & Tanggal</p>
                   <p className="text-[9px] print:text-[8px]">Signature & Date</p>
-                  <p className="text-[8px] font-semibold mt-0.5 print:text-[7px] print:mt-0">PT. SHUBHAM ANZEN PHARMA JAYA</p>
+                  <p className="text-[8px] font-semibold mt-0.5 print:text-[7px] print:mt-0">{co.company_name}</p>
                 </div>
               </div>
               <div className="border-2 border-black p-1.5 text-center print:p-1">

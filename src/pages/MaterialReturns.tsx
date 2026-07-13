@@ -901,6 +901,7 @@ export default function MaterialReturns() {
             setSelectedReturn(null);
             setSelectedReturnItems([]);
           }}
+          companyProfile={(selectedReturn as any).company_snapshot ?? undefined}
         />
       )}
     </div>

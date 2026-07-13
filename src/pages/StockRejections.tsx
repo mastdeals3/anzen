@@ -781,6 +781,7 @@ export default function StockRejections() {
             setShowDetailsModal(false);
             setSelectedRejection(null);
           }}
+          companyProfile={(selectedRejection as any).company_snapshot ?? undefined}
         />
       )}
     </div>

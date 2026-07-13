@@ -1195,6 +1195,7 @@ export default function SalesOrders() {
             setShowProformaModal(false);
             setProformaOrder(null);
           }}
+          companyProfile={(proformaOrder as any).company_snapshot ?? undefined}
         />
       )}
       {linkedChallanPreview && (
@@ -1205,6 +1206,7 @@ export default function SalesOrders() {
             setLinkedChallanPreview(null);
             setLinkedChallanItems([]);
           }}
+          companyProfile={(linkedChallanPreview as any).company_snapshot ?? undefined}
         />
       )}
 
