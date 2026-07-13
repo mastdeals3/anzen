@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { FileText, Upload, X, ExternalLink, Trash2, Download } from 'lucide-react';
 import { Modal } from './Modal';
 import { buildNormalizedBaseKey, buildUniqueDocumentNames } from '../utils/documentNaming';
+import { resolveStorageUrlCached } from '../utils/signedUrlCache';
 
 interface SourceDocument {
   id: string;
@@ -36,6 +37,7 @@ export function SourceDocuments({
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<Array<{ file: File; doc_type: string }>>([]);
+  const [signedUrlCache, setSignedUrlCache] = useState<Record<string, string>>({});
   const uploadAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,6 +92,11 @@ export function SourceDocuments({
 
       if (error) throw error;
       setDocuments(data || []);
+      if (data && data.length > 0) {
+        Promise.all(
+          data.map(async (doc: any) => [doc.file_url, await resolveStorageUrlCached(doc.file_url, 3600)] as [string, string])
+        ).then((entries) => setSignedUrlCache((prev) => ({ ...prev, ...Object.fromEntries(entries) })));
+      }
     } catch (error) {
       console.error('Error loading documents:', error);
     } finally {
@@ -364,7 +371,7 @@ export function SourceDocuments({
                   </div>
                   <div className="flex items-center gap-2">
                     <a
-                      href={doc.file_url}
+                      href={signedUrlCache[doc.file_url] || doc.file_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
@@ -373,7 +380,7 @@ export function SourceDocuments({
                       <ExternalLink className="w-4 h-4" />
                     </a>
                     <a
-                      href={doc.file_url}
+                      href={signedUrlCache[doc.file_url] || doc.file_url}
                       download={doc.original_filename}
                       className="p-1.5 text-green-600 hover:bg-green-50 rounded"
                       title="Download"

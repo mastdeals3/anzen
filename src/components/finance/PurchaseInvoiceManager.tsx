@@ -10,6 +10,7 @@ import { SearchableSelect } from '../SearchableSelect';
 import { FileUpload } from '../FileUpload';
 import { showToast } from '../ToastNotification';
 import { formatDate } from '../../utils/dateFormat';
+import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 
 interface Supplier {
   id: string;
@@ -94,6 +95,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
   const [viewLoading, setViewLoading] = useState(false);
   const [viewBlobUrl, setViewBlobUrl] = useState<string | null>(null);
   const [viewBlobLoading, setViewBlobLoading] = useState(false);
+  const [signedUrlCache, setSignedUrlCache] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [uploading, setUploading] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<PurchaseInvoice | null>(null);
@@ -201,17 +203,20 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
     setViewBlobUrl(null);
     await loadViewLineItems(invoice.id);
     if (invoice.document_urls && invoice.document_urls.length > 0) {
+      Promise.all(
+        invoice.document_urls.map(async (u) => [u, await resolveStorageUrlCached(u, 3600)] as [string, string])
+      ).then((entries) => setSignedUrlCache((prev) => ({ ...prev, ...Object.fromEntries(entries) })));
       setViewBlobLoading(true);
       try {
         const url = invoice.document_urls[0];
+        const signedUrl = await resolveStorageUrlCached(url, 3600);
 
-        // For Supabase Storage URLs, use them directly
-        if (url.includes('supabase.co/storage/v1/object/public/')) {
-          // Just set the URL directly - the PDF viewer will handle it
-          setViewBlobUrl(url);
+        if (signedUrl.includes('/storage/v1/object/sign/') || signedUrl.includes('supabase.co/storage/v1/object/public/')) {
+          // Supabase Storage URL (signed or public) — PDF viewer can load it directly
+          setViewBlobUrl(signedUrl);
         } else {
           // For other URLs, try to fetch as blob
-          const res = await fetch(url);
+          const res = await fetch(signedUrl);
           if (res.ok) {
             const blob = await res.blob();
             setViewBlobUrl(URL.createObjectURL(blob));
@@ -1219,7 +1224,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                     <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded border border-gray-200">
                       <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
                       <span className="text-sm text-gray-700 flex-1 truncate">{url.split('/').pop()}</span>
-                      <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex-shrink-0">Open</a>
+                      <a href={signedUrlCache[url] || url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex-shrink-0">Open</a>
                     </div>
                   ))}
                 </div>
@@ -1279,7 +1284,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                         </p>
                         <div className="flex flex-wrap gap-2">
                           <a
-                            href={selectedInvoice.document_urls[0]}
+                            href={signedUrlCache[selectedInvoice.document_urls[0]] || selectedInvoice.document_urls[0]}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded hover:bg-amber-50 text-xs font-medium"

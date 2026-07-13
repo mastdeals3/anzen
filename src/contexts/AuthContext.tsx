@@ -136,15 +136,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .rpc('lookup_login_email', { p_username: usernameOrEmail.toLowerCase() })
         .maybeSingle<{ email: string; is_active: boolean }>();
 
-      if (error) throw new Error('Invalid username or password');
-      if (!data) throw new Error('Invalid username or password');
+      if (error || !data) throw new Error('Invalid username or password');
       if (!data.is_active) throw new Error('Account is inactive. Please contact administrator.');
-
       email = data.email;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+
+    if (signInData.user) {
+      const { data: profileRow } = await supabase
+        .from('user_profiles')
+        .select('is_active')
+        .eq('id', signInData.user.id)
+        .maybeSingle<{ is_active: boolean }>();
+      if (!profileRow || profileRow.is_active === false) {
+        await supabase.auth.signOut();
+        throw new Error('Account is inactive. Please contact administrator.');
+      }
+    }
   };
 
   const signUp = async (email: string, password: string, fullName: string, role: string) => {
@@ -176,62 +186,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     setLoading(true);
-    console.groupCollapsed('[auth-debug] Logout');
 
     try {
-      const beforeSession = await supabase.auth.getSession();
-      console.log('[auth-debug] getSession before signOut', {
-        hasSession: Boolean(beforeSession.data.session),
-        userId: beforeSession.data.session?.user?.id || null,
-        error: beforeSession.error?.message || null,
-      });
-      console.log('[auth-debug] auth storage before signOut', {
-        localStorageKeys: getStorageKeys(window.localStorage),
-        sessionStorageKeys: getStorageKeys(window.sessionStorage),
-        cookies: document.cookie
-          .split(';')
-          .map(cookie => cookie.split('=')[0]?.trim())
-          .filter(Boolean)
-          .filter(name => name.startsWith('sb-') || name.includes('supabase')),
-      });
-
       const signOutResponse = await supabase.auth.signOut({ scope: 'global' });
-      console.log('[auth-debug] supabase.auth.signOut response', {
-        error: signOutResponse.error?.message || null,
-      });
 
       if (signOutResponse.error) {
-        console.error('[auth-debug] supabase.auth.signOut error', signOutResponse.error);
-        const localSignOutResponse = await supabase.auth.signOut({ scope: 'local' });
-        console.log('[auth-debug] fallback local signOut response', {
-          error: localSignOutResponse.error?.message || null,
-        });
+        await supabase.auth.signOut({ scope: 'local' });
       }
 
-      const removedStorage = removeSupabaseAuthStorage();
-      const removedCookies = expireSupabaseAuthCookies();
-      console.log('[auth-debug] removed auth storage/cookies', {
-        ...removedStorage,
-        cookies: removedCookies,
-      });
+      removeSupabaseAuthStorage();
+      expireSupabaseAuthCookies();
 
       const afterSession = await supabase.auth.getSession();
-      console.log('[auth-debug] getSession after signOut', {
-        hasSession: Boolean(afterSession.data.session),
-        session: afterSession.data.session,
-        error: afterSession.error?.message || null,
-      });
 
       if (afterSession.data.session) {
         throw new Error('Logout failed: Supabase session still exists after signOut.');
       }
 
       clearAuthState();
-    } catch (error) {
-      console.error('[auth-debug] logout failed', error);
+    } catch {
       clearAuthState();
-    } finally {
-      console.groupEnd();
     }
   };
 

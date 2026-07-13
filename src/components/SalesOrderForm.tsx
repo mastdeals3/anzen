@@ -6,6 +6,7 @@ import { Plus, Trash2, X, FileText } from 'lucide-react';
 import { SearchableSelect } from './SearchableSelect';
 import { showToast } from './ToastNotification';
 import { showConfirm } from './ConfirmDialog';
+import { resolveStorageUrlCached } from '../utils/signedUrlCache';
 
 interface Customer {
   id: string;
@@ -91,6 +92,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
   });
 
   const [poFile, setPoFile] = useState<File | null>(null);
+  const [poFileSignedUrl, setPoFileSignedUrl] = useState<string | null>(null);
   const [items, setItems] = useState<OrderItem[]>([
     {
       product_id: '',
@@ -110,6 +112,14 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
     fetchCustomers();
     fetchProducts();
   }, []);
+
+  useEffect(() => {
+    if (existingOrder?.customer_po_file_url) {
+      resolveStorageUrlCached(existingOrder.customer_po_file_url, 3600).then(setPoFileSignedUrl);
+    } else {
+      setPoFileSignedUrl(null);
+    }
+  }, [existingOrder?.customer_po_file_url]);
 
   useEffect(() => {
     if (existingOrder) {
@@ -631,7 +641,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
                 <span className="text-sm text-blue-700">PO file already uploaded</span>
               </div>
               <a
-                href={existingOrder.customer_po_file_url}
+                href={poFileSignedUrl || existingOrder.customer_po_file_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-blue-600 hover:text-blue-800 underline"

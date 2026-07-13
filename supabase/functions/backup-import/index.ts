@@ -88,6 +88,12 @@ function buildInsertQuery(
   if (rows.length === 0) return null;
 
   const keys = Object.keys(rows[0]);
+  const IDENT_RE = /^[a-zA-Z0-9_]+$/;
+  for (const key of keys) {
+    if (!IDENT_RE.test(key)) {
+      throw new Error(`Invalid column name in backup for table ${table}: ${key}`);
+    }
+  }
   if (keys.length === 0) return null;
 
   const columnList = keys.map((k) => `"${k}"`).join(", ");

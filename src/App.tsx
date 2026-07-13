@@ -23,7 +23,6 @@ const DeliveryChallan = lazy(() => import('./pages/DeliveryChallan').then(m => (
 const Sales = lazy(() => import('./pages/Sales').then(m => ({ default: m.Sales })));
 const Finance = lazy(() => import('./pages/Finance').then(m => ({ default: m.Finance })));
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
-const Setup = lazy(() => import('./pages/Setup').then(m => ({ default: m.Setup })));
 const GmailCallback = lazy(() => import('./pages/GmailCallback').then(m => ({ default: m.GmailCallback })));
 const SalesOrders = lazy(() => import('./pages/SalesOrders'));
 const ImportRequirements = lazy(() => import('./pages/ImportRequirements'));
@@ -77,14 +76,6 @@ function AppContent() {
     return (
       <Suspense fallback={<LoadingFallback />}>
         <PublicCalculator />
-      </Suspense>
-    );
-  }
-
-  if (location.pathname === '/setup') {
-    return (
-      <Suspense fallback={<LoadingFallback />}>
-        <Setup />
       </Suspense>
     );
   }

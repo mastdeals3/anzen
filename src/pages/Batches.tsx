@@ -14,6 +14,7 @@ import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
 import { canSeeInventoryCosting } from '../utils/permissions';
+import { resolveStorageUrlCached } from '../utils/signedUrlCache';
 
 interface Batch {
   id: string;
@@ -86,6 +87,7 @@ export function Batches() {
   const [transactionHistoryModal, setTransactionHistoryModal] = useState(false);
   const [selectedBatchDocs, setSelectedBatchDocs] = useState<BatchDocument[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [signedUrlCache, setSignedUrlCache] = useState<Record<string, string>>({});
   const [selectedProductForHistory, setSelectedProductForHistory] = useState<{id: string; name: string; code: string; batchId?: string; batchNumber?: string} | null>(null);
   const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
@@ -267,6 +269,11 @@ export function Batches() {
       setSelectedBatchDocs(data || []);
       setSelectedBatchId(batchId);
       setDocumentsModalOpen(true);
+      if (data && data.length > 0) {
+        Promise.all(
+          data.map(async (doc: any) => [doc.file_url, await resolveStorageUrlCached(doc.file_url, 3600)] as [string, string])
+        ).then((entries) => setSignedUrlCache((prev) => ({ ...prev, ...Object.fromEntries(entries) })));
+      }
     } catch (error) {
       console.error('Error loading documents:', error);
       showToast({ type: 'error', title: 'Error', message: 'Failed to load documents' });
@@ -1803,7 +1810,7 @@ export function Batches() {
               selectedBatchDocs.map((doc) => (
                 <a
                   key={doc.id}
-                  href={doc.file_url}
+                  href={signedUrlCache[doc.file_url] || doc.file_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition"
