@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 
@@ -19,14 +20,102 @@ interface Row {
   filing_due_date: string | null;
 }
 
+interface SourceLine {
+  module: 'expense' | 'payment_voucher';
+  id: string;
+  doc_number: string;
+  doc_date: string;
+  party: string;
+  description: string | null;
+  pph_code: string | null;
+  pph_amount: number;
+  payment_method: string | null;
+  recon_status: string | null;
+}
+
+function fmt(n: number) {
+  return Number(n).toLocaleString('id-ID');
+}
+function fmtDate(s: string) {
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? s : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+async function loadPphDetail(row: Row): Promise<SourceLine[]> {
+  const yr = row.fiscal_year;
+  const mo = row.period_month;
+  const startDate = `${yr}-${String(mo).padStart(2,'0')}-01`;
+  const endDate   = new Date(yr, mo, 0).toISOString().slice(0,10);
+
+  const [feRes, pvRes] = await Promise.all([
+    supabase
+      .from('finance_expenses')
+      .select('id, voucher_number, expense_date, pph_amount, description, payment_method, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:paid_by_staff_id(full_name)')
+      .gte('expense_date', startDate)
+      .lte('expense_date', endDate)
+      .gt('pph_amount', 0),
+    supabase
+      .from('payment_vouchers')
+      .select('id, voucher_number, voucher_date, pph_amount, description, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name)')
+      .gte('voucher_date', startDate)
+      .lte('voucher_date', endDate)
+      .gt('pph_amount', 0),
+  ]);
+
+  const pphType = row.tax_type;
+
+  const expenses: SourceLine[] = ((feRes.data ?? []) as any[])
+    .filter(r => {
+      const codeType = r.pph_code?.tax_type ?? null;
+      return pphType === 'PPh_Unifikasi' || codeType === pphType;
+    })
+    .map(r => ({
+      module: 'expense' as const,
+      id: r.id,
+      doc_number: r.voucher_number ?? '—',
+      doc_date: r.expense_date,
+      party: r.suppliers?.company_name ?? r.staff?.full_name ?? '—',
+      description: r.description,
+      pph_code: r.pph_code?.code ?? null,
+      pph_amount: Number(r.pph_amount),
+      payment_method: r.payment_method,
+      recon_status: null,
+    }));
+
+  const vouchers: SourceLine[] = ((pvRes.data ?? []) as any[])
+    .filter(r => {
+      const codeType = r.pph_code?.tax_type ?? null;
+      return pphType === 'PPh_Unifikasi' || codeType === pphType;
+    })
+    .map(r => ({
+      module: 'payment_voucher' as const,
+      id: r.id,
+      doc_number: r.voucher_number ?? '—',
+      doc_date: r.voucher_date,
+      party: r.suppliers?.company_name ?? '—',
+      description: r.description,
+      pph_code: r.pph_code?.code ?? null,
+      pph_amount: Number(r.pph_amount),
+      payment_method: null,
+      recon_status: null,
+    }));
+
+  return [...expenses, ...vouchers].sort((a, b) => a.doc_date.localeCompare(b.doc_date));
+}
+
 export function PphRegisterPanel() {
   const { dateRange } = useFinance();
   const [active, setActive] = useState<PphType>('PPh21');
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SourceLine[] | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    setExpandedId(null);
+    setDetail(null);
     (async () => {
       setLoading(true);
       const { data } = await supabase
@@ -55,6 +144,23 @@ export function PphRegisterPanel() {
     });
   }, [rows, dateRange]);
 
+  async function toggleExpand(row: Row) {
+    if (expandedId === row.tax_period_id) {
+      setExpandedId(null);
+      setDetail(null);
+      return;
+    }
+    setExpandedId(row.tax_period_id);
+    setDetail(null);
+    setDetailLoading(true);
+    try {
+      const lines = await loadPphDetail(row);
+      setDetail(lines);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2 flex-wrap">
@@ -68,6 +174,7 @@ export function PphRegisterPanel() {
           </button>
         ))}
       </div>
+      <p className="text-xs text-gray-500">Click a period row to see the source documents.</p>
       {loading ? (
         <p className="text-gray-500">Loading…</p>
       ) : filtered.length === 0 ? (
@@ -75,10 +182,11 @@ export function PphRegisterPanel() {
           No {active} periods in the selected date range. Periods are created automatically once expenses with PPh are posted.
         </p>
       ) : (
-        <div className="overflow-x-auto border rounded">
+        <div className="border rounded overflow-hidden">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
+                <th className="w-6 px-2 py-2"></th>
                 <th className="text-left px-3 py-2">Period</th>
                 <th className="text-left px-3 py-2">Status</th>
                 <th className="text-right px-3 py-2">Total PPh</th>
@@ -89,17 +197,98 @@ export function PphRegisterPanel() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(r => (
-                <tr key={r.tax_period_id} className="border-t">
-                  <td className="px-3 py-2 font-medium">{r.fiscal_year}-{String(r.period_month).padStart(2,'0')}</td>
-                  <td className="px-3 py-2">{r.status}</td>
-                  <td className="px-3 py-2 text-right">{Number(r.pph_total).toLocaleString('id-ID')}</td>
-                  <td className="px-3 py-2 text-right">{Number(r.pph_paid_total).toLocaleString('id-ID')}</td>
-                  <td className="px-3 py-2 text-right font-semibold">Rp {Number(r.pph_outstanding).toLocaleString('id-ID')}</td>
-                  <td className="px-3 py-2">{r.payment_due_date ?? '—'}</td>
-                  <td className="px-3 py-2">{r.filing_due_date ?? '—'}</td>
-                </tr>
-              ))}
+              {filtered.map(r => {
+                const isOpen = expandedId === r.tax_period_id;
+                return (
+                  <>
+                    <tr
+                      key={r.tax_period_id}
+                      className={`border-t cursor-pointer select-none ${isOpen ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                      onClick={() => void toggleExpand(r)}
+                    >
+                      <td className="px-2 py-2 text-gray-400">
+                        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </td>
+                      <td className="px-3 py-2 font-medium">{r.fiscal_year}-{String(r.period_month).padStart(2,'0')}</td>
+                      <td className="px-3 py-2">
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                          r.status === 'closed'   ? 'bg-gray-200 text-gray-700' :
+                          r.status === 'open'     ? 'bg-blue-100 text-blue-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">{fmt(r.pph_total)}</td>
+                      <td className="px-3 py-2 text-right text-green-700">{fmt(r.pph_paid_total)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-orange-700">
+                        Rp {fmt(r.pph_outstanding)}
+                      </td>
+                      <td className="px-3 py-2">{r.payment_due_date ?? '—'}</td>
+                      <td className="px-3 py-2">{r.filing_due_date ?? '—'}</td>
+                    </tr>
+                    {isOpen && (
+                      <tr key={`${r.tax_period_id}-detail`} className="bg-blue-50/30">
+                        <td colSpan={8} className="px-6 pb-4 pt-2">
+                          <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
+                            Source Documents — {active} withheld in {r.fiscal_year}-{String(r.period_month).padStart(2,'0')}
+                          </h4>
+                          {detailLoading ? (
+                            <p className="text-xs text-gray-500">Loading source documents…</p>
+                          ) : !detail || detail.length === 0 ? (
+                            <p className="text-xs text-gray-400 italic">No source documents found for this period and PPh type.</p>
+                          ) : (
+                            <table className="w-full text-xs border-collapse">
+                              <thead>
+                                <tr className="text-gray-500 border-b">
+                                  <th className="text-left py-1 pr-3">Module</th>
+                                  <th className="text-left py-1 pr-3">Document</th>
+                                  <th className="text-left py-1 pr-3">Date</th>
+                                  <th className="text-left py-1 pr-3">Supplier / Staff</th>
+                                  <th className="text-left py-1 pr-3">Description</th>
+                                  <th className="text-left py-1 pr-3">PPh Code</th>
+                                  <th className="text-right py-1">PPh Withheld</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {detail.map(l => (
+                                  <tr key={l.id} className="border-b border-gray-100 hover:bg-white">
+                                    <td className="py-1.5 pr-3">
+                                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                        l.module === 'expense' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'
+                                      }`}>
+                                        {l.module === 'expense' ? 'Expense' : 'Payment Voucher'}
+                                      </span>
+                                    </td>
+                                    <td className="py-1.5 pr-3 font-mono font-semibold">{l.doc_number}</td>
+                                    <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDate(l.doc_date)}</td>
+                                    <td className="py-1.5 pr-3 max-w-[140px] truncate text-gray-700" title={l.party}>{l.party}</td>
+                                    <td className="py-1.5 pr-3 max-w-[180px] truncate text-gray-500" title={l.description ?? undefined}>{l.description ?? '—'}</td>
+                                    <td className="py-1.5 pr-3">
+                                      {l.pph_code
+                                        ? <span className="font-mono text-blue-700">{l.pph_code}</span>
+                                        : <span className="text-orange-500 italic">⚠ No code</span>}
+                                    </td>
+                                    <td className="py-1.5 text-right font-mono font-semibold text-orange-700">
+                                      Rp {fmt(l.pph_amount)}
+                                    </td>
+                                  </tr>
+                                ))}
+                                <tr className="font-semibold border-t-2 border-gray-300 bg-gray-50">
+                                  <td colSpan={6} className="py-1.5 pr-3 text-right text-xs text-gray-500">Total {active} Withheld</td>
+                                  <td className="py-1.5 text-right font-mono text-orange-700">
+                                    Rp {fmt(detail.reduce((s, l) => s + l.pph_amount, 0))}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
             </tbody>
           </table>
         </div>
