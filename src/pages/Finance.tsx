@@ -357,18 +357,18 @@ function FinanceContent() {
         <div
           className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 flex flex-col md:relative md:z-auto overflow-hidden transition-[width,transform] duration-300 ${
             sidebarCollapsed
-              ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 w-36'
-              : 'translate-x-0 w-36 md:w-36'
+              ? '-translate-x-full md:translate-x-0 md:w-0 md:border-r-0 w-40'
+              : 'translate-x-0 w-40 md:w-40'
           }`}
         >
-            {/* Menu Groups — compact ERP sidebar */}
+            {/* Menu Groups */}
             <div className="flex-1 overflow-y-auto">
               {financeMenu.map((group, groupIdx) => {
                 const isCollapsed = collapsedGroups.has(group.label);
                 const isCollapsible = group.collapsible;
 
                 return (
-                  <div key={group.label} className={groupIdx > 0 ? 'mt-0.5' : ''}>
+                  <div key={group.label} className={groupIdx > 0 ? 'border-t border-gray-200' : ''}>
                     {isCollapsible ? (
                       <button
                         onClick={() => toggleGroup(group.label)}

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DataTable } from '../DataTable';
-import { FinanceModal } from './FinanceModal';
-import { SapRow, SapField, SAP_INPUT, SAP_BTN_PRIMARY, SAP_BTN_SECONDARY } from './SapLayout';
+import { Modal } from '../Modal';
+import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { Plus, Edit } from 'lucide-react';
 
 interface BankAccount {
@@ -203,24 +203,12 @@ export function BankAccountsManager({ canManage }: Props) {
         ) : undefined}
       />
 
-      <FinanceModal
+      <Modal
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); resetForm(); }}
-        title={editingAccount ? 'Edit Bank Account' : 'New Bank Account'}
-        subtitle={editingAccount?.bank_name || undefined}
-        size="md"
-        footer={
-          <>
-            <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className={SAP_BTN_SECONDARY}>
-              Cancel
-            </button>
-            <button type="submit" form="bank-account-form" className={SAP_BTN_PRIMARY}>
-              {editingAccount ? 'Update' : 'Create'} Account
-            </button>
-          </>
-        }
+        title={editingAccount ? 'Edit Bank Account' : 'Add Bank Account'}
       >
-        <form id="bank-account-form" onSubmit={handleSubmit} className="flex flex-col gap-2">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-1.5">
           <SapRow>
             <SapField label="Bank Name" required span={4}>
               <input type="text" value={formData.bank_name}
@@ -277,8 +265,16 @@ export function BankAccountsManager({ canManage }: Props) {
             </SapField>
           </SapRow>
 
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
+            <button type="button" onClick={() => { setModalOpen(false); resetForm(); }}
+              className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
+            <button type="submit"
+              className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
+              {editingAccount ? 'Update' : 'Add'} Account
+            </button>
+          </div>
         </form>
-      </FinanceModal>
+      </Modal>
     </div>
   );
 }
