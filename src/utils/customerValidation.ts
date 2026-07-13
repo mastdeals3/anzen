@@ -96,3 +96,91 @@ export const ensureUniqueCrmContactName = async (companyName: string, excludeCon
     throw new Error(DUPLICATE_CRM_CONTACT_MESSAGE);
   }
 };
+
+// findOrCreateCrmContact: dedupe-on-write helper for CRM Add-Customer.
+//
+// If a crm_contacts row already exists for the same company_name
+// (case/space-insensitive), return it — no INSERT. Otherwise create the row.
+// This means "Add Customer" is idempotent and can never produce duplicate
+// CRM prospects even under race conditions or repeated clicks. Also handles
+// the unique-constraint race by falling back to a lookup on 23505.
+export type CrmContactRow = {
+  id: string;
+  company_name: string;
+  contact_person: string | null;
+  email: string | null;
+  phone: string | null;
+  country: string | null;
+  address: string | null;
+  city: string | null;
+};
+
+export const findOrCreateCrmContact = async (
+  fields: {
+    company_name: string;
+    contact_person?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    country?: string | null;
+    address?: string | null;
+    city?: string | null;
+  },
+): Promise<{ contact: CrmContactRow; created: boolean }> => {
+  const normalized = normalizeCustomerName(fields.company_name);
+  if (!normalized) {
+    throw new Error('Customer name is required');
+  }
+
+  // Case-insensitive exact match. ilike escapes work well for company names;
+  // still guarded by client-side normalisation before returning.
+  const escaped = fields.company_name.trim().replace(/[%_]/g, m => `\\${m}`);
+  const { data: existing, error: lookupError } = await supabase
+    .from('crm_contacts')
+    .select('id, company_name, contact_person, email, phone, country, address, city')
+    .ilike('company_name', escaped)
+    .limit(50);
+  if (lookupError) throw lookupError;
+
+  const match = (existing || []).find(row =>
+    normalizeCustomerName(row.company_name || '') === normalized
+  );
+  if (match) {
+    return { contact: match as CrmContactRow, created: false };
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('crm_contacts')
+    .insert({
+      company_name:   fields.company_name,
+      contact_person: fields.contact_person || null,
+      email:          fields.email || null,
+      phone:          fields.phone || null,
+      country:        fields.country || null,
+      address:        fields.address || null,
+      city:           fields.city || null,
+      customer_type:  'prospect',
+      is_active:      true,
+    })
+    .select('id, company_name, contact_person, email, phone, country, address, city')
+    .single();
+
+  if (insertError) {
+    // Race: another writer created the row between our lookup and our
+    // insert. Fall back to reading the winner rather than surfacing an
+    // error to the user.
+    if (isDuplicateCrmContactError(insertError)) {
+      const { data: retry } = await supabase
+        .from('crm_contacts')
+        .select('id, company_name, contact_person, email, phone, country, address, city')
+        .ilike('company_name', escaped)
+        .limit(50);
+      const winner = (retry || []).find(row =>
+        normalizeCustomerName(row.company_name || '') === normalized
+      );
+      if (winner) return { contact: winner as CrmContactRow, created: false };
+    }
+    throw insertError;
+  }
+
+  return { contact: inserted as CrmContactRow, created: true };
+};

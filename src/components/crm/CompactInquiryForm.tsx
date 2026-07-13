@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import {
-  DUPLICATE_CRM_CONTACT_MESSAGE,
-  ensureUniqueCrmContactName,
-  isDuplicateCrmContactError,
+  findOrCreateCrmContact,
 } from '../../utils/customerValidation';
 import { Plus, X, Search } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -152,31 +150,20 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
     }
 
     try {
-      await ensureUniqueCrmContactName(newCustomer.company_name);
-
-      // CRM Add-Customer writes to the CRM prospect master only. The ERP
-      // customers table is populated only when a prospect is intentionally
-      // promoted to an ERP trading customer.
-      const { data, error } = await supabase
-        .from('crm_contacts')
-        .insert({
-          company_name:   newCustomer.company_name,
-          contact_person: newCustomer.contact_person || null,
-          email:          newCustomer.email || null,
-          phone:          newCustomer.phone || null,
-          country:        newCustomer.country || null,
-          address:        newCustomer.address || null,
-          city:           newCustomer.city || null,
-          customer_type:  'prospect',
-          is_active:      true,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      // Reuse an existing crm_contacts row when the company already exists
+      // (case/space-insensitive) — never create duplicates.
+      const { contact, created } = await findOrCreateCrmContact({
+        company_name:   newCustomer.company_name,
+        contact_person: newCustomer.contact_person,
+        email:          newCustomer.email,
+        phone:          newCustomer.phone,
+        country:        newCustomer.country,
+        address:        newCustomer.address,
+        city:           newCustomer.city,
+      });
 
       await loadCustomers();
-      handleCustomerSelect(data);
+      handleCustomerSelect(contact);
       setShowAddCustomerModal(false);
       setNewCustomer({
         company_name: '',
@@ -191,11 +178,12 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
         gst_vat_type: '',
         payment_terms: '',
       });
+      if (!created) {
+        alert(`Reusing existing CRM customer: ${contact.company_name}`);
+      }
     } catch (error: any) {
       console.error('Error adding CRM contact:', error);
-      alert(error?.message === DUPLICATE_CRM_CONTACT_MESSAGE || isDuplicateCrmContactError(error)
-        ? DUPLICATE_CRM_CONTACT_MESSAGE
-        : 'Failed to add CRM customer');
+      alert(error?.message || 'Failed to add CRM customer');
     }
   };
 

@@ -24,8 +24,8 @@ import { CustomerSelectionDialog } from '../components/crm/CustomerSelectionDial
 import { CustomerConfirmationDialog } from '../components/crm/CustomerConfirmationDialog';
 import { CustomerUpdateDialog } from '../components/crm/CustomerUpdateDialog';
 import {
-  DUPLICATE_CRM_CONTACT_MESSAGE,
   ensureUniqueCrmContactName,
+  findOrCreateCrmContact,
   isDuplicateCrmContactError,
 } from '../utils/customerValidation';
 import { fuzzyMatchCompanyName, detectCustomerChanges, findBestMatch } from '../utils/customerMatching';
@@ -406,39 +406,27 @@ export function CRM() {
   // ERP Customers workflow — never automatically from the Inquiry form.
   const handleCreateNewCustomer = async (customerData: any) => {
     try {
-      await ensureUniqueCrmContactName(customerData.company_name);
-
-      // The Confirmation dialog collects ERP-flavoured fields (address, city,
-      // etc.). Map to the crm_contacts schema; unknown fields would be
-      // rejected by PostgREST, so keep the payload explicit.
-      const { data, error } = await supabase
-        .from('crm_contacts')
-        .insert({
-          company_name:   customerData.company_name,
-          contact_person: customerData.contact_person || null,
-          email:          customerData.email || null,
-          phone:          customerData.phone || null,
-          country:        customerData.country || null,
-          address:        customerData.address || null,
-          city:           customerData.city || null,
-          customer_type:  'prospect',
-          is_active:      true,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      // findOrCreateCrmContact reuses an existing CRM prospect (case- and
+      // whitespace-insensitive company_name match) instead of creating a
+      // duplicate row. Handles race conditions too — if two clicks land at
+      // the same moment, both end up pointing at the same crm_contacts row.
+      const { contact } = await findOrCreateCrmContact({
+        company_name:   customerData.company_name,
+        contact_person: customerData.contact_person,
+        email:          customerData.email,
+        phone:          customerData.phone,
+        country:        customerData.country,
+        address:        customerData.address,
+        city:           customerData.city,
+      });
 
       if (pendingFormData) {
-        pendingFormData.crm_contact_id = data.id;
+        pendingFormData.crm_contact_id = contact.id;
         setShowCustomerConfirmationDialog(false);
         handleFormSubmit(pendingFormData);
       }
     } catch (error: any) {
       console.error('Error creating CRM contact:', error);
-      if (error?.message === DUPLICATE_CRM_CONTACT_MESSAGE || isDuplicateCrmContactError(error)) {
-        throw new Error(DUPLICATE_CRM_CONTACT_MESSAGE);
-      }
       throw error;
     }
   };
@@ -469,9 +457,9 @@ export function CRM() {
       }
     } catch (error: any) {
       console.error('Error updating CRM contact:', error);
-      alert(error?.message === DUPLICATE_CRM_CONTACT_MESSAGE || isDuplicateCrmContactError(error)
-        ? DUPLICATE_CRM_CONTACT_MESSAGE
-        : t('errors.failedToUpdateCustomer'));
+      alert(isDuplicateCrmContactError(error)
+        ? 'A CRM customer with this name already exists.'
+        : (error?.message || t('errors.failedToUpdateCustomer')));
     }
   };
 

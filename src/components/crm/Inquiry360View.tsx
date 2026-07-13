@@ -18,7 +18,8 @@ type Inquiry = {
   offered_price?: number | null;
   offered_price_currency?: string | null;
   assigned_to?: string | null;
-  customer_id?: string | null;
+  customer_id?: string | null;    // FK to customers (ERP) — only when promoted
+  crm_contact_id?: string | null; // FK to crm_contacts — the CRM prospect link
 };
 
 type TimelineItem = { id: string; type: 'activity' | 'email' | 'document' | 'reminder' | 'order'; title: string; detail?: string | null; at: string; };
@@ -82,22 +83,26 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
   useEffect(() => {
     const run = async () => {
       if (!selected?.id) return;
-      const customerId = selected.customer_id;
+      // Two different FKs live on an inquiry:
+      //   * crm_contact_id → crm_contacts   (CRM activities scope by this)
+      //   * customer_id    → customers      (ERP: sales_orders, invoices, IRs)
+      const crmContactId = selected.crm_contact_id;
+      const erpCustomerId = selected.customer_id;
       const [activitiesRes, emailsRes, remindersRes, docsRes, ordersRes, invoicesRes, requirementsRes, assigneeRes] = await Promise.all([
-        customerId
-          ? supabase.from('crm_activities').select('id,subject,description,follow_up_date,created_at,activity_type').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(80)
+        crmContactId
+          ? supabase.from('crm_activities').select('id,subject,description,follow_up_date,created_at,activity_type').eq('customer_id', crmContactId).order('created_at', { ascending: false }).limit(80)
           : Promise.resolve({ data: [], error: null }),
         supabase.from('crm_email_activities').select('id,subject,from_email,to_email,sent_date,created_at').eq('inquiry_id', selected.id).order('created_at', { ascending: false }).limit(80),
         supabase.from('crm_reminders').select('id,title,due_date,is_completed').eq('inquiry_id', selected.id).order('due_date', { ascending: true }),
         supabase.from('crm_product_documents').select('id,document_type,display_file_name,created_at').eq('inquiry_id', selected.id).order('created_at', { ascending: false }).limit(80),
-        customerId
-          ? supabase.from('sales_orders').select('id,so_number,created_at,status').eq('customer_id', customerId).limit(20)
+        erpCustomerId
+          ? supabase.from('sales_orders').select('id,so_number,created_at,status').eq('customer_id', erpCustomerId).limit(20)
           : Promise.resolve({ data: [], error: null }),
-        customerId
-          ? supabase.from('sales_invoices').select('id,invoice_number,created_at,payment_status').eq('customer_id', customerId).limit(20)
+        erpCustomerId
+          ? supabase.from('sales_invoices').select('id,invoice_number,created_at,payment_status').eq('customer_id', erpCustomerId).limit(20)
           : Promise.resolve({ data: [], error: null }),
-        customerId
-          ? supabase.from('import_requirements').select('id,status,created_at').eq('customer_id', customerId).limit(20)
+        erpCustomerId
+          ? supabase.from('import_requirements').select('id,status,created_at').eq('customer_id', erpCustomerId).limit(20)
           : Promise.resolve({ data: [], error: null }),
         selected.assigned_to ? supabase.from('user_profiles').select('full_name').eq('id', selected.assigned_to).maybeSingle() : Promise.resolve({ data: null, error: null }),
       ]);
@@ -183,8 +188,22 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
           <div className="grid md:grid-cols-2 gap-3 mt-3 text-sm">
             <div className="border rounded p-2"><div className="font-medium">Communication</div><div className="text-xs text-gray-600">Last contact: {lastContactAt ? new Date(lastContactAt).toLocaleString() : '-'}</div><div className="text-xs text-gray-600">Emails linked: {emails.length}</div></div>
             <div className="border rounded p-2"><div className="font-medium">Documents</div><div className="text-xs text-gray-600">Sent/pending COA, MSDS, Specs tracked in timeline.</div><div className="text-xs text-gray-600">Linked docs: {documents.length}</div></div>
-            <div className="border rounded p-2"><div className="font-medium">Sales Links</div><div className="text-xs text-gray-600">SO: {orders.length} | Invoices: {invoices.length}</div></div>
-            <div className="border rounded p-2"><div className="font-medium">Import Requirement</div><div className="text-xs text-gray-600">Linked requirements: {requirements.length}</div></div>
+            <div className="border rounded p-2">
+              <div className="font-medium">Sales Links</div>
+              {selected.customer_id ? (
+                <div className="text-xs text-gray-600">SO: {orders.length} | Invoices: {invoices.length}</div>
+              ) : (
+                <div className="text-xs text-amber-700">This prospect has not yet been promoted to an ERP Customer.</div>
+              )}
+            </div>
+            <div className="border rounded p-2">
+              <div className="font-medium">Import Requirement</div>
+              {selected.customer_id ? (
+                <div className="text-xs text-gray-600">Linked requirements: {requirements.length}</div>
+              ) : (
+                <div className="text-xs text-amber-700">No ERP linkage — promote to an ERP Customer to track requirements.</div>
+              )}
+            </div>
           </div>
 
           <div className="mt-3">
