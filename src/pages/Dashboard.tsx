@@ -11,6 +11,7 @@ import { PaymentOverview } from '../components/dashboard/PaymentOverview';
 import { SalesDashboard } from '../components/dashboard/SalesDashboard';
 import { AlertTriangle, Clock, TrendingUp, FileText, ClipboardCheck, ClipboardList, Zap, CircleUser as UserCircle, ArrowRight, Sparkles } from 'lucide-react';
 import { fetchSalesOrderDeliveryAlerts, summarizeDeliveryAlerts } from '../utils/salesOrderDeliveryAlerts';
+import { TaxComplianceDashboardCards } from '../components/finance/tax/TaxComplianceDashboardCards';
 
 interface DashboardStats {
   totalProducts: number;
@@ -391,6 +392,10 @@ export function Dashboard() {
                 <RevenueChart />
                 <SalesPipelineChart />
               </div>
+            )}
+
+            {(isAdmin || isAccounts) && (
+              <TaxComplianceDashboardCards />
             )}
           </>
         )}
