@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
+import { type CompanySnapshot, FALLBACK_COMPANY } from '../../types/company';
 import { Users, Building2, Download, Mail, RefreshCw } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -37,6 +38,18 @@ export default function PartyLedger() {
   const [loading, setLoading] = useState(false);
   const [openingBalance, setOpeningBalance] = useState(0);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [co, setCo] = useState<CompanySnapshot>(FALLBACK_COMPANY);
+
+  useEffect(() => {
+    supabase
+      .from('company_profiles')
+      .select('company_name, company_address, company_phone, company_email, company_tax_id, company_logo_url, pbf_license, cdob_certificate')
+      .lte('effective_from', new Date().toISOString().split('T')[0])
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setCo(data as CompanySnapshot); });
+  }, []);
 
   useEffect(() => {
     loadParties();
@@ -513,11 +526,10 @@ export default function PartyLedger() {
                         </svg>
                       </div>
                       <div>
-                        <h1 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '5px' }}>PT. SHUBHAM ANZEN PHARMA JAYA</h1>
-                        <p style={{ fontSize: '11px', margin: '2px 0' }}>Komplek Ruko Metro Sunter Blok A1 NO.15, Jl. Metro Indah Raya,</p>
-                        <p style={{ fontSize: '11px', margin: '2px 0' }}>Kelurahan Papanggo, Kec. Tanjung Priok, Jakarta Utara - 14340</p>
-                        <p style={{ fontSize: '11px', margin: '2px 0' }}>Telp: (+62 21) 65832426</p>
-                        <p style={{ fontSize: '11px', margin: '2px 0' }}>NPWP: 03.174.071.8-093.000</p>
+                        <h1 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '5px' }}>{co.company_name}</h1>
+                        {co.company_address && <p style={{ fontSize: '11px', margin: '2px 0' }}>{co.company_address}</p>}
+                        {co.company_phone && <p style={{ fontSize: '11px', margin: '2px 0' }}>Telp: {co.company_phone}</p>}
+                        {co.company_tax_id && <p style={{ fontSize: '11px', margin: '2px 0' }}>NPWP: {co.company_tax_id}</p>}
                       </div>
                     </div>
                   </div>
@@ -627,7 +639,7 @@ export default function PartyLedger() {
                 {/* Footer */}
                 <div style={{ marginTop: '20px', textAlign: 'center', borderTop: '1px solid #e5e7eb', paddingTop: '10px' }}>
                   <p style={{ fontSize: '10px', color: '#999' }}>Generated on {new Date().toLocaleString('id-ID')}</p>
-                  <p style={{ fontSize: '10px', color: '#999' }}>PT. SHUBHAM ANZEN PHARMA JAYA</p>
+                  <p style={{ fontSize: '10px', color: '#999' }}>{co.company_name}</p>
                 </div>
               </div>
             </div>

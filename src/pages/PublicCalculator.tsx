@@ -12,6 +12,7 @@ import {
 } from '../services/pricingService';
 import { usdToWords, idrToWords } from '../utils/numberToWords';
 import logo from '../assets/Untitled-1.svg';
+import { FALLBACK_COMPANY } from '../types/company';
 
 const DEFAULT_FCL_CAPACITY: FCLCapacity = {
   mixed: 12000,
@@ -440,7 +441,7 @@ export function PublicCalculator() {
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <img src={logo} alt="Logo" className="h-9 w-9 flex-shrink-0" />
           <div className="flex flex-col leading-tight">
-            <span className="text-sm font-bold text-gray-900">PT. SHUBHAM ANZEN PHARMA JAYA</span>
+            <span className="text-sm font-bold text-gray-900">{FALLBACK_COMPANY.company_name}</span>
             <span className="text-xs text-gray-400 flex items-center gap-1">
               <Calculator className="w-3 h-3" /> Import Price Calculator
             </span>

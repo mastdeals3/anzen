@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { LogIn } from 'lucide-react';
 import logo from '../assets/Untitled-1.svg';
+import { FALLBACK_COMPANY } from '../types/company';
 
 export function Login() {
   const [username, setUsername] = useState('');
@@ -34,11 +35,8 @@ export function Login() {
             <img src={logo} alt="Company Logo" className="h-24 w-24 mx-auto" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 text-center">
-            PT. SHUBHAM ANZEN
+            {FALLBACK_COMPANY.company_name}
           </h1>
-          <h2 className="text-xl font-bold text-gray-900 text-center">
-            PHARMA JAYA
-          </h2>
         </div>
 
         <h2 className="text-2xl font-bold text-center text-gray-900 mb-2">
