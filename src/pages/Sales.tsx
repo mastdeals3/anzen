@@ -19,10 +19,6 @@ import { formatDate } from '../utils/dateFormat';
 import { fetchLinkedDocumentsBundle, LinkedDocRef } from '../utils/linkedDocuments';
 import { LinkedDocsCell } from '../components/LinkedDocsCell';
 
-// Once PostgREST reports the optional rounding table missing (PGRST205),
-// skip further queries for this session to avoid repeated 404s.
-let roundingTableMissing = false;
-
 interface SalesInvoice {
   id: string;
   invoice_number: string;
@@ -345,27 +341,17 @@ export function Sales() {
       const invoiceIdsForPaid = (data || []).map((inv) => inv.id);
       const paidById = new Map<string, number>();
       if (invoiceIdsForPaid.length > 0) {
-        const allocsPromise = supabase
-          .from('voucher_allocations')
-          .select('sales_invoice_id, allocated_amount')
-          .in('sales_invoice_id', invoiceIdsForPaid)
-          .eq('voucher_type', 'receipt');
-
-        // invoice_rounding_adjustments is optional: the rounding tolerance
-        // migration may not be applied in every environment. Skip the query
-        // (after the first PGRST205) instead of spamming 404s.
-        const adjsPromise = roundingTableMissing
-          ? Promise.resolve({ data: [] as any[], error: null })
-          : supabase
-              .from('invoice_rounding_adjustments')
-              .select('sales_invoice_id, adjustment_amount')
-              .in('sales_invoice_id', invoiceIdsForPaid);
-
-        const [{ data: allocs }, adjsRes] = await Promise.all([allocsPromise, adjsPromise]);
-        const { data: adjs, error: adjsError } = adjsRes as { data: any[] | null; error: any };
-        if (adjsError && (adjsError.code === 'PGRST205' || adjsError.code === '42P01')) {
-          roundingTableMissing = true;
-        }
+        const [{ data: allocs }, { data: adjs }] = await Promise.all([
+          supabase
+            .from('voucher_allocations')
+            .select('sales_invoice_id, allocated_amount')
+            .in('sales_invoice_id', invoiceIdsForPaid)
+            .eq('voucher_type', 'receipt'),
+          supabase
+            .from('invoice_rounding_adjustments')
+            .select('sales_invoice_id, adjustment_amount')
+            .in('sales_invoice_id', invoiceIdsForPaid),
+        ]);
         for (const a of allocs || []) {
           paidById.set(
             a.sales_invoice_id,

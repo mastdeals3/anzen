@@ -78,57 +78,28 @@ export function Settings() {
     id: string;
     effective_from: string;
     company_name: string;
-    company_legal_name: string | null;
     company_address: string | null;
     company_phone: string | null;
     company_email: string | null;
-    company_website: string | null;
     company_tax_id: string | null;
-    company_logo_url: string | null;
-    company_stamp_url: string | null;
     pbf_license: string | null;
     cdob_certificate: string | null;
     notes: string | null;
   }
-  type ProfileFormData = {
-    effective_from: string;
-    company_name: string;
-    company_legal_name: string;
-    company_address: string;
-    company_phone: string;
-    company_email: string;
-    company_website: string;
-    company_tax_id: string;
-    company_logo_url: string;
-    company_stamp_url: string;
-    pbf_license: string;
-    cdob_certificate: string;
-    notes: string;
-  };
-  const emptyProfileForm = (): ProfileFormData => ({
+  const [companyProfiles, setCompanyProfiles] = useState<CompanyProfileRow[]>([]);
+  const [showNewProfileForm, setShowNewProfileForm] = useState(false);
+  const [newProfileData, setNewProfileData] = useState({
     effective_from: new Date().toISOString().split('T')[0],
     company_name: '',
-    company_legal_name: '',
     company_address: '',
     company_phone: '',
     company_email: '',
-    company_website: '',
     company_tax_id: '',
-    company_logo_url: '',
-    company_stamp_url: '',
     pbf_license: '',
     cdob_certificate: '',
     notes: '',
   });
-  const [companyProfiles, setCompanyProfiles] = useState<CompanyProfileRow[]>([]);
-  const [profileRefCounts, setProfileRefCounts] = useState<Record<string, number>>({});
-  const [showNewProfileForm, setShowNewProfileForm] = useState(false);
-  const [newProfileData, setNewProfileData] = useState<ProfileFormData>(emptyProfileForm());
-  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
-  const [editProfileData, setEditProfileData] = useState<ProfileFormData>(emptyProfileForm());
-  const [uploadingAsset, setUploadingAsset] = useState<null | 'logo' | 'stamp'>(null);
   const [savingProfile, setSavingProfile] = useState(false);
-  const [deletingProfileId, setDeletingProfileId] = useState<string | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [formData, setFormData] = useState({
@@ -221,145 +192,35 @@ export function Settings() {
   };
 
   const loadCompanyProfiles = async () => {
-    const [{ data: profiles }, { data: refs }] = await Promise.all([
-      supabase
-        .from('company_profiles')
-        .select('id, effective_from, company_name, company_legal_name, company_address, company_phone, company_email, company_website, company_tax_id, company_logo_url, company_stamp_url, pbf_license, cdob_certificate, notes')
-        .order('effective_from', { ascending: false }),
-      supabase.rpc('get_company_profile_reference_counts'),
-    ]);
-    setCompanyProfiles(profiles || []);
-    const refMap: Record<string, number> = {};
-    for (const r of (refs as { profile_id: string; ref_count: number | string }[] | null) || []) {
-      refMap[r.profile_id] = Number(r.ref_count) || 0;
-    }
-    setProfileRefCounts(refMap);
-  };
-
-  const profileToFormData = (cp: CompanyProfileRow): ProfileFormData => ({
-    effective_from: cp.effective_from,
-    company_name: cp.company_name || '',
-    company_legal_name: cp.company_legal_name || '',
-    company_address: cp.company_address || '',
-    company_phone: cp.company_phone || '',
-    company_email: cp.company_email || '',
-    company_website: cp.company_website || '',
-    company_tax_id: cp.company_tax_id || '',
-    company_logo_url: cp.company_logo_url || '',
-    company_stamp_url: cp.company_stamp_url || '',
-    pbf_license: cp.pbf_license || '',
-    cdob_certificate: cp.cdob_certificate || '',
-    notes: cp.notes || '',
-  });
-
-  const formToPayload = (fd: ProfileFormData) => ({
-    effective_from: fd.effective_from,
-    company_name: fd.company_name,
-    company_legal_name: fd.company_legal_name || null,
-    company_address: fd.company_address || null,
-    company_phone: fd.company_phone || null,
-    company_email: fd.company_email || null,
-    company_website: fd.company_website || null,
-    company_tax_id: fd.company_tax_id || null,
-    company_logo_url: fd.company_logo_url || null,
-    company_stamp_url: fd.company_stamp_url || null,
-    pbf_license: fd.pbf_license || null,
-    cdob_certificate: fd.cdob_certificate || null,
-    notes: fd.notes || null,
-  });
-
-  const uploadCompanyAsset = async (kind: 'logo' | 'stamp', file: File): Promise<string | null> => {
-    setUploadingAsset(kind);
-    try {
-      const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
-      const rand = (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
-      // UUID-named path: never overwrites an existing asset. Snapshots keep
-      // pointing at the file they were stamped with.
-      const path = `${kind}/${rand}.${ext}`;
-      const { error } = await supabase.storage.from('company-assets').upload(path, file, {
-        contentType: file.type || undefined,
-        upsert: false,
-      });
-      if (error) throw error;
-      return path;
-    } catch (err: any) {
-      alert(`Failed to upload ${kind}: ${err.message || err}`);
-      return null;
-    } finally {
-      setUploadingAsset(null);
-    }
+    const { data } = await supabase
+      .from('company_profiles')
+      .select('id, effective_from, company_name, company_address, company_phone, company_email, company_tax_id, pbf_license, cdob_certificate, notes')
+      .order('effective_from', { ascending: false });
+    setCompanyProfiles(data || []);
   };
 
   const saveNewProfile = async () => {
     setSavingProfile(true);
     try {
-      // Guard: duplicate effective_from is UNIQUE at DB level too, but pre-check
-      // gives a friendlier message.
-      if (companyProfiles.some(p => p.effective_from === newProfileData.effective_from)) {
-        throw new Error('A Company Profile already exists for this effective date.');
-      }
-      const { error } = await supabase.from('company_profiles').insert(formToPayload(newProfileData));
+      const { error } = await supabase.from('company_profiles').insert({
+        effective_from: newProfileData.effective_from,
+        company_name: newProfileData.company_name,
+        company_address: newProfileData.company_address || null,
+        company_phone: newProfileData.company_phone || null,
+        company_email: newProfileData.company_email || null,
+        company_tax_id: newProfileData.company_tax_id || null,
+        pbf_license: newProfileData.pbf_license || null,
+        cdob_certificate: newProfileData.cdob_certificate || null,
+        notes: newProfileData.notes || null,
+      });
       if (error) throw error;
       setShowNewProfileForm(false);
-      setNewProfileData(emptyProfileForm());
+      setNewProfileData({ effective_from: new Date().toISOString().split('T')[0], company_name: '', company_address: '', company_phone: '', company_email: '', company_tax_id: '', pbf_license: '', cdob_certificate: '', notes: '' });
       await loadCompanyProfiles();
     } catch (err: any) {
       alert(err.message || 'Failed to save company profile');
     } finally {
       setSavingProfile(false);
-    }
-  };
-
-  const startEditProfile = (cp: CompanyProfileRow) => {
-    setEditingProfileId(cp.id);
-    setEditProfileData(profileToFormData(cp));
-  };
-
-  const cancelEditProfile = () => {
-    setEditingProfileId(null);
-    setEditProfileData(emptyProfileForm());
-  };
-
-  const saveEditProfile = async () => {
-    if (!editingProfileId) return;
-    setSavingProfile(true);
-    try {
-      if (companyProfiles.some(p => p.id !== editingProfileId && p.effective_from === editProfileData.effective_from)) {
-        throw new Error('Another Company Profile already exists for this effective date.');
-      }
-      const { error } = await supabase
-        .from('company_profiles')
-        .update(formToPayload(editProfileData))
-        .eq('id', editingProfileId);
-      if (error) throw error;
-      cancelEditProfile();
-      await loadCompanyProfiles();
-    } catch (err: any) {
-      const msg = String(err?.message || err);
-      alert(msg.startsWith('PROFILE_REFERENCED:') ? msg.replace(/^PROFILE_REFERENCED:\s*/, '') : msg);
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
-  const deleteProfile = async (cp: CompanyProfileRow) => {
-    const refCount = profileRefCounts[cp.id] || 0;
-    if (refCount > 0) {
-      alert('This Company Profile is already referenced by business documents and cannot be deleted.\n\nHistorical company identities must remain permanently available.');
-      return;
-    }
-    const ok = window.confirm(`Delete this Company Profile?\n\n"${cp.company_name}" (effective ${cp.effective_from})\n\nThis action cannot be undone.`);
-    if (!ok) return;
-    setDeletingProfileId(cp.id);
-    try {
-      const { error } = await supabase.rpc('delete_company_profile', { p_id: cp.id });
-      if (error) throw error;
-      await loadCompanyProfiles();
-    } catch (err: any) {
-      const msg = String(err?.message || err);
-      alert(msg.startsWith('PROFILE_REFERENCED:') ? msg.replace(/^PROFILE_REFERENCED:\s*/, '') : msg);
-    } finally {
-      setDeletingProfileId(null);
     }
   };
 
@@ -900,31 +761,52 @@ export function Settings() {
                 </div>
 
                 {showNewProfileForm && (
-                  <CompanyProfileForm
-                    title="New Company Profile Version"
-                    data={newProfileData}
-                    onChange={setNewProfileData}
-                    onUploadAsset={uploadCompanyAsset}
-                    uploadingAsset={uploadingAsset}
-                    onSubmit={saveNewProfile}
-                    onCancel={() => { setShowNewProfileForm(false); setNewProfileData(emptyProfileForm()); }}
-                    submitLabel="Save Version"
-                    saving={savingProfile}
-                  />
-                )}
-
-                {editingProfileId && (
-                  <CompanyProfileForm
-                    title="Edit Company Profile"
-                    data={editProfileData}
-                    onChange={setEditProfileData}
-                    onUploadAsset={uploadCompanyAsset}
-                    uploadingAsset={uploadingAsset}
-                    onSubmit={saveEditProfile}
-                    onCancel={cancelEditProfile}
-                    submitLabel="Save Changes"
-                    saving={savingProfile}
-                  />
+                  <div className="mb-4 p-4 border rounded-lg bg-gray-50 space-y-3">
+                    <h4 className="text-sm font-semibold text-gray-700">New Company Profile Version</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Effective From *</label>
+                        <input type="date" value={newProfileData.effective_from} onChange={e => setNewProfileData(p => ({...p, effective_from: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" required />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Company Name *</label>
+                        <input type="text" value={newProfileData.company_name} onChange={e => setNewProfileData(p => ({...p, company_name: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="PT. ..." />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
+                        <input type="text" value={newProfileData.company_address} onChange={e => setNewProfileData(p => ({...p, company_address: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+                        <input type="text" value={newProfileData.company_phone} onChange={e => setNewProfileData(p => ({...p, company_phone: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                        <input type="email" value={newProfileData.company_email} onChange={e => setNewProfileData(p => ({...p, company_email: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Tax ID (NPWP)</label>
+                        <input type="text" value={newProfileData.company_tax_id} onChange={e => setNewProfileData(p => ({...p, company_tax_id: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">PBF License No.</label>
+                        <input type="text" value={newProfileData.pbf_license} onChange={e => setNewProfileData(p => ({...p, pbf_license: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="No izin PBF: ..." />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">CDOB Certificate No.</label>
+                        <input type="text" value={newProfileData.cdob_certificate} onChange={e => setNewProfileData(p => ({...p, cdob_certificate: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="No Sertifikasi CDOB: ..." />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                        <input type="text" value={newProfileData.notes} onChange={e => setNewProfileData(p => ({...p, notes: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Reason for change..." />
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button onClick={saveNewProfile} disabled={savingProfile || !newProfileData.company_name || !newProfileData.effective_from} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+                        {savingProfile ? 'Saving...' : 'Save Version'}
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 <div className="overflow-x-auto">
@@ -934,9 +816,7 @@ export function Settings() {
                         <th className="pb-2 pr-4">Effective From</th>
                         <th className="pb-2 pr-4">Company Name</th>
                         <th className="pb-2 pr-4">Phone</th>
-                        <th className="pb-2 pr-4">Status</th>
-                        <th className="pb-2 pr-4">Usage</th>
-                        <th className="pb-2">Actions</th>
+                        <th className="pb-2">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -944,17 +824,12 @@ export function Settings() {
                         const today = new Date().toISOString().split('T')[0];
                         const isActive = cp.effective_from <= today && idx === companyProfiles.findIndex(p => p.effective_from <= today);
                         const isFuture = cp.effective_from > today;
-                        const refCount = profileRefCounts[cp.id] || 0;
-                        const isReferenced = refCount > 0;
-                        const isAdmin = profile?.role === 'admin';
-                        const canEdit = isAdmin && !isReferenced && editingProfileId !== cp.id;
-                        const canDelete = isAdmin && !isReferenced;
                         return (
                           <tr key={cp.id} className="border-b last:border-0 hover:bg-gray-50">
                             <td className="py-2 pr-4 font-mono text-xs">{cp.effective_from}</td>
                             <td className="py-2 pr-4 font-medium">{cp.company_name}</td>
                             <td className="py-2 pr-4 text-gray-600">{cp.company_phone || '—'}</td>
-                            <td className="py-2 pr-4">
+                            <td className="py-2">
                               {isFuture ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Future</span>
                               ) : isActive ? (
@@ -963,45 +838,11 @@ export function Settings() {
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Historical</span>
                               )}
                             </td>
-                            <td className="py-2 pr-4">
-                              {isReferenced ? (
-                                <span
-                                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
-                                  title="Editing and deletion are disabled because this profile is embedded in existing documents."
-                                >
-                                  Used by {refCount} document{refCount === 1 ? '' : 's'}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200">
-                                  Unused
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => startEditProfile(cp)}
-                                  disabled={!canEdit}
-                                  title={isReferenced ? 'Referenced by documents — read-only' : 'Edit profile'}
-                                  className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => deleteProfile(cp)}
-                                  disabled={!canDelete || deletingProfileId === cp.id}
-                                  title={isReferenced ? 'Referenced by documents — cannot delete' : 'Delete profile'}
-                                  className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                  {deletingProfileId === cp.id ? 'Deleting…' : 'Delete'}
-                                </button>
-                              </div>
-                            </td>
                           </tr>
                         );
                       })}
                       {companyProfiles.length === 0 && (
-                        <tr><td colSpan={6} className="py-4 text-center text-gray-400 text-sm">No company profiles found.</td></tr>
+                        <tr><td colSpan={4} className="py-4 text-center text-gray-400 text-sm">No company profiles found.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -1505,128 +1346,5 @@ export function Settings() {
         </div>
       )}
     </Layout>
-  );
-}
-
-// ─── Company Profile Form (used for both New and Edit) ─────────────────────────
-interface CompanyProfileFormProps {
-  title: string;
-  data: {
-    effective_from: string;
-    company_name: string;
-    company_legal_name: string;
-    company_address: string;
-    company_phone: string;
-    company_email: string;
-    company_website: string;
-    company_tax_id: string;
-    company_logo_url: string;
-    company_stamp_url: string;
-    pbf_license: string;
-    cdob_certificate: string;
-    notes: string;
-  };
-  onChange: React.Dispatch<React.SetStateAction<CompanyProfileFormProps['data']>>;
-  onUploadAsset: (kind: 'logo' | 'stamp', file: File) => Promise<string | null>;
-  uploadingAsset: null | 'logo' | 'stamp';
-  onSubmit: () => void;
-  onCancel: () => void;
-  submitLabel: string;
-  saving: boolean;
-}
-
-function CompanyProfileForm({ title, data, onChange, onUploadAsset, uploadingAsset, onSubmit, onCancel, submitLabel, saving }: CompanyProfileFormProps) {
-  const setField = (patch: Partial<CompanyProfileFormProps['data']>) => onChange(p => ({ ...p, ...patch }));
-
-  const handleAssetUpload = async (kind: 'logo' | 'stamp', e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    const path = await onUploadAsset(kind, file);
-    if (path) {
-      setField(kind === 'logo' ? { company_logo_url: path } : { company_stamp_url: path });
-    }
-  };
-
-  return (
-    <div className="mb-4 p-4 border rounded-lg bg-gray-50 space-y-3">
-      <h4 className="text-sm font-semibold text-gray-700">{title}</h4>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Effective From *</label>
-          <input type="date" value={data.effective_from} onChange={e => setField({ effective_from: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" required />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Company Name *</label>
-          <input type="text" value={data.company_name} onChange={e => setField({ company_name: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="PT. ..." />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Legal Name</label>
-          <input type="text" value={data.company_legal_name} onChange={e => setField({ company_legal_name: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Legal registered name" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Tax ID (NPWP)</label>
-          <input type="text" value={data.company_tax_id} onChange={e => setField({ company_tax_id: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" />
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
-          <input type="text" value={data.company_address} onChange={e => setField({ company_address: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
-          <input type="text" value={data.company_phone} onChange={e => setField({ company_phone: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-          <input type="email" value={data.company_email} onChange={e => setField({ company_email: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Website</label>
-          <input type="url" value={data.company_website} onChange={e => setField({ company_website: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="https://..." />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">PBF License No.</label>
-          <input type="text" value={data.pbf_license} onChange={e => setField({ pbf_license: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="No izin PBF: ..." />
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-gray-600 mb-1">CDOB Certificate No.</label>
-          <input type="text" value={data.cdob_certificate} onChange={e => setField({ cdob_certificate: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="No Sertifikasi CDOB: ..." />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Logo</label>
-          <div className="flex items-center gap-2">
-            <input type="file" accept="image/*" onChange={e => handleAssetUpload('logo', e)} disabled={uploadingAsset !== null} className="text-xs" />
-            {data.company_logo_url && (
-              <span className="text-xs text-gray-500 truncate max-w-[160px]" title={data.company_logo_url}>{data.company_logo_url.split('/').pop()}</span>
-            )}
-            {uploadingAsset === 'logo' && <span className="text-xs text-gray-500">Uploading…</span>}
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Stamp</label>
-          <div className="flex items-center gap-2">
-            <input type="file" accept="image/*" onChange={e => handleAssetUpload('stamp', e)} disabled={uploadingAsset !== null} className="text-xs" />
-            {data.company_stamp_url && (
-              <span className="text-xs text-gray-500 truncate max-w-[160px]" title={data.company_stamp_url}>{data.company_stamp_url.split('/').pop()}</span>
-            )}
-            {uploadingAsset === 'stamp' && <span className="text-xs text-gray-500">Uploading…</span>}
-          </div>
-        </div>
-        <div className="col-span-2">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
-          <input type="text" value={data.notes} onChange={e => setField({ notes: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Reason for change..." />
-        </div>
-      </div>
-      <div className="flex justify-end gap-2">
-        <button onClick={onCancel} className="border border-gray-300 text-gray-700 px-4 py-1.5 rounded-lg text-sm hover:bg-gray-100">Cancel</button>
-        <button
-          onClick={onSubmit}
-          disabled={saving || uploadingAsset !== null || !data.company_name || !data.effective_from}
-          className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? 'Saving...' : submitLabel}
-        </button>
-      </div>
-    </div>
   );
 }
