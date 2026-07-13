@@ -27,7 +27,7 @@ const SuppliersManager = lazy(() => import('../components/finance/SuppliersManag
 const BankAccountsManager = lazy(() => import('../components/finance/BankAccountsManager').then(m => ({ default: m.BankAccountsManager })));
 const StaffMasterManager = lazy(() => import('../components/finance/StaffMasterManager').then(m => ({ default: m.StaffMasterManager })));
 const UtilityMasterManager = lazy(() => import('../components/finance/UtilityMasterManager').then(m => ({ default: m.UtilityMasterManager })));
-const TaxReports = lazy(() => import('../components/finance/TaxReports').then(m => ({ default: m.TaxReports })));
+const TaxComplianceCentre = lazy(() => import('../components/finance/TaxComplianceCentre').then(m => ({ default: m.TaxComplianceCentre })));
 const CAReports = lazy(() => import('../components/finance/CAReports').then(m => ({ default: m.CAReports })));
 const GeneralJournalEntry = lazy(() => import('../components/finance/GeneralJournalEntry').then(m => ({ default: m.GeneralJournalEntry })));
 const IntegrityMonitor = lazy(() => import('../components/finance/IntegrityMonitor').then(m => ({ default: m.IntegrityMonitor })));
@@ -94,7 +94,7 @@ const getFinanceMenu = (t: Record<string, Record<string, string>>): MenuGroup[] 
       { id: 'receivables', label: t.finance.receivables },
       { id: 'payables', label: t.finance.payables },
       { id: 'ageing', label: t.finance.ageing },
-      { id: 'tax', label: t.finance.taxReports },
+      { id: 'tax', label: t.finance.taxCompliance ?? t.finance.taxReports },
       { id: 'integrity_monitor', label: 'Integrity Monitor' },
     ]
   },
@@ -318,7 +318,7 @@ function FinanceContent() {
       case 'ageing':
         return <AgeingReport />;
       case 'tax':
-        return <TaxReports />;
+        return <TaxComplianceCentre />;
       case 'ca_reports':
         return <CAReports />;
       case 'integrity_monitor':
