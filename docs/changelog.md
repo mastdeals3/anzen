@@ -3,6 +3,35 @@
 Reverse-chronological summary of major project milestones. Detailed
 per-file diffs live in `git log`.
 
+## 2026-07-13 — Tax Compliance integration (Phase 2)
+- **Auto-attribution + companion PPh periods**: sales/purchase invoices and
+  expenses with tax now auto-attach to the correct `tax_period`; new PPN
+  periods auto-create matching PPh21/22/23/4(2)/Unifikasi periods.
+  Backfill run for existing rows. Removed the developer "Seed …" buttons
+  from Tax Calendar.
+- **Extended period lock**: `purchase_invoices`, `tax_payments`,
+  `faktur_pajak`, and `journal_entries` with `source_module='tax_payment'`
+  are now frozen inside a closed tax period (admin override via
+  `reopen_tax_period`).
+- **Bank alias + gov fields on Tax Payment form**: reuses
+  `bank_accounts.alias` display pattern from Payment Voucher; adds
+  explicit `payment_reference` column; JE reference falls through NTPN →
+  Billing Code → Payment Reference → synthetic.
+- **Faktur Pajak page**: real customer names (customer/company), respects
+  Global Date Filter, click invoice # to drill into Sales, status filter
+  chips, Excel export.
+- **9 CA-quality Tax Reports** with Global Date Filter, Excel + PDF
+  export (via existing xlsx + browser print pipeline). Replaces "Registers
+  (legacy)" tab; renamed to "Tax Reports".
+- **Dashboard notifications**: `generate_tax_notifications()` RPC runs
+  alongside the existing 10-minute notification checks and emits
+  `tax_overdue`, `tax_due_soon`, `faktur_missing` events into the shared
+  notifications table (direct INSERT, dedup by unread status).
+- **Finance sidebar typography** matched to Main sidebar — text-xs,
+  font-medium, `text-gray-600` / active `text-blue-600`, blue-500 left bar.
+- **Docs renamed** to lowercase (`finance_architecture.md`,
+  `database.md`, `tax_compliance.md`, etc.) with content updates.
+
 ## 2026-07-13 — Security Audit + Tax Compliance Centre
 - **Security audit fixes** (commit `dafc2bf`): CRITICAL + HIGH findings
   resolved — user self-promotion via user_profiles UPDATE blocked,
@@ -17,7 +46,7 @@ per-file diffs live in `git log`.
   4 new views, 8 new RPCs including `record_tax_payment` which posts a
   journal entry through the same rails as any payment voucher. Auto-
   reconciliation trigger integrates with existing Bank Reconciliation.
-  See `docs/TAX_COMPLIANCE.md`.
+  See `docs/tax_compliance.md`.
 - **Tax Compliance Centre — UI** (`081546e`): 6 workflow-oriented panels
   replacing the Tax Reports tab (Calendar, PPN Periods, PPh Register,
   Tax Payments, Faktur Pajak, Period Close). Legacy report registers

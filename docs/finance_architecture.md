@@ -1,7 +1,7 @@
-# FINANCE_ARCHITECTURE.md — Anzen Finance Module
+# finance_architecture.md — Anzen Finance Module
 
 This document is the source of truth for how Finance works in Anzen. Read
-[FINANCE_RULES.md](FINANCE_RULES.md) first; this document explains how
+[finance_rules.md](finance_rules.md) first; this document explains how
 those rules are implemented.
 
 ## 1. Chart of Accounts
@@ -64,7 +64,7 @@ journal_entries + journal_entry_lines
 ```
 
 Faktur Pajak: `assign_faktur_pajak_number(sales_invoice_id)` (see
-[TAX_COMPLIANCE.md](TAX_COMPLIANCE.md)).
+[tax_compliance.md](tax_compliance.md)).
 
 ## 4. Expense Flow
 
@@ -144,7 +144,7 @@ Replenishment vouchers: Dr Petty Cash / Cr Bank.
   `journal_entry_id` when `is_matched = true`.
 - Component: `BankReconciliationEnhanced.tsx`.
 - Tax Payments integrate here via the auto-reconcile trigger described
-  in [FINANCE_RULES.md](FINANCE_RULES.md) rule 4.
+  in [finance_rules.md](finance_rules.md) rule 4.
 
 ## 12. Approval Workflow
 
@@ -164,9 +164,28 @@ Replenishment vouchers: Dr Petty Cash / Cr Bank.
 
 ## 14. Tax Posting
 
-Delegated to [TAX_COMPLIANCE.md](TAX_COMPLIANCE.md). Key point: PPN
-Input flows through 1150, PPN Output through 2130. Payments to the
-government clear the payable via `record_tax_payment` RPC.
+Delegated to [tax_compliance.md](tax_compliance.md). Key points:
+
+- PPN Input flows through 1150, PPN Output through 2130.
+- Payments to the government clear the payable via `record_tax_payment` RPC.
+- Every Sales Invoice, Purchase Invoice, and Expense with a tax component is
+  **automatically attributed** to the matching PPN `tax_period` by
+  `auto_attribute_sales_invoice_tax_period` /
+  `auto_attribute_purchase_invoice_tax_period` /
+  `auto_attribute_finance_expense_tax_period` triggers. If the period
+  doesn't exist yet, the trigger creates it via `upsert_tax_period` — no
+  manual "Seed" action required.
+- Whenever a new PPN period is created, companion PPh21/22/23/4(2)/Unifikasi
+  periods are auto-created by `auto_create_companion_pph_periods` so the
+  Tax Calendar always shows the full picture.
+- Closed periods are frozen via `enforce_tax_period_lock` on
+  `sales_invoices`, `purchase_invoices`, `finance_expenses`, `tax_payments`,
+  and `faktur_pajak`. Journal entries with `source_module='tax_payment'`
+  are frozen via `enforce_tax_je_period_lock`. Only `service_role`
+  bypasses.
+- Dashboard notifications are seeded by `generate_tax_notifications()`
+  RPC, called from `initializeNotificationChecks()` every 10 minutes
+  (types: `tax_overdue`, `tax_due_soon`, `faktur_missing`).
 
 ## 15. Month-end
 
@@ -194,10 +213,11 @@ government clear the payable via `record_tax_payment` RPC.
 | `upsert_tax_period(year, month, type)` | Idempotent tax period |
 | `compute_period_ppn(period_id)` | Recompute PPN snapshot |
 | `assign_faktur_pajak_number(invoice_id)` | Atomic Faktur # + upsert |
-| `record_tax_payment(...)` | Tax payment + JE post |
+| `record_tax_payment(period, type, date, amt, bank, billing, ntpn, gov_ref, notes, payment_ref)` | Tax payment + JE post |
 | `mark_tax_payment_reconciled(id)` | Manual reconcile flip |
 | `close_tax_period(period_id)` | Close + audit |
 | `reopen_tax_period(period_id, reason)` | Admin reopen + audit |
+| `generate_tax_notifications()` | Push overdue / due-soon / missing-faktur into notifications table |
 
 ## 17. Finance Triggers
 
@@ -210,6 +230,14 @@ government clear the payable via `record_tax_payment` RPC.
 | petty_cash_vouchers | trg_post_petty_cash | post_petty_cash_journal |
 | finance_expenses | trg_auto_post_expense | auto_post_expense_accounting |
 | sales_invoices | trg_lock_sales_invoices_by_period | enforce_tax_period_lock |
+| sales_invoices | trg_auto_attribute_sales_invoice_period | auto_attribute_sales_invoice_tax_period |
+| purchase_invoices | trg_lock_purchase_invoices_by_period | enforce_tax_period_lock |
+| purchase_invoices | trg_auto_attribute_purchase_invoice_period | auto_attribute_purchase_invoice_tax_period |
 | finance_expenses | trg_lock_finance_expenses_by_period | enforce_tax_period_lock |
+| finance_expenses | trg_auto_attribute_finance_expense_period | auto_attribute_finance_expense_tax_period |
+| tax_payments | trg_lock_tax_payments_by_period | enforce_tax_period_lock |
+| faktur_pajak | trg_lock_faktur_pajak_by_period | enforce_tax_period_lock |
+| journal_entries | trg_lock_journal_entries_by_tax_period | enforce_tax_je_period_lock |
+| tax_periods | trg_auto_create_companion_pph_periods | auto_create_companion_pph_periods |
 | bank_reconciliation_items | trg_auto_reconcile_tax_payment | auto_reconcile_tax_payment |
 | tax_periods / tax_payments / faktur_pajak | trg_*_updated_at | set_updated_at_tax_compliance |

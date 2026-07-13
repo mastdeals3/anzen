@@ -372,17 +372,17 @@ function FinanceContent() {
                     {isCollapsible ? (
                       <button
                         onClick={() => toggleGroup(group.label)}
-                        className="w-full px-2 h-4 text-[8px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between hover:bg-gray-50 bg-gray-50/60"
+                        className="w-full px-2 py-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex items-center justify-between hover:bg-gray-100 bg-gray-50/60"
                       >
                         <span>{group.label}</span>
                         {isCollapsed ? (
-                          <ChevronRight className="w-2.5 h-2.5" />
+                          <ChevronRight className="w-3 h-3" />
                         ) : (
-                          <ChevronDown className="w-2.5 h-2.5" />
+                          <ChevronDown className="w-3 h-3" />
                         )}
                       </button>
                     ) : (
-                      <div className="px-2 h-4 text-[8px] font-bold text-gray-400 uppercase tracking-wider flex items-center bg-gray-50/60">
+                      <div className="px-2 py-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex items-center bg-gray-50/60">
                         {group.label}
                       </div>
                     )}
@@ -396,16 +396,19 @@ function FinanceContent() {
                               setActiveTab(item.id);
                               if (window.innerWidth < 768) setSidebarCollapsed(true);
                             }}
-                            className={`w-full text-left px-2 h-5 text-[10px] leading-tight transition-colors flex items-center ${
+                            className={`relative w-full text-left px-2 py-1.5 text-xs font-medium transition-colors flex items-center ${
                               activeTab === item.id
-                                ? 'bg-blue-50 text-blue-700 font-medium border-l-2 border-blue-600'
-                                : 'text-gray-700 hover:bg-gray-50 border-l-2 border-transparent'
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                             }`}
                           >
+                            {activeTab === item.id && (
+                              <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-blue-500 rounded-r" />
+                            )}
                             <div className="flex items-center justify-between w-full">
                               <span className="truncate">{item.label}</span>
                               {item.shortcut && (
-                                <span className="text-[8px] text-gray-400 ml-1 shrink-0">{item.shortcut}</span>
+                                <span className="text-[10px] text-gray-400 ml-1 shrink-0">{item.shortcut}</span>
                               )}
                             </div>
                           </button>

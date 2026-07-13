@@ -1,10 +1,13 @@
-# TAX_COMPLIANCE.md — Anzen Tax Compliance Centre
+# tax_compliance.md — Anzen Tax Compliance Centre
 
 Indonesian tax handling for Anzen. Ships with the Tax Compliance Centre
 (2026-07-13). Reference migrations:
 
 - `20260713140000_tax_compliance_centre_schema.sql`
 - `20260713140100_tax_compliance_rpcs.sql`
+- `20260713150000_tax_compliance_integration.sql` (auto-attribution
+  triggers, extended period lock, notifications, `payment_reference`
+  column, `record_tax_payment` 10-arg overload)
 
 ## 1. Coverage
 
@@ -102,22 +105,48 @@ Rendered by the "Registers (legacy)" tab.
 ### 4.3 Recording a Tax Payment
 
 1. User opens `/finance/tax` → **Tax Payments** tab.
-2. Form fields: Tax Type, Tax Period, Payment Date, Amount, Bank Account,
-   Billing Code, NTPN, Government Reference, Notes.
-3. Submit → `record_tax_payment(...)` RPC:
-   - Inserts `tax_payments` row (status='draft')
+2. Form fields: Tax Type, Tax Period, Payment Date, Amount, Bank Account
+   (rendered by alias — "BCA Operational" — via `bank_accounts.alias`),
+   Billing Code (Kode Billing), NTPN, Payment Reference, Notes.
+3. Submit → `record_tax_payment(...)` 10-arg RPC:
+   - Inserts `tax_payments` row (status='draft') including
+     `payment_reference` for the bank-transfer receipt reference.
    - Posts a JE with `source_module='tax_payment'`:
      - Dr Tax Payable (2130/2131/2132/2133/2137/2138)
      - Cr Bank (bank_accounts.coa_id or 1111 fallback)
+   - JE `reference_number` prefers NTPN → Billing Code → Payment
+     Reference → synthetic `TAX-YYMM-<uuid>` in that order.
    - Updates `tax_payments.journal_entry_id`, flips status='posted'
    - Nudges `tax_periods.status` from 'open' → 'payment_pending'
    - Writes `audit_logs` entry
 4. User attaches Billing Code / NTPN receipt / bank transfer proof to
-   `tax_payment_files`.
+   `tax_payment_files` via the shared attachment component (same UX
+   as Expense / Petty Cash — PDF + image + paste-to-attach).
 5. On the next bank statement, the payment shows up in Bank
    Reconciliation as an unmatched JE → user matches it →
    `bank_reconciliation_items.is_matched = true` → `auto_reconcile_tax_payment`
    trigger fires → `tax_payments.status = 'reconciled'`.
+
+### 4.6 Auto-attribution from source modules
+
+Sales Invoices, Purchase Invoices, and Finance Expenses no longer need
+manual "assign to period" clicks. Three BEFORE INSERT/UPDATE triggers
+(one per table) resolve the correct `tax_period_id` from the transaction
+date and create the PPN period if it doesn't yet exist. Companion
+PPh21/22/23/4(2)/Unifikasi periods for the same month are created via
+an AFTER INSERT trigger on `tax_periods` itself. Backfill was run for
+all pre-existing rows in the migration.
+
+### 4.7 Notifications
+
+`generate_tax_notifications()` (SECURITY DEFINER) runs on the same
+10-minute cadence as low-stock / expiry / follow-up / delivery-due
+checks, called from `initializeNotificationChecks()`. It writes to the
+existing `notifications` table with types `tax_overdue`, `tax_due_soon`,
+`faktur_missing`. Direct INSERT is used (bypassing
+`upsert_notification`'s admin-only cross-user check because we're
+SECURITY DEFINER). A NOT EXISTS guard prevents duplicate unread
+notifications per (user, type, period).
 
 ### 4.4 Closing a Tax Period
 
@@ -133,9 +162,13 @@ Rendered by the "Registers (legacy)" tab.
    - Re-verifies blockers
    - Sets `status='closed'`, `closed_at`, `closed_by`
    - Writes `audit_logs`
-5. Subsequent INSERT/UPDATE/DELETE on `sales_invoices` /
-   `finance_expenses` with matching `tax_period_id` are blocked by
-   `enforce_tax_period_lock()` trigger (unless caller is service_role).
+5. Subsequent INSERT/UPDATE/DELETE on `sales_invoices`,
+   `purchase_invoices`, `finance_expenses`, `tax_payments`, and
+   `faktur_pajak` rows attributed to the closed period are blocked by
+   `enforce_tax_period_lock()` trigger.  `journal_entries` with
+   `source_module='tax_payment'` are blocked by
+   `enforce_tax_je_period_lock()`. Only `service_role` (edge functions)
+   bypasses these locks.
 
 ### 4.5 Reopening a closed period (admin override)
 

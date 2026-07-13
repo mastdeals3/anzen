@@ -6,18 +6,18 @@ logic, and keep the Finance module's accounting invariants intact.
 
 ## Load order
 
-1. **[FINANCE_RULES.md](FINANCE_RULES.md)** — The constitution. Immutable
+1. **[finance_rules.md](finance_rules.md)** — The constitution. Immutable
    accounting invariants that MUST NOT be violated. Read this first.
-2. **[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)** — End-to-end flow
+2. **[system_architecture.md](system_architecture.md)** — End-to-end flow
    across CRM → Sales → Inventory → Finance → Tax → Reports.
-3. **[FINANCE_ARCHITECTURE.md](FINANCE_ARCHITECTURE.md)** — Chart of
+3. **[finance_architecture.md](finance_architecture.md)** — Chart of
    Accounts, all Finance flows, RPCs, triggers, and how modules post to
    the ledger.
-4. **[TAX_COMPLIANCE.md](TAX_COMPLIANCE.md)** — Indonesian tax
+4. **[tax_compliance.md](tax_compliance.md)** — Indonesian tax
    (PPN/PPh/Faktur Pajak) and the Tax Compliance Centre.
-5. **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** — Per-table reference
-   (purpose, FKs, triggers, RLS, RPCs, which UI uses it).
-6. **[CHANGELOG.md](CHANGELOG.md)** — Major project milestones.
+5. **[database.md](database.md)** — Per-table reference (purpose, FKs,
+   triggers, RLS, RPCs, which UI uses it).
+6. **[changelog.md](changelog.md)** — Major project milestones.
 
 ## Golden rules for AI sessions editing this project
 

@@ -1,4 +1,4 @@
-# SYSTEM_ARCHITECTURE.md — Anzen ERP End-to-End
+# system_architecture.md — Anzen ERP End-to-End
 
 ## The pipeline
 

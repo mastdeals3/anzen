@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../../../lib/supabase';
+import { useFinance } from '../../../contexts/FinanceContext';
 import { TaxAttachments } from './TaxAttachments';
+import { sanitizeExportRows } from '../../../utils/csvSafe';
 
 interface Period {
   id: string;
@@ -10,7 +13,13 @@ interface Period {
   tax_type: string;
   status: string;
 }
-interface BankAccount { id: string; account_name: string; bank_name: string; }
+interface BankAccount {
+  id: string;
+  account_name: string;
+  bank_name: string;
+  alias: string | null;
+  currency: string | null;
+}
 interface Payment {
   id: string;
   tax_period_id: string;
@@ -19,19 +28,28 @@ interface Payment {
   amount: number;
   billing_code: string | null;
   ntpn: string | null;
+  payment_reference: string | null;
+  government_reference: string | null;
   status: string;
   journal_entry_id: string | null;
+  bank_account_id: string | null;
+  notes: string | null;
 }
 
 const KINDS = [
-  { value: 'billing_code',        label: 'Billing Code / SSE' },
+  { value: 'billing_code',        label: 'Billing Code (Kode Billing)' },
   { value: 'ntpn',                label: 'NTPN receipt' },
   { value: 'government_receipt',  label: 'Government receipt' },
   { value: 'bank_transfer_proof', label: 'Bank transfer proof' },
   { value: 'other',               label: 'Other' },
 ] as const;
 
+function bankLabel(b: BankAccount): string {
+  return b.alias || `${b.bank_name} - ${b.account_name}`;
+}
+
 export function TaxPaymentsPanel() {
+  const { dateRange } = useFinance();
   const [periods, setPeriods] = useState<Period[]>([]);
   const [banks, setBanks] = useState<BankAccount[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -48,16 +66,26 @@ export function TaxPaymentsPanel() {
     bank_account_id: '',
     billing_code: '',
     ntpn: '',
-    government_reference: '',
+    payment_reference: '',
     notes: '',
   });
 
   async function refresh() {
     setLoading(true);
     const [p, b, tp] = await Promise.all([
-      supabase.from('tax_periods').select('id, fiscal_year, period_month, tax_type, status').order('fiscal_year', { ascending: false }).order('period_month', { ascending: false }),
-      supabase.from('bank_accounts').select('id, account_name, bank_name').eq('is_active', true).order('account_name'),
-      supabase.from('tax_payments').select('id, tax_period_id, tax_type, payment_date, amount, billing_code, ntpn, status, journal_entry_id').order('payment_date', { ascending: false }).limit(100),
+      supabase.from('tax_periods')
+        .select('id, fiscal_year, period_month, tax_type, status')
+        .order('fiscal_year', { ascending: false })
+        .order('period_month', { ascending: false }),
+      supabase.from('bank_accounts')
+        .select('id, account_name, bank_name, alias, currency')
+        .eq('is_active', true)
+        .order('alias', { nullsFirst: false })
+        .order('account_name'),
+      supabase.from('tax_payments')
+        .select('id, tax_period_id, tax_type, payment_date, amount, billing_code, ntpn, payment_reference, government_reference, status, journal_entry_id, bank_account_id, notes')
+        .order('payment_date', { ascending: false })
+        .limit(500),
     ]);
     setPeriods((p.data as Period[] | null) ?? []);
     setBanks((b.data as BankAccount[] | null) ?? []);
@@ -70,6 +98,23 @@ export function TaxPaymentsPanel() {
     () => periods.filter(p => p.status !== 'closed' && p.tax_type === form.tax_type),
     [periods, form.tax_type]
   );
+
+  const filteredPayments = useMemo(() => {
+    if (!dateRange?.startDate || !dateRange?.endDate) return payments;
+    return payments.filter(p => p.payment_date >= dateRange.startDate && p.payment_date <= dateRange.endDate);
+  }, [payments, dateRange]);
+
+  const bankById = useMemo(() => {
+    const map = new Map<string, BankAccount>();
+    for (const b of banks) map.set(b.id, b);
+    return map;
+  }, [banks]);
+
+  const periodLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of periods) map.set(p.id, `${p.fiscal_year}-${String(p.period_month).padStart(2,'0')}`);
+    return map;
+  }, [periods]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,8 +132,9 @@ export function TaxPaymentsPanel() {
         p_bank_account_id: form.bank_account_id,
         p_billing_code: form.billing_code || null,
         p_ntpn: form.ntpn || null,
-        p_government_reference: form.government_reference || null,
+        p_government_reference: null,
         p_notes: form.notes || null,
+        p_payment_reference: form.payment_reference || null,
       });
       if (error) throw error;
       await refresh();
@@ -96,7 +142,7 @@ export function TaxPaymentsPanel() {
       const created = payments.find(p => p.id === newId) ?? null;
       setSelected(created);
       setShowForm(false);
-      setForm(f => ({ ...f, amount: '', billing_code: '', ntpn: '', government_reference: '', notes: '' }));
+      setForm(f => ({ ...f, amount: '', billing_code: '', ntpn: '', payment_reference: '', notes: '' }));
     } catch (err) {
       alert('Failed to record tax payment: ' + (err as Error).message);
     } finally {
@@ -104,16 +150,47 @@ export function TaxPaymentsPanel() {
     }
   }
 
+  function exportExcel() {
+    const rows = filteredPayments.map(p => ({
+      'Date': p.payment_date,
+      'Tax Type': p.tax_type,
+      'Period': periodLabelById.get(p.tax_period_id) ?? '',
+      'Bank': p.bank_account_id ? (bankById.get(p.bank_account_id) ? bankLabel(bankById.get(p.bank_account_id)!) : '—') : '—',
+      'Amount (Rp)': Number(p.amount),
+      'NTPN': p.ntpn ?? '',
+      'Billing Code': p.billing_code ?? '',
+      'Payment Ref': p.payment_reference ?? '',
+      'Status': p.status,
+      'JE #': p.journal_entry_id ?? '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(rows));
+    ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 24 }, { wch: 18 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 12 }, { wch: 36 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Tax Payments');
+    XLSX.writeFile(wb, `Tax_Payments_${dateRange.startDate}_${dateRange.endDate}.xlsx`);
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-lg font-semibold">Tax Payments</h3>
-        <button
-          onClick={() => setShowForm(v => !v)}
-          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          <Plus className="w-4 h-4" /> Record Tax Payment
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 hidden md:inline">
+            {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
+          </span>
+          <button
+            onClick={exportExcel}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
+          >
+            <Download className="w-4 h-4" /> Excel
+          </button>
+          <button
+            onClick={() => setShowForm(v => !v)}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            <Plus className="w-4 h-4" /> Record Tax Payment
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -160,9 +237,7 @@ export function TaxPaymentsPanel() {
             <label className="text-sm">
               Amount (Rp)
               <input
-                type="number"
-                step="0.01"
-                min="0"
+                type="number" step="0.01" min="0"
                 value={form.amount}
                 onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
                 className="mt-1 w-full border rounded px-2 py-1.5"
@@ -179,7 +254,9 @@ export function TaxPaymentsPanel() {
               >
                 <option value="">— select —</option>
                 {banks.map(b => (
-                  <option key={b.id} value={b.id}>{b.account_name} ({b.bank_name})</option>
+                  <option key={b.id} value={b.id}>
+                    {bankLabel(b)}{b.currency ? ` (${b.currency})` : ''}
+                  </option>
                 ))}
               </select>
             </label>
@@ -189,6 +266,7 @@ export function TaxPaymentsPanel() {
                 value={form.billing_code}
                 onChange={e => setForm(f => ({ ...f, billing_code: e.target.value }))}
                 className="mt-1 w-full border rounded px-2 py-1.5"
+                placeholder="e.g. 820260713000123"
               />
             </label>
             <label className="text-sm">
@@ -197,14 +275,16 @@ export function TaxPaymentsPanel() {
                 value={form.ntpn}
                 onChange={e => setForm(f => ({ ...f, ntpn: e.target.value }))}
                 className="mt-1 w-full border rounded px-2 py-1.5"
+                placeholder="16-char DJP reference"
               />
             </label>
             <label className="text-sm">
-              Gov Reference
+              Payment Reference
               <input
-                value={form.government_reference}
-                onChange={e => setForm(f => ({ ...f, government_reference: e.target.value }))}
+                value={form.payment_reference}
+                onChange={e => setForm(f => ({ ...f, payment_reference: e.target.value }))}
                 className="mt-1 w-full border rounded px-2 py-1.5"
+                placeholder="Bank transfer reference"
               />
             </label>
             <label className="text-sm md:col-span-3">
@@ -227,8 +307,8 @@ export function TaxPaymentsPanel() {
             </button>
           </div>
           <p className="text-xs text-gray-500">
-            Posts a journal entry (Dr Tax Payable · Cr Bank) and links via <code>journal_entry_id</code>.
-            Bank Reconciliation will pick it up automatically.
+            Posts <b>Dr Tax Payable · Cr Bank</b> via the shared journal engine. The resulting entry
+            appears in Bank Reconciliation and auto-flips this payment to "reconciled" once matched.
           </p>
         </form>
       )}
@@ -242,38 +322,51 @@ export function TaxPaymentsPanel() {
               <tr>
                 <th className="text-left px-3 py-2">Date</th>
                 <th className="text-left px-3 py-2">Type</th>
+                <th className="text-left px-3 py-2">Period</th>
+                <th className="text-left px-3 py-2">Bank</th>
                 <th className="text-right px-3 py-2">Amount</th>
-                <th className="text-left px-3 py-2">NTPN / Billing</th>
+                <th className="text-left px-3 py-2">NTPN / Billing / Ref</th>
                 <th className="text-left px-3 py-2">Status</th>
-                <th className="text-left px-3 py-2">JE</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody>
-              {payments.map(p => (
-                <tr key={p.id} className={`border-t ${selected?.id === p.id ? 'bg-blue-50' : ''}`}>
-                  <td className="px-3 py-2">{p.payment_date}</td>
-                  <td className="px-3 py-2">{p.tax_type}</td>
-                  <td className="px-3 py-2 text-right">Rp {Number(p.amount).toLocaleString('id-ID')}</td>
-                  <td className="px-3 py-2 truncate max-w-[240px]">{p.ntpn || p.billing_code || '—'}</td>
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-0.5 rounded text-xs ${
-                      p.status === 'reconciled' ? 'bg-green-100 text-green-800' :
-                      p.status === 'posted'     ? 'bg-blue-100 text-blue-800' :
-                                                  'bg-gray-100 text-gray-700'
-                    }`}>{p.status}</span>
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-500">{p.journal_entry_id ? p.journal_entry_id.slice(0,8) : '—'}</td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      onClick={() => setSelected(p)}
-                      className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
-                    >
-                      Files
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {filteredPayments.map(p => {
+                const bank = p.bank_account_id ? bankById.get(p.bank_account_id) : null;
+                return (
+                  <tr key={p.id} className={`border-t ${selected?.id === p.id ? 'bg-blue-50' : ''}`}>
+                    <td className="px-3 py-2">{p.payment_date}</td>
+                    <td className="px-3 py-2">{p.tax_type}</td>
+                    <td className="px-3 py-2">{periodLabelById.get(p.tax_period_id) ?? '—'}</td>
+                    <td className="px-3 py-2">{bank ? bankLabel(bank) : '—'}</td>
+                    <td className="px-3 py-2 text-right">Rp {Number(p.amount).toLocaleString('id-ID')}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {p.ntpn && <div><span className="text-gray-400">NTPN:</span> {p.ntpn}</div>}
+                      {p.billing_code && <div><span className="text-gray-400">Billing:</span> {p.billing_code}</div>}
+                      {p.payment_reference && <div><span className="text-gray-400">Ref:</span> {p.payment_reference}</div>}
+                      {!p.ntpn && !p.billing_code && !p.payment_reference && '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`px-2 py-0.5 rounded text-xs ${
+                        p.status === 'reconciled' ? 'bg-green-100 text-green-800' :
+                        p.status === 'posted'     ? 'bg-blue-100 text-blue-800' :
+                                                    'bg-gray-100 text-gray-700'
+                      }`}>{p.status}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        onClick={() => setSelected(p.id === selected?.id ? null : p)}
+                        className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
+                      >
+                        Files
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredPayments.length === 0 && (
+                <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-500 text-sm">No tax payments in the selected date range.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -282,7 +375,7 @@ export function TaxPaymentsPanel() {
       {selected && (
         <div className="border rounded p-4 bg-white space-y-2">
           <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-sm">Attachments for {selected.tax_type} · {selected.payment_date}</h4>
+            <h4 className="font-semibold text-sm">Attachments · {selected.tax_type} · {selected.payment_date}</h4>
             <button onClick={() => setSelected(null)} className="text-xs text-gray-500">Close</button>
           </div>
           <TaxAttachments

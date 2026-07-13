@@ -1,4 +1,4 @@
-# DATABASE_SCHEMA.md — Anzen Finance/Tax Table Reference
+# database.md — Anzen Finance/Tax Table Reference
 
 Per-table reference limited to Finance + Tax scope. For CRM/Inventory
 tables, read the corresponding module docs (not covered here).
@@ -54,14 +54,21 @@ Each row: **Purpose · Relationships · Triggers · RLS · Where used**.
 
 ## purchase_invoices + purchase_invoice_items
 - **Purpose:** AP invoicing (Indonesian PIB import support).
-- **Triggers:** `trg_post_purchase_invoice` → `post_purchase_invoice_journal`.
+- **Additive tax column:** `tax_period_id` (Tax Compliance integration, 2026-07-13).
+- **Triggers:**
+  - `trg_post_purchase_invoice` → `post_purchase_invoice_journal`.
+  - `trg_auto_attribute_purchase_invoice_period` → attributes to PPN tax_period on insert/update.
+  - `trg_lock_purchase_invoices_by_period` → blocks writes on closed tax periods.
 - **RPCs:** `delete_purchase_invoice(uuid)`.
 - **UI:** `PurchaseInvoiceManager.tsx`.
 
 ## sales_invoices + sales_invoice_items
 - **Purpose:** AR invoicing.
 - **Additive tax columns:** `faktur_pajak_number`, `tax_amount`, `stamp_duty_amount`, `tax_period_id` (Tax Compliance Centre, 2026-07-13).
-- **Triggers:** `trg_post_sales_invoice`; `trg_lock_sales_invoices_by_period` (blocks writes on closed tax periods).
+- **Triggers:**
+  - `trg_post_sales_invoice` → `post_sales_invoice_journal`.
+  - `trg_auto_attribute_sales_invoice_period` → attributes to PPN tax_period on insert/update.
+  - `trg_lock_sales_invoices_by_period` → blocks writes on closed tax periods.
 - **UI:** Sales module + `TaxComplianceCentre → Faktur Pajak` for tax number assignment.
 
 ## receipt_vouchers
@@ -87,7 +94,7 @@ Each row: **Purpose · Relationships · Triggers · RLS · Where used**.
 ## finance_expenses
 - **Purpose:** operating expenses, broker items, import PIB. Wide table.
 - **Tax columns:** `ppn_amount`, `pph_amount`, `pph_code_id`, `stamp_duty_amount`, `dpp_amount`, `ppn_calc_mode`, `ppn_rate`, `pph_paid_amount`, `broker_items JSONB`, `tax_period_id` (2026-07-13).
-- **Triggers:** `trg_auto_post_expense`; `trg_lock_finance_expenses_by_period`.
+- **Triggers:** `trg_auto_post_expense`; `trg_auto_attribute_finance_expense_period` (2026-07-13); `trg_lock_finance_expenses_by_period`.
 - **UI:** `ExpenseManager.tsx`.
 
 ## bank_accounts
@@ -123,12 +130,12 @@ Each row: **Purpose · Relationships · Triggers · RLS · Where used**.
 
 ### tax_payments
 - **Purpose:** government remittances.
-- **Columns:** tax_type, payment_date, amount, bank_account_id, billing_code, ntpn, government_reference, notes, payment_voucher_id (nullable), journal_entry_id (nullable), status.
+- **Columns:** tax_type, payment_date, amount, bank_account_id, billing_code, ntpn, government_reference, **payment_reference** (bank transfer receipt reference, added 2026-07-13), notes, payment_voucher_id (nullable), journal_entry_id (nullable), status.
 - **Relationships:** `tax_period_id → tax_periods.id`, `bank_account_id → bank_accounts.id`, `journal_entry_id → journal_entries.id`.
-- **Triggers:** `trg_tax_payments_updated_at`.
+- **Triggers:** `trg_tax_payments_updated_at`; `trg_lock_tax_payments_by_period`.
 - **RLS:** authenticated read; admin/manager write.
-- **RPCs:** `record_tax_payment`, `mark_tax_payment_reconciled`.
-- **UI:** `TaxPaymentsPanel`.
+- **RPCs:** `record_tax_payment` (9-arg legacy + 10-arg with payment_reference), `mark_tax_payment_reconciled`.
+- **UI:** `TaxPaymentsPanel` (form uses bank alias; attachment section reuses TaxAttachments component).
 
 ### tax_payment_files
 - **Purpose:** attachments for tax payments.
@@ -139,10 +146,10 @@ Each row: **Purpose · Relationships · Triggers · RLS · Where used**.
 ### faktur_pajak
 - **Purpose:** one row per sales_invoice with an assigned Faktur number.
 - **Columns:** sales_invoice_id (unique), tax_period_id, faktur_number (unique), issue_date, customer_id, dpp_amount, ppn_amount, status (generated / uploaded / reported / cancelled), reported_at.
-- **Triggers:** `trg_faktur_pajak_updated_at`.
+- **Triggers:** `trg_faktur_pajak_updated_at`; `trg_lock_faktur_pajak_by_period`.
 - **RLS:** authenticated read; admin/manager write.
 - **RPCs:** `assign_faktur_pajak_number`.
-- **UI:** `FakturPajakPanel`.
+- **UI:** `FakturPajakPanel` (renders customer.company_name || customer.customer_name; respects global date filter; click invoice # to drill into Sales).
 
 ### faktur_pajak_files
 - **Purpose:** attachments (PDF / XML / CSV) per Faktur.

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { useFinance } from '../../../contexts/FinanceContext';
 
 interface Row {
   tax_period_id: string;
@@ -18,6 +19,7 @@ interface Row {
 }
 
 export function TaxPeriodsPanel() {
+  const { dateRange } = useFinance();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -29,12 +31,23 @@ export function TaxPeriodsPanel() {
       .select('*')
       .order('fiscal_year', { ascending: false })
       .order('period_month', { ascending: false })
-      .limit(36);
+      .limit(120);
     if (!error && data) setRows(data as Row[]);
     setLoading(false);
   }
 
   useEffect(() => { void refresh(); }, []);
+
+  const filtered = useMemo(() => {
+    if (!dateRange?.startDate || !dateRange?.endDate) return rows;
+    const start = new Date(dateRange.startDate);
+    const end = new Date(dateRange.endDate);
+    return rows.filter(r => {
+      const first = new Date(r.fiscal_year, r.period_month - 1, 1);
+      const last  = new Date(r.fiscal_year, r.period_month, 0);
+      return last >= start && first <= end;
+    });
+  }, [rows, dateRange]);
 
   async function recompute(id: string) {
     setBusyId(id);
@@ -51,11 +64,18 @@ export function TaxPeriodsPanel() {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">PPN Periods — Input / Output / Net / Carry Forward</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">PPN Periods — Input / Output / Net / Carry Forward</h3>
+        <span className="text-xs text-gray-500 hidden md:inline">
+          {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
+        </span>
+      </div>
       {loading ? (
         <p className="text-gray-500">Loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-500">No PPN periods yet. Seed them from the Tax Calendar tab.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-gray-500 p-4 border rounded bg-yellow-50">
+          No PPN periods in the selected date range. Periods are created automatically when a Sales Invoice, Purchase Invoice, or Expense with PPN is posted.
+        </p>
       ) : (
         <div className="overflow-x-auto border rounded">
           <table className="min-w-full text-sm">
@@ -72,7 +92,7 @@ export function TaxPeriodsPanel() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
+              {filtered.map(r => (
                 <tr key={r.tax_period_id} className="border-t">
                   <td className="px-3 py-2 font-medium">{r.fiscal_year}-{String(r.period_month).padStart(2,'0')}</td>
                   <td className="px-3 py-2">{r.status}</td>

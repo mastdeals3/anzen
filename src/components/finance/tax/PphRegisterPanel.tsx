@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useFinance } from '../../../contexts/FinanceContext';
 
 type PphType = 'PPh21' | 'PPh22' | 'PPh23' | 'PPh4(2)' | 'PPh_Unifikasi';
 
@@ -19,6 +20,7 @@ interface Row {
 }
 
 export function PphRegisterPanel() {
+  const { dateRange } = useFinance();
   const [active, setActive] = useState<PphType>('PPh21');
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +35,7 @@ export function PphRegisterPanel() {
         .eq('tax_type', active)
         .order('fiscal_year', { ascending: false })
         .order('period_month', { ascending: false })
-        .limit(24);
+        .limit(60);
       if (!cancelled) {
         setRows((data as Row[] | null) ?? []);
         setLoading(false);
@@ -41,6 +43,17 @@ export function PphRegisterPanel() {
     })();
     return () => { cancelled = true; };
   }, [active]);
+
+  const filtered = useMemo(() => {
+    if (!dateRange?.startDate || !dateRange?.endDate) return rows;
+    const start = new Date(dateRange.startDate);
+    const end = new Date(dateRange.endDate);
+    return rows.filter(r => {
+      const first = new Date(r.fiscal_year, r.period_month - 1, 1);
+      const last  = new Date(r.fiscal_year, r.period_month, 0);
+      return last >= start && first <= end;
+    });
+  }, [rows, dateRange]);
 
   return (
     <div className="space-y-4">
@@ -57,8 +70,10 @@ export function PphRegisterPanel() {
       </div>
       {loading ? (
         <p className="text-gray-500">Loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-500">No {active} periods. Seed via Tax Calendar tab.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-gray-500 p-4 border rounded bg-yellow-50">
+          No {active} periods in the selected date range. Periods are created automatically once expenses with PPh are posted.
+        </p>
       ) : (
         <div className="overflow-x-auto border rounded">
           <table className="min-w-full text-sm">
@@ -74,7 +89,7 @@ export function PphRegisterPanel() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
+              {filtered.map(r => (
                 <tr key={r.tax_period_id} className="border-t">
                   <td className="px-3 py-2 font-medium">{r.fiscal_year}-{String(r.period_month).padStart(2,'0')}</td>
                   <td className="px-3 py-2">{r.status}</td>
