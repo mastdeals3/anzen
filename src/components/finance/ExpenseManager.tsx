@@ -3554,9 +3554,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
             {/* ── Tax breakdown (only if non-zero) ── */}
             {(() => {
+              // Resolve the PPh code so the withheld row shows WHICH type
+              // was deducted (PPh 23 vs PPh 21 vs PPh 4(2), etc.) rather
+              // than a bare amount. Falls back gracefully when the code
+              // hasn't loaded yet or isn't set.
+              const pphCode = viewingExpense.pph_code_id
+                ? taxCodes.find(t => t.id === viewingExpense.pph_code_id)
+                : null;
+              const pphLabel = pphCode
+                ? `PPh Withheld · ${pphCode.tax_type}${pphCode.rate ? ` @ ${pphCode.rate}%` : ''}`
+                : 'PPh Withheld';
               const rows: Array<[string, number, string]> = [];
               if ((viewingExpense.ppn_amount || 0) > 0) rows.push(['PPN', viewingExpense.ppn_amount || 0, 'text-blue-700']);
-              if ((viewingExpense.pph_amount || 0) > 0) rows.push(['PPh Withheld', -(viewingExpense.pph_amount || 0), 'text-orange-700']);
+              if ((viewingExpense.pph_amount || 0) > 0) rows.push([pphLabel, -(viewingExpense.pph_amount || 0), 'text-orange-700']);
               if ((viewingExpense.stamp_duty_amount || 0) > 0) rows.push(['Stamp Duty', viewingExpense.stamp_duty_amount || 0, 'text-gray-700']);
               if ((viewingExpense.bank_charges_amount || 0) > 0) rows.push(['Bank Charges', viewingExpense.bank_charges_amount || 0, 'text-purple-700']);
               if ((viewingExpense.pib_bm_amount || 0) > 0) rows.push(['Import Duty (BM)', viewingExpense.pib_bm_amount || 0, 'text-amber-700']);

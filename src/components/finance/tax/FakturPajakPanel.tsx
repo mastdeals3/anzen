@@ -188,9 +188,16 @@ export function FakturPajakPanel() {
       {loading ? (
         <p className="text-gray-500">Loading…</p>
       ) : filteredInvoices.length === 0 ? (
-        <p className="text-sm text-gray-500 p-4 border rounded bg-yellow-50">
-          No sales invoices with PPN in the selected date range.
-        </p>
+        <div className="text-sm text-gray-700 p-4 border rounded bg-yellow-50 space-y-1">
+          <div>No sales invoices with PPN in the selected date range.</div>
+          <div className="text-xs text-gray-500">
+            Range: <span className="font-mono">{dateRange?.startDate ?? '—'}</span> to <span className="font-mono">{dateRange?.endDate ?? '—'}</span>{' '}
+            · Filter: <span className="font-medium">{statusFilter === 'all' ? 'All' : statusFilter}</span>
+          </div>
+          <div className="text-xs text-gray-500">
+            Faktur Pajak only lists taxable Sales Invoices (tax_amount &gt; 0). Widen the date range or check that the invoice actually has PPN.
+          </div>
+        </div>
       ) : (
         <div className="overflow-x-auto border rounded">
           <table className="min-w-full text-sm">

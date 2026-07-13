@@ -51,7 +51,12 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const yr = row.fiscal_year;
   const mo = row.period_month;
   const startDate = `${yr}-${String(mo).padStart(2,'0')}-01`;
-  const endDate   = new Date(yr, mo, 0).toISOString().slice(0,10);
+  // Last day of the calendar month. new Date(yr, mo, 0) is correct locally
+  // (mo is 1-indexed here; day 0 rolls back to the previous month's last
+  // day), but toISOString() converts to UTC and drops a day in +XX
+  // timezones, so we construct the string directly to stay TZ-safe.
+  const lastDay = new Date(yr, mo, 0).getDate();
+  const endDate = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
 
   const [feRes, pvRes] = await Promise.all([
     supabase
