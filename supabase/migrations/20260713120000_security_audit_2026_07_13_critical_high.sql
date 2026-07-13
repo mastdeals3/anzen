@@ -849,50 +849,63 @@ BEGIN
 END $$;
 
 -- Rewrite upsert_notification: require caller = target OR caller is admin.
+-- Idempotency note: CREATE OR REPLACE FUNCTION cannot change a function's
+-- return type. Prior deployments may have created this function with a
+-- different return type (e.g. void, or a differently-named OUT param).
+-- To handle that safely we drop EVERY existing overload of
+-- public.upsert_notification (regardless of signature/return type) before
+-- creating the canonical uuid-returning version. Callers reference the
+-- function by name; after this transaction commits they resolve to the new
+-- definition — same argument list, so PostgREST/RPC callers are unaffected.
 DO $$
+DECLARE
+  r record;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    WHERE n.nspname='public' AND p.proname='upsert_notification'
-  ) THEN
-    EXECUTE $fn$
-      CREATE OR REPLACE FUNCTION public.upsert_notification(
-        p_user_id uuid,
-        p_type text,
-        p_title text,
-        p_message text,
-        p_reference_id uuid DEFAULT NULL,
-        p_reference_type text DEFAULT NULL
-      )
-      RETURNS uuid
-      LANGUAGE plpgsql
-      SECURITY DEFINER
-      SET search_path = public
-      AS $inner$
-      DECLARE
-        v_id uuid;
-      BEGIN
-        IF auth.role() <> 'service_role' THEN
-          IF auth.uid() IS NULL THEN
-            RAISE EXCEPTION 'Not authenticated';
-          END IF;
-          IF p_user_id <> auth.uid() AND NOT EXISTS (
-            SELECT 1 FROM public.user_profiles
-            WHERE id = auth.uid() AND role = 'admin' AND is_active = true
-          ) THEN
-            RAISE EXCEPTION 'Only admins may notify other users';
-          END IF;
-        END IF;
-
-        INSERT INTO public.notifications (user_id, type, title, message, reference_id, reference_type, is_read)
-        VALUES (p_user_id, p_type, p_title, p_message, p_reference_id, p_reference_type, false)
-        RETURNING id INTO v_id;
-
-        RETURN v_id;
-      END $inner$;
-    $fn$;
-  END IF;
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'upsert_notification'
+  LOOP
+    EXECUTE 'DROP FUNCTION ' || r.sig::text;
+  END LOOP;
 END $$;
+
+CREATE FUNCTION public.upsert_notification(
+  p_user_id uuid,
+  p_type text,
+  p_title text,
+  p_message text,
+  p_reference_id uuid DEFAULT NULL,
+  p_reference_type text DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $inner$
+DECLARE
+  v_id uuid;
+BEGIN
+  IF auth.role() <> 'service_role' THEN
+    IF auth.uid() IS NULL THEN
+      RAISE EXCEPTION 'Not authenticated';
+    END IF;
+    IF p_user_id <> auth.uid() AND NOT EXISTS (
+      SELECT 1 FROM public.user_profiles
+      WHERE id = auth.uid() AND role = 'admin' AND is_active = true
+    ) THEN
+      RAISE EXCEPTION 'Only admins may notify other users';
+    END IF;
+  END IF;
+
+  INSERT INTO public.notifications (user_id, type, title, message, reference_id, reference_type, is_read)
+  VALUES (p_user_id, p_type, p_title, p_message, p_reference_id, p_reference_type, false)
+  RETURNING id INTO v_id;
+
+  RETURN v_id;
+END $inner$;
 
 -- ============================================================================
 -- HIGH: pricing_settings UPDATE open to every authenticated user.
