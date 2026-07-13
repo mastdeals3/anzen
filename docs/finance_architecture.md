@@ -211,7 +211,7 @@ Delegated to [tax_compliance.md](tax_compliance.md). Key points:
 | `get_asset_register()` | Read-model for asset report |
 | `compute_tax_due_dates(type, year, month)` | Tax due-date math |
 | `upsert_tax_period(year, month, type)` | Idempotent tax period |
-| `compute_period_ppn(period_id)` | Input = purchases + expenses, Output = sales, carry-forward chained |
+| `compute_period_ppn(period_id)` | Input = purchases + expenses, Output = sales, carry-forward chained. PPh = finance_expenses.pph_amount + payment_vouchers.pph_amount (filtered by code type) |
 | `recompute_periods_for_date(date)` | Refresh every tax_period matching (year, month) — called by AFTER triggers |
 | `assign_faktur_pajak_number(invoice_id)` | Atomic Faktur # + upsert |
 | `record_tax_payment(period, type, date, amt, bank, billing, ntpn, gov_ref, notes, payment_ref)` | Tax payment + JE post |
@@ -243,7 +243,11 @@ Delegated to [tax_compliance.md](tax_compliance.md). Key points:
 | journal_entries | trg_lock_journal_entries_by_tax_period | enforce_tax_je_period_lock |
 | tax_periods | trg_auto_create_companion_pph_periods | auto_create_companion_pph_periods |
 | bank_reconciliation_items | trg_auto_reconcile_tax_payment | auto_reconcile_tax_payment |
-| bank_statement_lines | trg_auto_reconcile_tax_payment_from_bsl | auto_reconcile_tax_payment_from_bsl (flips tax_payments.status on match/unmatch) |
+| bank_statement_lines | trg_auto_reconcile_tax_payment_from_bsl | auto_reconcile_tax_payment_from_bsl (flips tax_payments.status on match/unmatch; guarded to only fire when matched_entry_id belongs to a tax_payment JE) |
+| bank_statement_lines | z_bsl_sync_reconciliation_status | bsl_sync_reconciliation_status (BEFORE UPDATE safety net: any typed FK set → 'matched'; all NULL → 'unmatched') |
+| payment_vouchers | trg_auto_attribute_pv_tax_period | auto_attribute_payment_voucher_tax_period (sets tax_period_id from voucher_date + pph_code_id) |
+| payment_vouchers | trg_recompute_payment_voucher_period | trg_recompute_from_payment_voucher → compute_period_ppn |
+| payment_vouchers | trg_lock_payment_vouchers_by_period | enforce_tax_period_lock |
 | sales_invoices | trg_recompute_sales_invoice_period | trg_recompute_from_sales_invoice → recompute_periods_for_date |
 | purchase_invoices | trg_recompute_purchase_invoice_period | trg_recompute_from_purchase_invoice → recompute_periods_for_date |
 | finance_expenses | trg_recompute_finance_expense_period | trg_recompute_from_finance_expense → recompute_periods_for_date |

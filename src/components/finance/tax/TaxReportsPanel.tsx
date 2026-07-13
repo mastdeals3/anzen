@@ -96,12 +96,31 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
       return (data ?? []) as Row[];
     }
     case 'pph_register': {
+      const startYM = startDate.slice(0, 7); // "YYYY-MM"
+      const endYM   = endDate.slice(0, 7);
       const { data } = await supabase
         .from('vw_pph_by_period_type')
-        .select('*')
+        .select('tax_period_id, fiscal_year, period_month, tax_type, pph_total, pph_paid_total, pph_outstanding, status, payment_due_date, filing_due_date')
+        .gte('fiscal_year', Number(startYM.slice(0, 4)))
+        .lte('fiscal_year', Number(endYM.slice(0, 4)))
         .order('fiscal_year', { ascending: false })
-        .order('period_month', { ascending: false });
-      return (data ?? []) as Row[];
+        .order('period_month', { ascending: false })
+        .order('tax_type');
+      // Client-side narrow to exact month range (year filter above is coarse)
+      const rows = ((data ?? []) as Row[]).filter(r => {
+        const ym = `${r.fiscal_year}-${String(r.period_month).padStart(2, '0')}`;
+        return ym >= startYM && ym <= endYM;
+      });
+      return rows.map(r => ({
+        'Period':           `${r.fiscal_year}-${String(r.period_month).padStart(2,'0')}`,
+        'PPh Type':         r.tax_type as string,
+        'PPh Total (Rp)':   Number(r.pph_total ?? 0),
+        'Paid (Rp)':        Number(r.pph_paid_total ?? 0),
+        'Outstanding (Rp)': Number(r.pph_outstanding ?? 0),
+        'Status':           r.status as string,
+        'Payment Due':      (r.payment_due_date as string) ?? '',
+        'Filing Due':       (r.filing_due_date as string) ?? '',
+      }));
     }
     case 'tax_payments': {
       const { data } = await supabase
