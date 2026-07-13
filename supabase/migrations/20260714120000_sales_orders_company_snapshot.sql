@@ -31,28 +31,27 @@ CREATE TRIGGER trg_snapshot_company_sales_orders
 
 -- ── 3. Date-aware backfill ───────────────────────────────────────────────────
 -- For each existing row without a snapshot, stamp the profile that would have
--- been "current" on the SO's own date.
+-- been "current" on the SO's own date. Correlated subquery avoids the
+-- LATERAL syntax quirk when the outer UPDATE target is referenced.
 UPDATE public.sales_orders so
-SET company_snapshot = to_jsonb(cp)
-FROM LATERAL (
-  SELECT *
+SET company_snapshot = (
+  SELECT to_jsonb(p)
   FROM public.company_profiles p
   WHERE p.effective_from <= so.so_date
   ORDER BY p.effective_from DESC
   LIMIT 1
-) cp
+)
 WHERE so.company_snapshot IS NULL;
 
--- Any row whose so_date predates the earliest profile falls through the above;
--- assign the earliest profile so the field is never NULL after this migration.
+-- Any row whose so_date predates the earliest profile still has NULL after
+-- the pass above; assign the earliest profile so the field is never NULL.
 UPDATE public.sales_orders so
-SET company_snapshot = to_jsonb(cp)
-FROM (
-  SELECT *
-  FROM public.company_profiles
-  ORDER BY effective_from ASC
+SET company_snapshot = (
+  SELECT to_jsonb(p)
+  FROM public.company_profiles p
+  ORDER BY p.effective_from ASC
   LIMIT 1
-) cp
+)
 WHERE so.company_snapshot IS NULL;
 
 NOTIFY pgrst, 'reload schema';
