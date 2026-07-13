@@ -54,6 +54,7 @@ interface InquiryItem {
 interface Inquiry {
   id: string;
   customer_id?: string | null;
+  crm_contact_id?: string | null;
   inquiry_number: string;
   inquiry_date: string;
   product_name: string;
@@ -336,7 +337,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
       return;
     }
     loadInquiryContextTimeline(selectedInquiry);
-  }, [selectedInquiry?.id, selectedInquiry?.customer_id]);
+  }, [selectedInquiry?.id, selectedInquiry?.crm_contact_id]);
 
   const handleResizeStart = (column: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -403,8 +404,10 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
         .order('created_at', { ascending: false })
         .limit(80);
 
-      const scopedActivitiesQuery = inquiry.customer_id
-        ? activitiesQuery.or(`inquiry_id.eq.${inquiry.id},customer_id.eq.${inquiry.customer_id}`)
+      // crm_activities.customer_id references crm_contacts, so scope by
+      // inquiry.crm_contact_id (the CRM prospect FK) — not customer_id.
+      const scopedActivitiesQuery = inquiry.crm_contact_id
+        ? activitiesQuery.or(`inquiry_id.eq.${inquiry.id},customer_id.eq.${inquiry.crm_contact_id}`)
         : activitiesQuery.eq('inquiry_id', inquiry.id);
 
       const scopedEmailQuery = supabase
@@ -1500,7 +1503,9 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
 
       const { error } = await supabase.from('crm_activities').insert({
         inquiry_id: inquiry.id,
-        customer_id: inquiry.customer_id || null,
+        // crm_activities.customer_id FKs crm_contacts, so use crm_contact_id
+        // from the inquiry — not customer_id (which is the ERP customers FK).
+        customer_id: inquiry.crm_contact_id || null,
         activity_type: appointmentType,
         subject: titleByType[appointmentType],
         description: appointmentNotes || null,

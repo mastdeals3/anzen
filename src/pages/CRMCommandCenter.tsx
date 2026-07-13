@@ -164,7 +164,10 @@ export function CRMCommandCenter() {
       }
 
       const inquiryData = {
-        customer_id: customerId,
+        // customerId here is a crm_contacts row (see lookup / insert above),
+        // so it belongs in crm_contact_id — not customer_id (which is the
+        // ERP customers FK, populated only after ERP promotion).
+        crm_contact_id: customerId,
         inquiry_date: new Date().toISOString().split('T')[0],
         product_name: formData.productName,
         specification: formData.specification || null,

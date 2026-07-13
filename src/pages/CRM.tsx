@@ -24,9 +24,9 @@ import { CustomerSelectionDialog } from '../components/crm/CustomerSelectionDial
 import { CustomerConfirmationDialog } from '../components/crm/CustomerConfirmationDialog';
 import { CustomerUpdateDialog } from '../components/crm/CustomerUpdateDialog';
 import {
-  DUPLICATE_CUSTOMER_MESSAGE,
-  ensureUniqueCustomerName,
-  isDuplicateCustomerError,
+  DUPLICATE_CRM_CONTACT_MESSAGE,
+  ensureUniqueCrmContactName,
+  isDuplicateCrmContactError,
 } from '../utils/customerValidation';
 import { fuzzyMatchCompanyName, detectCustomerChanges, findBestMatch } from '../utils/customerMatching';
 
@@ -153,32 +153,34 @@ export function CRM() {
 
   const loadCustomers = async () => {
     try {
+      // CRM Inquiry customer master lives in crm_contacts, not the ERP
+      // customers table. The Inquiry form only ever selects from CRM prospects.
       const { data, error } = await supabase
-        .from('customers')
+        .from('crm_contacts')
         .select('id, company_name, contact_person, email, phone, country, address, city')
         .eq('is_active', true);
 
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error loading customers:', error);
+      console.error('Error loading CRM contacts:', error);
       return [];
     }
   };
 
-  const loadInquiryCounts = async (customerIds: string[]) => {
+  const loadInquiryCounts = async (contactIds: string[]) => {
     try {
       const { data, error } = await supabase
         .from('crm_inquiries')
-        .select('customer_id')
-        .in('customer_id', customerIds);
+        .select('crm_contact_id')
+        .in('crm_contact_id', contactIds);
 
       if (error) throw error;
 
       const counts: Record<string, number> = {};
       data?.forEach(inquiry => {
-        if (inquiry.customer_id) {
-          counts[inquiry.customer_id] = (counts[inquiry.customer_id] || 0) + 1;
+        if (inquiry.crm_contact_id) {
+          counts[inquiry.crm_contact_id] = (counts[inquiry.crm_contact_id] || 0) + 1;
         }
       });
 
@@ -189,9 +191,9 @@ export function CRM() {
   };
 
   const processCustomerMatching = async (formData: any) => {
-    if (formData.customer_id) {
+    if (formData.crm_contact_id) {
       const customers = await loadCustomers();
-      const selectedCustomer = customers.find(c => c.id === formData.customer_id);
+      const selectedCustomer = customers.find(c => c.id === formData.crm_contact_id);
 
       if (selectedCustomer) {
         const changes = detectCustomerChanges(
@@ -224,7 +226,7 @@ export function CRM() {
       const bestMatch = findBestMatch(formData.company_name, customers);
 
       if (bestMatch && bestMatch.score >= 95) {
-        formData.customer_id = bestMatch.customer.id;
+        formData.crm_contact_id = bestMatch.customer.id;
         return processCustomerMatching(formData);
       } else {
         setCustomerMatches(matches);
@@ -393,21 +395,34 @@ export function CRM() {
 
   const handleCustomerSelect = (customer: any) => {
     if (pendingFormData) {
-      pendingFormData.customer_id = customer.id;
+      pendingFormData.crm_contact_id = customer.id;
       setShowCustomerSelectionDialog(false);
       handleFormSubmit(pendingFormData);
     }
   };
 
+  // Writes a NEW CRM prospect to crm_contacts (not the ERP customers table).
+  // A prospect is promoted to an ERP trading customer only via the manual
+  // ERP Customers workflow — never automatically from the Inquiry form.
   const handleCreateNewCustomer = async (customerData: any) => {
     try {
-      await ensureUniqueCustomerName(customerData.company_name);
+      await ensureUniqueCrmContactName(customerData.company_name);
 
+      // The Confirmation dialog collects ERP-flavoured fields (address, city,
+      // etc.). Map to the crm_contacts schema; unknown fields would be
+      // rejected by PostgREST, so keep the payload explicit.
       const { data, error } = await supabase
-        .from('customers')
+        .from('crm_contacts')
         .insert({
-          ...customerData,
-          is_active: true,
+          company_name:   customerData.company_name,
+          contact_person: customerData.contact_person || null,
+          email:          customerData.email || null,
+          phone:          customerData.phone || null,
+          country:        customerData.country || null,
+          address:        customerData.address || null,
+          city:           customerData.city || null,
+          customer_type:  'prospect',
+          is_active:      true,
         })
         .select()
         .single();
@@ -415,14 +430,14 @@ export function CRM() {
       if (error) throw error;
 
       if (pendingFormData) {
-        pendingFormData.customer_id = data.id;
+        pendingFormData.crm_contact_id = data.id;
         setShowCustomerConfirmationDialog(false);
         handleFormSubmit(pendingFormData);
       }
     } catch (error: any) {
-      console.error('Error creating customer:', error);
-      if (error?.message === DUPLICATE_CUSTOMER_MESSAGE || isDuplicateCustomerError(error)) {
-        throw new Error(DUPLICATE_CUSTOMER_MESSAGE);
+      console.error('Error creating CRM contact:', error);
+      if (error?.message === DUPLICATE_CRM_CONTACT_MESSAGE || isDuplicateCrmContactError(error)) {
+        throw new Error(DUPLICATE_CRM_CONTACT_MESSAGE);
       }
       throw error;
     }
@@ -438,11 +453,11 @@ export function CRM() {
       });
 
       if (updateData.company_name) {
-        await ensureUniqueCustomerName(updateData.company_name, customerChanges.customer.id);
+        await ensureUniqueCrmContactName(updateData.company_name, customerChanges.customer.id);
       }
 
       const { error } = await supabase
-        .from('customers')
+        .from('crm_contacts')
         .update(updateData)
         .eq('id', customerChanges.customer.id);
 
@@ -453,9 +468,9 @@ export function CRM() {
         handleFormSubmit(pendingFormData);
       }
     } catch (error: any) {
-      console.error('Error updating customer:', error);
-      alert(error?.message === DUPLICATE_CUSTOMER_MESSAGE || isDuplicateCustomerError(error)
-        ? DUPLICATE_CUSTOMER_MESSAGE
+      console.error('Error updating CRM contact:', error);
+      alert(error?.message === DUPLICATE_CRM_CONTACT_MESSAGE || isDuplicateCrmContactError(error)
+        ? DUPLICATE_CRM_CONTACT_MESSAGE
         : t('errors.failedToUpdateCustomer'));
     }
   };
@@ -647,7 +662,7 @@ export function CRM() {
           onCreateNew={() => {
             // Keep CRM prospecting flexible: allow inquiry creation without linking to master customers
             if (pendingFormData) {
-              pendingFormData.customer_id = null;
+              pendingFormData.crm_contact_id = null;
               setShowCustomerSelectionDialog(false);
               handleFormSubmit(pendingFormData);
             }
@@ -672,7 +687,7 @@ export function CRM() {
           onCancel={() => {
             // Continue as CRM prospect without creating a sales customer record
             if (pendingFormData) {
-              pendingFormData.customer_id = null;
+              pendingFormData.crm_contact_id = null;
               setShowCustomerConfirmationDialog(false);
               handleFormSubmit(pendingFormData);
             } else {

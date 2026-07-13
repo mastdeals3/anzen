@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import {
-  DUPLICATE_CUSTOMER_MESSAGE,
-  ensureUniqueCustomerName,
-  isDuplicateCustomerError,
+  DUPLICATE_CRM_CONTACT_MESSAGE,
+  ensureUniqueCrmContactName,
+  isDuplicateCrmContactError,
 } from '../../utils/customerValidation';
 import { Plus, X, Search } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -44,7 +44,7 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
     inquiry_source: initialData?.inquiry_source || 'email',
     supplier_name: initialData?.supplier_name || '',
     supplier_country: initialData?.supplier_country || '',
-    customer_id: initialData?.customer_id || '',
+    crm_contact_id: initialData?.crm_contact_id || '',
     company_name: initialData?.company_name || '',
     contact_person: initialData?.contact_person || '',
     contact_email: initialData?.contact_email || '',
@@ -116,8 +116,10 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
 
   const loadCustomers = async () => {
     try {
+      // CRM Inquiry customer picker searches the CRM prospect master
+      // (crm_contacts), not the ERP customers table.
       const { data, error } = await supabase
-        .from('customers')
+        .from('crm_contacts')
         .select('id, company_name, contact_person, email, phone, country, address, city')
         .eq('is_active', true)
         .order('company_name');
@@ -126,14 +128,14 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
       setCustomers(data || []);
       setFilteredCustomers(data || []);
     } catch (error) {
-      console.error('Error loading customers:', error);
+      console.error('Error loading CRM contacts:', error);
     }
   };
 
   const handleCustomerSelect = (customer: Customer) => {
     setFormData({
       ...formData,
-      customer_id: customer.id,
+      crm_contact_id: customer.id,
       company_name: customer.company_name,
       contact_person: customer.contact_person || '',
       contact_email: customer.email || '',
@@ -150,13 +152,23 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
     }
 
     try {
-      await ensureUniqueCustomerName(newCustomer.company_name);
+      await ensureUniqueCrmContactName(newCustomer.company_name);
 
+      // CRM Add-Customer writes to the CRM prospect master only. The ERP
+      // customers table is populated only when a prospect is intentionally
+      // promoted to an ERP trading customer.
       const { data, error } = await supabase
-        .from('customers')
+        .from('crm_contacts')
         .insert({
-          ...newCustomer,
-          is_active: true,
+          company_name:   newCustomer.company_name,
+          contact_person: newCustomer.contact_person || null,
+          email:          newCustomer.email || null,
+          phone:          newCustomer.phone || null,
+          country:        newCustomer.country || null,
+          address:        newCustomer.address || null,
+          city:           newCustomer.city || null,
+          customer_type:  'prospect',
+          is_active:      true,
         })
         .select()
         .single();
@@ -180,10 +192,10 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
         payment_terms: '',
       });
     } catch (error: any) {
-      console.error('Error adding customer:', error);
-      alert(error?.message === DUPLICATE_CUSTOMER_MESSAGE || isDuplicateCustomerError(error)
-        ? DUPLICATE_CUSTOMER_MESSAGE
-        : 'Failed to add customer');
+      console.error('Error adding CRM contact:', error);
+      alert(error?.message === DUPLICATE_CRM_CONTACT_MESSAGE || isDuplicateCrmContactError(error)
+        ? DUPLICATE_CRM_CONTACT_MESSAGE
+        : 'Failed to add CRM customer');
     }
   };
 
