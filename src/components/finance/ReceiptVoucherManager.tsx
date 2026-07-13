@@ -12,6 +12,7 @@ import html2canvas from 'html2canvas';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
+import { type CompanySnapshot, FALLBACK_COMPANY } from '../../types/company';
 
 interface Customer {
   id: string;
@@ -65,6 +66,7 @@ interface ReceiptVoucher {
   customers?: { company_name: string };
   bank_accounts?: { account_name: string; bank_name: string; alias?: string };
   allocated_to?: string;
+  company_snapshot?: CompanySnapshot | null;
 }
 
 interface ReceiptVoucherManagerProps {
@@ -94,8 +96,6 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
   const [voucherAllocations, setVoucherAllocations] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [allocations, setAllocations] = useState<{ targetId: string; targetType: 'invoice' | 'salesorder'; amount: number }[]>([]);
-  const [companyName, setCompanyName] = useState('');
-  const [companyAddress, setCompanyAddress] = useState('');
   const [roundingTolerance, setRoundingTolerance] = useState(100);
 
   const [formData, setFormData] = useState({
@@ -118,13 +118,11 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
   const loadCompanySettings = async () => {
     const { data } = await supabase
       .from('app_settings')
-      .select('company_name, company_address, rounding_tolerance_amount')
+      .select('rounding_tolerance_amount')
       .limit(1)
       .maybeSingle();
 
     if (data) {
-      setCompanyName(data.company_name || '');
-      setCompanyAddress(data.company_address || '');
       setRoundingTolerance(Number(data.rounding_tolerance_amount ?? 100));
     }
   };
@@ -142,7 +140,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     try {
       const { data, error } = await supabase
         .from('receipt_vouchers')
-        .select('*, customers(company_name), bank_accounts(account_name, bank_name, alias), is_posted, journal_entry_id')
+        .select('*, customers(company_name), bank_accounts(account_name, bank_name, alias), is_posted, journal_entry_id, company_snapshot')
         .order('voucher_date', { ascending: false });
 
       if (error) throw error;
@@ -1190,10 +1188,10 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: '20px', borderBottom: '2px solid #333', paddingBottom: '15px' }}>
             <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 5px 0', color: '#1a1a1a' }}>
-              {companyName || 'Company Name'}
+              {(selectedVoucher.company_snapshot ?? FALLBACK_COMPANY).company_name}
             </h1>
-            {companyAddress && (
-              <p style={{ fontSize: '11px', margin: '0', color: '#666' }}>{companyAddress}</p>
+            {(selectedVoucher.company_snapshot ?? FALLBACK_COMPANY).company_address && (
+              <p style={{ fontSize: '11px', margin: '0', color: '#666' }}>{(selectedVoucher.company_snapshot ?? FALLBACK_COMPANY).company_address}</p>
             )}
             <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: '15px 0 0 0', color: '#2563eb' }}>
               RECEIPT VOUCHER

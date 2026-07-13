@@ -206,6 +206,7 @@ interface TaxCode {
   code: string;
   name: string;
   rate: number;
+  tax_type: string;
 }
 
 interface COAAccount {
@@ -904,7 +905,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
       // Load tax codes (withholding PPh) and asset COA accounts once
       if (taxCodes.length === 0) {
-        const { data: tc } = await supabase.from('tax_codes').select('id, code, name, rate').eq('is_withholding', true).order('code');
+        const { data: tc } = await supabase.from('tax_codes').select('id, code, name, rate, tax_type').eq('is_withholding', true).order('code');
         setTaxCodes(tc || []);
       }
       if (coaAssets.length === 0) {
@@ -1050,6 +1051,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           alert('❌ PIB Import requires a breakdown. Please enter BM, PPN, and/or PPh amounts.');
           return;
         }
+      }
+
+      // Validate: PPh code is required whenever a PPh amount is entered.
+      // pib_import expenses use the pib_pph_amount breakdown field instead.
+      if (formData.expense_category !== 'pib_import'
+          && (formData.pph_amount || 0) > 0
+          && !formData.pph_code_id) {
+        alert(
+          '❌ PPh Code Required\n\n' +
+          'A PPh code must be selected when PPh Withheld is greater than zero.\n\n' +
+          'Select the applicable PPh code (e.g. PPh21 Employee, PPh23 Services) ' +
+          'so the amount flows correctly into the PPh Register.'
+        );
+        return;
       }
 
       // Upload new files first
@@ -2758,9 +2773,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             value={formData.pph_code_id}
                             onChange={(val) => {
                               const tc = taxCodes.find(t => t.id === val);
-                              setFormData(prev => ({ ...prev, pph_code_id: val, pph_amount: tc ? Math.round(prev.amount * tc.rate / 100) : 0 }));
+                              setFormData(prev => ({
+                                ...prev,
+                                pph_code_id: val,
+                                // Only auto-calc when rate > 0. PPh21 codes carry rate=0 because
+                                // the actual withholding is bracket-based and entered manually.
+                                // Clearing the code (val='') resets amount to 0.
+                                // Preserving the existing amount avoids wiping a manually entered value.
+                                pph_amount: !val ? 0 : (tc && tc.rate > 0) ? Math.round(prev.amount * tc.rate / 100) : prev.pph_amount,
+                              }));
                             }}
-                            options={[{ value: '', label: 'None' }, ...taxCodes.map(tc => ({ value: tc.id, label: `${tc.code} — ${tc.rate}%` }))]}
+                            options={[{ value: '', label: 'None' }, ...taxCodes.map(tc => ({
+                              value: tc.id,
+                              label: tc.tax_type === 'PPh21' ? `${tc.code} (Manual)` : `${tc.code} — ${tc.rate}%`,
+                            }))]}
                             placeholder="None"
                           />
                         </SapField>

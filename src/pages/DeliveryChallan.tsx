@@ -110,7 +110,6 @@ export function DeliveryChallan() {
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedChallan, setSelectedChallan] = useState<DeliveryChallan | null>(null);
   const [challanItems, setChallanItems] = useState<ChallanItem[]>([]);
-  const [companySettings, setCompanySettings] = useState<any>(null);
   const [editingChallan, setEditingChallan] = useState<DeliveryChallan | null>(null);
   const [originalItems, setOriginalItems] = useState<ChallanItem[]>([]);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -147,7 +146,6 @@ export function DeliveryChallan() {
     loadCustomers();
     loadProducts();
     loadBatches();
-    loadCompanySettings();
   }, [dateRange.startDate, dateRange.endDate]);
 
   const loadSalesOrders = async (customerId?: string) => {
@@ -176,21 +174,6 @@ export function DeliveryChallan() {
       setSalesOrders(data || []);
     } catch (error) {
       console.error('Error loading sales orders:', error);
-    }
-  };
-
-  const loadCompanySettings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      setCompanySettings(data);
-    } catch (error) {
-      console.error('Error loading company settings:', error);
     }
   };
 
@@ -1617,7 +1600,7 @@ export function DeliveryChallan() {
             challan={selectedChallan}
             items={challanItems}
             onClose={() => setViewModalOpen(false)}
-            companySettings={companySettings}
+            companyProfile={(selectedChallan as any).company_snapshot ?? undefined}
           />
         )}
         {linkedSOPreview && (
@@ -1625,6 +1608,7 @@ export function DeliveryChallan() {
             salesOrder={linkedSOPreview}
             items={linkedSOPreview.sales_order_items || []}
             onClose={() => setLinkedSOPreview(null)}
+            companyProfile={linkedSOPreview.company_snapshot ?? undefined}
           />
         )}
         {linkedInvoicePreview && (
@@ -1635,6 +1619,7 @@ export function DeliveryChallan() {
               setLinkedInvoicePreview(null);
               setLinkedInvoiceItems([]);
             }}
+            companyProfile={linkedInvoicePreview.company_snapshot ?? undefined}
           />
         )}
 

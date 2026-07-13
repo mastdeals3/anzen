@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { FALLBACK_COMPANY } from '../../types/company';
 import { FileDown, ChevronDown, ChevronUp, AlertTriangle, Mail, CheckSquare, X, Send, Loader, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -45,6 +46,7 @@ export function AgeingReport() {
   const [taskModal, setTaskModal] = useState<TaskModal | null>(null);
   const [reminderSending, setReminderSending] = useState(false);
   const [taskSaving, setTaskSaving] = useState(false);
+  const [companyName, setCompanyName] = useState(FALLBACK_COMPANY.company_name);
   const [reminderNote, setReminderNote] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDeadline, setTaskDeadline] = useState('');
@@ -53,6 +55,17 @@ export function AgeingReport() {
   useEffect(() => {
     loadAgeingData();
   }, [asOfDate]);
+
+  useEffect(() => {
+    supabase
+      .from('company_profiles')
+      .select('company_name')
+      .lte('effective_from', new Date().toISOString().split('T')[0])
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data?.company_name) setCompanyName(data.company_name); });
+  }, []);
 
   const loadAgeingData = async () => {
     try {
@@ -249,7 +262,7 @@ export function AgeingReport() {
       .map(i => `• ${i.invoice_number} — Rp ${i.balance.toLocaleString('id-ID')} (${i.days_overdue}d overdue)`)
       .join('\n');
 
-    const message = `Dear ${customer.customer_name},\n\nThis is a payment reminder for the following outstanding invoices:\n\n${invoiceLines}\n\nTotal Outstanding: Rp ${customer.total_outstanding.toLocaleString('id-ID')}\n\nKindly arrange payment at your earliest convenience.\n\nThank you,\nPT Shubham Anzen Pharma Jaya`;
+    const message = `Dear ${customer.customer_name},\n\nThis is a payment reminder for the following outstanding invoices:\n\n${invoiceLines}\n\nTotal Outstanding: Rp ${customer.total_outstanding.toLocaleString('id-ID')}\n\nKindly arrange payment at your earliest convenience.\n\nThank you,\n${companyName}`;
 
     const phone = customer.customer_phone.replace(/\D/g, '');
     const formattedPhone = phone.startsWith('0') ? `62${phone.slice(1)}` : phone.startsWith('62') ? phone : `62${phone}`;

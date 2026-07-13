@@ -62,6 +62,15 @@ interface StatementLine {
     transaction_date: string;
     transaction_type?: string;
   } | null;
+  matchedTaxPaymentId?: string;
+  matchedTaxPayment?: {
+    id: string;
+    tax_type: string;
+    amount: number;
+    payment_date: string;
+    billing_code?: string | null;
+    ntpn?: string | null;
+  } | null;
   matchedEntryRecord?: {
     id: string;
     entry_number: string;
@@ -126,6 +135,8 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   const [linkToSupplierPayment, setLinkToSupplierPayment] = useState(false);
   const [supplierPayments, setSupplierPayments] = useState<any[]>([]);
   const [loadingSupplierPayments, setLoadingSupplierPayments] = useState(false);
+  const [linkToTaxPayment, setLinkToTaxPayment] = useState(false);
+  const [availableTaxPayments, setAvailableTaxPayments] = useState<any[]>([]);
   const [showImportResultModal, setShowImportResultModal] = useState(false);
   const [importResult, setImportResult] = useState<{
     totalInFile: number;
@@ -446,7 +457,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       const { data, error } = await supabase
         .from('bank_statement_lines')
         // perf: projected columns (was select('*'))
-        .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id')
+        .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
         .eq('bank_account_id', selectedBank)
         .gte('transaction_date', dateRange.start)
         .lt('transaction_date', endDateStr)
@@ -463,6 +474,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       const fundTransferIds = (data || []).map(r => r.matched_fund_transfer_id).filter(Boolean);
       const pettyCashIds = (data || []).map(r => r.matched_petty_cash_id).filter(Boolean);
       const entryIds = (data || []).map(r => r.matched_entry_id).filter(Boolean);
+      const taxPaymentIds = (data || []).map(r => r.matched_tax_payment_id).filter(Boolean);
 
       // Batch load all expenses
       const expenseMap = new Map();
@@ -560,6 +572,16 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         logMissing('journal_entries', entryIds, entries as any);
       }
 
+      // Batch load all tax payments
+      const taxPaymentMap = new Map();
+      if (taxPaymentIds.length > 0) {
+        const { data: taxPayments } = await supabase
+          .from('tax_payments')
+          .select('id, tax_type, amount, payment_date, billing_code, ntpn')
+          .in('id', taxPaymentIds);
+        taxPayments?.forEach(t => taxPaymentMap.set(t.id, t));
+      }
+
       // Map lines with pre-loaded data (NO MORE QUERIES!)
       const lines: StatementLine[] = (data || []).map(row => {
         return {
@@ -581,6 +603,8 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           matchedReceipt: row.matched_receipt_id ? receiptMap.get(row.matched_receipt_id) : null,
           matchedFundTransfer: row.matched_fund_transfer_id ? fundTransferMap.get(row.matched_fund_transfer_id) : null,
           matchedPettyCash: row.matched_petty_cash_id ? pettyCashMap.get(row.matched_petty_cash_id) : null,
+          matchedTaxPaymentId: row.matched_tax_payment_id,
+          matchedTaxPayment: row.matched_tax_payment_id ? taxPaymentMap.get(row.matched_tax_payment_id) : null,
           matchedEntryRecord: row.matched_entry_id ? entryMap.get(row.matched_entry_id) : null,
           notes: row.notes,
         };
@@ -1544,13 +1568,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       // both canonical + typed links land in the same transition.
       const { data: bsl } = await supabase
         .from('bank_statement_lines')
-        .select('id, matched_expense_id, matched_receipt_id, matched_petty_cash_id, matched_fund_transfer_id, matched_entry_id')
+        .select('id, matched_expense_id, matched_receipt_id, matched_petty_cash_id, matched_fund_transfer_id, matched_tax_payment_id, matched_entry_id')
         .eq('id', lineId)
         .maybeSingle();
 
       if (!bsl) throw new Error('Row not found');
 
-      const hasFk = !!(bsl.matched_expense_id || bsl.matched_receipt_id || bsl.matched_petty_cash_id || bsl.matched_fund_transfer_id || bsl.matched_entry_id);
+      const hasFk = !!(bsl.matched_expense_id || bsl.matched_receipt_id || bsl.matched_petty_cash_id || bsl.matched_fund_transfer_id || bsl.matched_tax_payment_id || bsl.matched_entry_id);
       if (!hasFk) {
         alert('❌ Cannot confirm: no suggested link found on this row.');
         return;
@@ -1576,6 +1600,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             .select('id').eq('source_module', 'petty_cash')
             .eq('reference_id', bsl.matched_petty_cash_id).maybeSingle();
           entryId = je?.id ?? null;
+        } else if (bsl.matched_tax_payment_id) {
+          const { data: tp } = await supabase.from('tax_payments')
+            .select('journal_entry_id').eq('id', bsl.matched_tax_payment_id).maybeSingle();
+          entryId = tp?.journal_entry_id ?? null;
         }
       }
 
@@ -2208,6 +2236,79 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     }
   };
 
+  const loadAvailableTaxPayments = async (line: StatementLine) => {
+    try {
+      const amount = line.debit;
+      const lineDate = new Date(line.date);
+      const from = new Date(lineDate); from.setDate(from.getDate() - 7);
+      const to   = new Date(lineDate); to.setDate(to.getDate()   + 7);
+
+      const { data: tps } = await supabase
+        .from('tax_payments')
+        .select('id, tax_type, amount, payment_date, billing_code, ntpn, journal_entry_id, bank_account_id, status')
+        .in('status', ['posted', 'draft'])
+        .not('journal_entry_id', 'is', null)
+        .gte('payment_date', from.toISOString().split('T')[0])
+        .lte('payment_date', to.toISOString().split('T')[0])
+        .order('payment_date', { ascending: false })
+        .limit(50);
+
+      const { data: takenLines } = await supabase
+        .from('bank_statement_lines')
+        .select('matched_tax_payment_id')
+        .not('matched_tax_payment_id', 'is', null);
+      const takenIds = new Set((takenLines || []).map((l: any) => l.matched_tax_payment_id));
+
+      const available = (tps || []).filter((tp: any) => {
+        if (takenIds.has(tp.id)) return false;
+        if (tp.bank_account_id && selectedBank && tp.bank_account_id !== selectedBank) return false;
+        return Math.abs(tp.amount - amount) < 1;
+      });
+
+      setAvailableTaxPayments(available);
+    } catch (err) {
+      console.error('Error loading tax payments:', err);
+      setAvailableTaxPayments([]);
+    }
+  };
+
+  const handleLinkToTaxPayment = async (line: StatementLine, tp: any) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      if (!tp.journal_entry_id) {
+        alert('❌ Tax payment has no journal entry. Please ensure the payment was recorded via Record Tax Payment.');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('bank_statement_lines')
+        .update({
+          reconciliation_status: 'matched',
+          matched_tax_payment_id: tp.id,
+          matched_entry_id: tp.journal_entry_id,
+          matched_at: new Date().toISOString(),
+          matched_by: user.id,
+          manually_unlinked: false,
+          notes: `Linked to tax payment: ${tp.tax_type} ${tp.payment_date}`,
+        })
+        .eq('id', line.id);
+
+      if (error) throw error;
+
+      setRecordModal(false);
+      setRecordingLine(null);
+      setLinkToTaxPayment(false);
+      setAvailableTaxPayments([]);
+      loadStatementLines();
+      alert('Successfully linked to tax payment. Tax payment status will update to Reconciled automatically.');
+    } catch (error: any) {
+      console.error('Error linking tax payment:', error);
+      alert('Error: ' + error.message);
+    }
+  };
+
   const filteredLines = statementLines.filter(line => {
     if (activeFilter === 'all') return true;
     return line.status === activeFilter;
@@ -2661,6 +2762,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                           line.matchedReceiptId ||
                           line.matchedFundTransferId ||
                           line.matchedPettyCashId ||
+                          line.matchedTaxPaymentId ||
                           line.matchedEntry
                         );
                         const hasResolvedLink = !!(
@@ -2668,6 +2770,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                           line.matchedReceipt ||
                           line.matchedFundTransfer ||
                           line.matchedPettyCash ||
+                          line.matchedTaxPayment ||
                           line.matchedEntryRecord
                         );
                         if (hasAnyFk && !hasResolvedLink) {
@@ -2690,12 +2793,14 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                                   matched_receipt_id: line.matchedReceiptId,
                                   matched_fund_transfer_id: line.matchedFundTransferId,
                                   matched_petty_cash_id: line.matchedPettyCashId,
+                                  matched_tax_payment_id: line.matchedTaxPaymentId,
                                 },
                                 resolved: {
                                   matchedExpense: line.matchedExpense,
                                   matchedReceipt: line.matchedReceipt,
                                   matchedFundTransfer: line.matchedFundTransfer,
                                   matchedPettyCash: line.matchedPettyCash,
+                                  matchedTaxPayment: line.matchedTaxPayment,
                                   matchedEntryRecord: line.matchedEntryRecord,
                                 },
                               });
@@ -2728,8 +2833,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                                 → Petty Cash: {line.matchedPettyCash.description}
                               </span>
                             )}
+                            {line.matchedTaxPayment && (
+                              <span className="text-xs text-gray-600">
+                                → Tax Payment: {line.matchedTaxPayment.tax_type} {line.matchedTaxPayment.payment_date}
+                              </span>
+                            )}
                             {/* Only show JE fallback chip if no typed FK produced a chip above */}
-                            {!line.matchedExpense && !line.matchedReceipt && !line.matchedFundTransfer && !line.matchedPettyCash && line.matchedEntryRecord && (
+                            {!line.matchedExpense && !line.matchedReceipt && !line.matchedFundTransfer && !line.matchedPettyCash && !line.matchedTaxPayment && line.matchedEntryRecord && (
                               <span className="text-xs text-gray-600">
                                 → Journal: {line.matchedEntryRecord.entry_number}
                               </span>
@@ -2761,11 +2871,12 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                               <span
                                 className="text-xs text-gray-500"
                                 title={`Link exists but could not be loaded. FK: ${
-                                  line.matchedFundTransferId ? 'fund_transfer:' + line.matchedFundTransferId :
-                                  line.matchedExpenseId      ? 'expense:'      + line.matchedExpenseId :
-                                  line.matchedReceiptId      ? 'receipt:'      + line.matchedReceiptId :
-                                  line.matchedPettyCashId    ? 'petty_cash:'   + line.matchedPettyCashId :
-                                  line.matchedEntry          ? 'journal:'      + line.matchedEntry : 'unknown'
+                                  line.matchedFundTransferId  ? 'fund_transfer:' + line.matchedFundTransferId :
+                                  line.matchedExpenseId       ? 'expense:'       + line.matchedExpenseId :
+                                  line.matchedReceiptId       ? 'receipt:'       + line.matchedReceiptId :
+                                  line.matchedPettyCashId     ? 'petty_cash:'    + line.matchedPettyCashId :
+                                  line.matchedTaxPaymentId    ? 'tax_payment:'   + line.matchedTaxPaymentId :
+                                  line.matchedEntry           ? 'journal:'       + line.matchedEntry : 'unknown'
                                 }`}
                               >
                                 → Linked (reference unresolved)
@@ -2860,6 +2971,8 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           setAvailableJournals([]);
           setLinkToSupplierPayment(false);
           setSupplierPayments([]);
+          setLinkToTaxPayment(false);
+          setAvailableTaxPayments([]);
         }}
         title="Record Transaction"
       >
@@ -2894,16 +3007,16 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
             {recordingLine.debit > 0 && (
               <div>
-                <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="grid grid-cols-3 gap-2 mb-3">
                   <button
-                    onClick={() => { setLinkToExpense(false); setLinkJournalEntry(false); setLinkToSupplierPayment(false); }}
-                    className={`py-2 px-3 rounded-lg text-sm font-medium ${!linkToExpense && !linkJournalEntry && !linkToSupplierPayment ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                    onClick={() => { setLinkToExpense(false); setLinkJournalEntry(false); setLinkToSupplierPayment(false); setLinkToTaxPayment(false); }}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium ${!linkToExpense && !linkJournalEntry && !linkToSupplierPayment && !linkToTaxPayment ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
                   >
                     Create New Expense
                   </button>
                   <button
-                    onClick={() => { setLinkToExpense(true); setLinkJournalEntry(false); setLinkToSupplierPayment(false); }}
-                    className={`py-2 px-3 rounded-lg text-sm font-medium ${linkToExpense && !linkJournalEntry && !linkToSupplierPayment ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                    onClick={() => { setLinkToExpense(true); setLinkJournalEntry(false); setLinkToSupplierPayment(false); setLinkToTaxPayment(false); }}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium ${linkToExpense && !linkJournalEntry && !linkToSupplierPayment && !linkToTaxPayment ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
                   >
                     Link Expense
                   </button>
@@ -2912,9 +3025,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                       setLinkJournalEntry(true);
                       setLinkToExpense(false);
                       setLinkToSupplierPayment(false);
+                      setLinkToTaxPayment(false);
                       loadAvailableJournals(recordingLine);
                     }}
-                    className={`py-2 px-3 rounded-lg text-sm font-medium ${linkJournalEntry && !linkToSupplierPayment ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium ${linkJournalEntry && !linkToSupplierPayment && !linkToTaxPayment ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
                   >
                     Link Journal
                   </button>
@@ -2923,11 +3037,24 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                       setLinkToSupplierPayment(true);
                       setLinkToExpense(false);
                       setLinkJournalEntry(false);
+                      setLinkToTaxPayment(false);
                       loadSupplierPayments(recordingLine);
                     }}
                     className={`py-2 px-3 rounded-lg text-sm font-medium ${linkToSupplierPayment ? 'bg-orange-600 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}
                   >
                     Supplier Payment
+                  </button>
+                  <button
+                    onClick={() => {
+                      setLinkToTaxPayment(true);
+                      setLinkToExpense(false);
+                      setLinkJournalEntry(false);
+                      setLinkToSupplierPayment(false);
+                      loadAvailableTaxPayments(recordingLine);
+                    }}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium col-span-2 ${linkToTaxPayment ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 border border-purple-200'}`}
+                  >
+                    Tax Payment
                   </button>
                 </div>
 
@@ -2988,6 +3115,34 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                             </button>
                           ))
                         )}
+                      </div>
+                    )}
+                  </div>
+                ) : linkToTaxPayment ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500">Select a posted tax payment to link to this bank debit (matching bank account, amount within Rp 1, within ±7 days).</p>
+                    {availableTaxPayments.length === 0 ? (
+                      <div className="p-3 text-center text-gray-500 text-sm border rounded-lg">No matching tax payments found</div>
+                    ) : (
+                      <div className="max-h-56 overflow-y-auto border rounded-lg divide-y">
+                        {availableTaxPayments.map((tp: any) => (
+                          <button
+                            key={tp.id}
+                            onClick={() => handleLinkToTaxPayment(recordingLine, tp)}
+                            className="w-full p-3 text-left hover:bg-purple-50 text-sm flex justify-between items-center"
+                          >
+                            <div>
+                              <span className="font-medium text-purple-700">{tp.tax_type}</span>
+                              {tp.billing_code && <span className="text-xs ml-2 text-gray-500 font-mono">{tp.billing_code}</span>}
+                              <div className="text-xs text-gray-400">{new Date(tp.payment_date).toLocaleDateString('id-ID')}</div>
+                              {tp.ntpn && <div className="text-xs text-gray-400 font-mono">NTPN: {tp.ntpn}</div>}
+                            </div>
+                            <div className="text-right">
+                              <div className="font-medium text-red-600">Rp {Number(tp.amount).toLocaleString('id-ID', { minimumFractionDigits: 2 })}</div>
+                              <div className={`text-xs px-1.5 py-0.5 rounded font-medium ${tp.status === 'posted' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{tp.status}</div>
+                            </div>
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>

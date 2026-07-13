@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase';
+import { FALLBACK_COMPANY } from '../types/company';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -83,6 +85,7 @@ export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [hoverExpanded, setHoverExpanded] = useState(false);
+  const [currentCompanyName, setCurrentCompanyName] = useState(FALLBACK_COMPANY.company_name);
   const datePickerRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -91,6 +94,17 @@ export function Layout({ children }: LayoutProps) {
   const { language, setLanguage, t } = useLanguage();
   const { currentPage, setCurrentPage, sidebarCollapsed, setSidebarCollapsed } = useNavigation();
   const { dateRange, setDateRange } = useFinance();
+
+  useEffect(() => {
+    supabase
+      .from('company_profiles')
+      .select('company_name')
+      .lte('effective_from', new Date().toISOString().split('T')[0])
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data?.company_name) setCurrentCompanyName(data.company_name); });
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -215,7 +229,7 @@ export function Layout({ children }: LayoutProps) {
           </button>
           {!isCollapsed && (
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-gray-900 truncate leading-tight">PT. SHUBHAM ANZEN PHARMA JAYA</p>
+              <p className="text-sm font-bold text-gray-900 truncate leading-tight">{currentCompanyName}</p>
             </div>
           )}
           <button

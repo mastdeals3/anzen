@@ -72,6 +72,34 @@ export function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  // Company identity versioning
+  interface CompanyProfileRow {
+    id: string;
+    effective_from: string;
+    company_name: string;
+    company_address: string | null;
+    company_phone: string | null;
+    company_email: string | null;
+    company_tax_id: string | null;
+    pbf_license: string | null;
+    cdob_certificate: string | null;
+    notes: string | null;
+  }
+  const [companyProfiles, setCompanyProfiles] = useState<CompanyProfileRow[]>([]);
+  const [showNewProfileForm, setShowNewProfileForm] = useState(false);
+  const [newProfileData, setNewProfileData] = useState({
+    effective_from: new Date().toISOString().split('T')[0],
+    company_name: '',
+    company_address: '',
+    company_phone: '',
+    company_email: '',
+    company_tax_id: '',
+    pbf_license: '',
+    cdob_certificate: '',
+    notes: '',
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [formData, setFormData] = useState({
@@ -105,9 +133,11 @@ export function Settings() {
       loadSettings();
       loadUsers();
       loadAccounts();
+      loadCompanyProfiles();
     } else if (profile?.role === 'accounts') {
       loadSettings();
       loadAccounts();
+      loadCompanyProfiles();
     } else if (profile?.role === 'warehouse') {
       setLoading(false);
     } else {
@@ -158,6 +188,39 @@ export function Settings() {
       console.error('Error loading settings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCompanyProfiles = async () => {
+    const { data } = await supabase
+      .from('company_profiles')
+      .select('id, effective_from, company_name, company_address, company_phone, company_email, company_tax_id, pbf_license, cdob_certificate, notes')
+      .order('effective_from', { ascending: false });
+    setCompanyProfiles(data || []);
+  };
+
+  const saveNewProfile = async () => {
+    setSavingProfile(true);
+    try {
+      const { error } = await supabase.from('company_profiles').insert({
+        effective_from: newProfileData.effective_from,
+        company_name: newProfileData.company_name,
+        company_address: newProfileData.company_address || null,
+        company_phone: newProfileData.company_phone || null,
+        company_email: newProfileData.company_email || null,
+        company_tax_id: newProfileData.company_tax_id || null,
+        pbf_license: newProfileData.pbf_license || null,
+        cdob_certificate: newProfileData.cdob_certificate || null,
+        notes: newProfileData.notes || null,
+      });
+      if (error) throw error;
+      setShowNewProfileForm(false);
+      setNewProfileData({ effective_from: new Date().toISOString().split('T')[0], company_name: '', company_address: '', company_phone: '', company_email: '', company_tax_id: '', pbf_license: '', cdob_certificate: '', notes: '' });
+      await loadCompanyProfiles();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save company profile');
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -561,7 +624,7 @@ export function Settings() {
               <SuppliersManager />
             )}
 
-            {activeTab === 'company' && (
+            {activeTab === 'company' && (<>
               <form onSubmit={handleSaveCompany} className="space-y-6">
                 <div>
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -679,7 +742,113 @@ export function Settings() {
                   </button>
                 </div>
               </form>
-            )}
+
+              {/* Company Identity History */}
+              <div className="mt-8 border-t pt-6">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">Company Identity History</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Creating a new version affects only documents created on or after its effective date. Existing documents retain their original snapshot permanently.</p>
+                  </div>
+                  {profile?.role === 'admin' && (
+                    <button
+                      onClick={() => setShowNewProfileForm(v => !v)}
+                      className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition"
+                    >
+                      {showNewProfileForm ? 'Cancel' : '+ Add New Version'}
+                    </button>
+                  )}
+                </div>
+
+                {showNewProfileForm && (
+                  <div className="mb-4 p-4 border rounded-lg bg-gray-50 space-y-3">
+                    <h4 className="text-sm font-semibold text-gray-700">New Company Profile Version</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Effective From *</label>
+                        <input type="date" value={newProfileData.effective_from} onChange={e => setNewProfileData(p => ({...p, effective_from: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" required />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Company Name *</label>
+                        <input type="text" value={newProfileData.company_name} onChange={e => setNewProfileData(p => ({...p, company_name: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="PT. ..." />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
+                        <input type="text" value={newProfileData.company_address} onChange={e => setNewProfileData(p => ({...p, company_address: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+                        <input type="text" value={newProfileData.company_phone} onChange={e => setNewProfileData(p => ({...p, company_phone: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                        <input type="email" value={newProfileData.company_email} onChange={e => setNewProfileData(p => ({...p, company_email: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Tax ID (NPWP)</label>
+                        <input type="text" value={newProfileData.company_tax_id} onChange={e => setNewProfileData(p => ({...p, company_tax_id: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">PBF License No.</label>
+                        <input type="text" value={newProfileData.pbf_license} onChange={e => setNewProfileData(p => ({...p, pbf_license: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="No izin PBF: ..." />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">CDOB Certificate No.</label>
+                        <input type="text" value={newProfileData.cdob_certificate} onChange={e => setNewProfileData(p => ({...p, cdob_certificate: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="No Sertifikasi CDOB: ..." />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                        <input type="text" value={newProfileData.notes} onChange={e => setNewProfileData(p => ({...p, notes: e.target.value}))} className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Reason for change..." />
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button onClick={saveNewProfile} disabled={savingProfile || !newProfileData.company_name || !newProfileData.effective_from} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+                        {savingProfile ? 'Saving...' : 'Save Version'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs text-gray-500">
+                        <th className="pb-2 pr-4">Effective From</th>
+                        <th className="pb-2 pr-4">Company Name</th>
+                        <th className="pb-2 pr-4">Phone</th>
+                        <th className="pb-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {companyProfiles.map((cp, idx) => {
+                        const today = new Date().toISOString().split('T')[0];
+                        const isActive = cp.effective_from <= today && idx === companyProfiles.findIndex(p => p.effective_from <= today);
+                        const isFuture = cp.effective_from > today;
+                        return (
+                          <tr key={cp.id} className="border-b last:border-0 hover:bg-gray-50">
+                            <td className="py-2 pr-4 font-mono text-xs">{cp.effective_from}</td>
+                            <td className="py-2 pr-4 font-medium">{cp.company_name}</td>
+                            <td className="py-2 pr-4 text-gray-600">{cp.company_phone || '—'}</td>
+                            <td className="py-2">
+                              {isFuture ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Future</span>
+                              ) : isActive ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Active</span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Historical</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {companyProfiles.length === 0 && (
+                        <tr><td colSpan={4} className="py-4 text-center text-gray-400 text-sm">No company profiles found.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>)}
 
             {activeTab === 'users' && (
               <UserManagement users={users} onRefresh={loadUsers} />

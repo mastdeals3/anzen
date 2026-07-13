@@ -8,6 +8,7 @@ import {
   escapeHtml,
   type InternalPriceRow,
 } from '../../utils/emailFormatting';
+import { type CompanySnapshot, FALLBACK_COMPANY } from '../../types/company';
 
 export interface KunalReplyInquiry {
   id: string;
@@ -60,6 +61,7 @@ function buildBody(
   draft: KunalReplyDraft,
   sourceOption: KunalReplySourceOption | null,
   userName: string,
+  co?: CompanySnapshot | null,
 ): string {
   const row: InternalPriceRow = {
     inquiryNumber: inquiry.inquiry_number,
@@ -81,7 +83,7 @@ function buildBody(
     buildInternalPriceTable([row]) +
     `<p>Please proceed with the customer quotation.</p>` +
     `<p>Thanks,<br>${safeUserName}</p>` +
-    buildCompanySignature(userName)
+    buildCompanySignature(userName, co)
   );
 }
 
@@ -114,16 +116,21 @@ export function KunalInternalReplyModal({ isOpen, onClose, inquiry, draft, sourc
       }
       setUserName(name);
 
-      // Try to get default sales team recipients from app_settings
-      const { data: settings } = await supabase
-        .from('app_settings')
-        .select('internal_price_reply_to, internal_price_reply_cc')
-        .maybeSingle();
-      setToEmail(settings?.internal_price_reply_to || '');
-      setCcEmail(settings?.internal_price_reply_cc || '');
+      const [settingsResult, coResult] = await Promise.all([
+        supabase.from('app_settings').select('internal_price_reply_to, internal_price_reply_cc').maybeSingle(),
+        supabase.from('company_profiles')
+          .select('company_name, company_address, company_phone, company_email, company_tax_id, company_logo_url, pbf_license, cdob_certificate')
+          .lte('effective_from', new Date().toISOString().split('T')[0])
+          .order('effective_from', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+      setToEmail(settingsResult.data?.internal_price_reply_to || '');
+      setCcEmail(settingsResult.data?.internal_price_reply_cc || '');
+      const co = (coResult.data as CompanySnapshot | null) ?? FALLBACK_COMPANY;
 
       setSubject(buildSubject(inquiry));
-      setBody(buildBody(inquiry, draft, sourceOption, name));
+      setBody(buildBody(inquiry, draft, sourceOption, name, co));
     };
     init();
   }, [isOpen, inquiry.id]);

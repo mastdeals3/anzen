@@ -959,6 +959,7 @@ export default function PurchaseOrders() {
               setShowViewModal(false);
               setSelectedPO(null);
             }}
+            companyProfile={(selectedPO as any).company_snapshot ?? undefined}
           />
         )}
       </div>

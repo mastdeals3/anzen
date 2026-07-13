@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react';
 import { X, Printer, Download } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { type CompanySnapshot, FALLBACK_COMPANY } from '../types/company';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -35,6 +36,7 @@ interface ProformaInvoiceViewProps {
     total_amount: number;
     notes: string | null;
     currency?: string;
+    company_snapshot?: CompanySnapshot | null;
     customers?: {
       company_name: string;
       address: string;
@@ -52,6 +54,7 @@ interface ProformaInvoiceViewProps {
 export function ProformaInvoiceView({ salesOrder, items, onClose }: ProformaInvoiceViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { t, language } = useLanguage();
+  const co = salesOrder.company_snapshot ?? FALLBACK_COMPANY;
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -278,10 +281,9 @@ export function ProformaInvoiceView({ salesOrder, items, onClose }: ProformaInvo
                     </svg>
                   </div>
                   <div>
-                    <h1 className="text-base font-bold print:text-sm">PT. SHUBHAM ANZEN PHARMA JAYA</h1>
-                    <p className="text-xs print:text-[10px]">Komplek Ruko Metro Sunter Blok A1 NO.15, Jl. Metro Indah Raya,</p>
-                    <p className="text-xs print:text-[10px]">Kelurahan Papanggo, Kec. Tanjung Priok, Jakarta Utara - 14340</p>
-                    <p className="text-xs print:text-[10px]">Telp: (+62 21) 65832426</p>
+                    <h1 className="text-base font-bold print:text-sm">{co.company_name}</h1>
+                    {co.company_address && <p className="text-xs print:text-[10px]">{co.company_address}</p>}
+                    {co.company_phone && <p className="text-xs print:text-[10px]">Telp: {co.company_phone}</p>}
                   </div>
                 </div>
 
@@ -293,11 +295,11 @@ export function ProformaInvoiceView({ salesOrder, items, onClose }: ProformaInvo
               <div className="text-xs space-y-0.5 print:text-[10px] print:space-y-0">
                 <div>
                   <span className="font-semibold">No izin PBF</span>
-                  <span className="ml-16">: 27092400534390007</span>
+                  <span className="ml-16">: {co.pbf_license?.replace(/^No izin PBF:\s*/i, '') ?? '—'}</span>
                 </div>
                 <div>
                   <span className="font-semibold">No Sertifikasi CDOB</span>
-                  <span className="ml-4">: 270924005343900070001</span>
+                  <span className="ml-4">: {co.cdob_certificate?.replace(/^No Sertifikasi CDOB:\s*/i, '') ?? '—'}</span>
                 </div>
               </div>
             </div>
@@ -450,7 +452,7 @@ export function ProformaInvoiceView({ salesOrder, items, onClose }: ProformaInvo
                     <div className="flex">
                       <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Account Name' : 'Account Name'}</span>
                       <span className="mr-2">:</span>
-                      <span className="whitespace-nowrap">PT. Shubham Anzen Pharma Jaya</span>
+                      <span className="whitespace-nowrap">{co.company_name}</span>
                     </div>
                     <div className="flex">
                       <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Account No.' : 'Account No.'}</span>
@@ -462,7 +464,7 @@ export function ProformaInvoiceView({ salesOrder, items, onClose }: ProformaInvo
 
                 <div className="p-3 print:p-2">
                   <p className="font-semibold mb-1">{language === 'id' ? 'Authorized Signatory:' : 'Authorized Signatory:'}</p>
-                  <p className="font-semibold mb-10 print:mb-8">PT. SHUBHAM ANZEN PHARMA JAYA</p>
+                  <p className="font-semibold mb-10 print:mb-8">{co.company_name}</p>
                   <div className="w-4/5 border-t border-black pt-1">{language === 'id' ? 'Pharmacist' : 'Pharmacist'}</div>
                 </div>
               </div>

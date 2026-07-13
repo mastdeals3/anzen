@@ -3,6 +3,8 @@
  * and internal workflow emails (Kunal Pricing replies, etc.).
  */
 
+import { type CompanySnapshot, FALLBACK_COMPANY } from '../types/company';
+
 export function escapeHtml(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -12,20 +14,19 @@ export function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
-export function buildCompanySignature(userName: string): string {
+export function buildCompanySignature(userName: string, co?: CompanySnapshot | null): string {
+  const c = co ?? FALLBACK_COMPANY;
   const safeUserName = escapeHtml(userName || '');
+  const emailLine = c.company_email
+    ? `<span style="color:#0b66c3;">📧</span> <a href="mailto:${escapeHtml(c.company_email)}" style="color:#0b66c3;text-decoration:underline;">${escapeHtml(c.company_email)}</a>`
+    : '';
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#1f2937;line-height:1.45;font-size:14px;margin-top:18px;">
     <p style="margin:0 0 6px 0;">Warm regards,</p>
     <p style="margin:0 0 6px 0;">${safeUserName}</p>
-    <p style="margin:0 0 4px 0;color:#073763;font-size:20px;font-weight:700;">PT Shubham Anzen Pharma Jaya</p>
-    <p style="margin:0;">Ruko Sunter Terrace Blok C No.12, Jalan Danau Sunter Utara Kav. No.60</p>
-    <p style="margin:0 0 6px 0;">Sunter Agung, Tanjung Priok, Jakarta Utara 14350, Indonesia</p>
-    <p style="margin:0 0 2px 0;">
-      <span style="color:#0b66c3;">📧</span> <a href="mailto:sales@sapharmajaya.co.id" style="color:#0b66c3;text-decoration:underline;">sales@sapharmajaya.co.id</a>
-      <span style="display:inline-block;width:18px;">&nbsp;</span>
-      <span style="color:#0b66c3;">🌐</span> <a href="http://www.sapharmajaya.co.id" style="color:#0b66c3;text-decoration:underline;">www.sapharmajaya.co.id</a>
-    </p>
-    <p style="margin:0 0 18px 0;color:#274e13;">📱 WhatsApp: +62 85 888 600 999</p>
+    <p style="margin:0 0 4px 0;color:#073763;font-size:20px;font-weight:700;">${escapeHtml(c.company_name)}</p>
+    ${c.company_address ? `<p style="margin:0 0 6px 0;">${escapeHtml(c.company_address)}</p>` : ''}
+    ${emailLine ? `<p style="margin:0 0 2px 0;">${emailLine}</p>` : ''}
+    ${c.company_phone ? `<p style="margin:0 0 18px 0;color:#274e13;">📱 ${escapeHtml(c.company_phone)}</p>` : ''}
     <p style="margin:0;color:#073763;font-weight:700;font-style:italic;">APIs | Excipients | Formulations | Nutraceuticals | Herbal Extracts | Pharma Packaging Solutions | Technology Transfers</p>
   </div>`;
 }

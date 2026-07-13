@@ -8,6 +8,7 @@ import { openGmailReconnectPopup } from './gmailReconnect';
 import { applyEmailTemplateVariables, getDisplayContactName, getSalutation } from '../../utils/crmEmailPersonalization';
 import { buildNormalizedBaseKey, buildUniqueDocumentNames } from '../../utils/documentNaming';
 import { escapeHtml, buildCompanySignature } from '../../utils/emailFormatting';
+import { type CompanySnapshot, FALLBACK_COMPANY } from '../../types/company';
 
 interface Inquiry {
   id: string;
@@ -307,6 +308,7 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
   const [fullscreen, setFullscreen] = useState(false);
   const [currentUserName, setCurrentUserName] = useState('');
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
+  const [companyCo, setCompanyCo] = useState<CompanySnapshot>(FALLBACK_COMPANY);
 
   // CRM docs panel
   const [crmDocs, setCrmDocs] = useState<CrmDoc[]>([]);
@@ -317,6 +319,17 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const htmlPreviewRef = useRef<HTMLDivElement>(null);
   const quillWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    supabase
+      .from('company_profiles')
+      .select('company_name, company_address, company_phone, company_email, company_tax_id, company_logo_url, pbf_license, cdob_certificate')
+      .lte('effective_from', new Date().toISOString().split('T')[0])
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setCompanyCo(data as CompanySnapshot); });
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -409,7 +422,7 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
 
   const generateBody = (emailMode: 'price' | 'coa' | 'general' | 'india', userName = currentUserName, docs: CrmDoc[] = crmDocs) => {
     const salutation = `<p>${escapeHtml(getSalutation(inquiry.contact_person))}</p>`;
-    const signature = buildCompanySignature(userName);
+    const signature = buildCompanySignature(userName, companyCo);
 
     if (emailMode === 'india') {
       let html = `<p>Dear Team,</p>`;
@@ -419,11 +432,10 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
       html += `<p style="margin:0 0 6px 0;">Thank you.</p>`;
       html += `<p style="margin:0 0 6px 0;">Best Regards,</p>`;
       html += `<p style="margin:0 0 6px 0;">Kunal Lunkad</p>`;
-      html += `<p style="margin:0 0 4px 0;color:#073763;font-size:20px;font-weight:700;">PT Shubham Anzen Pharma Jaya</p>`;
-      html += `<p style="margin:0;">Ruko Sunter Terrace Blok C No.12, Jalan Danau Sunter Utara Kav. No.60</p>`;
-      html += `<p style="margin:0 0 6px 0;">Sunter Agung, Tanjung Priok, Jakarta Utara 14350, Indonesia</p>`;
-      html += `<p style="margin:0 0 2px 0;"><span style="color:#0b66c3;">📧</span> <a href="mailto:sales@sapharmajaya.co.id" style="color:#0b66c3;text-decoration:underline;">sales@sapharmajaya.co.id</a><span style="display:inline-block;width:18px;">&nbsp;</span><span style="color:#0b66c3;">🌐</span> <a href="http://www.sapharmajaya.co.id" style="color:#0b66c3;text-decoration:underline;">www.sapharmajaya.co.id</a></p>`;
-      html += `<p style="margin:0 0 18px 0;color:#274e13;">📱 WhatsApp: +62 85 888 600 999</p>`;
+      html += `<p style="margin:0 0 4px 0;color:#073763;font-size:20px;font-weight:700;">${escapeHtml(companyCo.company_name)}</p>`;
+      if (companyCo.company_address) html += `<p style="margin:0 0 6px 0;">${escapeHtml(companyCo.company_address)}</p>`;
+      if (companyCo.company_email) html += `<p style="margin:0 0 2px 0;"><span style="color:#0b66c3;">📧</span> <a href="mailto:${escapeHtml(companyCo.company_email)}" style="color:#0b66c3;text-decoration:underline;">${escapeHtml(companyCo.company_email)}</a></p>`;
+      if (companyCo.company_phone) html += `<p style="margin:0 0 18px 0;color:#274e13;">📱 ${escapeHtml(companyCo.company_phone)}</p>`;
       html += `<p style="margin:0;color:#073763;font-weight:700;font-style:italic;">APIs | Excipients | Formulations | Nutraceuticals | Herbal Extracts | Pharma Packaging Solutions | Technology Transfers</p>`;
       html += `</div>`;
       logEmailHtmlEvidence('Generated India email HTML', html, { mode: emailMode, inquiryIds: allInquiries.map(i => i.id) });

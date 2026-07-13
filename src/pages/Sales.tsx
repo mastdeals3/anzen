@@ -2072,6 +2072,7 @@ export function Sales() {
           salesOrder={linkedSOPreview}
           items={linkedSOPreview.sales_order_items || []}
           onClose={() => setLinkedSOPreview(null)}
+          companyProfile={(linkedSOPreview as any).company_snapshot ?? undefined}
         />
       )}
 
@@ -2083,6 +2084,7 @@ export function Sales() {
             setSelectedFlyChallan(null);
             setSelectedFlyChallanItems([]);
           }}
+          companyProfile={(selectedFlyChallan as any).company_snapshot ?? undefined}
         />
       )}
 
@@ -2095,6 +2097,7 @@ export function Sales() {
               setSelectedInvoice(null);
               setInvoiceItems([]);
             }}
+            companyProfile={(selectedInvoice as any).company_snapshot ?? undefined}
           />
         )}
       </div>

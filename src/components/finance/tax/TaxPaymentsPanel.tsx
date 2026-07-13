@@ -59,6 +59,10 @@ export function TaxPaymentsPanel() {
   const [selected, setSelected] = useState<Payment | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
+  const [bslPickerPayment, setBslPickerPayment] = useState<Payment | null>(null);
+  const [bslCandidates, setBslCandidates] = useState<any[]>([]);
+  const [bslPickerLoading, setBslPickerLoading] = useState(false);
+  const [bslLinking, setBslLinking] = useState(false);
 
   const emptyForm = {
     tax_period_id: '',
@@ -177,8 +181,16 @@ export function TaxPaymentsPanel() {
         });
         if (error) throw error;
         const newId = data as string;
-        const created = payments.find(p => p.id === newId) ?? null;
-        setSelected(created);
+        await refresh();
+        cancelForm();
+        // After refresh, open BSL picker for the newly created payment
+        const { data: newPmt } = await supabase
+          .from('tax_payments')
+          .select('id, tax_type, payment_date, amount, bank_account_id, journal_entry_id, status, billing_code, ntpn, payment_reference, notes, tax_period_id')
+          .eq('id', newId)
+          .maybeSingle();
+        if (newPmt) void openBslPicker(newPmt as Payment);
+        return;
       }
       await refresh();
       cancelForm();
@@ -201,6 +213,72 @@ export function TaxPaymentsPanel() {
       alert('Failed to delete tax payment: ' + (err as Error).message);
     } finally {
       setBusyDeleteId(null);
+    }
+  }
+
+  async function openBslPicker(p: Payment) {
+    setBslPickerPayment(p);
+    setBslCandidates([]);
+    setBslPickerLoading(true);
+    try {
+      const lineDate = new Date(p.payment_date);
+      const from = new Date(lineDate); from.setDate(from.getDate() - 7);
+      const to   = new Date(lineDate); to.setDate(to.getDate()   + 7);
+
+      let q = supabase
+        .from('bank_statement_lines')
+        .select('id, transaction_date, description, debit_amount, bank_account_id')
+        .is('matched_tax_payment_id', null)
+        .eq('reconciliation_status', 'unmatched')
+        .gt('debit_amount', 0)
+        .gte('transaction_date', from.toISOString().split('T')[0])
+        .lte('transaction_date', to.toISOString().split('T')[0])
+        .order('transaction_date', { ascending: false })
+        .limit(30);
+
+      if (p.bank_account_id) q = q.eq('bank_account_id', p.bank_account_id);
+
+      const { data } = await q;
+      const amount = Number(p.amount);
+      const filtered = (data ?? []).filter((b: any) => Math.abs(Number(b.debit_amount) - amount) < 1);
+      setBslCandidates(filtered.length > 0 ? filtered : (data ?? []).slice(0, 10));
+    } catch (err) {
+      console.error('Error fetching BSL candidates:', err);
+    } finally {
+      setBslPickerLoading(false);
+    }
+  }
+
+  async function linkBsl(bslId: string) {
+    if (!bslPickerPayment?.journal_entry_id) {
+      alert('❌ Tax payment has no journal entry. Record it again if needed.');
+      return;
+    }
+    setBslLinking(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const { error } = await supabase
+        .from('bank_statement_lines')
+        .update({
+          reconciliation_status: 'matched',
+          matched_tax_payment_id: bslPickerPayment.id,
+          matched_entry_id: bslPickerPayment.journal_entry_id,
+          matched_at: new Date().toISOString(),
+          matched_by: user.id,
+          manually_unlinked: false,
+          notes: `Linked to tax payment: ${bslPickerPayment.tax_type} ${bslPickerPayment.payment_date}`,
+        })
+        .eq('id', bslId);
+      if (error) throw error;
+      setBslPickerPayment(null);
+      setBslCandidates([]);
+      await refresh();
+      alert('Bank statement linked. Tax payment status updated to Reconciled.');
+    } catch (err: any) {
+      alert('Error linking bank statement: ' + err.message);
+    } finally {
+      setBslLinking(false);
     }
   }
 
@@ -263,8 +341,10 @@ export function TaxPaymentsPanel() {
                 className="mt-1 w-full border rounded px-2 py-1.5 disabled:bg-gray-100"
                 disabled={!!editingId}
               >
-                {['PPN','PPh21','PPh22','PPh23','PPh4(2)','PPh_Unifikasi'].map(t => (
-                  <option key={t} value={t}>{t}</option>
+                {(['PPN','PPh21','PPh22','PPh23','PPh4(2)','PPh_Unifikasi'] as const).map(t => (
+                  <option key={t} value={t}>
+                    {t === 'PPh21' ? 'PPh21 (Manual)' : t === 'PPh_Unifikasi' ? 'PPh Unifikasi (Consolidated)' : t}
+                  </option>
                 ))}
               </select>
             </label>
@@ -408,11 +488,14 @@ export function TaxPaymentsPanel() {
                       {!p.ntpn && !p.billing_code && !p.payment_reference && '—'}
                     </td>
                     <td className="px-3 py-2">
-                      <span className={`px-2 py-0.5 rounded text-xs ${
-                        p.status === 'reconciled' ? 'bg-green-100 text-green-800' :
-                        p.status === 'posted'     ? 'bg-blue-100 text-blue-800' :
-                                                    'bg-gray-100 text-gray-700'
-                      }`}>{p.status}</span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs cursor-default ${
+                          p.status === 'reconciled' ? 'bg-green-100 text-green-800' :
+                          p.status === 'posted'     ? 'bg-blue-100 text-blue-800' :
+                                                      'bg-gray-100 text-gray-700'
+                        }`}
+                        title={p.status === 'posted' ? 'Awaiting bank reconciliation — use "Link Bank Stmt" to match' : undefined}
+                      >{p.status}</span>
                     </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap space-x-1">
                       <button
@@ -422,6 +505,15 @@ export function TaxPaymentsPanel() {
                       >
                         Files
                       </button>
+                      {p.status === 'posted' && p.journal_entry_id && (
+                        <button
+                          onClick={() => void openBslPicker(p)}
+                          className="text-xs px-2 py-1 border rounded hover:bg-purple-50 text-purple-700 border-purple-200 inline-flex items-center gap-1"
+                          title="Link a bank statement line to reconcile this payment"
+                        >
+                          Link Bank Stmt
+                        </button>
+                      )}
                       <button
                         onClick={() => startEdit(p)}
                         disabled={p.status === 'reconciled'}
@@ -463,6 +555,53 @@ export function TaxPaymentsPanel() {
             storagePrefix="tax_payments"
             allowedKinds={KINDS}
           />
+        </div>
+      )}
+
+      {bslPickerPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setBslPickerPayment(null)}>
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-base">Link Bank Statement Line</h3>
+              <button onClick={() => setBslPickerPayment(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Tax payment: <span className="font-medium text-purple-700">{bslPickerPayment.tax_type}</span> ·{' '}
+              Rp {Number(bslPickerPayment.amount).toLocaleString('id-ID')} · {bslPickerPayment.payment_date}
+            </p>
+            {bslPickerLoading ? (
+              <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600" /></div>
+            ) : bslCandidates.length === 0 ? (
+              <div className="text-sm text-gray-500 text-center py-4 border rounded-lg bg-gray-50">
+                No unmatched bank statement lines found within ±7 days with a matching amount.
+                <div className="mt-2 text-xs text-gray-400">Import the bank statement first, then return here to link.</div>
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg divide-y">
+                {bslCandidates.map((b: any) => (
+                  <button
+                    key={b.id}
+                    onClick={() => void linkBsl(b.id)}
+                    disabled={bslLinking}
+                    className="w-full p-3 text-left hover:bg-purple-50 disabled:opacity-50 text-sm flex justify-between items-center"
+                  >
+                    <div>
+                      <div className="font-medium text-gray-800">{b.description}</div>
+                      <div className="text-xs text-gray-400">{new Date(b.transaction_date).toLocaleDateString('id-ID')}</div>
+                    </div>
+                    <div className="font-medium text-red-600 text-sm">
+                      Rp {Number(b.debit_amount).toLocaleString('id-ID')}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 flex justify-end">
+              <button onClick={() => setBslPickerPayment(null)} className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50">
+                Skip for now
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
