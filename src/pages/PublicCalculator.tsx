@@ -768,7 +768,7 @@ export function PublicCalculator() {
         </div>
 
         <p className="text-center text-[11px] text-gray-300 pb-4">
-          PT. Shubham Anzen Pharma Jaya &nbsp;·&nbsp; Internal Use Only
+          {FALLBACK_COMPANY.company_name} &nbsp;·&nbsp; Internal Use Only
         </p>
       </div>
     </div>

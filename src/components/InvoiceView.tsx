@@ -477,7 +477,7 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
                     <div className="flex">
                       <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Account Name' : 'Account Name'}</span>
                       <span className="mr-2">:</span>
-                      <span className="whitespace-nowrap">PT. Shubham Anzen Pharma Jaya</span>
+                      <span className="whitespace-nowrap">{co.company_name}</span>
                     </div>
                     <div className="flex">
                       <span className="font-semibold" style={{minWidth: '95px'}}>{language === 'id' ? 'Account No.' : 'Account No.'}</span>
