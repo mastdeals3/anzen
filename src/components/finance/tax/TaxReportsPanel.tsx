@@ -36,6 +36,35 @@ const REPORTS: Report[] = [
 
 interface Row { [k: string]: string | number | null; }
 
+// Columns that carry ISO timestamps — format them as human-readable dates.
+const TIMESTAMP_COLS = new Set([
+  'created_at', 'updated_at', 'uploaded_at', 'reported_at', 'filed_at',
+  'closed_at', 'reopened_at', 'matched_at', 'Timestamp',
+]);
+// Columns that are YYYY-MM period strings — show as "Jan 2026" etc.
+const PERIOD_COLS = new Set(['month', 'period_label']);
+
+function fmtCell(col: string, v: string | number | null): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number') return Number(v).toLocaleString('id-ID');
+  if (TIMESTAMP_COLS.has(col) && typeof v === 'string' && v.length >= 10) {
+    // "2026-01-01T00:00:00+00:00" → "1 Jan 2026, 00:00"
+    // "2026-01-01" → "1 Jan 2026"
+    const d = new Date(v);
+    if (!isNaN(d.getTime())) {
+      if (v.includes('T')) {
+        return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      }
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+  }
+  if (PERIOD_COLS.has(col) && typeof v === 'string' && /^\d{4}-\d{2}$/.test(v)) {
+    const [y, m] = v.split('-');
+    return new Date(Number(y), Number(m) - 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+  }
+  return String(v);
+}
+
 async function fetchReport(id: ReportId, startDate: string, endDate: string): Promise<Row[]> {
   switch (id) {
     case 'input_ppn': {
@@ -216,7 +245,7 @@ export function TaxReportsPanel() {
       `<tr>${columns.map(c => {
         const v = r[c];
         const isNum = typeof v === 'number';
-        const cell = v === null || v === undefined ? '' : String(v);
+        const cell = fmtCell(c, v);
         return `<td style="border-bottom:1px solid #ddd;padding:4px 8px;${isNum ? 'text-align:right;' : ''}">${cell.replace(/</g,'&lt;')}</td>`;
       }).join('')}</tr>`
     ).join('');
@@ -321,7 +350,7 @@ export function TaxReportsPanel() {
                             key={c}
                             className={`px-2 py-1 whitespace-nowrap ${isNum ? 'text-right tabular-nums' : ''}`}
                           >
-                            {v === null || v === undefined ? '' : isNum ? Number(v).toLocaleString('id-ID') : String(v)}
+                            {fmtCell(c, v)}
                           </td>
                         );
                       })}

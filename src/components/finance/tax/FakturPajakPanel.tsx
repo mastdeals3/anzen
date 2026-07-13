@@ -7,6 +7,11 @@ import { useFinance } from '../../../contexts/FinanceContext';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
 import { TaxAttachments } from './TaxAttachments';
 
+interface Customer {
+  customer_name: string;
+  company_name: string | null;
+  npwp: string | null;
+}
 interface SalesInvoice {
   id: string;
   invoice_number: string;
@@ -15,12 +20,7 @@ interface SalesInvoice {
   total_amount: number;
   faktur_pajak_number: string | null;
   customer_id: string | null;
-}
-interface Customer {
-  id: string;
-  customer_name: string;
-  company_name: string;
-  npwp: string | null;
+  customer: Customer | null;
 }
 interface FakturRow {
   id: string;
@@ -52,7 +52,6 @@ export function FakturPajakPanel() {
   const { dateRange } = useFinance();
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<SalesInvoice[]>([]);
-  const [customers, setCustomers] = useState<Record<string, Customer>>({});
   const [fakturs, setFakturs] = useState<Record<string, FakturRow>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,28 +60,20 @@ export function FakturPajakPanel() {
 
   async function refresh() {
     setLoading(true);
+    // Single query with nested customer join — same pattern as TaxReportsPanel faktur_register.
+    // This avoids a separate customer lookup and works even when customer_id is set but the
+    // two-pass lookup fails due to schema cache issues.
     let q = supabase
       .from('sales_invoices')
-      .select('id, invoice_number, invoice_date, tax_amount, total_amount, faktur_pajak_number, customer_id')
+      .select('id, invoice_number, invoice_date, tax_amount, total_amount, faktur_pajak_number, customer_id, customer:customer_id(customer_name, company_name, npwp)')
       .gt('tax_amount', 0);
     if (dateRange?.startDate) q = q.gte('invoice_date', dateRange.startDate);
     if (dateRange?.endDate) q = q.lte('invoice_date', dateRange.endDate);
     const { data: inv } = await q.order('invoice_date', { ascending: false }).limit(500);
-    const invoices = (inv as SalesInvoice[] | null) ?? [];
-    setInvoices(invoices);
+    const loaded = (inv as SalesInvoice[] | null) ?? [];
+    setInvoices(loaded);
 
-    const custIds = Array.from(new Set(invoices.map(i => i.customer_id).filter(Boolean))) as string[];
-    if (custIds.length) {
-      const { data: cs } = await supabase
-        .from('customers')
-        .select('id, customer_name, company_name, npwp')
-        .in('id', custIds);
-      setCustomers(Object.fromEntries(((cs as Customer[] | null) ?? []).map(c => [c.id, c])));
-    } else {
-      setCustomers({});
-    }
-
-    const invIds = invoices.map(i => i.id);
+    const invIds = loaded.map(i => i.id);
     if (invIds.length) {
       const { data: fs } = await supabase
         .from('faktur_pajak')
@@ -142,7 +133,7 @@ export function FakturPajakPanel() {
   function exportExcel() {
     const rows = filteredInvoices.map(inv => {
       const fak = fakturs[inv.id];
-      const cust = inv.customer_id ? customers[inv.customer_id] : undefined;
+      const cust = inv.customer ?? undefined;
       const dpp = fak?.dpp_amount ?? Math.max((inv.total_amount ?? 0) - (inv.tax_amount ?? 0), 0);
       const ppn = fak?.ppn_amount ?? (inv.tax_amount ?? 0);
       return {
@@ -218,7 +209,7 @@ export function FakturPajakPanel() {
             <tbody>
               {filteredInvoices.map(inv => {
                 const fak = fakturs[inv.id];
-                const cust = inv.customer_id ? customers[inv.customer_id] : undefined;
+                const cust = inv.customer ?? undefined;
                 return (
                   <tr key={inv.id} className={`border-t ${selected === inv.id ? 'bg-blue-50' : ''}`}>
                     <td className="px-3 py-2 font-medium">
