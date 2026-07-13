@@ -8,6 +8,12 @@ Indonesian tax handling for Anzen. Ships with the Tax Compliance Centre
 - `20260713150000_tax_compliance_integration.sql` (auto-attribution
   triggers, extended period lock, notifications, `payment_reference`
   column, `record_tax_payment` 10-arg overload)
+- `20260713160000_tax_compliance_accounting_engine.sql` (accounting
+  engine completion — `delete_tax_payment` / `update_tax_payment`
+  self-verifying RPCs, `bank_statement_lines.matched_tax_payment_id`
+  typed FK, live snapshot recompute triggers, hardened `close_tax_period`
+  preconditions, `compute_period_ppn` now sums purchase invoices +
+  expenses for Input PPN)
 
 ## 1. Coverage
 
@@ -137,6 +143,32 @@ PPh21/22/23/4(2)/Unifikasi periods for the same month are created via
 an AFTER INSERT trigger on `tax_periods` itself. Backfill was run for
 all pre-existing rows in the migration.
 
+### 4.8 Edit / Delete a Tax Payment
+
+- **Edit** → `update_tax_payment(...)` RPC. Reverses the current JE,
+  posts a fresh one with the new fields, keeps the `tax_payments` row
+  (same id, same period, same tax_type). Refuses when the period is
+  closed. Refuses when the payment is `reconciled` unless the caller is
+  an admin — non-admins must first unmatch it in Bank Reconciliation.
+  Full old/new audit_log entry.
+- **Delete** → `delete_tax_payment(id)` RPC. Same integrity pattern as
+  `delete_purchase_invoice`: locks the row, releases any
+  `bank_statement_lines` typed FK + `matched_entry_id`, releases
+  `bank_reconciliation_items.is_matched`, deletes attachments (storage
+  paths returned in audit log for client-side bucket cleanup), removes
+  the JE lines + JE, deletes the row, then re-queries every touched
+  table. Any orphan → `RAISE EXCEPTION` rolls the whole transaction
+  back. Refuses on closed periods.
+
+### 4.9 Live snapshot recompute
+
+Every INSERT/UPDATE/DELETE of `sales_invoices`, `purchase_invoices`,
+`finance_expenses`, or `tax_payments` fires an AFTER trigger that calls
+`recompute_periods_for_date(row.date)` → refreshes every `tax_periods`
+row (PPN + companion PPh types) for that month. The snapshot on
+`tax_periods` is always live — no scheduled job, no manual "Recompute"
+button required.
+
 ### 4.7 Notifications
 
 `generate_tax_notifications()` (SECURITY DEFINER) runs on the same
@@ -156,12 +188,17 @@ notifications per (user, type, period).
    - Unreconciled payments
    - Rp X outstanding
 3. Close button enabled only when blockers = 0.
-4. Click → `close_tax_period(period_id)` RPC:
+4. Click → `close_tax_period(period_id)` RPC — hardened to check:
+   - No missing Faktur Pajak (PPN periods)
+   - No draft sales invoices in period
+   - No draft purchase invoices in period
+   - No unposted `journal_entries` for tax payments in period
+   - No unreconciled `tax_payments` (status draft or posted)
+   - Zero outstanding payable per `vw_outstanding_tax`
+   - Recomputes snapshot (`compute_period_ppn`) before validating
    - Requires admin or manager role
-   - Recomputes snapshot (`compute_period_ppn`)
-   - Re-verifies blockers
    - Sets `status='closed'`, `closed_at`, `closed_by`
-   - Writes `audit_logs`
+   - Writes `audit_logs` including the snapshot totals
 5. Subsequent INSERT/UPDATE/DELETE on `sales_invoices`,
    `purchase_invoices`, `finance_expenses`, `tax_payments`, and
    `faktur_pajak` rows attributed to the closed period are blocked by

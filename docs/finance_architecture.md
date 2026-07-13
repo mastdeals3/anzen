@@ -211,11 +211,14 @@ Delegated to [tax_compliance.md](tax_compliance.md). Key points:
 | `get_asset_register()` | Read-model for asset report |
 | `compute_tax_due_dates(type, year, month)` | Tax due-date math |
 | `upsert_tax_period(year, month, type)` | Idempotent tax period |
-| `compute_period_ppn(period_id)` | Recompute PPN snapshot |
+| `compute_period_ppn(period_id)` | Input = purchases + expenses, Output = sales, carry-forward chained |
+| `recompute_periods_for_date(date)` | Refresh every tax_period matching (year, month) — called by AFTER triggers |
 | `assign_faktur_pajak_number(invoice_id)` | Atomic Faktur # + upsert |
 | `record_tax_payment(period, type, date, amt, bank, billing, ntpn, gov_ref, notes, payment_ref)` | Tax payment + JE post |
+| `update_tax_payment(id, date, amt, bank, billing, ntpn, gov_ref, notes, payment_ref)` | Reverse + repost JE; block on closed/reconciled |
+| `delete_tax_payment(id)` | Self-verifying reversal (mirrors `delete_purchase_invoice`) |
 | `mark_tax_payment_reconciled(id)` | Manual reconcile flip |
-| `close_tax_period(period_id)` | Close + audit |
+| `close_tax_period(period_id)` | Hardened preconditions: no draft docs, no unposted JE, no unreconciled payments, zero outstanding |
 | `reopen_tax_period(period_id, reason)` | Admin reopen + audit |
 | `generate_tax_notifications()` | Push overdue / due-soon / missing-faktur into notifications table |
 
@@ -240,4 +243,9 @@ Delegated to [tax_compliance.md](tax_compliance.md). Key points:
 | journal_entries | trg_lock_journal_entries_by_tax_period | enforce_tax_je_period_lock |
 | tax_periods | trg_auto_create_companion_pph_periods | auto_create_companion_pph_periods |
 | bank_reconciliation_items | trg_auto_reconcile_tax_payment | auto_reconcile_tax_payment |
+| bank_statement_lines | trg_auto_reconcile_tax_payment_from_bsl | auto_reconcile_tax_payment_from_bsl (flips tax_payments.status on match/unmatch) |
+| sales_invoices | trg_recompute_sales_invoice_period | trg_recompute_from_sales_invoice → recompute_periods_for_date |
+| purchase_invoices | trg_recompute_purchase_invoice_period | trg_recompute_from_purchase_invoice → recompute_periods_for_date |
+| finance_expenses | trg_recompute_finance_expense_period | trg_recompute_from_finance_expense → recompute_periods_for_date |
+| tax_payments | trg_recompute_tax_payment_period | trg_recompute_from_tax_payment → compute_period_ppn |
 | tax_periods / tax_payments / faktur_pajak | trg_*_updated_at | set_updated_at_tax_compliance |

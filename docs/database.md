@@ -103,7 +103,10 @@ Each row: **Purpose · Relationships · Triggers · RLS · Where used**.
 
 ## bank_reconciliations + bank_reconciliation_items + bank_statement_lines
 - **Purpose:** monthly bank statement reconciliation.
-- **Triggers:** `trg_auto_reconcile_tax_payment` on `bank_reconciliation_items` (2026-07-13).
+- **Tax integration column:** `bank_statement_lines.matched_tax_payment_id → tax_payments.id ON DELETE SET NULL` (2026-07-13).
+- **Triggers:**
+  - `trg_auto_reconcile_tax_payment` on `bank_reconciliation_items` — flips `tax_payments.status` to `reconciled` on match.
+  - `trg_auto_reconcile_tax_payment_from_bsl` on `bank_statement_lines` — same flip via PDF-statement path; **also** flips back to `posted` on unmatch.
 - **UI:** `BankReconciliationEnhanced.tsx`.
 
 ## approval_workflows + approval_thresholds
@@ -134,8 +137,8 @@ Each row: **Purpose · Relationships · Triggers · RLS · Where used**.
 - **Relationships:** `tax_period_id → tax_periods.id`, `bank_account_id → bank_accounts.id`, `journal_entry_id → journal_entries.id`.
 - **Triggers:** `trg_tax_payments_updated_at`; `trg_lock_tax_payments_by_period`.
 - **RLS:** authenticated read; admin/manager write.
-- **RPCs:** `record_tax_payment` (9-arg legacy + 10-arg with payment_reference), `mark_tax_payment_reconciled`.
-- **UI:** `TaxPaymentsPanel` (form uses bank alias; attachment section reuses TaxAttachments component).
+- **RPCs:** `record_tax_payment` (9-arg legacy + 10-arg with payment_reference), `update_tax_payment` (reverse+repost), `delete_tax_payment` (self-verifying, mirrors delete_purchase_invoice), `mark_tax_payment_reconciled`.
+- **UI:** `TaxPaymentsPanel` (form uses bank alias; Edit + Delete row actions gated by status; attachment section reuses TaxAttachments component).
 
 ### tax_payment_files
 - **Purpose:** attachments for tax payments.

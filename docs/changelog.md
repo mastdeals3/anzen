@@ -3,6 +3,37 @@
 Reverse-chronological summary of major project milestones. Detailed
 per-file diffs live in `git log`.
 
+## 2026-07-13 — Tax Compliance accounting engine (Phase 3)
+- **delete_tax_payment(id)** — SECURITY DEFINER, self-verifying. Same
+  integrity pattern as `delete_purchase_invoice`. Reverses the JE,
+  releases both typed FK (`matched_tax_payment_id`) and
+  `matched_entry_id` bank recon links, unmatches
+  bank_reconciliation_items, removes attachments (storage cleanup path
+  returned via audit_logs), integrity-checks every touched table,
+  RAISE EXCEPTION rolls back on any orphan. Refuses on closed periods.
+- **update_tax_payment(...)** — SECURITY DEFINER. Reverse-and-repost
+  pattern. Refuses on closed periods. Refuses on reconciled payments
+  unless caller is admin (breaks the recon match; payment returns to
+  posted). Full old/new audit log.
+- **bank_statement_lines.matched_tax_payment_id** — typed FK column
+  matching the pattern for expenses/receipts/petty cash/fund transfer.
+  Auto-populated by the reconciliation trigger, released on delete/edit.
+- **compute_period_ppn upgraded** — Input PPN now sums `purchase_invoices`
+  + `finance_expenses` (was: expenses only). PPh totals filter by
+  `tax_codes.tax_type = tax_period.tax_type` for the right split.
+  Snapshot is authoritative; every source-row change fires an
+  AFTER trigger that recomputes affected periods immediately.
+- **close_tax_period hardened** — blocks on: missing Faktur (PPN),
+  draft sales/purchase invoices, unposted tax-payment JEs, unreconciled
+  tax_payments, outstanding > 0. Snapshot recomputed then re-checked.
+- **UI: Edit + Delete** rows added to `TaxPaymentsPanel` — no
+  redesign, just the missing surface for the new RPCs. Edit is
+  disabled when a payment is reconciled (with tooltip). Delete
+  confirmation explains what it reverses.
+- Docs updated: `tax_compliance.md` (§4.8 Edit/Delete, §4.9 Live
+  snapshot, hardened §4.4), `finance_architecture.md` (RPC + trigger
+  tables), `database.md` (typed FK, new RPCs).
+
 ## 2026-07-13 — Tax Compliance integration (Phase 2)
 - **Auto-attribution + companion PPh periods**: sales/purchase invoices and
   expenses with tax now auto-attach to the correct `tax_period`; new PPN
