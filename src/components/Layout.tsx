@@ -86,6 +86,7 @@ export function Layout({ children }: LayoutProps) {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const [currentCompanyName, setCurrentCompanyName] = useState(FALLBACK_COMPANY.company_name);
+  const [setupMode, setSetupMode] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -104,6 +105,17 @@ export function Layout({ children }: LayoutProps) {
       .limit(1)
       .maybeSingle()
       .then(({ data }) => { if (data?.company_name) setCurrentCompanyName(data.company_name); });
+
+    // Setup Mode banner — read once per session; refreshes on page reload.
+    // The flag lives on app_settings and is fully server-authoritative;
+    // this state is UX-only so users see the banner while they navigate.
+    supabase
+      .from('app_settings')
+      .select('setup_mode')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setSetupMode(Boolean((data as { setup_mode?: boolean }).setup_mode)); });
   }, []);
 
   useEffect(() => {
@@ -198,6 +210,18 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Setup Mode banner — visible on every page while the flag is on so
+          admins never forget to switch back to Production Mode before going
+          live. Server-authoritative: app_settings.setup_mode + is_setup_mode()
+          DB helper apply the same bypass to protection triggers and RPCs. */}
+      {setupMode && (
+        <div className="sticky top-0 z-40 bg-amber-500 text-white text-xs md:text-sm px-4 py-1.5 text-center font-medium shadow">
+          <span className="uppercase tracking-wide mr-2">Setup Mode Enabled</span>
+          <span className="hidden md:inline text-amber-50 font-normal">
+            Historical protections are temporarily disabled while the ERP is being configured. Switch back to Production Mode in Settings before going live.
+          </span>
+        </div>
+      )}
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div

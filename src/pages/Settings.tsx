@@ -37,6 +37,7 @@ interface AppSettings {
   bulk_email_batch_delay_seconds: number;
   bulk_email_worker_url: string | null;
   bulk_email_worker_secret: string | null;
+  setup_mode?: boolean;
 }
 
 interface ChartAccount {
@@ -122,6 +123,8 @@ export function Settings() {
   });
   const [companyProfiles, setCompanyProfiles] = useState<CompanyProfileRow[]>([]);
   const [profileRefCounts, setProfileRefCounts] = useState<Record<string, number>>({});
+  const [setupMode, setSetupMode] = useState(false);
+  const [togglingSetupMode, setTogglingSetupMode] = useState(false);
   const [showNewProfileForm, setShowNewProfileForm] = useState(false);
   const [newProfileData, setNewProfileData] = useState<ProfileFormData>(emptyProfileForm());
   const [editingProfile, setEditingProfile] = useState<CompanyProfileRow | null>(null);
@@ -187,6 +190,7 @@ export function Settings() {
 
       if (data) {
         setSettings(data);
+        setSetupMode(Boolean(data.setup_mode));
         setFormData({
           company_name: data.company_name || '',
           company_address: data.company_address || '',
@@ -305,6 +309,31 @@ export function Settings() {
       alert(err.message || 'Failed to save company profile');
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const toggleSetupMode = async (next: boolean) => {
+    if (!settings) return;
+    // Confirm before turning production protections off. Silent no-confirm
+    // when switching back to Production Mode.
+    if (next && !window.confirm(
+      'Enable Setup Mode?\n\n' +
+      'Historical Company Profile protections will be temporarily disabled while the ERP is being configured. Admins will be able to edit referenced profiles, change logos/stamps/NPWP, and delete profiles that documents already point at.\n\n' +
+      'Switch back to Production Mode before going live.'
+    )) return;
+
+    setTogglingSetupMode(true);
+    try {
+      const { error } = await supabase
+        .from('app_settings')
+        .update({ setup_mode: next })
+        .eq('id', settings.id);
+      if (error) throw error;
+      setSetupMode(next);
+    } catch (err: any) {
+      alert(err.message || 'Failed to toggle Setup Mode');
+    } finally {
+      setTogglingSetupMode(false);
     }
   };
 
@@ -886,8 +915,40 @@ export function Settings() {
                 </div>
               </form>
 
+              {/* Setup Mode — admin-only feature flag that bypasses historical
+                  protections while the ERP is being configured. Backed by
+                  app_settings.setup_mode and the is_setup_mode() DB helper so
+                  the trigger + delete RPC apply the same bypass server-side. */}
+              {profile?.role === 'admin' && (
+                <div className={`mt-8 border-t pt-6`}>
+                  <div className={`border rounded-lg p-3 flex items-center justify-between gap-3 ${setupMode ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
+                    <div>
+                      <div className={`text-sm font-semibold ${setupMode ? 'text-amber-900' : 'text-gray-800'}`}>
+                        {setupMode ? 'Setup Mode is ENABLED' : 'Setup Mode'}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-0.5">
+                        {setupMode
+                          ? 'Historical protections are temporarily disabled. Referenced Company Profiles can be edited or deleted. Switch back to Production Mode before going live.'
+                          : 'Production Mode is active — historical Company Profiles are read-only when referenced by documents.'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => void toggleSetupMode(!setupMode)}
+                      disabled={togglingSetupMode || !settings}
+                      className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition disabled:opacity-40 ${
+                        setupMode
+                          ? 'border-amber-400 text-amber-900 hover:bg-amber-100'
+                          : 'border-blue-600 text-blue-700 hover:bg-blue-50'
+                      }`}
+                    >
+                      {togglingSetupMode ? 'Saving…' : setupMode ? 'Switch to Production Mode' : 'Enable Setup Mode'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Company Identity History */}
-              <div className="mt-8 border-t pt-6">
+              <div className={`${profile?.role === 'admin' ? 'mt-6' : 'mt-8 border-t pt-6'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <h3 className="text-base font-semibold text-gray-900">Company Identity History</h3>
@@ -938,7 +999,11 @@ export function Settings() {
                         const refCount = profileRefCounts[cp.id] || 0;
                         const isReferenced = refCount > 0;
                         const isAdmin = profile?.role === 'admin';
-                        const canDelete = isAdmin && !isReferenced && !isActive;
+                        // Setup Mode: allow admins to Edit / Delete any profile,
+                        // even Active or Referenced. The DB trigger + delete RPC
+                        // apply the same bypass, so the two layers stay aligned.
+                        const canDelete = isAdmin && (setupMode || (!isReferenced && !isActive));
+                        const openLabel = !isReferenced || setupMode ? 'Edit' : 'View';
                         return (
                           <tr key={cp.id} className="border-b last:border-0 hover:bg-gray-50">
                             <td className="py-2 pr-4 font-mono text-xs">{cp.effective_from}</td>
@@ -972,15 +1037,21 @@ export function Settings() {
                                 <button
                                   onClick={() => startEditProfile(cp)}
                                   disabled={!isAdmin || editingProfile?.id === cp.id}
-                                  title={isReferenced ? 'Referenced by documents — opens in read-only mode' : 'Edit profile'}
+                                  title={isReferenced && !setupMode ? 'Referenced by documents — opens in read-only mode' : 'Edit profile'}
                                   className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
-                                  {isReferenced ? 'View' : 'Edit'}
+                                  {openLabel}
                                 </button>
                                 <button
                                   onClick={() => deleteProfile(cp)}
                                   disabled={!canDelete || deletingProfileId === cp.id}
-                                  title={isReferenced ? 'Referenced by documents — cannot delete' : isActive ? 'Active profile — cannot delete' : 'Delete profile'}
+                                  title={
+                                    setupMode
+                                      ? 'Setup Mode: deletion allowed'
+                                      : isReferenced
+                                        ? 'Referenced by documents — cannot delete'
+                                        : isActive ? 'Active profile — cannot delete' : 'Delete profile'
+                                  }
                                   className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                   {deletingProfileId === cp.id ? 'Deleting…' : 'Delete'}
@@ -1008,7 +1079,7 @@ export function Settings() {
                   onSubmit={saveEditProfile}
                   onCancel={cancelEditProfile}
                   saving={savingProfile}
-                  readOnly={(profileRefCounts[editingProfile.id] || 0) > 0}
+                  readOnly={!setupMode && (profileRefCounts[editingProfile.id] || 0) > 0}
                   refCount={profileRefCounts[editingProfile.id] || 0}
                 />
               )}
