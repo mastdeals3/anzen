@@ -140,11 +140,92 @@ $$;
 REVOKE ALL     ON FUNCTION public.delete_company_profile(uuid) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.delete_company_profile(uuid) TO authenticated;
 
--- 5. Clean up the test Sales Order SO-2026-0048 -------------------------------
+-- 5a. Consolidate fn_release_stock_reservations overloads -------------------
+-- Migrations 20251128163039 and 20251129130712 left two conflicting overloads
+-- in place:
+--   (uuid, text)                    — the audit-rich version (writes an
+--                                     inventory_transactions row per released
+--                                     reservation, uses auth.uid()).
+--   (uuid, text, uuid DEFAULT NULL) — the "pass-user-id" version (updates
+--                                     released_by from param, but skips the
+--                                     inventory_transactions insert).
+-- Postgres can't pick a "best candidate" when trg_sales_order_deleted()
+-- calls it with two positional args and an unknown-typed literal ("Sales
+-- order deleted"), so ANY sales_orders DELETE throws 42725 and aborts —
+-- which is exactly what blocks the SO-2026-0048 cleanup below.
+--
+-- Fix: drop both, then install a single consolidated function that keeps
+-- BOTH behaviours: takes p_user_id as an optional third arg (defaulting to
+-- auth.uid()), and still writes the inventory_transactions release rows.
+DROP FUNCTION IF EXISTS public.fn_release_stock_reservations(uuid, text);
+DROP FUNCTION IF EXISTS public.fn_release_stock_reservations(uuid, text, uuid);
+
+CREATE OR REPLACE FUNCTION public.fn_release_stock_reservations(
+  p_so_id   uuid,
+  p_reason  text,
+  p_user_id uuid DEFAULT NULL
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_reservation RECORD;
+  v_so_number   text;
+  v_actor       uuid := COALESCE(p_user_id, auth.uid());
+BEGIN
+  SELECT so_number INTO v_so_number FROM sales_orders WHERE id = p_so_id;
+
+  -- Emit an inventory_transactions release row per active reservation so
+  -- Reports / drill-downs can trace the release event to a source doc.
+  FOR v_reservation IN
+    SELECT * FROM stock_reservations
+    WHERE sales_order_id = p_so_id
+      AND status = 'active'
+  LOOP
+    INSERT INTO inventory_transactions (
+      product_id,
+      batch_id,
+      transaction_type,
+      quantity,
+      transaction_date,
+      reference_number,
+      notes,
+      created_by
+    ) VALUES (
+      v_reservation.product_id,
+      v_reservation.batch_id,
+      'release_reservation',
+      v_reservation.reserved_quantity,
+      CURRENT_DATE,
+      v_so_number,
+      'Reservation released: ' || p_reason,
+      v_actor
+    );
+  END LOOP;
+
+  UPDATE stock_reservations
+  SET status         = 'released',
+      released_at    = now(),
+      released_by    = v_actor,
+      release_reason = p_reason
+  WHERE sales_order_id = p_so_id
+    AND status = 'active';
+
+  RETURN true;
+END;
+$$;
+
+REVOKE ALL     ON FUNCTION public.fn_release_stock_reservations(uuid, text, uuid) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.fn_release_stock_reservations(uuid, text, uuid) TO authenticated;
+
+-- 5b. Clean up the test Sales Order SO-2026-0048 -------------------------------
 -- sales_order_items → CASCADE, delivery_challans.sales_order_id → SET NULL,
 -- sales_invoices.sales_order_id → SET NULL, sales_order_advances → CASCADE.
--- Nothing else references sales_orders, so a plain DELETE is sufficient.
--- Wrapped in DO so we can log via RAISE NOTICE.
+-- Nothing else references sales_orders, so a plain DELETE is sufficient
+-- once the overload above is unambiguous. Wrapped in DO so we can log
+-- via RAISE NOTICE.
 DO $$
 DECLARE
   v_id     uuid;
