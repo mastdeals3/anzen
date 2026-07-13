@@ -206,6 +206,7 @@ interface TaxCode {
   code: string;
   name: string;
   rate: number;
+  tax_type: string;
 }
 
 interface COAAccount {
@@ -904,7 +905,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
       // Load tax codes (withholding PPh) and asset COA accounts once
       if (taxCodes.length === 0) {
-        const { data: tc } = await supabase.from('tax_codes').select('id, code, name, rate').eq('is_withholding', true).order('code');
+        const { data: tc } = await supabase.from('tax_codes').select('id, code, name, rate, tax_type').eq('is_withholding', true).order('code');
         setTaxCodes(tc || []);
       }
       if (coaAssets.length === 0) {
@@ -2782,7 +2783,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                 pph_amount: !val ? 0 : (tc && tc.rate > 0) ? Math.round(prev.amount * tc.rate / 100) : prev.pph_amount,
                               }));
                             }}
-                            options={[{ value: '', label: 'None' }, ...taxCodes.map(tc => ({ value: tc.id, label: `${tc.code} — ${tc.rate}%` }))]}
+                            options={[{ value: '', label: 'None' }, ...taxCodes.map(tc => ({
+                              value: tc.id,
+                              label: tc.tax_type === 'PPh21' ? `${tc.code} (Manual)` : `${tc.code} — ${tc.rate}%`,
+                            }))]}
                             placeholder="None"
                           />
                         </SapField>

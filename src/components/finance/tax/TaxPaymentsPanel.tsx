@@ -263,8 +263,10 @@ export function TaxPaymentsPanel() {
                 className="mt-1 w-full border rounded px-2 py-1.5 disabled:bg-gray-100"
                 disabled={!!editingId}
               >
-                {['PPN','PPh21','PPh22','PPh23','PPh4(2)','PPh_Unifikasi'].map(t => (
-                  <option key={t} value={t}>{t}</option>
+                {(['PPN','PPh21','PPh22','PPh23','PPh4(2)','PPh_Unifikasi'] as const).map(t => (
+                  <option key={t} value={t}>
+                    {t === 'PPh21' ? 'PPh21 (Manual)' : t === 'PPh_Unifikasi' ? 'PPh Unifikasi (Consolidated)' : t}
+                  </option>
                 ))}
               </select>
             </label>

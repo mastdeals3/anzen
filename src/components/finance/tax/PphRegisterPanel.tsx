@@ -7,6 +7,12 @@ type PphType = 'PPh21' | 'PPh22' | 'PPh23' | 'PPh4(2)' | 'PPh_Unifikasi';
 
 const TABS: PphType[] = ['PPh21','PPh22','PPh23','PPh4(2)','PPh_Unifikasi'];
 
+function pphTabLabel(t: PphType): string {
+  if (t === 'PPh21') return 'PPh21 (Manual)';
+  if (t === 'PPh_Unifikasi') return 'All Types (Consolidated)';
+  return t;
+}
+
 interface Row {
   tax_period_id: string;
   fiscal_year: number;
@@ -170,7 +176,7 @@ export function PphRegisterPanel() {
             onClick={() => setActive(t)}
             className={`px-3 py-1 text-sm rounded border ${active === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'}`}
           >
-            {t}
+            {pphTabLabel(t)}
           </button>
         ))}
       </div>
