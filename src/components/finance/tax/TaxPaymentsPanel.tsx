@@ -5,6 +5,7 @@ import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { TaxAttachments } from './TaxAttachments';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
+import { Modal } from '../../Modal';
 
 interface Period {
   id: string;
@@ -221,27 +222,45 @@ export function TaxPaymentsPanel() {
     setBslCandidates([]);
     setBslPickerLoading(true);
     try {
-      const lineDate = new Date(p.payment_date);
-      const from = new Date(lineDate); from.setDate(from.getDate() - 7);
-      const to   = new Date(lineDate); to.setDate(to.getDate()   + 7);
-
+      // Match the Expense picker pattern (loadUnlinkedBankTransactions):
+      // no hard date filter. Bank clearing routinely lags tax payments by
+      // more than the previous ±7-day window, hiding the correct BSL row
+      // and forcing users to drop into raw SQL. Instead we take every
+      // fully-unmatched debit row on the same bank account, sort by
+      // proximity to the payment_date, and rank exact-amount matches first.
       let q = supabase
         .from('bank_statement_lines')
         .select('id, transaction_date, description, debit_amount, bank_account_id')
         .is('matched_tax_payment_id', null)
+        .is('matched_expense_id', null)
+        .is('matched_receipt_id', null)
+        .is('matched_petty_cash_id', null)
+        .is('matched_fund_transfer_id', null)
+        .is('matched_entry_id', null)
         .eq('reconciliation_status', 'unmatched')
         .gt('debit_amount', 0)
-        .gte('transaction_date', from.toISOString().split('T')[0])
-        .lte('transaction_date', to.toISOString().split('T')[0])
         .order('transaction_date', { ascending: false })
-        .limit(30);
+        .limit(200);
 
       if (p.bank_account_id) q = q.eq('bank_account_id', p.bank_account_id);
 
       const { data } = await q;
       const amount = Number(p.amount);
-      const filtered = (data ?? []).filter((b: any) => Math.abs(Number(b.debit_amount) - amount) < 1);
-      setBslCandidates(filtered.length > 0 ? filtered : (data ?? []).slice(0, 10));
+      const payDate = new Date(p.payment_date).getTime();
+      const scored = (data ?? []).map((b: any) => ({
+        row: b,
+        amountDiff: Math.abs(Number(b.debit_amount) - amount),
+        dateDiff: Math.abs(new Date(b.transaction_date).getTime() - payDate),
+      }));
+      scored.sort((a, b) => {
+        // Exact-amount matches first, then closest date.
+        const aExact = a.amountDiff < 1 ? 0 : 1;
+        const bExact = b.amountDiff < 1 ? 0 : 1;
+        if (aExact !== bExact) return aExact - bExact;
+        if (a.dateDiff !== b.dateDiff) return a.dateDiff - b.dateDiff;
+        return a.amountDiff - b.amountDiff;
+      });
+      setBslCandidates(scored.slice(0, 50).map(s => s.row));
     } catch (err) {
       console.error('Error fetching BSL candidates:', err);
     } finally {
@@ -325,8 +344,13 @@ export function TaxPaymentsPanel() {
         </div>
       </div>
 
-      {showForm && (
-        <form onSubmit={submit} className="border rounded p-4 space-y-3 bg-blue-50/40">
+      <Modal
+        isOpen={showForm}
+        onClose={cancelForm}
+        title={editingId ? 'Edit Tax Payment' : 'Record Tax Payment'}
+        maxWidth="max-w-3xl"
+      >
+        <form onSubmit={submit} className="space-y-3">
           {editingId && (
             <p className="text-xs text-blue-800 font-medium">
               Editing existing tax payment — this reverses the current journal entry and posts a fresh one.
@@ -452,7 +476,7 @@ export function TaxPaymentsPanel() {
             appears in Bank Reconciliation and auto-flips this payment to "reconciled" once matched.
           </p>
         </form>
-      )}
+      </Modal>
 
       {loading ? (
         <p className="text-gray-500">Loading…</p>
@@ -558,42 +582,52 @@ export function TaxPaymentsPanel() {
         </div>
       )}
 
-      {bslPickerPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setBslPickerPayment(null)}>
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-base">Link Bank Statement Line</h3>
-              <button onClick={() => setBslPickerPayment(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
-            </div>
+      <Modal
+        isOpen={!!bslPickerPayment}
+        onClose={() => setBslPickerPayment(null)}
+        title="Link Bank Statement Line"
+        maxWidth="max-w-lg"
+      >
+        {bslPickerPayment && (
+          <div>
             <p className="text-xs text-gray-500 mb-4">
               Tax payment: <span className="font-medium text-purple-700">{bslPickerPayment.tax_type}</span> ·{' '}
               Rp {Number(bslPickerPayment.amount).toLocaleString('id-ID')} · {bslPickerPayment.payment_date}
+              {bslPickerPayment.bank_account_id && bankById.get(bslPickerPayment.bank_account_id) && (
+                <> · <span className="text-gray-600">{bankLabel(bankById.get(bslPickerPayment.bank_account_id)!)}</span></>
+              )}
             </p>
             {bslPickerLoading ? (
               <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600" /></div>
             ) : bslCandidates.length === 0 ? (
               <div className="text-sm text-gray-500 text-center py-4 border rounded-lg bg-gray-50">
-                No unmatched bank statement lines found within ±7 days with a matching amount.
+                No unmatched bank statement lines available on this account.
                 <div className="mt-2 text-xs text-gray-400">Import the bank statement first, then return here to link.</div>
               </div>
             ) : (
               <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg divide-y">
-                {bslCandidates.map((b: any) => (
-                  <button
-                    key={b.id}
-                    onClick={() => void linkBsl(b.id)}
-                    disabled={bslLinking}
-                    className="w-full p-3 text-left hover:bg-purple-50 disabled:opacity-50 text-sm flex justify-between items-center"
-                  >
-                    <div>
-                      <div className="font-medium text-gray-800">{b.description}</div>
-                      <div className="text-xs text-gray-400">{new Date(b.transaction_date).toLocaleDateString('id-ID')}</div>
-                    </div>
-                    <div className="font-medium text-red-600 text-sm">
-                      Rp {Number(b.debit_amount).toLocaleString('id-ID')}
-                    </div>
-                  </button>
-                ))}
+                {bslCandidates.map((b: any) => {
+                  const exact = Math.abs(Number(b.debit_amount) - Number(bslPickerPayment.amount)) < 1;
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => void linkBsl(b.id)}
+                      disabled={bslLinking}
+                      className={`w-full p-3 text-left hover:bg-purple-50 disabled:opacity-50 text-sm flex justify-between items-center ${exact ? 'bg-emerald-50/50' : ''}`}
+                    >
+                      <div>
+                        <div className="font-medium text-gray-800">{b.description}</div>
+                        <div className="text-xs text-gray-400">
+                          {new Date(b.transaction_date).toLocaleDateString('id-ID')}
+                          {exact ? <span className="ml-2 text-emerald-700 font-medium">Exact amount</span> : null}
+                        </div>
+                      </div>
+                      <div className="font-medium text-red-600 text-sm">
+                        Rp {Number(b.debit_amount).toLocaleString('id-ID')}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
             <div className="mt-4 flex justify-end">
@@ -602,8 +636,8 @@ export function TaxPaymentsPanel() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }

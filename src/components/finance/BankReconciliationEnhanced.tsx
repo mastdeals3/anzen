@@ -2239,19 +2239,19 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   const loadAvailableTaxPayments = async (line: StatementLine) => {
     try {
       const amount = line.debit;
-      const lineDate = new Date(line.date);
-      const from = new Date(lineDate); from.setDate(from.getDate() - 7);
-      const to   = new Date(lineDate); to.setDate(to.getDate()   + 7);
+      const lineDate = new Date(line.date).getTime();
 
+      // Match the Payment Voucher picker semantics (loadSupplierPayments):
+      // no hard date filter, wide sort window. The previous ±7-day box was
+      // hiding correct tax payments when bank clearing lagged the payment
+      // date (cross-bank giro, MPN batching, weekends).
       const { data: tps } = await supabase
         .from('tax_payments')
         .select('id, tax_type, amount, payment_date, billing_code, ntpn, journal_entry_id, bank_account_id, status')
         .in('status', ['posted', 'draft'])
         .not('journal_entry_id', 'is', null)
-        .gte('payment_date', from.toISOString().split('T')[0])
-        .lte('payment_date', to.toISOString().split('T')[0])
         .order('payment_date', { ascending: false })
-        .limit(50);
+        .limit(500);
 
       const { data: takenLines } = await supabase
         .from('bank_statement_lines')
@@ -2259,13 +2259,20 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         .not('matched_tax_payment_id', 'is', null);
       const takenIds = new Set((takenLines || []).map((l: any) => l.matched_tax_payment_id));
 
-      const available = (tps || []).filter((tp: any) => {
-        if (takenIds.has(tp.id)) return false;
-        if (tp.bank_account_id && selectedBank && tp.bank_account_id !== selectedBank) return false;
-        return Math.abs(tp.amount - amount) < 1;
-      });
+      const scored = (tps || [])
+        .filter((tp: any) => {
+          if (takenIds.has(tp.id)) return false;
+          if (tp.bank_account_id && selectedBank && tp.bank_account_id !== selectedBank) return false;
+          return Math.abs(tp.amount - amount) < 1;
+        })
+        .map((tp: any) => ({
+          tp,
+          dateDiff: Math.abs(new Date(tp.payment_date).getTime() - lineDate),
+        }))
+        .sort((a: any, b: any) => a.dateDiff - b.dateDiff)
+        .map((s: any) => s.tp);
 
-      setAvailableTaxPayments(available);
+      setAvailableTaxPayments(scored);
     } catch (err) {
       console.error('Error loading tax payments:', err);
       setAvailableTaxPayments([]);
