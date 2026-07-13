@@ -14,6 +14,7 @@ import { PipelineStatusBadge, pipelineStatusOptions } from './PipelineStatusBadg
 import { LostReasonModal } from './LostReasonModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { getSignedUrlCached } from '../../utils/signedUrlCache';
+import { sanitizeExportRows } from '../../utils/csvSafe';
 import { canSeeInternalPricing, canSeeFinalQuote } from '../../utils/permissions';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
@@ -744,7 +745,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
         'Remarks': inquiry.remarks || '-',
       }));
 
-      const ws = XLSX.utils.json_to_sheet(exportData);
+      const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(exportData));
 
       // Set column widths
       ws['!cols'] = [
@@ -827,7 +828,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
         'Remarks': inquiry.remarks || '-',
       }));
 
-      const ws = XLSX.utils.json_to_sheet(exportData);
+      const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(exportData));
       const csv = XLSX.utils.sheet_to_csv(ws);
 
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -877,7 +878,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
       'Remarks': 'Additional notes',
     }];
 
-    const ws = XLSX.utils.json_to_sheet(templateData);
+    const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(templateData));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Import Template');
 

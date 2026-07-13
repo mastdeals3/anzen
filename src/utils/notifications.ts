@@ -238,6 +238,15 @@ export async function checkAndCreateDeliveryDueNotifications() {
 
 let notificationInterval: ReturnType<typeof setInterval> | null = null;
 
+async function checkAndCreateTaxNotifications() {
+  try {
+    const { error } = await supabase.rpc('generate_tax_notifications');
+    if (error) throw error;
+  } catch (error) {
+    console.error('Error generating tax notifications:', error);
+  }
+}
+
 export async function initializeNotificationChecks() {
   if (notificationInterval) {
     clearInterval(notificationInterval);
@@ -247,11 +256,13 @@ export async function initializeNotificationChecks() {
   await checkAndCreateExpiryNotifications();
   await checkAndCreateFollowUpNotifications();
   await checkAndCreateDeliveryDueNotifications();
+  await checkAndCreateTaxNotifications();
 
   notificationInterval = setInterval(async () => {
     await checkAndCreateLowStockNotifications();
     await checkAndCreateExpiryNotifications();
     await checkAndCreateFollowUpNotifications();
     await checkAndCreateDeliveryDueNotifications();
+    await checkAndCreateTaxNotifications();
   }, 600000);
 }

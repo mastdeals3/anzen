@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const ALLOWED_ROLES = ['admin', 'accounts', 'sales', 'warehouse', 'manager'];
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -43,61 +45,56 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (!profile || profile.role !== 'admin') {
-      return new Response(JSON.stringify({ error: 'Only admins can delete users' }), {
+      return new Response(JSON.stringify({ error: 'Only admins can update users' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const { user_id } = await req.json();
+    const { user_id, email, username, full_name, role } = await req.json();
 
-    if (!user_id) {
-      return new Response(JSON.stringify({ error: 'Missing user_id' }), {
+    if (!user_id || !email) {
+      return new Response(JSON.stringify({ error: 'Missing user_id or email' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    if (user_id === user.id) {
-      return new Response(JSON.stringify({ error: 'You cannot delete your own account' }), {
+    if (!ALLOWED_ROLES.includes(role)) {
+      return new Response(JSON.stringify({ error: 'Invalid role' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const { data: targetProfile } = await supabaseAdmin
+    if (user_id === user.id && role !== 'admin') {
+      return new Response(JSON.stringify({ error: 'You cannot remove your own admin role' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(user_id, { email });
+    if (updateAuthError) {
+      return new Response(JSON.stringify({ error: updateAuthError.message }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { error: updateProfileError } = await supabaseAdmin
       .from('user_profiles')
-      .select('role, is_active')
-      .eq('id', user_id)
-      .maybeSingle();
+      .update({ username, email, full_name, role })
+      .eq('id', user_id);
 
-    if (targetProfile?.role === 'admin' && targetProfile?.is_active) {
-      const { count: otherAdminCount } = await supabaseAdmin
-        .from('user_profiles')
-        .select('id', { count: 'exact', head: true })
-        .eq('role', 'admin')
-        .eq('is_active', true)
-        .neq('id', user_id);
-
-      if (!otherAdminCount || otherAdminCount === 0) {
-        return new Response(JSON.stringify({ error: 'Cannot delete the last active admin' }), {
-          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id);
-
-    if (deleteError) {
-      return new Response(JSON.stringify({ error: deleteError.message }), {
+    if (updateProfileError) {
+      return new Response(JSON.stringify({ error: updateProfileError.message }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    return new Response(JSON.stringify({ success: true, message: 'User deleted successfully' }), {
+    return new Response(JSON.stringify({ success: true, message: 'User updated successfully' }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Internal server error';
-    console.error('Error deleting user:', error);
+    console.error('Error updating user:', error);
     return new Response(JSON.stringify({ error: message }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

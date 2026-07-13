@@ -17,6 +17,7 @@ import { fetchLinkedDocumentsBundle, LinkedDocRef } from '../utils/linkedDocumen
 import { LinkedDocsCell } from '../components/LinkedDocsCell';
 import { useDebounce } from '../hooks/useDebounce';
 import { fetchApprovedDeliverySalesOrderIds, getDeliveryAlertForOrder } from '../utils/salesOrderDeliveryAlerts';
+import { resolveStorageUrlCached } from '../utils/signedUrlCache';
 
 interface Customer {
   id: string;
@@ -639,12 +640,13 @@ export default function SalesOrders() {
   };
 
   const handleViewPO = async (poUrl: string) => {
-    setSelectedPOUrl(poUrl);
+    const signedUrl = await resolveStorageUrlCached(poUrl, 3600);
+    setSelectedPOUrl(signedUrl);
     setShowPOModal(true);
     setPoLoading(true);
     setPoBlobUrl(null);
     try {
-      const res = await fetch(poUrl);
+      const res = await fetch(signedUrl);
       if (!res.ok) {
         // Bucket missing or file deleted — show fallback, don't render error JSON
         setPoBlobUrl(null);
@@ -662,7 +664,8 @@ export default function SalesOrders() {
 
   const handleDownloadPO = async (poUrl: string, filename?: string) => {
     try {
-      const res = await fetch(poUrl);
+      const signedUrl = await resolveStorageUrlCached(poUrl, 3600);
+      const res = await fetch(signedUrl);
       if (!res.ok) {
         showToast({ type: 'error', title: 'Download Failed', message: 'File not found. The storage bucket may not be set up yet.' });
         return;

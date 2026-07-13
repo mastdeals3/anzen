@@ -4,6 +4,7 @@ import { Download, FileText, TrendingUp, Package, Building2 } from 'lucide-react
 import * as XLSX from 'xlsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFinance } from '../../contexts/FinanceContext';
+import { sanitizeCsvCell } from '../../utils/csvSafe';
 
 type ReportType =
   | 'coa'
@@ -759,7 +760,7 @@ export function CAReports() {
       ...dataRows
     ];
 
-    const worksheet = XLSX.utils.aoa_to_sheet(finalData);
+    const worksheet = XLSX.utils.aoa_to_sheet(finalData.map(row => row.map(sanitizeCsvCell)));
 
     worksheet['!cols'] = dataKeys.map(() => ({ wch: 15 }));
 

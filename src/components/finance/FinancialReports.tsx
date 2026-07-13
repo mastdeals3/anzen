@@ -4,6 +4,7 @@ import { Download, ChevronDown, ChevronRight, Printer } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { sanitizeExportRows } from '../../utils/csvSafe';
 
 interface TrialBalanceRow {
   code: string;
@@ -276,7 +277,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
       rows.push({ 'Code': '', 'Account': '', 'Opening Dr': '', 'Opening Cr': '', 'Period Dr': '', 'Period Cr': '', 'Closing Dr': '', 'Closing Cr': '' });
     }
     rows.push({ 'Code': '', 'Account': 'GRAND TOTAL', 'Opening Dr': tbGrandTotals.openingDr, 'Opening Cr': tbGrandTotals.openingCr, 'Period Dr': tbGrandTotals.periodDr, 'Period Cr': tbGrandTotals.periodCr, 'Closing Dr': tbGrandTotals.closingDr, 'Closing Cr': tbGrandTotals.closingCr });
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(rows));
     ws['!cols'] = [{ wch: 10 }, { wch: 50 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Trial Balance');
@@ -306,7 +307,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
     addTotal('OPERATING INCOME', operatingIncome);
     if (otherExpRows.length) { add('Other Expenses', otherExpRows, r => r.balance); }
     addTotal('NET INCOME (PROVISIONAL)', netIncome);
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(rows));
     ws['!cols'] = [{ wch: 35 }, { wch: 10 }, { wch: 45 }, { wch: 20 }, { wch: 12 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'P&L');
@@ -340,7 +341,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
     rows.push({ 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '' });
     rows.push({ 'Section': 'TOTAL LIABILITIES + EQUITY', 'Code': '', 'Account': '', 'Amount (Rp)': totalLiabEquity });
     rows.push({ 'Section': balanceCheck < 0.02 ? 'BALANCED ✓' : `OUT OF BALANCE ⚠ Diff: ${fmt2(balanceCheck)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '' });
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(rows));
     ws['!cols'] = [{ wch: 35 }, { wch: 10 }, { wch: 45 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Balance Sheet');

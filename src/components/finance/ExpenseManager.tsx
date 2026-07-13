@@ -962,6 +962,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         .is('matched_petty_cash_id', null)
         .is('matched_entry_id', null)
         .is('matched_fund_transfer_id', null)
+        .is('matched_tax_payment_id', null)
         .order('transaction_date', { ascending: false });
 
       // Filter by bank account if provided

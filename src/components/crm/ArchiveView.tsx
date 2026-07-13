@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../Modal';
 import { PipelineStatusBadge } from './PipelineStatusBadge';
+import { sanitizeExportRows } from '../../utils/csvSafe';
 
 interface ArchivedInquiry {
   id: string;
@@ -122,7 +123,7 @@ export function ArchiveView({ canManage, onRefresh }: ArchiveViewProps) {
         'Remarks': inq.remarks || '-',
       }));
 
-      const ws = XLSX.utils.json_to_sheet(exportData);
+      const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(exportData));
       ws['!cols'] = [
         { wch: 12 },
         { wch: 12 },

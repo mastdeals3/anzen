@@ -27,7 +27,7 @@ const SuppliersManager = lazy(() => import('../components/finance/SuppliersManag
 const BankAccountsManager = lazy(() => import('../components/finance/BankAccountsManager').then(m => ({ default: m.BankAccountsManager })));
 const StaffMasterManager = lazy(() => import('../components/finance/StaffMasterManager').then(m => ({ default: m.StaffMasterManager })));
 const UtilityMasterManager = lazy(() => import('../components/finance/UtilityMasterManager').then(m => ({ default: m.UtilityMasterManager })));
-const TaxReports = lazy(() => import('../components/finance/TaxReports').then(m => ({ default: m.TaxReports })));
+const TaxComplianceCentre = lazy(() => import('../components/finance/TaxComplianceCentre').then(m => ({ default: m.TaxComplianceCentre })));
 const CAReports = lazy(() => import('../components/finance/CAReports').then(m => ({ default: m.CAReports })));
 const GeneralJournalEntry = lazy(() => import('../components/finance/GeneralJournalEntry').then(m => ({ default: m.GeneralJournalEntry })));
 const IntegrityMonitor = lazy(() => import('../components/finance/IntegrityMonitor').then(m => ({ default: m.IntegrityMonitor })));
@@ -94,7 +94,7 @@ const getFinanceMenu = (t: Record<string, Record<string, string>>): MenuGroup[] 
       { id: 'receivables', label: t.finance.receivables },
       { id: 'payables', label: t.finance.payables },
       { id: 'ageing', label: t.finance.ageing },
-      { id: 'tax', label: t.finance.taxReports },
+      { id: 'tax', label: t.finance.taxCompliance ?? t.finance.taxReports },
       { id: 'integrity_monitor', label: 'Integrity Monitor' },
     ]
   },
@@ -318,7 +318,7 @@ function FinanceContent() {
       case 'ageing':
         return <AgeingReport />;
       case 'tax':
-        return <TaxReports />;
+        return <TaxComplianceCentre />;
       case 'ca_reports':
         return <CAReports />;
       case 'integrity_monitor':
@@ -372,17 +372,17 @@ function FinanceContent() {
                     {isCollapsible ? (
                       <button
                         onClick={() => toggleGroup(group.label)}
-                        className="w-full px-2 py-0.5 text-[8px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between hover:bg-gray-50"
+                        className="w-full px-2 py-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex items-center justify-between hover:bg-gray-100 bg-gray-50/60"
                       >
                         <span>{group.label}</span>
                         {isCollapsed ? (
-                          <ChevronRight className="w-2.5 h-2.5" />
+                          <ChevronRight className="w-3 h-3" />
                         ) : (
-                          <ChevronDown className="w-2.5 h-2.5" />
+                          <ChevronDown className="w-3 h-3" />
                         )}
                       </button>
                     ) : (
-                      <div className="px-2 py-0.5 text-[8px] font-bold text-gray-400 uppercase tracking-wider">
+                      <div className="px-2 py-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex items-center bg-gray-50/60">
                         {group.label}
                       </div>
                     )}
@@ -396,16 +396,19 @@ function FinanceContent() {
                               setActiveTab(item.id);
                               if (window.innerWidth < 768) setSidebarCollapsed(true);
                             }}
-                            className={`w-full text-left px-2 py-[3px] text-[10px] leading-tight transition-colors ${
+                            className={`relative w-full text-left px-2 py-1.5 text-xs font-medium transition-colors flex items-center ${
                               activeTab === item.id
-                                ? 'bg-blue-50 text-blue-700 font-medium border-l-2 border-blue-600'
-                                : 'text-gray-700 hover:bg-gray-50 border-l-2 border-transparent'
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <span>{item.label}</span>
+                            {activeTab === item.id && (
+                              <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-blue-500 rounded-r" />
+                            )}
+                            <div className="flex items-center justify-between w-full">
+                              <span className="truncate">{item.label}</span>
                               {item.shortcut && (
-                                <span className="text-[8px] text-gray-400">{item.shortcut}</span>
+                                <span className="text-[10px] text-gray-400 ml-1 shrink-0">{item.shortcut}</span>
                               )}
                             </div>
                           </button>

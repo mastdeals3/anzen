@@ -6,6 +6,7 @@ import {
   DUPLICATE_CUSTOMER_MESSAGE,
   normalizeCustomerName,
 } from '../../utils/customerValidation';
+import { sanitizeExportRows } from '../../utils/csvSafe';
 
 interface ExtractedContact {
   id?: string;
@@ -226,7 +227,7 @@ export function ExtractData() {
     }
 
     const worksheet = XLSX.utils.json_to_sheet(
-      dataToExport.map(contact => ({
+      sanitizeExportRows(dataToExport.map(contact => ({
         'Company Name': contact.companyName,
         'Customer Name': contact.customerName,
         'Email IDs': contact.emailIds,
@@ -235,7 +236,7 @@ export function ExtractData() {
         'Website': contact.website,
         'Address': contact.address,
         'Source': contact.source,
-      }))
+      })))
     );
 
     const workbook = XLSX.utils.book_new();

@@ -163,12 +163,37 @@ function base64FromBytes(bytes: Uint8Array): string {
 }
 
 async function downloadAttachment(payload: AttachmentUrlPayload): Promise<Attachment> {
+  const supabaseHost = new URL(Deno.env.get('SUPABASE_URL')!).hostname;
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(payload.url);
+  } catch {
+    throw new Error(`Invalid attachment URL: ${payload.url}`);
+  }
+  if (parsedUrl.protocol !== 'https:') {
+    throw new Error(`Only https attachment URLs allowed`);
+  }
+  if (parsedUrl.hostname !== supabaseHost) {
+    throw new Error(`Attachment host not allowlisted: ${parsedUrl.hostname}`);
+  }
+
   const response = await fetch(payload.url);
   if (!response.ok) {
     throw new Error(`Failed to download attachment ${payload.filename || payload.storagePath || payload.url}: ${response.status}`);
   }
 
+  const contentLengthHeader = response.headers.get("content-length");
+  if (contentLengthHeader) {
+    const contentLength = parseInt(contentLengthHeader, 10);
+    if (!Number.isNaN(contentLength) && contentLength > 25 * 1024 * 1024) {
+      throw new Error('Attachment too large');
+    }
+  }
+
   const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length > 25 * 1024 * 1024) {
+    throw new Error('Attachment too large');
+  }
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim();
   const filename = payload.filename
     || filenameFromDisposition(response.headers.get("content-disposition"))
