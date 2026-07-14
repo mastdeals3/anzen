@@ -52,7 +52,7 @@ BEGIN
       ('credit_notes',      'credit_note_date'),
       ('material_returns',  'return_date'),
       ('stock_rejections',  'rejection_date'),
-      ('purchase_orders',   'order_date'),
+      ('purchase_orders',   'po_date'),
       ('payment_vouchers',  'voucher_date'),
       ('receipt_vouchers',  'voucher_date'),
       ('purchase_invoices', 'invoice_date'),
