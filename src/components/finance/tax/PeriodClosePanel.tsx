@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Lock, Unlock, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { SectionCard, StatusChip, StatCard, StatCardGrid, EmptyState } from './TaxUI';
 
 interface PeriodStatus {
   id: string;
@@ -36,6 +37,17 @@ export function PeriodClosePanel() {
   }
   useEffect(() => { void refresh(); }, []);
 
+  const summary = useMemo(() => {
+    let ready = 0, closed = 0, blocked = 0;
+    for (const p of periods) {
+      if (p.status === 'closed') { closed++; continue; }
+      const out = outstanding[p.id] ?? 0;
+      const isBlocked = p.missing_faktur_count > 0 || p.unreconciled_payments_count > 0 || out > 0;
+      if (isBlocked) blocked++; else ready++;
+    }
+    return { ready, closed, blocked };
+  }, [periods, outstanding]);
+
   async function close(id: string) {
     setBusyId(id);
     try {
@@ -69,18 +81,31 @@ export function PeriodClosePanel() {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold flex items-center gap-2">
-        <Lock className="w-5 h-5" /> Tax Period Close
-      </h3>
-      <p className="text-xs text-gray-500">
-        Closing a period requires: all Faktur Pajak generated (PPN), all tax payments reconciled, and Rp 0 outstanding.
-        Once closed, sales invoices and expenses in that period cannot be edited (admin override via Reopen).
-      </p>
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <Lock className="w-5 h-5" /> Tax Period Close
+        </h3>
+        <p className="text-xs text-gray-500">
+          Closing a period requires all Faktur Pajak generated (PPN), all tax payments reconciled, and Rp 0 outstanding.
+          Once closed, sales invoices and expenses in that period cannot be edited (admin override via Reopen).
+        </p>
+      </div>
+
+      {!loading && periods.length > 0 && (
+        <StatCardGrid cols={3}>
+          <StatCard label="Ready to close" value={summary.ready} money={false} tone={summary.ready > 0 ? 'green' : 'gray'} icon={<CheckCircle2 className="w-4 h-4" />} />
+          <StatCard label="Blocked" value={summary.blocked} money={false} tone={summary.blocked > 0 ? 'red' : 'gray'} icon={<AlertTriangle className="w-4 h-4" />} hint="Faktur / reconcile / outstanding" />
+          <StatCard label="Closed" value={summary.closed} money={false} tone="blue" icon={<Lock className="w-4 h-4" />} />
+        </StatCardGrid>
+      )}
 
       {loading ? (
         <p className="text-gray-500">Loading…</p>
+      ) : periods.length === 0 ? (
+        <SectionCard><EmptyState title="No tax periods to close" hint="Periods appear here once tax documents are posted." /></SectionCard>
       ) : (
-        <div className="overflow-x-auto border rounded">
+        <SectionCard>
+        <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -106,11 +131,7 @@ export function PeriodClosePanel() {
                   <tr key={p.id} className="border-t">
                     <td className="px-3 py-2 font-medium">{p.fiscal_year}-{String(p.period_month).padStart(2,'0')}</td>
                     <td className="px-3 py-2">{p.tax_type}</td>
-                    <td className="px-3 py-2">
-                      {p.status === 'closed'
-                        ? <span className="inline-flex items-center gap-1 text-green-800"><CheckCircle2 className="w-4 h-4" />Closed</span>
-                        : <span>{p.status}</span>}
-                    </td>
+                    <td className="px-3 py-2"><StatusChip status={p.status} /></td>
                     <td className="px-3 py-2 text-right">Rp {Number(amount).toLocaleString('id-ID')}</td>
                     <td className="px-3 py-2 text-right">{out > 0 ? <span className="text-red-700">Rp {out.toLocaleString('id-ID')}</span> : 'Rp 0'}</td>
                     <td className="px-3 py-2 text-xs">
@@ -145,6 +166,7 @@ export function PeriodClosePanel() {
             </tbody>
           </table>
         </div>
+        </SectionCard>
       )}
 
       {reopenPrompt && (

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronRight, ExternalLink, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
+import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
 
 interface Row {
   tax_period_id: string;
@@ -201,6 +202,16 @@ export function TaxPeriodsPanel() {
     });
   }, [rows, dateRange]);
 
+  const totals = useMemo(() => filtered.reduce(
+    (a, r) => ({
+      input: a.input + Number(r.input_ppn_total || 0),
+      output: a.output + Number(r.output_ppn_total || 0),
+      net: a.net + Number(r.net_ppn_payable || 0),
+      cfOut: a.cfOut + Number(r.carry_forward_out || 0),
+    }),
+    { input: 0, output: 0, net: 0, cfOut: 0 },
+  ), [filtered]);
+
   async function recompute(id: string) {
     setBusyId(id);
     try {
@@ -234,20 +245,36 @@ export function TaxPeriodsPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">PPN Periods — Input / Output / Net / Carry Forward</h3>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">PPN Periods</h3>
+          <p className="text-xs text-gray-500">Input / Output / Net PPN and carry-forward per period. Click a row to see source documents.</p>
+        </div>
         <span className="text-xs text-gray-500 hidden md:inline">
           {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
         </span>
       </div>
-      <p className="text-xs text-gray-500">Click a row to see source documents for that period.</p>
+
+      {!loading && filtered.length > 0 && (
+        <StatCardGrid cols={4}>
+          <StatCard label="Input PPN (Masukan)" value={totals.input} tone="red" icon={<TrendingDown className="w-4 h-4" />} hint="Tax credit on purchases/imports" />
+          <StatCard label="Output PPN (Keluaran)" value={totals.output} tone="green" icon={<TrendingUp className="w-4 h-4" />} hint="Collected on sales, net of credit notes" />
+          <StatCard label="Net PPN Payable" value={totals.net} tone="blue" icon={<Wallet className="w-4 h-4" />} hint="Across periods in range" />
+          <StatCard label="Carry Forward Out" value={totals.cfOut} tone="gray" hint="Excess input carried to next period" />
+        </StatCardGrid>
+      )}
+
       {loading ? (
         <p className="text-gray-500">Loading…</p>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-gray-500 p-4 border rounded bg-yellow-50">
-          No PPN periods in the selected date range. Periods are created automatically when a Sales Invoice, Purchase Invoice, or Expense with PPN is posted.
-        </p>
+        <SectionCard>
+          <EmptyState
+            title="No PPN periods in the selected date range"
+            hint="Periods are created automatically when a Sales Invoice, Purchase Invoice, or Expense with PPN is posted. Try widening the date range."
+          />
+        </SectionCard>
       ) : (
-        <div className="border rounded overflow-hidden">
+        <SectionCard>
+          <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -276,7 +303,7 @@ export function TaxPeriodsPanel() {
                         {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </td>
                       <td className="px-3 py-2 font-medium">{r.fiscal_year}-{String(r.period_month).padStart(2,'0')}</td>
-                      <td className="px-3 py-2">{r.status}</td>
+                      <td className="px-3 py-2"><StatusChip status={r.status} /></td>
                       <td className="px-3 py-2 text-right text-red-700">{fmt(r.input_ppn_total)}</td>
                       <td className="px-3 py-2 text-right text-green-700">{fmt(r.output_ppn_total)}</td>
                       <td className="px-3 py-2 text-right">{fmt(r.carry_forward_in)}</td>
@@ -403,7 +430,8 @@ export function TaxPeriodsPanel() {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        </SectionCard>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
+import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
 
 type PphType = 'PPh21' | 'PPh22' | 'PPh23' | 'PPh4(2)' | 'PPh_Unifikasi';
 
@@ -190,6 +191,15 @@ export function PphRegisterPanel() {
     });
   }, [rows, dateRange]);
 
+  const totals = useMemo(() => filtered.reduce(
+    (a, r) => ({
+      total: a.total + Number(r.pph_total || 0),
+      paid: a.paid + Number(r.pph_paid_total || 0),
+      outstanding: a.outstanding + Number(r.pph_outstanding || 0),
+    }),
+    { total: 0, paid: 0, outstanding: 0 },
+  ), [filtered]);
+
   async function toggleExpand(row: Row) {
     if (expandedId === row.tax_period_id) {
       setExpandedId(null);
@@ -209,26 +219,43 @@ export function PphRegisterPanel() {
 
   return (
     <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900">PPh Register</h3>
+        <p className="text-xs text-gray-500">Withholding tax (PPh) by period and type. Click a period row to see the source documents.</p>
+      </div>
+
       <div className="flex gap-2 flex-wrap">
         {TABS.map(t => (
           <button
             key={t}
             onClick={() => setActive(t)}
-            className={`px-3 py-1 text-sm rounded border ${active === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50'}`}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition ${active === t ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'}`}
           >
             {pphTabLabel(t)}
           </button>
         ))}
       </div>
-      <p className="text-xs text-gray-500">Click a period row to see the source documents.</p>
+
+      {!loading && filtered.length > 0 && (
+        <StatCardGrid cols={3}>
+          <StatCard label={`Total ${active} Withheld`} value={totals.total} tone="orange" hint="Across periods in range" />
+          <StatCard label="Paid to Tax Office" value={totals.paid} tone="green" />
+          <StatCard label="Outstanding" value={totals.outstanding} tone="red" hint="Not yet remitted" />
+        </StatCardGrid>
+      )}
+
       {loading ? (
         <p className="text-gray-500">Loading…</p>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-gray-500 p-4 border rounded bg-yellow-50">
-          No {active} periods in the selected date range. Periods are created automatically once expenses with PPh are posted.
-        </p>
+        <SectionCard>
+          <EmptyState
+            title={`No ${active} periods in the selected date range`}
+            hint="PPh periods are created automatically once expenses, vouchers, or imports with PPh are posted. Try widening the date range."
+          />
+        </SectionCard>
       ) : (
-        <div className="border rounded overflow-hidden">
+        <SectionCard>
+          <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -257,13 +284,7 @@ export function PphRegisterPanel() {
                       </td>
                       <td className="px-3 py-2 font-medium">{r.fiscal_year}-{String(r.period_month).padStart(2,'0')}</td>
                       <td className="px-3 py-2">
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                          r.status === 'closed'   ? 'bg-gray-200 text-gray-700' :
-                          r.status === 'open'     ? 'bg-blue-100 text-blue-700' :
-                          'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {r.status}
-                        </span>
+                        <StatusChip status={r.status} />
                       </td>
                       <td className="px-3 py-2 text-right">{fmt(r.pph_total)}</td>
                       <td className="px-3 py-2 text-right text-green-700">{fmt(r.pph_paid_total)}</td>
@@ -341,7 +362,8 @@ export function PphRegisterPanel() {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        </SectionCard>
       )}
     </div>
   );

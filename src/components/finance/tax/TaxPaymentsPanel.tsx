@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Download, Trash2, Pencil } from 'lucide-react';
+import { Plus, Download, Trash2, Pencil, Receipt, Wallet, CheckCircle2, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { TaxAttachments } from './TaxAttachments';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
 import { Modal } from '../../Modal';
+import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
 
 interface Period {
   id: string;
@@ -123,6 +124,16 @@ export function TaxPaymentsPanel() {
     for (const p of periods) map.set(p.id, `${p.fiscal_year}-${String(p.period_month).padStart(2,'0')}`);
     return map;
   }, [periods]);
+
+  const totals = useMemo(() => {
+    let total = 0, reconciled = 0, pending = 0;
+    for (const p of filteredPayments) {
+      total += Number(p.amount ?? 0);
+      if (p.status === 'reconciled') reconciled += Number(p.amount ?? 0);
+      else pending += Number(p.amount ?? 0);
+    }
+    return { total, reconciled, pending, count: filteredPayments.length };
+  }, [filteredPayments]);
 
   function startEdit(p: Payment) {
     setEditingId(p.id);
@@ -478,10 +489,22 @@ export function TaxPaymentsPanel() {
         </form>
       </Modal>
 
+      {!loading && filteredPayments.length > 0 && (
+        <StatCardGrid cols={4}>
+          <StatCard label="Payments" value={totals.count} money={false} tone="blue" icon={<Receipt className="w-4 h-4" />} />
+          <StatCard label="Total paid" value={totals.total} tone="green" icon={<Wallet className="w-4 h-4" />} />
+          <StatCard label="Reconciled" value={totals.reconciled} tone="green" icon={<CheckCircle2 className="w-4 h-4" />} />
+          <StatCard label="Awaiting reconcile" value={totals.pending} tone={totals.pending > 0 ? 'orange' : 'gray'} icon={<Clock className="w-4 h-4" />} />
+        </StatCardGrid>
+      )}
+
       {loading ? (
         <p className="text-gray-500">Loading…</p>
+      ) : filteredPayments.length === 0 ? (
+        <SectionCard><EmptyState icon={<Receipt className="w-6 h-6" />} title="No tax payments in the selected date range" hint="Record a tax payment with the button above, or widen the date range." /></SectionCard>
       ) : (
-        <div className="overflow-x-auto border rounded">
+        <SectionCard>
+        <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -512,14 +535,9 @@ export function TaxPaymentsPanel() {
                       {!p.ntpn && !p.billing_code && !p.payment_reference && '—'}
                     </td>
                     <td className="px-3 py-2">
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs cursor-default ${
-                          p.status === 'reconciled' ? 'bg-green-100 text-green-800' :
-                          p.status === 'posted'     ? 'bg-blue-100 text-blue-800' :
-                                                      'bg-gray-100 text-gray-700'
-                        }`}
-                        title={p.status === 'posted' ? 'Awaiting bank reconciliation — use "Link Bank Stmt" to match' : undefined}
-                      >{p.status}</span>
+                      <span title={p.status === 'posted' ? 'Awaiting bank reconciliation — use "Link Bank Stmt" to match' : undefined}>
+                        <StatusChip status={p.status} />
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap space-x-1">
                       <button
@@ -559,12 +577,10 @@ export function TaxPaymentsPanel() {
                   </tr>
                 );
               })}
-              {filteredPayments.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-500 text-sm">No tax payments in the selected date range.</td></tr>
-              )}
             </tbody>
           </table>
         </div>
+        </SectionCard>
       )}
 
       {selected && (

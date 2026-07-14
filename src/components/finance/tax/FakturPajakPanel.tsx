@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Hash, ExternalLink, Download } from 'lucide-react';
+import { FileText, Hash, ExternalLink, Download, FileWarning, CheckCircle2, Receipt } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
 import { TaxAttachments } from './TaxAttachments';
+import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
 
 interface Customer {
   customer_name: string;
@@ -91,6 +92,16 @@ export function FakturPajakPanel() {
     () => invoices.filter(i => !i.faktur_pajak_number || i.faktur_pajak_number === '').length,
     [invoices]
   );
+
+  const totals = useMemo(() => {
+    let ppn = 0, reported = 0;
+    for (const i of invoices) {
+      ppn += Number(i.tax_amount ?? 0);
+      const f = fakturs[i.id];
+      if (f?.status === 'reported') reported++;
+    }
+    return { ppn, reported, count: invoices.length };
+  }, [invoices, fakturs]);
 
   const filteredInvoices = useMemo(() => {
     if (statusFilter === 'all') return invoices;
@@ -185,21 +196,28 @@ export function FakturPajakPanel() {
         </div>
       </div>
 
+      {!loading && invoices.length > 0 && (
+        <StatCardGrid cols={4}>
+          <StatCard label="Taxable invoices" value={totals.count} money={false} tone="blue" icon={<Receipt className="w-4 h-4" />} />
+          <StatCard label="Total PPN" value={totals.ppn} tone="green" icon={<FileText className="w-4 h-4" />} />
+          <StatCard label="Missing Faktur" value={missingCount} money={false} tone={missingCount > 0 ? 'orange' : 'gray'} icon={<FileWarning className="w-4 h-4" />} />
+          <StatCard label="Reported" value={totals.reported} money={false} tone="green" icon={<CheckCircle2 className="w-4 h-4" />} />
+        </StatCardGrid>
+      )}
+
       {loading ? (
         <p className="text-gray-500">Loading…</p>
       ) : filteredInvoices.length === 0 ? (
-        <div className="text-sm text-gray-700 p-4 border rounded bg-yellow-50 space-y-1">
-          <div>No sales invoices with PPN in the selected date range.</div>
-          <div className="text-xs text-gray-500">
-            Range: <span className="font-mono">{dateRange?.startDate ?? '—'}</span> to <span className="font-mono">{dateRange?.endDate ?? '—'}</span>{' '}
-            · Filter: <span className="font-medium">{statusFilter === 'all' ? 'All' : statusFilter}</span>
-          </div>
-          <div className="text-xs text-gray-500">
-            Faktur Pajak only lists taxable Sales Invoices (tax_amount &gt; 0). Widen the date range or check that the invoice actually has PPN.
-          </div>
-        </div>
+        <SectionCard>
+          <EmptyState
+            icon={<FileWarning className="w-6 h-6" />}
+            title="No sales invoices with PPN in the selected date range"
+            hint={`Range ${dateRange?.startDate ?? '—'} to ${dateRange?.endDate ?? '—'} · Filter ${statusFilter === 'all' ? 'All' : statusFilter}. Faktur Pajak only lists taxable Sales Invoices (tax_amount > 0). Widen the date range or check that the invoice actually has PPN.`}
+          />
+        </SectionCard>
       ) : (
-        <div className="overflow-x-auto border rounded">
+        <SectionCard>
+        <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
@@ -239,16 +257,11 @@ export function FakturPajakPanel() {
                     <td className="px-3 py-2 font-mono text-xs">{inv.faktur_pajak_number ?? '—'}</td>
                     <td className="px-3 py-2">
                       {fak ? (
-                        <span className={`px-2 py-0.5 rounded text-xs ${
-                          fak.status === 'reported' ? 'bg-green-100 text-green-800' :
-                          fak.status === 'uploaded' ? 'bg-blue-100 text-blue-800' :
-                          fak.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                                                     'bg-gray-100 text-gray-700'
-                        }`}>{fak.status}</span>
+                        <StatusChip status={fak.status} />
                       ) : inv.faktur_pajak_number ? (
-                        <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">generated</span>
+                        <StatusChip status="generated" />
                       ) : (
-                        <span className="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800">missing</span>
+                        <StatusChip status="missing" />
                       )}
                     </td>
                     <td className="px-3 py-2 text-right space-x-1 whitespace-nowrap">
@@ -295,6 +308,7 @@ export function FakturPajakPanel() {
             </tbody>
           </table>
         </div>
+        </SectionCard>
       )}
 
       {selected && fakturs[selected] && (

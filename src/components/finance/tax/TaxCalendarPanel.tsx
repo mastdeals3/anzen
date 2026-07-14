@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, AlertCircle, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
+import { Calendar, AlertCircle, CheckCircle2, Clock, RefreshCw, FileWarning } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { formatDate } from '../../../utils/dateFormat';
+import { StatCard, StatCardGrid, SectionCard, EmptyState } from './TaxUI';
 
 interface PeriodStatus {
   id: string;
@@ -74,6 +75,21 @@ export function TaxCalendarPanel() {
     return Array.from(byPeriod.entries()).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filtered]);
 
+  const summary = useMemo(() => {
+    const today = new Date();
+    let overdue = 0, dueSoon = 0, missingFaktur = 0;
+    for (const r of filtered) {
+      const due = r.payment_due_date ? new Date(r.payment_due_date) : null;
+      const settled = ['paid', 'closed', 'filed'].includes(r.status);
+      if (due && !settled) {
+        if (due < today) overdue++;
+        else if ((due.getTime() - today.getTime()) / 86400000 <= 7) dueSoon++;
+      }
+      missingFaktur += Number(r.missing_faktur_count || 0);
+    }
+    return { overdue, dueSoon, missingFaktur, periods: filtered.length };
+  }, [filtered]);
+
   async function generateNotifications() {
     setRefreshing(true);
     try {
@@ -90,18 +106,21 @@ export function TaxCalendarPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Calendar className="w-5 h-5" /> Tax Calendar
-        </h3>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Calendar className="w-5 h-5" /> Tax Calendar
+          </h3>
+          <p className="text-xs text-gray-500">Payment &amp; filing deadlines per period. Periods and companion PPh types are created automatically — no manual seeding.</p>
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500 hidden md:inline">
-            Filter: {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
+            {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
           </span>
           <button
             onClick={() => void generateNotifications()}
             disabled={refreshing}
             title="Push overdue / due-soon / missing-faktur into the Dashboard notification stream"
-            className="text-xs px-2 py-1 border rounded hover:bg-gray-50 inline-flex items-center gap-1"
+            className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 inline-flex items-center gap-1"
           >
             <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
             Sync notifications
@@ -109,23 +128,29 @@ export function TaxCalendarPanel() {
         </div>
       </div>
 
-      <p className="text-xs text-gray-500">
-        Periods are created automatically whenever a Sales Invoice, Purchase Invoice, or Expense with tax is
-        recorded. Companion PPh21/22/23/4(2)/Unifikasi periods are added automatically alongside each PPN
-        period. No manual seeding required.
-      </p>
+      {!loading && filtered.length > 0 && (
+        <StatCardGrid cols={4}>
+          <StatCard label="Overdue" value={summary.overdue} money={false} tone={summary.overdue > 0 ? 'red' : 'gray'} icon={<AlertCircle className="w-4 h-4" />} hint="Past payment due, unsettled" />
+          <StatCard label="Due within 7 days" value={summary.dueSoon} money={false} tone={summary.dueSoon > 0 ? 'orange' : 'gray'} icon={<Clock className="w-4 h-4" />} />
+          <StatCard label="Missing Faktur" value={summary.missingFaktur} money={false} tone={summary.missingFaktur > 0 ? 'orange' : 'gray'} icon={<FileWarning className="w-4 h-4" />} />
+          <StatCard label="Periods in range" value={summary.periods} money={false} tone="blue" />
+        </StatCardGrid>
+      )}
 
       {loading ? (
         <p className="text-gray-500">Loading…</p>
       ) : grouped.length === 0 ? (
-        <div className="text-sm text-gray-600 p-4 border rounded bg-yellow-50">
-          No tax periods yet. Create a Sales Invoice, Purchase Invoice or Expense with a tax amount — the matching PPN period plus companion PPh periods will appear here automatically.
-        </div>
+        <SectionCard>
+          <EmptyState
+            title="No tax periods yet"
+            hint="Create a Sales Invoice, Purchase Invoice or Expense with a tax amount — the matching PPN period plus companion PPh periods will appear here automatically."
+          />
+        </SectionCard>
       ) : (
         <div className="space-y-4">
           {grouped.map(([periodKey, items]) => (
-            <div key={periodKey} className="border rounded overflow-hidden">
-              <div className="bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 flex items-center justify-between">
+            <SectionCard key={periodKey} className="overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-700 flex items-center justify-between border-b border-gray-100">
                 <span>Period {periodKey}</span>
                 <span className="text-gray-500">{items.length} tax type(s)</span>
               </div>
@@ -169,7 +194,7 @@ export function TaxCalendarPanel() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </SectionCard>
           ))}
         </div>
       )}

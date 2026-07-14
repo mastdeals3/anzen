@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
+import { SectionCard, EmptyState } from './TaxUI';
 
 type ReportId =
   | 'input_ppn'
@@ -323,20 +324,20 @@ export function TaxReportsPanel() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
-        <aside className="border rounded overflow-hidden">
+        <SectionCard className="overflow-hidden p-0">
           {REPORTS.map(r => (
             <button
               key={r.id}
               onClick={() => setReportId(r.id)}
-              className={`w-full text-left px-3 py-2 border-b last:border-b-0 hover:bg-gray-50 ${
-                reportId === r.id ? 'bg-blue-50 border-l-2 border-blue-500' : 'border-l-2 border-transparent'
+              className={`w-full text-left px-3 py-2 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 ${
+                reportId === r.id ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'border-l-2 border-l-transparent'
               }`}
             >
               <div className="text-sm font-medium">{r.label}</div>
               <div className="text-xs text-gray-500">{r.description}</div>
             </button>
           ))}
-        </aside>
+        </SectionCard>
 
         <div>
           <div className="mb-2 text-sm">
@@ -345,11 +346,10 @@ export function TaxReportsPanel() {
           {loading ? (
             <p className="text-gray-500">Loading…</p>
           ) : rows.length === 0 ? (
-            <p className="text-sm text-gray-500 p-4 border rounded bg-yellow-50">
-              No rows in the selected date range.
-            </p>
+            <SectionCard><EmptyState icon={<FileText className="w-6 h-6" />} title="No rows in the selected date range" hint="Adjust the date range or pick another report." /></SectionCard>
           ) : (
-            <div className="overflow-x-auto border rounded">
+            <SectionCard>
+            <div className="overflow-x-auto">
               <table className="min-w-full text-xs">
                 <thead className="bg-gray-50">
                   <tr>
@@ -383,6 +383,7 @@ export function TaxReportsPanel() {
                 </p>
               )}
             </div>
+            </SectionCard>
           )}
         </div>
       </div>

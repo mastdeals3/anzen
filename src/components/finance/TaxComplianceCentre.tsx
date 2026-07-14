@@ -26,21 +26,23 @@ export function TaxComplianceCentre() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 border-b pb-2 overflow-x-auto">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setActive(t.id)}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-t border-b-2 transition -mb-[9px] whitespace-nowrap ${
-              active === t.id
-                ? 'text-blue-700 border-blue-600 bg-blue-50/40'
-                : 'text-gray-600 border-transparent hover:text-gray-900'
-            }`}
-          >
-            {t.icon}
-            {t.label}
-          </button>
-        ))}
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-1.5">
+        <div className="flex items-center gap-1 overflow-x-auto">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setActive(t.id)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition whitespace-nowrap ${
+                active === t.id
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <Suspense fallback={<div className="text-gray-500">Loading…</div>}>
