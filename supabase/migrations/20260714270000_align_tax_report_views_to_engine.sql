@@ -25,12 +25,18 @@
 --        notes as negative-PPN rows so the register SUM equals the engine.
 --
 -- Pure view redefinitions. No table changes, no data changes, idempotent.
+--
+-- NOTE: uses DROP VIEW + CREATE (not CREATE OR REPLACE). CREATE OR REPLACE
+-- cannot change a column's data type (net_ppn_payable numeric -> numeric(18,2))
+-- nor insert a column mid-list (document_type), which raises 42P16. Nothing
+-- else depends on these two views, so a plain DROP is safe.
 -- ============================================================================
 
 BEGIN;
 
 -- ── 1. vw_ppn_net_by_period: read engine snapshot columns verbatim ──────────
-CREATE OR REPLACE VIEW public.vw_ppn_net_by_period AS
+DROP VIEW IF EXISTS public.vw_ppn_net_by_period;
+CREATE VIEW public.vw_ppn_net_by_period AS
 SELECT
   tp.id                AS tax_period_id,
   tp.fiscal_year,
@@ -53,6 +59,7 @@ FROM tax_periods tp
 WHERE tp.tax_type = 'PPN';
 
 ALTER VIEW public.vw_ppn_net_by_period SET (security_invoker = true);
+GRANT SELECT ON public.vw_ppn_net_by_period TO authenticated;
 
 COMMENT ON VIEW public.vw_ppn_net_by_period IS
 'Net PPN per period. Reads engine-stored tax_periods columns (net_ppn,
@@ -65,7 +72,8 @@ compute_period_ppn. net_ppn_payable is an alias of tax_periods.net_ppn.';
 -- payment_status, created_at) so the existing frontend query
 -- (.gte('invoice_date',…).order('invoice_date')) keeps working unchanged.
 -- A document_type column is added to distinguish the credit-note rows.
-CREATE OR REPLACE VIEW public.vw_output_ppn_report AS
+DROP VIEW IF EXISTS public.vw_output_ppn_report;
+CREATE VIEW public.vw_output_ppn_report AS
 -- Sales invoices: positive Output PPN
 SELECT
   DATE_TRUNC('month', si.invoice_date) AS month,
@@ -105,6 +113,7 @@ WHERE cn.status = 'approved'
   AND cn.tax_amount > 0;
 
 ALTER VIEW public.vw_output_ppn_report SET (security_invoker = true);
+GRANT SELECT ON public.vw_output_ppn_report TO authenticated;
 
 COMMENT ON VIEW public.vw_output_ppn_report IS
 'Output PPN register. Sales invoices as positive PPN, approved credit notes
