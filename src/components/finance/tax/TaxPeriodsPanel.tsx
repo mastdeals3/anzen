@@ -19,7 +19,7 @@ interface Row {
 }
 
 interface InputLine {
-  source: 'purchase_invoice' | 'expense';
+  source: 'purchase_invoice' | 'expense' | 'broker' | 'pib';
   doc_number: string;
   doc_date: string;
   party: string;
@@ -30,7 +30,7 @@ interface InputLine {
 }
 
 interface OutputLine {
-  source: 'sales_invoice';
+  source: 'sales_invoice' | 'credit_note';
   doc_number: string;
   doc_date: string;
   customer: string;
@@ -45,30 +45,35 @@ function fmtDate(s: string) {
   return isNaN(d.getTime()) ? s : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// Mirror compute_period_ppn (20260714190000) EXACTLY so the listed documents
+// sum to the engine's input_ppn_total / output_ppn_total. Attribution is by
+// tax_period_id (the same key the engine uses), NOT by date. Input PPN =
+// purchase_invoices + finance_expenses.ppn_amount (rows WITHOUT broker PPN) +
+// broker_items[].ppn_amount + pib_ppn_amount. Output PPN = sales_invoices −
+// approved credit_notes.
 async function loadDetail(row: Row): Promise<{ input: InputLine[]; output: OutputLine[] }> {
-  const yr = row.fiscal_year;
-  const mo = row.period_month;
-  const startDate = `${yr}-${String(mo).padStart(2,'0')}-01`;
-  const endDate   = new Date(yr, mo, 0).toISOString().slice(0,10);
+  const periodId = row.tax_period_id;
 
-  const [piRes, feRes, siRes] = await Promise.all([
+  const [piRes, feRes, siRes, cnRes] = await Promise.all([
     supabase
       .from('purchase_invoices')
       .select('id, invoice_number, invoice_date, tax_amount, suppliers:supplier_id(company_name), description')
-      .gte('invoice_date', startDate)
-      .lte('invoice_date', endDate)
+      .eq('tax_period_id', periodId)
       .gt('tax_amount', 0),
     supabase
       .from('finance_expenses')
-      .select('id, voucher_number, expense_date, ppn_amount, suppliers:supplier_id(company_name), description')
-      .gte('expense_date', startDate)
-      .lte('expense_date', endDate)
-      .gt('ppn_amount', 0),
+      .select('id, voucher_number, expense_date, ppn_amount, pib_ppn_amount, broker_items, suppliers:supplier_id(company_name), description')
+      .eq('tax_period_id', periodId),
     supabase
       .from('sales_invoices')
       .select('id, invoice_number, invoice_date, tax_amount, customers:customer_id(customer_name, company_name), faktur_pajak_number')
-      .gte('invoice_date', startDate)
-      .lte('invoice_date', endDate)
+      .eq('tax_period_id', periodId)
+      .gt('tax_amount', 0),
+    supabase
+      .from('credit_notes')
+      .select('id, credit_note_number, credit_note_date, tax_amount, customers:customer_id(customer_name, company_name)')
+      .eq('tax_period_id', periodId)
+      .eq('status', 'approved')
       .gt('tax_amount', 0),
   ]);
 
@@ -81,29 +86,83 @@ async function loadDetail(row: Row): Promise<{ input: InputLine[]; output: Outpu
       party: r.suppliers?.company_name ?? '—',
       description: r.description,
       ppn_amount: Number(r.tax_amount),
-      tax_period_id: row.tax_period_id,
-    })),
-    ...((feRes.data ?? []) as any[]).map(r => ({
-      source: 'expense' as const,
-      id: r.id,
-      doc_number: r.voucher_number ?? '—',
-      doc_date: r.expense_date,
-      party: r.suppliers?.company_name ?? '—',
-      description: r.description,
-      ppn_amount: Number(r.ppn_amount),
-      tax_period_id: row.tax_period_id,
+      tax_period_id: periodId,
     })),
   ];
 
-  const output: OutputLine[] = ((siRes.data ?? []) as any[]).map(r => ({
-    source: 'sales_invoice' as const,
-    id: r.id,
-    doc_number: r.invoice_number ?? '—',
-    doc_date: r.invoice_date,
-    customer: r.customers?.company_name || r.customers?.customer_name || '—',
-    ppn_amount: Number(r.tax_amount),
-    faktur_number: r.faktur_pajak_number ?? null,
-  }));
+  // finance_expenses: broker-line PPN and PIB PPN are additive; the regular
+  // ppn_amount is counted ONLY on rows that carry no broker-line PPN (exactly
+  // the engine's NOT EXISTS guard), to avoid double-counting.
+  for (const r of ((feRes.data ?? []) as any[])) {
+    const brokerItems: any[] = Array.isArray(r.broker_items) ? r.broker_items : [];
+    const hasBrokerPpn = brokerItems.some(it => Number(it?.ppn_amount ?? 0) > 0);
+    const supplier = r.suppliers?.company_name ?? '—';
+
+    if (!hasBrokerPpn && Number(r.ppn_amount) > 0) {
+      input.push({
+        source: 'expense',
+        id: r.id,
+        doc_number: r.voucher_number ?? '—',
+        doc_date: r.expense_date,
+        party: supplier,
+        description: r.description,
+        ppn_amount: Number(r.ppn_amount),
+        tax_period_id: periodId,
+      });
+    }
+
+    brokerItems.forEach((it, idx) => {
+      const amt = Number(it?.ppn_amount ?? 0);
+      if (amt > 0) {
+        input.push({
+          source: 'broker',
+          id: `${r.id}-broker-${idx}`,
+          doc_number: r.voucher_number ?? '—',
+          doc_date: r.expense_date,
+          party: supplier,
+          description: it?.description ?? r.description,
+          ppn_amount: amt,
+          tax_period_id: periodId,
+        });
+      }
+    });
+
+    if (Number(r.pib_ppn_amount) > 0) {
+      input.push({
+        source: 'pib',
+        id: `${r.id}-pib`,
+        doc_number: r.voucher_number ?? '—',
+        doc_date: r.expense_date,
+        party: supplier,
+        description: r.description,
+        ppn_amount: Number(r.pib_ppn_amount),
+        tax_period_id: periodId,
+      });
+    }
+  }
+
+  const output: OutputLine[] = [
+    ...((siRes.data ?? []) as any[]).map(r => ({
+      source: 'sales_invoice' as const,
+      id: r.id,
+      doc_number: r.invoice_number ?? '—',
+      doc_date: r.invoice_date,
+      customer: r.customers?.company_name || r.customers?.customer_name || '—',
+      ppn_amount: Number(r.tax_amount),
+      faktur_number: r.faktur_pajak_number ?? null,
+    })),
+    // Approved credit notes reduce Output PPN — shown as negative lines so the
+    // subtotal equals the engine's netted output_ppn_total.
+    ...((cnRes.data ?? []) as any[]).map(r => ({
+      source: 'credit_note' as const,
+      id: r.id,
+      doc_number: r.credit_note_number ?? '—',
+      doc_date: r.credit_note_date,
+      customer: r.customers?.company_name || r.customers?.customer_name || '—',
+      ppn_amount: -Number(r.tax_amount),
+      faktur_number: null,
+    })),
+  ];
 
   return { input, output };
 }
@@ -263,7 +322,10 @@ export function TaxPeriodsPanel() {
                                         <tr key={l.id} className="border-b border-gray-100">
                                           <td className="py-1 pr-2 font-mono">
                                             <span className="text-[10px] text-gray-400 mr-1">
-                                              {l.source === 'purchase_invoice' ? 'PI' : 'EXP'}
+                                              {l.source === 'purchase_invoice' ? 'PI'
+                                                : l.source === 'broker' ? 'BRK'
+                                                : l.source === 'pib' ? 'PIB'
+                                                : 'EXP'}
                                             </span>
                                             {l.doc_number}
                                           </td>
@@ -303,15 +365,22 @@ export function TaxPeriodsPanel() {
                                     <tbody>
                                       {detail.output.map(l => (
                                         <tr key={l.id} className="border-b border-gray-100">
-                                          <td className="py-1 pr-2 font-mono">{l.doc_number}</td>
+                                          <td className="py-1 pr-2 font-mono">
+                                            {l.source === 'credit_note' && (
+                                              <span className="text-[10px] text-red-500 mr-1">CN</span>
+                                            )}
+                                            {l.doc_number}
+                                          </td>
                                           <td className="py-1 pr-2 whitespace-nowrap">{fmtDate(l.doc_date)}</td>
                                           <td className="py-1 pr-2 text-gray-600 max-w-[120px] truncate" title={l.customer}>{l.customer}</td>
                                           <td className="py-1 pr-2">
-                                            {l.faktur_number
-                                              ? <span className="text-green-700 font-mono">{l.faktur_number}</span>
-                                              : <span className="text-orange-500 text-[10px]">Missing</span>}
+                                            {l.source === 'credit_note'
+                                              ? <span className="text-red-500 text-[10px]">Reversal</span>
+                                              : l.faktur_number
+                                                ? <span className="text-green-700 font-mono">{l.faktur_number}</span>
+                                                : <span className="text-orange-500 text-[10px]">Missing</span>}
                                           </td>
-                                          <td className="py-1 text-right text-green-700 font-mono">{fmt(l.ppn_amount)}</td>
+                                          <td className={`py-1 text-right font-mono ${l.ppn_amount < 0 ? 'text-red-600' : 'text-green-700'}`}>{fmt(l.ppn_amount)}</td>
                                         </tr>
                                       ))}
                                       <tr className="font-semibold">
