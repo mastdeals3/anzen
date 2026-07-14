@@ -27,7 +27,7 @@ interface Row {
 }
 
 interface SourceLine {
-  module: 'expense' | 'payment_voucher';
+  module: 'expense' | 'payment_voucher' | 'import';
   id: string;
   doc_number: string;
   doc_date: string;
@@ -58,10 +58,10 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const lastDay = new Date(yr, mo, 0).getDate();
   const endDate = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
 
-  const [feRes, pvRes] = await Promise.all([
+  const [feRes, pvRes, importRes] = await Promise.all([
     supabase
       .from('finance_expenses')
-      .select('id, voucher_number, expense_date, pph_amount, description, payment_method, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:paid_by_staff_id(full_name)')
+      .select('id, voucher_number, expense_date, pph_amount, description, payment_method, expense_category, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:paid_by_staff_id(full_name)')
       .gte('expense_date', startDate)
       .lte('expense_date', endDate)
       .gt('pph_amount', 0),
@@ -71,12 +71,23 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       .gte('voucher_date', startDate)
       .lte('voucher_date', endDate)
       .gt('pph_amount', 0),
+    // Import PPh 22: pib_import (pib_pph_amount) + pph_import (whole amount).
+    // Mirrors compute_period_ppn's import branch. Always PPh22.
+    supabase
+      .from('finance_expenses')
+      .select('id, voucher_number, expense_date, amount, pib_pph_amount, description, expense_category, suppliers:supplier_id(company_name)')
+      .gte('expense_date', startDate)
+      .lte('expense_date', endDate)
+      .in('expense_category', ['pib_import', 'pph_import']),
   ]);
 
   const pphType = row.tax_type;
 
   const expenses: SourceLine[] = ((feRes.data ?? []) as any[])
     .filter(r => {
+      // Import categories are handled by the import branch below; exclude here
+      // to avoid double-counting (matches the engine's NOT IN import guard).
+      if (r.expense_category === 'pib_import' || r.expense_category === 'pph_import') return false;
       const codeType = r.pph_code?.tax_type ?? null;
       return pphType === 'PPh_Unifikasi' || codeType === pphType;
     })
@@ -111,7 +122,31 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       recon_status: null,
     }));
 
-  return [...expenses, ...vouchers].sort((a, b) => a.doc_date.localeCompare(b.doc_date));
+  // Import PPh 22 — only relevant to the PPh22 and consolidated tabs.
+  const imports: SourceLine[] = (pphType === 'PPh22' || pphType === 'PPh_Unifikasi')
+    ? ((importRes.data ?? []) as any[])
+        .map(r => {
+          const amt = r.expense_category === 'pib_import'
+            ? Number(r.pib_pph_amount ?? 0)
+            : Number(r.amount ?? 0);
+          return { r, amt };
+        })
+        .filter(({ amt }) => amt > 0)
+        .map(({ r, amt }) => ({
+          module: 'import' as const,
+          id: `${r.id}-imp`,
+          doc_number: r.voucher_number ?? '—',
+          doc_date: r.expense_date,
+          party: r.suppliers?.company_name ?? '—',
+          description: r.description,
+          pph_code: 'PPh22 Import',
+          pph_amount: amt,
+          payment_method: null,
+          recon_status: null,
+        }))
+    : [];
+
+  return [...expenses, ...vouchers, ...imports].sort((a, b) => a.doc_date.localeCompare(b.doc_date));
 }
 
 export function PphRegisterPanel() {
@@ -266,9 +301,13 @@ export function PphRegisterPanel() {
                                   <tr key={l.id} className="border-b border-gray-100 hover:bg-white">
                                     <td className="py-1.5 pr-3">
                                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                        l.module === 'expense' ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'
+                                        l.module === 'expense' ? 'bg-orange-100 text-orange-700'
+                                          : l.module === 'import' ? 'bg-blue-100 text-blue-700'
+                                          : 'bg-purple-100 text-purple-700'
                                       }`}>
-                                        {l.module === 'expense' ? 'Expense' : 'Payment Voucher'}
+                                        {l.module === 'expense' ? 'Expense'
+                                          : l.module === 'import' ? 'Import PPh22'
+                                          : 'Payment Voucher'}
                                       </span>
                                     </td>
                                     <td className="py-1.5 pr-3 font-mono font-semibold">{l.doc_number}</td>
