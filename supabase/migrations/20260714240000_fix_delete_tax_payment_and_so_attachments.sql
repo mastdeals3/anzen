@@ -199,75 +199,95 @@ GRANT  EXECUTE ON FUNCTION public.delete_tax_payment(uuid) TO authenticated;
 
 -- ============================================================================
 -- Fix 1b: update_tax_payment — remove bank_statement_lines.updated_at write
--- Read the full function signature from the existing definition first.
+--
+-- Exact production body from 20260713160000 (RETURNS uuid, 5 optional params
+-- with DEFAULT NULL, full admin/reconciled guard, full audit log).
+-- Only change: removed `updated_at = now()` from the bank_statement_lines
+-- UPDATE (line 628-629 in the original) — that column does not exist.
 -- ============================================================================
 CREATE OR REPLACE FUNCTION public.update_tax_payment(
-  p_id                 uuid,
-  p_payment_date       date,
-  p_amount             numeric,
-  p_bank_account_id    uuid,
-  p_billing_code       text,
-  p_ntpn               text,
-  p_government_reference text,
-  p_notes              text,
-  p_payment_reference  text
-)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
+  p_id                   uuid,
+  p_payment_date         date,
+  p_amount               numeric,
+  p_bank_account_id      uuid,
+  p_billing_code         text  DEFAULT NULL,
+  p_ntpn                 text  DEFAULT NULL,
+  p_government_reference text  DEFAULT NULL,
+  p_notes                text  DEFAULT NULL,
+  p_payment_reference    text  DEFAULT NULL
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_old              tax_payments%ROWTYPE;
-  v_period_status    text;
-  v_old_je_ids       uuid[];
-  v_je_id            uuid;
+  v_period           tax_periods%ROWTYPE;
   v_je_number        text;
-  v_ref_number       text;
-  v_bank_acct_coa_id uuid;
+  v_je_id            uuid;
+  v_old_je_ids       uuid[];
+  v_payable_code     text;
   v_payable_acct_id  uuid;
+  v_bank_acct_coa_id uuid;
+  v_ref_number       text;
+  v_is_admin         boolean;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Not authenticated' USING ERRCODE = 'insufficient_privilege';
   END IF;
+  IF p_amount IS NULL OR p_amount <= 0 THEN
+    RAISE EXCEPTION 'Tax payment amount must be > 0';
+  END IF;
+  IF p_bank_account_id IS NULL THEN
+    RAISE EXCEPTION 'Bank account is required';
+  END IF;
 
-  SELECT * INTO v_old FROM public.tax_payments WHERE id = p_id FOR UPDATE;
+  SELECT * INTO v_old FROM tax_payments WHERE id = p_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Tax payment % not found', p_id USING ERRCODE = 'no_data_found';
   END IF;
 
-  IF current_setting('request.jwt.claim.role', true) <> 'service_role' THEN
-    SELECT status INTO v_period_status FROM tax_periods WHERE id = v_old.tax_period_id;
-    IF v_period_status = 'closed' THEN
-      RAISE EXCEPTION 'Tax period is closed; cannot modify tax payment.'
-        USING ERRCODE = 'check_violation';
+  SELECT * INTO v_period FROM tax_periods WHERE id = v_old.tax_period_id;
+  IF v_period.status = 'closed' AND current_setting('request.jwt.claim.role', true) <> 'service_role' THEN
+    RAISE EXCEPTION 'Tax period is closed; cannot edit tax payment. Reopen the period first.'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- Reconciled payments can only be edited by admin (edit implies breaking
+  -- the current bank reconciliation match). Non-admins must first unmatch
+  -- via the Bank Reconciliation screen.
+  IF v_old.status = 'reconciled' THEN
+    SELECT (up.role = 'admin' AND up.is_active) INTO v_is_admin
+      FROM user_profiles up WHERE up.id = auth.uid();
+    IF NOT COALESCE(v_is_admin, false) THEN
+      RAISE EXCEPTION 'Tax payment is reconciled; only an admin may edit it. Unmatch it in Bank Reconciliation first.'
+        USING ERRCODE = 'insufficient_privilege';
     END IF;
   END IF;
 
-  -- Resolve the bank account's COA entry
-  SELECT coa_account_id INTO v_bank_acct_coa_id
-    FROM bank_accounts WHERE id = p_bank_account_id;
-  IF v_bank_acct_coa_id IS NULL THEN
-    RAISE EXCEPTION 'Bank account % has no linked COA account', p_bank_account_id;
+  -- Resolve accounts (same logic as record_tax_payment)
+  v_payable_code := CASE v_old.tax_type
+    WHEN 'PPN'      THEN '2130'
+    WHEN 'PPh21'    THEN '2131'
+    WHEN 'PPh22'    THEN '2137'
+    WHEN 'PPh23'    THEN '2132'
+    WHEN 'PPh4(2)'  THEN '2138'
+    WHEN 'PPh_Unifikasi' THEN '2131'
+    ELSE NULL
+  END;
+  IF v_payable_code IS NULL THEN
+    RAISE EXCEPTION 'Unknown tax_type: %', v_old.tax_type;
   END IF;
 
-  -- Resolve the tax payable account for this tax type
-  SELECT id INTO v_payable_acct_id
-    FROM chart_of_accounts
-   WHERE account_code IN (
-     CASE v_old.tax_type
-       WHEN 'PPN'         THEN '2130'
-       WHEN 'PPh21'       THEN '2140'
-       WHEN 'PPh22'       THEN '2141'
-       WHEN 'PPh23'       THEN '2142'
-       WHEN 'PPh4(2)'     THEN '2143'
-       WHEN 'PPh_Unifikasi' THEN '2144'
-       ELSE '2130'
-     END
-   )
-   LIMIT 1;
+  SELECT id INTO v_payable_acct_id FROM chart_of_accounts WHERE code = v_payable_code;
   IF v_payable_acct_id IS NULL THEN
-    RAISE EXCEPTION 'No payable COA account found for tax type %', v_old.tax_type;
+    RAISE EXCEPTION 'Payable account % missing from Chart of Accounts', v_payable_code;
+  END IF;
+
+  SELECT coa_id INTO v_bank_acct_coa_id FROM bank_accounts WHERE id = p_bank_account_id;
+  IF v_bank_acct_coa_id IS NULL THEN
+    SELECT id INTO v_bank_acct_coa_id FROM chart_of_accounts WHERE code = '1111' LIMIT 1;
+  END IF;
+  IF v_bank_acct_coa_id IS NULL THEN
+    RAISE EXCEPTION 'Cannot resolve bank CoA account';
   END IF;
 
   -- Reverse old JE(s)
@@ -296,7 +316,7 @@ BEGIN
     DELETE FROM journal_entries     WHERE id = ANY (v_old_je_ids);
   END IF;
 
-  -- Update the payment row
+  -- Update the payment row (period + type unchanged; use delete+create for that)
   UPDATE tax_payments SET
     payment_date         = p_payment_date,
     amount               = p_amount,
@@ -335,19 +355,46 @@ BEGIN
     (v_je_id, 2, v_bank_acct_coa_id,
      'Bank ' || v_old.tax_type || ' payment — ' || v_ref_number, 0, p_amount);
 
-  UPDATE tax_payments
-     SET journal_entry_id = v_je_id,
-         status           = 'posted',
-         updated_at       = now()
+  UPDATE tax_payments SET journal_entry_id = v_je_id, status = 'posted', updated_at = now()
    WHERE id = p_id;
 
-  -- Refresh period snapshot
+  -- Refresh period snapshot (belt-and-braces; the AFTER trigger also fires)
   PERFORM compute_period_ppn(v_old.tax_period_id);
+
+  -- Audit log — captures full before/after
+  INSERT INTO audit_logs (user_id, table_name, action_type, record_id, old_values, new_values)
+  VALUES (
+    auth.uid(), 'tax_payments', 'update', p_id,
+    jsonb_build_object(
+      'payment_date',      v_old.payment_date,
+      'amount',            v_old.amount,
+      'bank_account_id',   v_old.bank_account_id,
+      'ntpn',              v_old.ntpn,
+      'billing_code',      v_old.billing_code,
+      'payment_reference', v_old.payment_reference,
+      'notes',             v_old.notes,
+      'status',            v_old.status,
+      'old_je_ids',        to_jsonb(v_old_je_ids)
+    ),
+    jsonb_build_object(
+      'payment_date',      p_payment_date,
+      'amount',            p_amount,
+      'bank_account_id',   p_bank_account_id,
+      'ntpn',              p_ntpn,
+      'billing_code',      p_billing_code,
+      'payment_reference', p_payment_reference,
+      'notes',             p_notes,
+      'new_je_id',         v_je_id,
+      'edited_at',         now()
+    )
+  );
+
+  RETURN p_id;
 END $$;
 
-REVOKE ALL     ON FUNCTION public.update_tax_payment(uuid,date,numeric,uuid,text,text,text,text,text) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.update_tax_payment(uuid,date,numeric,uuid,text,text,text,text,text) FROM anon;
-GRANT  EXECUTE ON FUNCTION public.update_tax_payment(uuid,date,numeric,uuid,text,text,text,text,text) TO authenticated;
+REVOKE ALL     ON FUNCTION public.update_tax_payment(uuid, date, numeric, uuid, text, text, text, text, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.update_tax_payment(uuid, date, numeric, uuid, text, text, text, text, text) FROM anon;
+GRANT  EXECUTE ON FUNCTION public.update_tax_payment(uuid, date, numeric, uuid, text, text, text, text, text) TO authenticated;
 
 -- ============================================================================
 -- Fix 2: sales-order-documents — restore SELECT policy for signed URLs
