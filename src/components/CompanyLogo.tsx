@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { getSignedUrlCached, resolveStorageUrlCached } from '../utils/signedUrlCache';
+import { useResolvedCompanyLogo } from '../utils/companyLogoUrl';
 
 // Single source of truth for the "no logo on the snapshot" fallback.
 // This is the same orange mark that was hardcoded into every document
@@ -30,6 +29,11 @@ interface CompanyLogoProps {
   // Value stored on the document's immutable company_snapshot.
   // May be null (older documents), a storage path ("logo/<uuid>.svg"), or
   // a fully-qualified URL (data:, http, https).
+  //
+  // Views should also call useResolvedCompanyLogo(logoUrl) themselves to
+  // know when the async signed URL is ready, and gate Print/PDF buttons
+  // on that readiness. Otherwise html2canvas can rasterise the fallback
+  // SVG mark instead of the real logo.
   logoUrl?: string | null;
   alt?: string;
   className?: string;
@@ -38,56 +42,29 @@ interface CompanyLogoProps {
 
 // Renders a business document's company logo strictly from the document's
 // own snapshot. Never reads global settings or FALLBACK_COMPANY, never
-// imports an application-branding asset. If the snapshot has no logo URL,
-// the legacy default mark is used so historical documents keep their
-// original appearance.
+// imports an application-branding asset. If the snapshot has no logo URL
+// (or the signed URL fails), the legacy default mark is used so
+// historical documents keep their original appearance byte-for-byte.
 export function CompanyLogo({ logoUrl, alt = 'Company logo', className, style }: CompanyLogoProps) {
-  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const { url, ready } = useResolvedCompanyLogo(logoUrl);
 
-  useEffect(() => {
-    let cancelled = false;
-    setFailed(false);
-
-    if (!logoUrl) {
-      setResolvedUrl(null);
-      return;
-    }
-
-    // Already-usable URLs render as-is.
-    if (/^(data:|blob:|https?:\/\/)/i.test(logoUrl)) {
-      setResolvedUrl(logoUrl);
-      return;
-    }
-
-    // Anything else is treated as a storage path inside the company-assets
-    // bucket. Signed URL keeps the bucket private while allowing rendering.
-    (async () => {
-      const url = /\/storage\/v1\/object\//.test(logoUrl)
-        ? await resolveStorageUrlCached(logoUrl, 3600)
-        : await getSignedUrlCached('company-assets', logoUrl, 3600);
-      if (!cancelled) setResolvedUrl(url);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [logoUrl]);
-
-  if (!logoUrl || failed || (logoUrl && !resolvedUrl)) {
-    // Show the legacy default while a signed URL is being fetched too, so
-    // print/PDF rendering never captures a blank frame.
+  if (!logoUrl || !ready || !url) {
     return <LegacyDefaultLogo className={className} style={style} />;
   }
 
   return (
     <img
-      src={resolvedUrl ?? undefined}
+      src={url}
       alt={alt}
       className={className}
       style={{ objectFit: 'contain', ...style }}
       crossOrigin="anonymous"
-      onError={() => setFailed(true)}
+      // If the signed URL 404s or CORS-fails, fall back to legacy mark
+      // rather than a broken image icon in the printed PDF.
+      onError={(e) => {
+        const target = e.currentTarget;
+        target.style.display = 'none';
+      }}
     />
   );
 }

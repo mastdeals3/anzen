@@ -12,7 +12,8 @@ import html2canvas from 'html2canvas';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
-import { type CompanySnapshot, FALLBACK_COMPANY } from '../../types/company';
+import { type CompanySnapshot } from '../../types/company';
+import { waitForImages } from '../../utils/companyLogoUrl';
 
 interface Customer {
   id: string;
@@ -329,6 +330,11 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
 
   const handlePrint = async () => {
     if (!printRef.current || !selectedVoucher) return;
+    if (!selectedVoucher.company_snapshot) {
+      alert('Cannot print: this voucher has no company_snapshot. Ask an admin to run the snapshot backfill migration.');
+      return;
+    }
+    await waitForImages(printRef.current);
 
     try {
       const canvas = await html2canvas(printRef.current, {
@@ -1187,11 +1193,12 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         <div ref={printRef} style={{ position: 'absolute', left: '-9999px', width: '210mm', padding: '15mm', backgroundColor: '#fff' }}>
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: '20px', borderBottom: '2px solid #333', paddingBottom: '15px' }}>
+            {/* selectedVoucher.company_snapshot is guaranteed non-null here — handlePrint refuses to run without it. */}
             <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 5px 0', color: '#1a1a1a' }}>
-              {(selectedVoucher.company_snapshot ?? FALLBACK_COMPANY).company_name}
+              {selectedVoucher.company_snapshot?.company_name ?? '—'}
             </h1>
-            {(selectedVoucher.company_snapshot ?? FALLBACK_COMPANY).company_address && (
-              <p style={{ fontSize: '11px', margin: '0', color: '#666' }}>{(selectedVoucher.company_snapshot ?? FALLBACK_COMPANY).company_address}</p>
+            {selectedVoucher.company_snapshot?.company_address && (
+              <p style={{ fontSize: '11px', margin: '0', color: '#666' }}>{selectedVoucher.company_snapshot.company_address}</p>
             )}
             <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: '15px 0 0 0', color: '#2563eb' }}>
               RECEIPT VOUCHER

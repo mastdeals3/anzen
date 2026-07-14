@@ -3,7 +3,9 @@ import { X, Printer, Download } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { type CompanySnapshot, FALLBACK_COMPANY } from '../types/company';
+import { type CompanySnapshot } from '../types/company';
+import { useResolvedCompanyLogo, waitForImages } from '../utils/companyLogoUrl';
+import { SnapshotMissingError } from './SnapshotMissingError';
 
 import { CompanyLogo } from './CompanyLogo';
 interface POItem {
@@ -55,7 +57,22 @@ interface PurchaseOrderViewProps {
 
 export function PurchaseOrderView({ purchaseOrder: po, items, onClose, companyProfile }: PurchaseOrderViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
-  const co = companyProfile ?? FALLBACK_COMPANY;
+  const { ready: logoReady } = useResolvedCompanyLogo(companyProfile?.company_logo_url);
+
+  // Refuse to render with FALLBACK_COMPANY — misprinting a
+  // customer document with placeholder company header would
+  // misrepresent it. Backfill migration 20260714210000 restores
+  // NULL snapshots in bulk; one-off legacy rows must be repaired manually.
+  if (!companyProfile) {
+    return (
+      <SnapshotMissingError
+        documentType={"Purchase Order"}
+        documentNumber={'—'}
+        onClose={onClose}
+      />
+    );
+  }
+  const co = companyProfile;
   const { t, language } = useLanguage();
 
   useEffect(() => {
@@ -172,13 +189,20 @@ export function PurchaseOrderView({ purchaseOrder: po, items, onClose, companyPr
     return num.toString();
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+
+
+    if (printRef.current) await waitForImages(printRef.current);
+
+
     window.print();
+
+
   };
 
   const handleDownloadPDF = async () => {
     if (!printRef.current) return;
-
+    await waitForImages(printRef.current);
     try {
       const canvas = await html2canvas(printRef.current, {
         scale: 2,
@@ -236,14 +260,18 @@ export function PurchaseOrderView({ purchaseOrder: po, items, onClose, companyPr
             <div className="flex gap-2">
               <button
                 onClick={handlePrint}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                disabled={!logoReady}
+                title={logoReady ? undefined : "Loading company logo…"}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-wait"
               >
                 <Printer className="h-4 w-4" />
                 Print
               </button>
               <button
                 onClick={handleDownloadPDF}
-                className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+                disabled={!logoReady}
+                title={logoReady ? undefined : "Loading company logo…"}
+                className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-wait"
               >
                 <Download className="h-4 w-4" />
                 PDF

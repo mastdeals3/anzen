@@ -1,8 +1,10 @@
 import { useRef, useEffect } from 'react';
 import { X, Printer, Download } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { type CompanySnapshot, FALLBACK_COMPANY } from '../types/company';
+import { type CompanySnapshot } from '../types/company';
 import { CompanyLogo } from './CompanyLogo';
+import { useResolvedCompanyLogo, waitForImages } from '../utils/companyLogoUrl';
+import { SnapshotMissingError } from './SnapshotMissingError';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -59,13 +61,28 @@ interface InvoiceViewProps {
 export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { t, language } = useLanguage();
-  const co = invoice.company_snapshot ?? FALLBACK_COMPANY;
+  const { ready: logoReady } = useResolvedCompanyLogo(invoice.company_snapshot?.company_logo_url);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose]);
+
+  // Refuse to render with FALLBACK_COMPANY — misprinting a customer
+  // invoice with placeholder company header would misrepresent the
+  // legal document. Backfill migration 20260714210000 restores NULL
+  // snapshots in bulk; one-off legacy rows must be repaired manually.
+  if (!invoice.company_snapshot) {
+    return (
+      <SnapshotMissingError
+        documentType="Sales Invoice"
+        documentNumber={invoice.invoice_number}
+        onClose={onClose}
+      />
+    );
+  }
+  const co = invoice.company_snapshot;
 
   const formatCurrency = (amount: number | undefined | null) => {
     if (amount === undefined || amount === null) return 'Rp 0,00';
@@ -185,12 +202,14 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
     return num.toString();
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    if (printRef.current) await waitForImages(printRef.current);
     window.print();
   };
 
   const handleDownloadPDF = async () => {
     if (!printRef.current) return;
+    await waitForImages(printRef.current);
 
     try {
       const canvas = await html2canvas(printRef.current, {
@@ -265,14 +284,18 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
             <div className="flex gap-2">
               <button
                 onClick={handlePrint}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                disabled={!logoReady}
+                title={logoReady ? undefined : 'Loading company logo…'}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-wait"
               >
                 <Printer className="h-4 w-4" />
                 {language === 'id' ? 'Cetak' : 'Print'}
               </button>
               <button
                 onClick={handleDownloadPDF}
-                className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+                disabled={!logoReady}
+                title={logoReady ? undefined : 'Loading company logo…'}
+                className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-wait"
               >
                 <Download className="h-4 w-4" />
                 PDF

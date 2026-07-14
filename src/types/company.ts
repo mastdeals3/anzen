@@ -12,8 +12,18 @@ export interface CompanySnapshot {
   cdob_certificate: string | null;
 }
 
-// Used only when company_snapshot is null (pre-backfill rows or dev).
-// In production, the DB trigger and backfill guarantee this is never reached.
+// ⚠ NOT FOR BUSINESS DOCUMENTS. ⚠
+//
+// This constant exists only for non-document surfaces (login page,
+// sidebar bootstrap, public calculator header, email footers) as a
+// last-resort default before the real Company Profile finishes loading.
+//
+// Business document views (Invoice, DC, Sales Order, Credit Note,
+// Material Return, Stock Rejection, Purchase Order, Receipt Voucher,
+// Party Ledger) MUST render an explicit "snapshot missing" error when
+// company_snapshot is null — silently substituting this constant
+// misrepresents the document. The current renderers enforce that at
+// the top of their component body.
 export const FALLBACK_COMPANY: CompanySnapshot = {
   company_name: 'PT. Avira Parama Pharma',
   company_legal_name: null,
