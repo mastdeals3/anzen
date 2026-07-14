@@ -294,9 +294,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
       showToast({ type: 'warning', title: 'Warning', message: 'At least one item is required' });
       return;
     }
-    console.log('Removing item at index:', index, 'Current items count:', items.length);
     const newItems = items.filter((_, i) => i !== index);
-    console.log('New items count after removal:', newItems.length);
     setItems(newItems);
   };
 
@@ -304,12 +302,9 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
     if (!poFile) return null;
 
     try {
-      console.log('Starting file upload:', poFile.name);
       const fileExt = poFile.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `customer-po/${fileName}`;
-
-      console.log('Uploading to path:', filePath);
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('sales-order-documents')
@@ -323,13 +318,11 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
         throw uploadError;
       }
 
-      console.log('File uploaded successfully:', uploadData);
+      void uploadData;
 
       const { data: { publicUrl } } = supabase.storage
         .from('sales-order-documents')
         .getPublicUrl(filePath);
-
-      console.log('Public URL generated:', publicUrl);
 
       return publicUrl;
     } catch (error: any) {
@@ -375,9 +368,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
 
       let poFileUrl = existingOrder?.customer_po_file_url || null;
       if (poFile) {
-        console.log('Uploading PO file...');
         poFileUrl = await uploadPoFile();
-        console.log('PO file URL:', poFileUrl);
         if (!poFileUrl) {
           throw new Error('File upload returned no URL');
         }
@@ -390,7 +381,6 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
       if (existingOrder) {
         // Release stock reservations if order was approved
         if (wasApproved) {
-          console.log('Releasing stock reservations for order:', existingOrder.id);
           const { error: releaseError } = await supabase.rpc('fn_release_reservation_by_so_id', {
             p_so_id: existingOrder.id,
             p_released_by: user?.id
@@ -409,8 +399,6 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
         } else {
           newStatus = 'draft';
         }
-
-        console.log('Updating order. Items count:', items.length);
 
         // Update existing order
         const { error: soError } = await supabase
@@ -457,8 +445,6 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
           notes: item.notes || null,
         }));
 
-        console.log('Inserting items. Count:', itemsToInsert.length);
-
         const { data: insertedItems, error: itemsError } = await supabase
           .from('sales_order_items')
           .insert(itemsToInsert)
@@ -466,14 +452,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
 
         if (itemsError) throw itemsError;
 
-        console.log('Items inserted successfully. Count:', insertedItems?.length || 0);
-
-        // Verify all items were inserted
         if (insertedItems && insertedItems.length !== items.length) {
-          console.error('WARNING: Item count mismatch!', {
-            expected: items.length,
-            inserted: insertedItems.length
-          });
           showToast({ type: 'warning', title: 'Warning', message: `Expected ${items.length} items but only ${insertedItems.length} were saved. Please verify the order.` });
         }
 

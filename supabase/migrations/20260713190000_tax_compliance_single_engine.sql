@@ -278,8 +278,12 @@ WHERE tp.tax_type <> 'PPN';
 -- 6. Rebuild vw_monthly_tax_summary to read from tax_periods snapshot
 --    (same source as PPN Periods, Calendar, Period Close — no more legacy
 --    expense_category='ppn_import' path that diverged from the engine).
+-- DROP required because the existing view has "month" as timestamptz;
+-- the new definition returns text (to_char). CREATE OR REPLACE cannot
+-- change column types, so we drop and recreate.
 -- ============================================================================
-CREATE OR REPLACE VIEW public.vw_monthly_tax_summary AS
+DROP VIEW IF EXISTS public.vw_monthly_tax_summary CASCADE;
+CREATE VIEW public.vw_monthly_tax_summary AS
 SELECT
   to_char(make_date(tp.fiscal_year, tp.period_month, 1), 'YYYY-MM') AS month,
   tp.fiscal_year,
@@ -294,6 +298,10 @@ FROM tax_periods tp
 WHERE tp.tax_type = 'PPN'
 GROUP BY tp.fiscal_year, tp.period_month
 ORDER BY tp.fiscal_year DESC, tp.period_month DESC;
+
+-- Restore grants and security_invoker dropped by CASCADE
+GRANT SELECT ON public.vw_monthly_tax_summary TO authenticated;
+ALTER VIEW public.vw_monthly_tax_summary SET (security_invoker = true);
 
 -- ============================================================================
 -- 7. Re-run full snapshot backfill now that PV PPh is attributed
