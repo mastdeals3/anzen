@@ -225,23 +225,13 @@ export function Settings() {
   };
 
   const loadCompanyProfiles = async () => {
-    const [{ data: profiles, error: profilesError }, { data: refs }] = await Promise.all([
+    const [{ data: profiles }, { data: refs }] = await Promise.all([
       supabase
         .from('company_profiles')
         .select('id, effective_from, company_name, company_legal_name, company_address, company_phone, company_email, company_website, company_tax_id, company_logo_url, company_stamp_url, pbf_license, cdob_certificate, notes')
         .order('effective_from', { ascending: false }),
       supabase.rpc('get_company_profile_reference_counts'),
     ]);
-    console.log('[loadCompanyProfiles] STEP 8 SELECT result:', {
-      profilesError,
-      profiles: (profiles || []).map(p => ({
-        id: p.id,
-        effective_from: p.effective_from,
-        company_name: p.company_name,
-        company_logo_url: p.company_logo_url,
-        company_stamp_url: p.company_stamp_url,
-      })),
-    });
     setCompanyProfiles(profiles || []);
     const refMap: Record<string, number> = {};
     for (const r of (refs as { profile_id: string; ref_count: number | string }[] | null) || []) {
@@ -287,44 +277,16 @@ export function Settings() {
   const uploadCompanyAsset = async (kind: 'logo' | 'stamp', file: File): Promise<string | null> => {
     setUploadingAsset(kind);
     try {
-      // ── STEP 1: auth session ─────────────────────────────────────────────
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      console.log('[upload] STEP 1 auth session:', {
-        uid: session?.user?.id ?? null,
-        role: session?.user?.role ?? null,
-        sessionError,
-      });
-
-      // ── STEP 2: user_profiles role check ────────────────────────────────
-      const { data: upRow, error: upError } = await supabase
-        .from('user_profiles')
-        .select('id, role')
-        .eq('id', session?.user?.id ?? '')
-        .maybeSingle();
-      console.log('[upload] STEP 2 user_profiles row:', { upRow, upError });
-
-      // ── STEP 3: file details ─────────────────────────────────────────────
       const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
       const rand = (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
       const path = `${kind}/${rand}.${ext}`;
-      console.log('[upload] STEP 3 file:', {
-        name: file.name, size: file.size, type: file.type,
-        targetBucket: 'company-assets', targetPath: path,
+      const { error } = await supabase.storage.from('company-assets').upload(path, file, {
+        contentType: file.type || undefined,
+        upsert: false,
       });
-
-      // ── STEP 4: storage upload ───────────────────────────────────────────
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('company-assets')
-        .upload(path, file, { contentType: file.type || undefined, upsert: false });
-      console.log('[upload] STEP 4 storage.upload response:', { uploadData, uploadError });
-
-      if (uploadError) throw uploadError;
-
-      // ── STEP 5: returned path ────────────────────────────────────────────
-      console.log('[upload] STEP 5 returning path:', path);
+      if (error) throw error;
       return path;
     } catch (err: any) {
-      console.error('[upload] FAILED:', err);
       alert(`Failed to upload ${kind}: ${err.message || JSON.stringify(err)}`);
       return null;
     } finally {
@@ -338,20 +300,12 @@ export function Settings() {
       if (companyProfiles.some(p => p.effective_from === newProfileData.effective_from)) {
         throw new Error('A Company Profile already exists for this effective date.');
       }
-      const payload = formToPayload(newProfileData);
-      console.log('[saveNewProfile] STEP 6 INSERT payload:', payload);
-      const { data: insertData, error: insertError } = await supabase
-        .from('company_profiles')
-        .insert(payload)
-        .select();
-      console.log('[saveNewProfile] STEP 7 INSERT response:', { insertData, insertError });
-      if (insertError) throw insertError;
+      const { error } = await supabase.from('company_profiles').insert(formToPayload(newProfileData));
+      if (error) throw error;
       setShowNewProfileForm(false);
       setNewProfileData(emptyProfileForm());
       await loadCompanyProfiles();
-      console.log('[saveNewProfile] STEP 8 reloaded profiles (check company_logo_url in list above)');
     } catch (err: any) {
-      console.error('[saveNewProfile] FAILED:', err);
       alert(err.message || 'Failed to save company profile');
     } finally {
       setSavingProfile(false);
@@ -400,21 +354,14 @@ export function Settings() {
       if (companyProfiles.some(p => p.id !== editingProfile.id && p.effective_from === editProfileData.effective_from)) {
         throw new Error('Another Company Profile already exists for this effective date.');
       }
-      const payload = formToPayload(editProfileData);
-      console.log('[saveEditProfile] STEP 6 UPDATE payload:', payload);
-      console.log('[saveEditProfile] STEP 6 UPDATE target id:', editingProfile.id);
-      const { data: updateData, error: updateError } = await supabase
+      const { error } = await supabase
         .from('company_profiles')
-        .update(payload)
-        .eq('id', editingProfile.id)
-        .select();
-      console.log('[saveEditProfile] STEP 7 UPDATE response:', { updateData, updateError });
-      if (updateError) throw updateError;
+        .update(formToPayload(editProfileData))
+        .eq('id', editingProfile.id);
+      if (error) throw error;
       cancelEditProfile();
       await loadCompanyProfiles();
-      console.log('[saveEditProfile] STEP 8 reloaded profiles (check company_logo_url in list above)');
     } catch (err: any) {
-      console.error('[saveEditProfile] FAILED:', err);
       const msg = String(err?.message || err);
       alert(msg.startsWith('PROFILE_REFERENCED:') ? msg.replace(/^PROFILE_REFERENCED:\s*/, '') : msg);
     } finally {
@@ -1056,7 +1003,10 @@ export function Settings() {
                         // even Active or Referenced. The DB trigger + delete RPC
                         // apply the same bypass, so the two layers stay aligned.
                         const canDelete = isAdmin && (setupMode || (!isReferenced && !isActive));
-                        const openLabel = !isReferenced || setupMode ? 'Edit' : 'View';
+                        // Referenced profiles: accounting fields are immutable but branding/contact
+                        // fields (logo, stamp, address, phone, email, website) can still be updated.
+                        // The trigger allows these changes; only name/tax-id/licenses are blocked.
+                        const openLabel = 'Edit';
                         return (
                           <tr key={cp.id} className="border-b last:border-0 hover:bg-gray-50">
                             <td className="py-2 pr-4 font-mono text-xs">{cp.effective_from}</td>
@@ -1090,7 +1040,11 @@ export function Settings() {
                                 <button
                                   onClick={() => startEditProfile(cp)}
                                   disabled={!isAdmin || editingProfile?.id === cp.id}
-                                  title={isReferenced && !setupMode ? 'Referenced by documents — opens in read-only mode' : 'Edit profile'}
+                                  title={
+                                    isReferenced && !setupMode
+                                      ? 'Referenced by documents — branding/contact fields editable; accounting fields locked'
+                                      : 'Edit profile'
+                                  }
                                   className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                   {openLabel}
@@ -1132,7 +1086,7 @@ export function Settings() {
                   onSubmit={saveEditProfile}
                   onCancel={cancelEditProfile}
                   saving={savingProfile}
-                  readOnly={!setupMode && (profileRefCounts[editingProfile.id] || 0) > 0}
+                  brandingOnly={!setupMode && (profileRefCounts[editingProfile.id] || 0) > 0}
                   refCount={profileRefCounts[editingProfile.id] || 0}
                 />
               )}
@@ -1722,46 +1676,48 @@ interface CompanyProfileEditModalProps {
   onSubmit: () => void;
   onCancel: () => void;
   saving: boolean;
-  readOnly: boolean;
+  /** True when the profile is referenced by documents: accounting fields
+   *  (name, tax-id, licenses) are locked but branding/contact fields
+   *  (logo, stamp, address, phone, email, website) remain editable. */
+  brandingOnly?: boolean;
   refCount: number;
 }
 
-function CompanyProfileEditModal({ profile, data, onChange, onUploadAsset, uploadingAsset, onSubmit, onCancel, saving, readOnly, refCount }: CompanyProfileEditModalProps) {
+function CompanyProfileEditModal({ profile, data, onChange, onUploadAsset, uploadingAsset, onSubmit, onCancel, saving, brandingOnly = false, refCount }: CompanyProfileEditModalProps) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto">
       <div className="w-full max-w-3xl bg-white rounded-lg shadow-xl mt-8">
         <div className="flex items-center justify-between border-b px-5 py-3">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">
-              {readOnly ? 'View Company Profile' : 'Edit Company Profile'}
-            </h3>
+            <h3 className="text-base font-semibold text-gray-900">Edit Company Profile</h3>
             <p className="text-xs text-gray-500">
               {profile.company_name} · effective {profile.effective_from}
             </p>
           </div>
           <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
         </div>
-        {readOnly && (
-          <div className="mx-5 mt-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            This Company Profile is referenced by {refCount} business document{refCount === 1 ? '' : 's'} and cannot be modified. Historical company identities must remain permanently available. Create a new version instead.
+        {brandingOnly && (
+          <div className="mx-5 mt-4 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+            This profile is referenced by {refCount} business document{refCount === 1 ? '' : 's'}.
+            Accounting fields (company name, tax ID, licenses) are locked to preserve historical accuracy.
+            Branding and contact fields (logo, stamp, address, phone, email, website) can be updated —
+            existing document snapshots are not affected.
           </div>
         )}
         <div className="p-5">
-          <CompanyProfileFields data={data} onChange={onChange} onUploadAsset={onUploadAsset} uploadingAsset={uploadingAsset} readOnly={readOnly} />
+          <CompanyProfileFields data={data} onChange={onChange} onUploadAsset={onUploadAsset} uploadingAsset={uploadingAsset} brandingOnly={brandingOnly} />
         </div>
         <div className="flex justify-end gap-2 border-t px-5 py-3">
           <button onClick={onCancel} className="border border-gray-300 text-gray-700 px-4 py-1.5 rounded-lg text-sm hover:bg-gray-100">
-            {readOnly ? 'Close' : 'Cancel'}
+            Cancel
           </button>
-          {!readOnly && (
-            <button
-              onClick={onSubmit}
-              disabled={saving || uploadingAsset !== null || !data.company_name || !data.effective_from}
-              className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          )}
+          <button
+            onClick={onSubmit}
+            disabled={saving || uploadingAsset !== null || !data.company_name || !data.effective_from}
+            className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
         </div>
       </div>
     </div>
@@ -1774,10 +1730,16 @@ interface CompanyProfileFieldsProps {
   onChange: React.Dispatch<React.SetStateAction<ProfileFormShape>>;
   onUploadAsset: (kind: 'logo' | 'stamp', file: File) => Promise<string | null>;
   uploadingAsset: null | 'logo' | 'stamp';
-  readOnly: boolean;
+  /** Fully read-only — no edits allowed (unused in practice now; kept for the
+   *  new CompanyProfileForm which passes readOnly=false). */
+  readOnly?: boolean;
+  /** When true: accounting-critical fields (name, tax-id, licenses) are disabled
+   *  but branding/contact fields (logo, stamp, address, phone, email, website)
+   *  remain editable. Used for referenced profiles in production mode. */
+  brandingOnly?: boolean;
 }
 
-function CompanyProfileFields({ data, onChange, onUploadAsset, uploadingAsset, readOnly }: CompanyProfileFieldsProps) {
+function CompanyProfileFields({ data, onChange, onUploadAsset, uploadingAsset, readOnly = false, brandingOnly = false }: CompanyProfileFieldsProps) {
   const setField = (patch: Partial<ProfileFormShape>) => onChange(p => ({ ...p, ...patch }));
   const logoPreview  = useCompanyAssetPreview(data.company_logo_url);
   const stampPreview = useCompanyAssetPreview(data.company_stamp_url);
@@ -1787,57 +1749,70 @@ function CompanyProfileFields({ data, onChange, onUploadAsset, uploadingAsset, r
     e.target.value = '';
     if (!file) return;
     const path = await onUploadAsset(kind, file);
-    console.log('[handleAssetUpload] STEP 5b upload returned path:', path, '— setting into form state');
     if (path) {
       setField(kind === 'logo' ? { company_logo_url: path } : { company_stamp_url: path });
-    } else {
-      console.warn('[handleAssetUpload] upload returned null — form state NOT updated');
     }
   };
 
-  const inputCls = `w-full border rounded px-2 py-1.5 text-sm ${readOnly ? 'bg-gray-100 text-gray-600' : ''}`;
+  // Accounting-critical: locked when readOnly OR brandingOnly.
+  const acctCls = `w-full border rounded px-2 py-1.5 text-sm ${(readOnly || brandingOnly) ? 'bg-gray-100 text-gray-600' : ''}`;
+  // Branding/contact: locked only when readOnly (not when brandingOnly).
+  const brandCls = `w-full border rounded px-2 py-1.5 text-sm ${readOnly ? 'bg-gray-100 text-gray-600' : ''}`;
+  const canEditBranding = !readOnly;
 
   return (
     <div className="grid grid-cols-2 gap-3">
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Effective From *</label>
-        <input type="date" value={data.effective_from} onChange={e => setField({ effective_from: e.target.value })} disabled={readOnly} className={inputCls} required />
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Effective From *{brandingOnly && <span className="ml-1 text-gray-400">(locked)</span>}
+        </label>
+        <input type="date" value={data.effective_from} onChange={e => setField({ effective_from: e.target.value })} disabled={readOnly || brandingOnly} className={acctCls} required />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Company Name *</label>
-        <input type="text" value={data.company_name} onChange={e => setField({ company_name: e.target.value })} disabled={readOnly} className={inputCls} placeholder="PT. ..." />
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Company Name *{brandingOnly && <span className="ml-1 text-gray-400">(locked)</span>}
+        </label>
+        <input type="text" value={data.company_name} onChange={e => setField({ company_name: e.target.value })} disabled={readOnly || brandingOnly} className={acctCls} placeholder="PT. ..." />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Legal Name</label>
-        <input type="text" value={data.company_legal_name} onChange={e => setField({ company_legal_name: e.target.value })} disabled={readOnly} className={inputCls} placeholder="Legal registered name" />
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Legal Name{brandingOnly && <span className="ml-1 text-gray-400">(locked)</span>}
+        </label>
+        <input type="text" value={data.company_legal_name} onChange={e => setField({ company_legal_name: e.target.value })} disabled={readOnly || brandingOnly} className={acctCls} placeholder="Legal registered name" />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Tax ID (NPWP)</label>
-        <input type="text" value={data.company_tax_id} onChange={e => setField({ company_tax_id: e.target.value })} disabled={readOnly} className={inputCls} />
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Tax ID (NPWP){brandingOnly && <span className="ml-1 text-gray-400">(locked)</span>}
+        </label>
+        <input type="text" value={data.company_tax_id} onChange={e => setField({ company_tax_id: e.target.value })} disabled={readOnly || brandingOnly} className={acctCls} />
       </div>
       <div className="col-span-2">
         <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
-        <input type="text" value={data.company_address} onChange={e => setField({ company_address: e.target.value })} disabled={readOnly} className={inputCls} />
+        <input type="text" value={data.company_address} onChange={e => setField({ company_address: e.target.value })} disabled={readOnly} className={brandCls} />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
-        <input type="text" value={data.company_phone} onChange={e => setField({ company_phone: e.target.value })} disabled={readOnly} className={inputCls} />
+        <input type="text" value={data.company_phone} onChange={e => setField({ company_phone: e.target.value })} disabled={readOnly} className={brandCls} />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-        <input type="email" value={data.company_email} onChange={e => setField({ company_email: e.target.value })} disabled={readOnly} className={inputCls} />
+        <input type="email" value={data.company_email} onChange={e => setField({ company_email: e.target.value })} disabled={readOnly} className={brandCls} />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Website</label>
-        <input type="url" value={data.company_website} onChange={e => setField({ company_website: e.target.value })} disabled={readOnly} className={inputCls} placeholder="https://..." />
+        <input type="url" value={data.company_website} onChange={e => setField({ company_website: e.target.value })} disabled={readOnly} className={brandCls} placeholder="https://..." />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">PBF License No.</label>
-        <input type="text" value={data.pbf_license} onChange={e => setField({ pbf_license: e.target.value })} disabled={readOnly} className={inputCls} placeholder="No izin PBF: ..." />
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          PBF License No.{brandingOnly && <span className="ml-1 text-gray-400">(locked)</span>}
+        </label>
+        <input type="text" value={data.pbf_license} onChange={e => setField({ pbf_license: e.target.value })} disabled={readOnly || brandingOnly} className={acctCls} placeholder="No izin PBF: ..." />
       </div>
       <div className="col-span-2">
-        <label className="block text-xs font-medium text-gray-600 mb-1">CDOB Certificate No.</label>
-        <input type="text" value={data.cdob_certificate} onChange={e => setField({ cdob_certificate: e.target.value })} disabled={readOnly} className={inputCls} placeholder="No Sertifikasi CDOB: ..." />
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          CDOB Certificate No.{brandingOnly && <span className="ml-1 text-gray-400">(locked)</span>}
+        </label>
+        <input type="text" value={data.cdob_certificate} onChange={e => setField({ cdob_certificate: e.target.value })} disabled={readOnly || brandingOnly} className={acctCls} placeholder="No Sertifikasi CDOB: ..." />
       </div>
 
       {/* Logo */}
@@ -1850,7 +1825,7 @@ function CompanyProfileFields({ data, onChange, onUploadAsset, uploadingAsset, r
             <span className="text-xs text-gray-400">No logo uploaded</span>
           )}
         </div>
-        {!readOnly && (
+        {canEditBranding && (
           <div className="flex flex-wrap gap-2 items-center">
             <label className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 cursor-pointer">
               {data.company_logo_url ? 'Replace' : 'Upload'}
@@ -1880,7 +1855,7 @@ function CompanyProfileFields({ data, onChange, onUploadAsset, uploadingAsset, r
             <span className="text-xs text-gray-400">No stamp uploaded</span>
           )}
         </div>
-        {!readOnly && (
+        {canEditBranding && (
           <div className="flex flex-wrap gap-2 items-center">
             <label className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 cursor-pointer">
               {data.company_stamp_url ? 'Replace' : 'Upload'}
@@ -1902,7 +1877,7 @@ function CompanyProfileFields({ data, onChange, onUploadAsset, uploadingAsset, r
 
       <div className="col-span-2">
         <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
-        <input type="text" value={data.notes} onChange={e => setField({ notes: e.target.value })} disabled={readOnly} className={inputCls} placeholder="Reason for change..." />
+        <input type="text" value={data.notes} onChange={e => setField({ notes: e.target.value })} disabled={readOnly} className={brandCls} placeholder="Reason for change..." />
       </div>
     </div>
   );
