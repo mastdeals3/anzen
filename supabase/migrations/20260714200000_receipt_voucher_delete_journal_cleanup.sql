@@ -20,6 +20,15 @@
 -- stale FK to a deleted JE. matched_receipt_id already has ON DELETE
 -- SET NULL from 20260703180000.
 --
+-- Note on bank_statement_lines.updated_at:
+--   Two conflicting CREATE TABLE IF NOT EXISTS definitions exist in
+--   the migration history (20251216150001 includes updated_at,
+--   20251230043928 does not). Whichever ran first wins. This migration
+--   does NOT write updated_at — there is no owning trigger to bump it
+--   consistently across environments, and the write threw
+--   ERROR 42703 in prod. matched_at is the authoritative recon
+--   timestamp; setting it to NULL is enough.
+--
 -- Additive, idempotent.
 -- ============================================================================
 
@@ -49,11 +58,11 @@ BEGIN
 
   -- Release BSL matches on matched_entry_id (matched_receipt_id already
   -- clears itself via ON DELETE SET NULL, but the untyped JE FK doesn't).
+  -- Do NOT touch updated_at — the column is not present in every env.
   UPDATE public.bank_statement_lines
      SET matched_entry_id      = NULL,
          reconciliation_status = 'unmatched',
-         matched_at            = NULL,
-         updated_at            = now()
+         matched_at            = NULL
    WHERE matched_entry_id = ANY (v_je_ids);
 
   -- bank_reconciliation_items.journal_entry_id has ON DELETE SET NULL
@@ -76,7 +85,7 @@ COMMENT ON FUNCTION public.delete_receipt_voucher_journal() IS
   'Cascade cleanup of journal_entries + journal_entry_lines when a receipt_voucher is deleted. Mirrors delete_petty_cash_journal from 20260619170000. Also releases matched_entry_id on bank_statement_lines so BSL never keeps a stale FK.';
 
 -- Backfill: repair any orphaned "receipt" JEs whose RV no longer exists.
--- Safe on a clean DB (no-op).
+-- Safe on a clean DB (no-op). Same updated_at caveat applies.
 DO $$
 DECLARE v_ids uuid[];
 BEGIN
@@ -91,8 +100,7 @@ BEGIN
     UPDATE public.bank_statement_lines
        SET matched_entry_id      = NULL,
            reconciliation_status = 'unmatched',
-           matched_at            = NULL,
-           updated_at            = now()
+           matched_at            = NULL
      WHERE matched_entry_id = ANY (v_ids);
 
     DELETE FROM public.journal_entry_lines WHERE journal_entry_id = ANY (v_ids);

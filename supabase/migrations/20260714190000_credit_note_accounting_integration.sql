@@ -223,11 +223,14 @@ BEGIN
        AND reference_id  = OLD.id;
 
     IF array_length(v_je_ids, 1) IS NOT NULL THEN
+      -- Do not touch bank_statement_lines.updated_at — the column is not
+      -- present in every environment (two conflicting CREATE TABLE
+      -- IF NOT EXISTS definitions exist in the migration history).
+      -- matched_at = NULL is the authoritative recon-reset timestamp.
       UPDATE bank_statement_lines
          SET matched_entry_id      = NULL,
              reconciliation_status = 'unmatched',
-             matched_at            = NULL,
-             updated_at            = now()
+             matched_at            = NULL
        WHERE matched_entry_id = ANY (v_je_ids);
       -- bank_reconciliation_items.journal_entry_id has ON DELETE SET NULL
       -- (installed in 20260714150000), so the JE DELETE clears it too.
@@ -251,11 +254,14 @@ BEGIN
        AND reference_id  = OLD.id;
 
     IF array_length(v_je_ids, 1) IS NOT NULL THEN
+      -- Do not touch bank_statement_lines.updated_at — the column is not
+      -- present in every environment (two conflicting CREATE TABLE
+      -- IF NOT EXISTS definitions exist in the migration history).
+      -- matched_at = NULL is the authoritative recon-reset timestamp.
       UPDATE bank_statement_lines
          SET matched_entry_id      = NULL,
              reconciliation_status = 'unmatched',
-             matched_at            = NULL,
-             updated_at            = now()
+             matched_at            = NULL
        WHERE matched_entry_id = ANY (v_je_ids);
 
       DELETE FROM journal_entry_lines WHERE journal_entry_id = ANY (v_je_ids);
