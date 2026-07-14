@@ -225,13 +225,23 @@ export function Settings() {
   };
 
   const loadCompanyProfiles = async () => {
-    const [{ data: profiles }, { data: refs }] = await Promise.all([
+    const [{ data: profiles, error: profilesError }, { data: refs }] = await Promise.all([
       supabase
         .from('company_profiles')
         .select('id, effective_from, company_name, company_legal_name, company_address, company_phone, company_email, company_website, company_tax_id, company_logo_url, company_stamp_url, pbf_license, cdob_certificate, notes')
         .order('effective_from', { ascending: false }),
       supabase.rpc('get_company_profile_reference_counts'),
     ]);
+    console.log('[loadCompanyProfiles] STEP 8 SELECT result:', {
+      profilesError,
+      profiles: (profiles || []).map(p => ({
+        id: p.id,
+        effective_from: p.effective_from,
+        company_name: p.company_name,
+        company_logo_url: p.company_logo_url,
+        company_stamp_url: p.company_stamp_url,
+      })),
+    });
     setCompanyProfiles(profiles || []);
     const refMap: Record<string, number> = {};
     for (const r of (refs as { profile_id: string; ref_count: number | string }[] | null) || []) {
@@ -277,17 +287,45 @@ export function Settings() {
   const uploadCompanyAsset = async (kind: 'logo' | 'stamp', file: File): Promise<string | null> => {
     setUploadingAsset(kind);
     try {
+      // ── STEP 1: auth session ─────────────────────────────────────────────
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('[upload] STEP 1 auth session:', {
+        uid: session?.user?.id ?? null,
+        role: session?.user?.role ?? null,
+        sessionError,
+      });
+
+      // ── STEP 2: user_profiles role check ────────────────────────────────
+      const { data: upRow, error: upError } = await supabase
+        .from('user_profiles')
+        .select('id, role')
+        .eq('id', session?.user?.id ?? '')
+        .maybeSingle();
+      console.log('[upload] STEP 2 user_profiles row:', { upRow, upError });
+
+      // ── STEP 3: file details ─────────────────────────────────────────────
       const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
       const rand = (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
       const path = `${kind}/${rand}.${ext}`;
-      const { error } = await supabase.storage.from('company-assets').upload(path, file, {
-        contentType: file.type || undefined,
-        upsert: false,
+      console.log('[upload] STEP 3 file:', {
+        name: file.name, size: file.size, type: file.type,
+        targetBucket: 'company-assets', targetPath: path,
       });
-      if (error) throw error;
+
+      // ── STEP 4: storage upload ───────────────────────────────────────────
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('company-assets')
+        .upload(path, file, { contentType: file.type || undefined, upsert: false });
+      console.log('[upload] STEP 4 storage.upload response:', { uploadData, uploadError });
+
+      if (uploadError) throw uploadError;
+
+      // ── STEP 5: returned path ────────────────────────────────────────────
+      console.log('[upload] STEP 5 returning path:', path);
       return path;
     } catch (err: any) {
-      alert(`Failed to upload ${kind}: ${err.message || err}`);
+      console.error('[upload] FAILED:', err);
+      alert(`Failed to upload ${kind}: ${err.message || JSON.stringify(err)}`);
       return null;
     } finally {
       setUploadingAsset(null);
@@ -300,12 +338,20 @@ export function Settings() {
       if (companyProfiles.some(p => p.effective_from === newProfileData.effective_from)) {
         throw new Error('A Company Profile already exists for this effective date.');
       }
-      const { error } = await supabase.from('company_profiles').insert(formToPayload(newProfileData));
-      if (error) throw error;
+      const payload = formToPayload(newProfileData);
+      console.log('[saveNewProfile] STEP 6 INSERT payload:', payload);
+      const { data: insertData, error: insertError } = await supabase
+        .from('company_profiles')
+        .insert(payload)
+        .select();
+      console.log('[saveNewProfile] STEP 7 INSERT response:', { insertData, insertError });
+      if (insertError) throw insertError;
       setShowNewProfileForm(false);
       setNewProfileData(emptyProfileForm());
       await loadCompanyProfiles();
+      console.log('[saveNewProfile] STEP 8 reloaded profiles (check company_logo_url in list above)');
     } catch (err: any) {
+      console.error('[saveNewProfile] FAILED:', err);
       alert(err.message || 'Failed to save company profile');
     } finally {
       setSavingProfile(false);
@@ -354,14 +400,21 @@ export function Settings() {
       if (companyProfiles.some(p => p.id !== editingProfile.id && p.effective_from === editProfileData.effective_from)) {
         throw new Error('Another Company Profile already exists for this effective date.');
       }
-      const { error } = await supabase
+      const payload = formToPayload(editProfileData);
+      console.log('[saveEditProfile] STEP 6 UPDATE payload:', payload);
+      console.log('[saveEditProfile] STEP 6 UPDATE target id:', editingProfile.id);
+      const { data: updateData, error: updateError } = await supabase
         .from('company_profiles')
-        .update(formToPayload(editProfileData))
-        .eq('id', editingProfile.id);
-      if (error) throw error;
+        .update(payload)
+        .eq('id', editingProfile.id)
+        .select();
+      console.log('[saveEditProfile] STEP 7 UPDATE response:', { updateData, updateError });
+      if (updateError) throw updateError;
       cancelEditProfile();
       await loadCompanyProfiles();
+      console.log('[saveEditProfile] STEP 8 reloaded profiles (check company_logo_url in list above)');
     } catch (err: any) {
+      console.error('[saveEditProfile] FAILED:', err);
       const msg = String(err?.message || err);
       alert(msg.startsWith('PROFILE_REFERENCED:') ? msg.replace(/^PROFILE_REFERENCED:\s*/, '') : msg);
     } finally {
@@ -1734,8 +1787,11 @@ function CompanyProfileFields({ data, onChange, onUploadAsset, uploadingAsset, r
     e.target.value = '';
     if (!file) return;
     const path = await onUploadAsset(kind, file);
+    console.log('[handleAssetUpload] STEP 5b upload returned path:', path, '— setting into form state');
     if (path) {
       setField(kind === 'logo' ? { company_logo_url: path } : { company_stamp_url: path });
+    } else {
+      console.warn('[handleAssetUpload] upload returned null — form state NOT updated');
     }
   };
 
