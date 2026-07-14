@@ -302,9 +302,9 @@ export function ProformaInvoiceView({ salesOrder, items, onClose }: ProformaInvo
                   <div className="h-16 w-16 flex items-center justify-center print:h-12 print:w-12" style={{backgroundColor: '#fff'}}>
                     <CompanyLogo logoUrl={co.company_logo_url} alt={co.company_name} className="w-full h-full" />
                   </div>
-                  <div>
+                  <div className="max-w-xs">
                     <h1 className="text-base font-bold print:text-sm">{co.company_name}</h1>
-                    {co.company_address && <p className="text-xs print:text-[10px]">{co.company_address}</p>}
+                    {co.company_address && <p className="text-xs print:text-[10px] whitespace-normal">{co.company_address}</p>}
                     {co.company_phone && <p className="text-xs print:text-[10px]">Telp: {co.company_phone}</p>}
                   </div>
                 </div>
