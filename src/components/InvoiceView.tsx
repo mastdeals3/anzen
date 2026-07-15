@@ -6,8 +6,6 @@ import { useResolvedCompanyLogo, waitForImages } from '../utils/companyLogoUrl';
 import { SnapshotMissingError } from './SnapshotMissingError';
 import { DocumentHeader } from './DocumentHeader';
 import { DocumentPrintStyles } from './DocumentPrintStyles';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 interface InvoiceItem {
   id?: string;
@@ -208,60 +206,12 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
     window.print();
   };
 
-  const handleDownloadPDF = async () => {
-    if (!printRef.current) return;
-    await waitForImages(printRef.current);
-
-    try {
-      const canvas = await html2canvas(printRef.current, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: printRef.current.scrollWidth,
-        windowHeight: printRef.current.scrollHeight,
-        onclone: (clonedDoc) => {
-          const clonedElement = clonedDoc.getElementById('invoice-print-content');
-          if (clonedElement) {
-            clonedElement.style.width = '210mm';
-          }
-        }
-      });
-
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      const pdf = new jsPDF('p', 'mm', 'a4');
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = pdfWidth / imgWidth;
-      const scaledHeight = imgHeight * ratio;
-
-      if (scaledHeight > pdfHeight) {
-        let position = 0;
-        let remainingHeight = scaledHeight;
-
-        while (remainingHeight > 0) {
-          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, scaledHeight);
-          remainingHeight -= pdfHeight;
-          position -= pdfHeight;
-
-          if (remainingHeight > 0) {
-            pdf.addPage();
-          }
-        }
-      } else {
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, scaledHeight);
-      }
-
-      pdf.save(`Invoice-${invoice.invoice_number}.pdf`);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Failed to generate PDF. Please try again.');
-    }
-  };
+  // Vector PDF export: route through the browser's own print engine so the
+  // saved PDF keeps selectable text and crisp vector line art (sub-1MB),
+  // instead of embedding a rasterised html2canvas PNG (~7MB, no text).
+  // The @media print CSS in DocumentPrintStyles guarantees an identical A4
+  // layout; the user chooses "Save as PDF" as the destination.
+  const handleDownloadPDF = handlePrint;
 
   const customer = invoice.customers;
   const paymentTermsDays = invoice.payment_terms_days || 30;
