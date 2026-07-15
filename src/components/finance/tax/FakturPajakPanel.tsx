@@ -199,7 +199,7 @@ export function FakturPajakPanel() {
       {!loading && invoices.length > 0 && (
         <StatCardGrid cols={4}>
           <StatCard label="Taxable invoices" value={totals.count} money={false} tone="blue" icon={<Receipt className="w-4 h-4" />} />
-          <StatCard label="Total PPN" value={totals.ppn} tone="green" icon={<FileText className="w-4 h-4" />} />
+          <StatCard label="Invoiced PPN" value={totals.ppn} tone="green" icon={<FileText className="w-4 h-4" />} hint="Gross PPN from taxable sales invoices, before credit note adjustments" />
           <StatCard label="Missing Faktur" value={missingCount} money={false} tone={missingCount > 0 ? 'orange' : 'gray'} icon={<FileWarning className="w-4 h-4" />} />
           <StatCard label="Reported" value={totals.reported} money={false} tone="green" icon={<CheckCircle2 className="w-4 h-4" />} />
         </StatCardGrid>
