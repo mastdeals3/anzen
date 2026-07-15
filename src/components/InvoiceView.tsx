@@ -229,8 +229,8 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
         }
       });
 
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/jpeg', 0.85);
+      const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
@@ -244,7 +244,7 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
         let remainingHeight = scaledHeight;
 
         while (remainingHeight > 0) {
-          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, scaledHeight);
+          pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, scaledHeight);
           remainingHeight -= pdfHeight;
           position -= pdfHeight;
 
@@ -253,7 +253,7 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
           }
         }
       } else {
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, scaledHeight);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, scaledHeight);
       }
 
       pdf.save(`Invoice-${invoice.invoice_number}.pdf`);
