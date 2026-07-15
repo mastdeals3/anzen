@@ -25,7 +25,7 @@ export interface CompanySnapshot {
 // misrepresents the document. The current renderers enforce that at
 // the top of their component body.
 export const FALLBACK_COMPANY: CompanySnapshot = {
-  company_name: 'PT. Avira Parama Pharma',
+  company_name: 'PT. Avira Parama Farma',
   company_legal_name: null,
   company_address: 'Komplek Ruko Metro Sunter Blok A1 NO.15, Jl. Metro Indah Raya, Kelurahan Papanggo, Kec. Tanjung Priok, Jakarta Utara - 14340',
   company_phone: '(+62 21) 65832426',
