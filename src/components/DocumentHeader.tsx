@@ -17,10 +17,27 @@ interface DocumentHeaderProps {
 // across Chrome, Safari and Edge.
 //
 // Layout contract:
-//   • Logo lives in ONE fixed 80×80px container, object-fit: contain,
-//     centered — it never stretches or crops regardless of the source
-//     aspect ratio. The size is identical on screen and print so View /
-//     Print / PDF match exactly.
+//   • Logo lives in ONE fixed 80×80px container, contained and centered —
+//     it never stretches or crops regardless of the source aspect ratio.
+//     The size is identical on screen and print so View / Print / PDF
+//     match exactly.
+//     The logo is centered with position:absolute + inset 0 + margin:auto
+//     instead of flexbox, for two reasons that both matter here:
+//       1. WebKit sizes a replaced flex item by its intrinsic dimensions
+//          before honouring percentage max-width/max-height, and flex
+//          items default to min-width:auto (min-content). In Safari's
+//          print/rasterisation path a logo wider than 80px therefore kept
+//          its intrinsic width; justify-content:center spilled the excess
+//          equally to both sides and the left half was clipped by the
+//          page edge in Print and PDF Export. Absolute positioning takes
+//          the img out of flex layout entirely: min-width:auto no longer
+//          applies and the percentages resolve against the 80×80
+//          containing block identically in Blink and WebKit.
+//       2. html2canvas (PDF export) ignores object-fit and stretches the
+//          bitmap into the img's layout box, so the layout box itself must
+//          equal the contained size — max-width/max-height with auto
+//          width/height guarantees that; width/height:100% + object-fit
+//          would distort the exported logo.
 //   • The company identity block is a fixed-max-width column that wraps
 //     naturally (overflow-wrap) and can shrink (min-w-0) so long addresses
 //     never overlap the right-aligned title.
@@ -32,13 +49,30 @@ export function DocumentHeader({ co, title, titleClassName = '' }: DocumentHeade
         {/* Company Logo + Identity */}
         <div className="flex min-w-0 items-start gap-3">
           <div
-            className="flex items-center justify-center"
-            style={{ width: '80px', height: '80px', flexShrink: 0, backgroundColor: '#fff' }}
+            style={{
+              position: 'relative',
+              width: '80px',
+              height: '80px',
+              flexShrink: 0,
+              backgroundColor: '#fff',
+            }}
           >
             <CompanyLogo
               logoUrl={co.company_logo_url}
               alt={co.company_name}
-              style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }}
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: 0,
+                margin: 'auto',
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+              }}
             />
           </div>
           <div className="min-w-0" style={{ maxWidth: '340px' }}>
