@@ -2,9 +2,10 @@ import { useRef, useEffect } from 'react';
 import { X, Printer, Download } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { type CompanySnapshot } from '../types/company';
-import { CompanyLogo } from './CompanyLogo';
 import { useResolvedCompanyLogo, waitForImages } from '../utils/companyLogoUrl';
 import { SnapshotMissingError } from './SnapshotMissingError';
+import { DocumentHeader } from './DocumentHeader';
+import { DocumentPrintStyles } from './DocumentPrintStyles';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -273,11 +274,11 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-900 bg-opacity-75 print:static print:bg-white print:overflow-visible">
-      <div className="flex min-h-screen items-start justify-center p-4 pt-10 print:p-0 print:min-h-0 print:block">
-        <div className="relative w-full max-w-5xl bg-white shadow-xl print:shadow-none print:max-w-full">
+    <div className="doc-print-root fixed inset-0 z-50 overflow-y-auto bg-gray-900 bg-opacity-75 print:static print:bg-white print:overflow-visible">
+      <div className="doc-print-scroll flex min-h-screen items-start justify-center p-4 pt-10 print:p-0 print:min-h-0 print:block">
+        <div className="doc-print-sheet relative w-full max-w-5xl bg-white shadow-xl print:shadow-none print:max-w-full">
           {/* Action Buttons - Hidden on print */}
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+          <div className="doc-print-hide sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
             <h2 className="text-xl font-bold text-gray-900">
               {language === 'id' ? 'Faktur' : 'Invoice'} {invoice.invoice_number}
             </h2>
@@ -312,38 +313,7 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
           {/* Invoice Content */}
           <div id="invoice-print-content" ref={printRef} className="p-8">
             {/* Header Section - Your Company Details */}
-            <div className="mb-3 border-2 border-black p-3 print:mb-2 print:p-2">
-              <div className="mb-2 flex items-start justify-between">
-                {/* Company Logo and Info */}
-                <div className="flex items-start gap-3">
-                  <div className="h-16 w-16 flex items-center justify-center print:h-12 print:w-12" style={{backgroundColor: '#fff'}}>
-                    <CompanyLogo logoUrl={co.company_logo_url} alt={co.company_name} className="w-full h-full" />
-                  </div>
-                  <div className="max-w-xs">
-                    <h1 className="text-base font-bold print:text-sm">{co.company_name}</h1>
-                    {co.company_address && <p className="text-xs print:text-[10px] whitespace-normal">{co.company_address}</p>}
-                    {co.company_phone && <p className="text-xs print:text-[10px]">Telp: {co.company_phone}</p>}
-                  </div>
-                </div>
-
-                {/* INVOICE Title */}
-                <div className="text-right">
-                  <h2 className="text-3xl font-bold print:text-2xl">{language === 'id' ? 'INVOICE' : 'INVOICE'}</h2>
-                </div>
-              </div>
-
-              {/* Company Licenses */}
-              <div className="text-xs space-y-0.5 print:text-[10px] print:space-y-0">
-                <div>
-                  <span className="font-semibold">No izin PBF</span>
-                  <span className="ml-16">: {co.pbf_license?.replace(/^No izin PBF:\s*/i, '') ?? '—'}</span>
-                </div>
-                <div>
-                  <span className="font-semibold">No Sertifikasi CDOB</span>
-                  <span className="ml-4">: {co.cdob_certificate?.replace(/^No Sertifikasi CDOB:\s*/i, '') ?? '—'}</span>
-                </div>
-              </div>
-            </div>
+            <DocumentHeader co={co} title={language === 'id' ? 'INVOICE' : 'INVOICE'} />
 
             {/* Customer and Invoice Details */}
             <div className="mb-3 border-2 border-black p-3 print:mb-2 print:p-2">
@@ -650,62 +620,7 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
         </div>
       </div>
 
-      <style>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 8mm;
-          }
-
-          .sticky {
-            display: none !important;
-          }
-
-          body {
-            margin: 0;
-            padding: 0;
-          }
-
-          body * {
-            visibility: hidden;
-          }
-
-          #invoice-print-content,
-          #invoice-print-content * {
-            visibility: visible;
-          }
-
-          #invoice-print-content {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            page-break-inside: avoid;
-            page-break-after: auto;
-          }
-
-          #invoice-print-content > div {
-            page-break-inside: avoid;
-          }
-
-          table {
-            page-break-inside: auto;
-          }
-
-          tr {
-            page-break-inside: avoid;
-            page-break-after: auto;
-          }
-
-          thead {
-            display: table-header-group;
-          }
-
-          tfoot {
-            display: table-footer-group;
-          }
-        }
-      `}</style>
+      <DocumentPrintStyles contentId="invoice-print-content" />
     </div>
   );
 }

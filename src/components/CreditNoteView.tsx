@@ -7,7 +7,8 @@ import { type CompanySnapshot } from '../types/company';
 import { useResolvedCompanyLogo, waitForImages } from '../utils/companyLogoUrl';
 import { SnapshotMissingError } from './SnapshotMissingError';
 
-import { CompanyLogo } from './CompanyLogo';
+import { DocumentHeader } from './DocumentHeader';
+import { DocumentPrintStyles } from './DocumentPrintStyles';
 interface CreditNoteItem {
   id?: string;
   product_id: string;
@@ -249,10 +250,10 @@ export function CreditNoteView({ creditNote, items, onClose, companyProfile }: C
   const customer = creditNote.customers;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-900 bg-opacity-75 print:static print:bg-white print:overflow-visible">
-      <div className="flex min-h-screen items-start justify-center p-4 pt-10 print:p-0 print:min-h-0 print:block">
-        <div className="relative w-full max-w-5xl bg-white shadow-xl print:shadow-none print:max-w-full">
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+    <div className="doc-print-root fixed inset-0 z-50 overflow-y-auto bg-gray-900 bg-opacity-75 print:static print:bg-white print:overflow-visible">
+      <div className="doc-print-scroll flex min-h-screen items-start justify-center p-4 pt-10 print:p-0 print:min-h-0 print:block">
+        <div className="doc-print-sheet relative w-full max-w-5xl bg-white shadow-xl print:shadow-none print:max-w-full">
+          <div className="doc-print-hide sticky top-0 z-10 flex items-center justify-between border-b bg-white px-6 py-4" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
             <h2 className="text-xl font-bold text-gray-900">
               {language === 'id' ? 'Nota Kredit' : 'Credit Note'} {creditNote.credit_note_number}
             </h2>
@@ -285,35 +286,7 @@ export function CreditNoteView({ creditNote, items, onClose, companyProfile }: C
           </div>
 
           <div id="credit-note-print-content" ref={printRef} className="p-8">
-            <div className="mb-3 border-2 border-black p-3 print:mb-2 print:p-2">
-              <div className="mb-2 flex items-start justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="h-16 w-16 flex items-center justify-center print:h-12 print:w-12" style={{backgroundColor: '#fff'}}>
-                    <CompanyLogo logoUrl={co.company_logo_url} alt={co.company_name} className="w-full h-full" />
-                  </div>
-                  <div className="max-w-xs">
-                    <h1 className="text-base font-bold print:text-sm">{co.company_name}</h1>
-                    {co.company_address && <p className="text-xs print:text-[10px] whitespace-normal">{co.company_address}</p>}
-                    {co.company_phone && <p className="text-xs print:text-[10px]">Telp: {co.company_phone}</p>}
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <h2 className="text-3xl font-bold text-red-600 print:text-2xl">{language === 'id' ? 'CREDIT NOTE' : 'CREDIT NOTE'}</h2>
-                </div>
-              </div>
-
-              <div className="text-xs space-y-0.5 print:text-[10px] print:space-y-0">
-                <div>
-                  <span className="font-semibold">No izin PBF</span>
-                  <span className="ml-16">: {co.pbf_license?.replace(/^No izin PBF:\s*/i, '') ?? '—'}</span>
-                </div>
-                <div>
-                  <span className="font-semibold">No Sertifikasi CDOB</span>
-                  <span className="ml-4">: {co.cdob_certificate?.replace(/^No Sertifikasi CDOB:\s*/i, '') ?? '—'}</span>
-                </div>
-              </div>
-            </div>
+            <DocumentHeader co={co} title={language === 'id' ? 'CREDIT NOTE' : 'CREDIT NOTE'} titleClassName="text-red-600" />
 
             <div className="mb-3 border-2 border-black p-3 print:mb-2 print:p-2">
               <div className="flex justify-between">
@@ -454,62 +427,7 @@ export function CreditNoteView({ creditNote, items, onClose, companyProfile }: C
         </div>
       </div>
 
-      <style>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 8mm;
-          }
-
-          .sticky {
-            display: none !important;
-          }
-
-          body {
-            margin: 0;
-            padding: 0;
-          }
-
-          body * {
-            visibility: hidden;
-          }
-
-          #credit-note-print-content,
-          #credit-note-print-content * {
-            visibility: visible;
-          }
-
-          #credit-note-print-content {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            page-break-inside: avoid;
-            page-break-after: auto;
-          }
-
-          #credit-note-print-content > div {
-            page-break-inside: avoid;
-          }
-
-          table {
-            page-break-inside: auto;
-          }
-
-          tr {
-            page-break-inside: avoid;
-            page-break-after: auto;
-          }
-
-          thead {
-            display: table-header-group;
-          }
-
-          tfoot {
-            display: table-footer-group;
-          }
-        }
-      `}</style>
+      <DocumentPrintStyles contentId="credit-note-print-content" />
     </div>
   );
 }
