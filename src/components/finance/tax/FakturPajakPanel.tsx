@@ -9,7 +9,6 @@ import { TaxAttachments } from './TaxAttachments';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
 
 interface Customer {
-  customer_name: string;
   company_name: string | null;
   npwp: string | null;
 }
@@ -43,10 +42,7 @@ const FAKTUR_KINDS = [
 
 function customerDisplay(c: Customer | undefined): string {
   if (!c) return '—';
-  if (c.company_name && c.customer_name && c.company_name !== c.customer_name) {
-    return `${c.company_name} (${c.customer_name})`;
-  }
-  return c.company_name || c.customer_name || '—';
+  return c.company_name || '—';
 }
 
 export function FakturPajakPanel() {
@@ -66,11 +62,16 @@ export function FakturPajakPanel() {
     // two-pass lookup fails due to schema cache issues.
     let q = supabase
       .from('sales_invoices')
-      .select('id, invoice_number, invoice_date, tax_amount, total_amount, faktur_pajak_number, customer_id, customer:customer_id(customer_name, company_name, npwp)')
+      .select('id, invoice_number, invoice_date, tax_amount, total_amount, faktur_pajak_number, customer_id, customer:customer_id(company_name, npwp)')
       .gt('tax_amount', 0);
     if (dateRange?.startDate) q = q.gte('invoice_date', dateRange.startDate);
     if (dateRange?.endDate) q = q.lte('invoice_date', dateRange.endDate);
-    const { data: inv } = await q.order('invoice_date', { ascending: false }).limit(500);
+    const { data: inv, error: invErr } = await q.order('invoice_date', { ascending: false }).limit(500);
+    if (invErr) {
+      setLoading(false);
+      alert('Failed to load Faktur Pajak invoices: ' + invErr.message);
+      return;
+    }
     const loaded = (inv as SalesInvoice[] | null) ?? [];
     setInvoices(loaded);
 

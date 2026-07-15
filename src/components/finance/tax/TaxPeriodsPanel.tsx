@@ -67,12 +67,12 @@ async function loadDetail(row: Row): Promise<{ input: InputLine[]; output: Outpu
       .eq('tax_period_id', periodId),
     supabase
       .from('sales_invoices')
-      .select('id, invoice_number, invoice_date, tax_amount, customers:customer_id(customer_name, company_name), faktur_pajak_number')
+      .select('id, invoice_number, invoice_date, tax_amount, customers:customer_id(company_name), faktur_pajak_number')
       .eq('tax_period_id', periodId)
       .gt('tax_amount', 0),
     supabase
       .from('credit_notes')
-      .select('id, credit_note_number, credit_note_date, tax_amount, customers:customer_id(customer_name, company_name)')
+      .select('id, credit_note_number, credit_note_date, tax_amount, customers:customer_id(company_name)')
       .eq('tax_period_id', periodId)
       .eq('status', 'approved')
       .gt('tax_amount', 0),
@@ -148,7 +148,7 @@ async function loadDetail(row: Row): Promise<{ input: InputLine[]; output: Outpu
       id: r.id,
       doc_number: r.invoice_number ?? '—',
       doc_date: r.invoice_date,
-      customer: r.customers?.company_name || r.customers?.customer_name || '—',
+      customer: r.customers?.company_name || '—',
       ppn_amount: Number(r.tax_amount),
       faktur_number: r.faktur_pajak_number ?? null,
     })),

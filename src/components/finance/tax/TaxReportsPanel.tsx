@@ -164,15 +164,15 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
     case 'faktur_register': {
       const { data } = await supabase
         .from('faktur_pajak')
-        .select('faktur_number, issue_date, status, dpp_amount, ppn_amount, reported_at, sales_invoice:sales_invoice_id(invoice_number, customer:customer_id(customer_name, company_name, npwp))')
+        .select('faktur_number, issue_date, status, dpp_amount, ppn_amount, reported_at, sales_invoice:sales_invoice_id(invoice_number, customer:customer_id(company_name, npwp))')
         .gte('issue_date', startDate)
         .lte('issue_date', endDate)
         .order('issue_date', { ascending: false });
       return ((data ?? []) as Array<Record<string, unknown>>).map(r => {
-        const inv = r.sales_invoice as { invoice_number?: string; customer?: { customer_name?: string; company_name?: string; npwp?: string } } | null;
+        const inv = r.sales_invoice as { invoice_number?: string; customer?: { company_name?: string; npwp?: string } } | null;
         const cust = inv?.customer;
         const custDisplay = cust
-          ? (cust.company_name || cust.customer_name || '')
+          ? (cust.company_name || '')
           : '';
         return {
           'Faktur Number':  r.faktur_number as string,
