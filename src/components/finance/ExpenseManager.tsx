@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, DollarSign, Package, Truck, Building2, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, Lock, RotateCcw, UserPlus, AlertCircle } from 'lucide-react';
+import { Plus, DollarSign, Package, Truck, Building2, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, Lock, RotateCcw, UserPlus, AlertCircle, Banknote } from 'lucide-react';
 import { Modal } from '../Modal';
 import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
@@ -219,6 +219,7 @@ interface ExpenseManagerProps {
   canManage: boolean;
   initialViewExpenseId?: string | null;
   onInitialViewHandled?: () => void;
+  onSettleBill?: (bill: { id: string; supplier_id: string; balance_amount: number }) => void;
 }
 
 const moduleExpenseCategories = [
@@ -476,7 +477,7 @@ const moduleExpenseCategories = [
   },
 ];
 
-export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewHandled }: ExpenseManagerProps) {
+export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewHandled, onSettleBill }: ExpenseManagerProps) {
   const { profile } = useAuth();
   const { t } = useLanguage();
   const isAdmin = profile?.role === 'admin';
@@ -2384,11 +2385,31 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       </span>
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
-                      {expense.payment_method === null ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded">
-                          A/P Outstanding
-                        </span>
-                      ) : isReconciled ? (
+                      {expense.payment_method === null ? (() => {
+                        const billBalance = (expense.amount || 0) - (expense.paid_amount ?? 0);
+                        if (billBalance <= 0.01) {
+                          return (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded">
+                              ✓ PAID
+                            </span>
+                          );
+                        }
+                        if ((expense.paid_amount ?? 0) > 0) {
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-300 rounded"
+                              title={`Paid Rp ${(expense.paid_amount ?? 0).toLocaleString('id-ID')} of Rp ${(expense.amount || 0).toLocaleString('id-ID')}`}
+                            >
+                              PARTIAL · Rp {billBalance.toLocaleString('id-ID')} left
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded">
+                            A/P Outstanding
+                          </span>
+                        );
+                      })() : isReconciled ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded">
                           ✓ LINKED
                         </span>
@@ -2432,6 +2453,23 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
+                          {onSettleBill &&
+                            expense.payment_method === null &&
+                            expense.approval_status === 'approved' &&
+                            expense.supplier_id &&
+                            (expense.amount || 0) - (expense.paid_amount ?? 0) > 0.01 && (
+                            <button
+                              onClick={() => onSettleBill({
+                                id: expense.id,
+                                supplier_id: expense.supplier_id!,
+                                balance_amount: (expense.amount || 0) - (expense.paid_amount ?? 0),
+                              })}
+                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                              title="Settle via Payment Voucher"
+                            >
+                              <Banknote className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {isAdmin && expense.approval_status === 'pending_approval' && (
                             <>
                               <button

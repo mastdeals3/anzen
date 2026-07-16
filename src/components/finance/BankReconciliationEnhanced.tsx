@@ -6,6 +6,22 @@ import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
+import { getFinancialYear } from '../../utils/dateFormat';
+
+interface OutstandingBill {
+  id: string;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  invoice_number: string | null;
+  invoice_date: string;
+  due_date: string | null;
+  expense_category: string;
+  description: string | null;
+  amount: number;
+  paid_amount: number;
+  balance_amount: number;
+  days_overdue: number;
+}
 
 interface BankAccount {
   id: string;
@@ -137,6 +153,11 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   const [loadingSupplierPayments, setLoadingSupplierPayments] = useState(false);
   const [linkToTaxPayment, setLinkToTaxPayment] = useState(false);
   const [availableTaxPayments, setAvailableTaxPayments] = useState<any[]>([]);
+  const [linkSettleBills, setLinkSettleBills] = useState(false);
+  const [outstandingBills, setOutstandingBills] = useState<OutstandingBill[]>([]);
+  const [loadingBills, setLoadingBills] = useState(false);
+  const [billAllocations, setBillAllocations] = useState<{ expenseId: string; amount: number }[]>([]);
+  const [settleSubmitting, setSettleSubmitting] = useState(false);
   const [showImportResultModal, setShowImportResultModal] = useState(false);
   const [importResult, setImportResult] = useState<{
     totalInFile: number;
@@ -2236,6 +2257,165 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     }
   };
 
+  const loadOutstandingBills = async () => {
+    setLoadingBills(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase.rpc('get_outstanding_expense_bills', { p_as_of_date: today });
+      if (error) throw error;
+      // Voucher settlement requires a supplier on the bill; supplier-less
+      // expenses keep using the direct "Link Expense" path.
+      setOutstandingBills((data || []).filter((b: OutstandingBill) => b.supplier_id));
+    } catch (err) {
+      console.error('Error loading outstanding bills:', err);
+      setOutstandingBills([]);
+    } finally {
+      setLoadingBills(false);
+    }
+  };
+
+  const toggleBillAllocation = (bill: OutstandingBill, lineAmount: number) => {
+    setBillAllocations(prev => {
+      if (prev.some(a => a.expenseId === bill.id)) {
+        return prev.filter(a => a.expenseId !== bill.id);
+      }
+      const allocated = prev.reduce((s, a) => s + a.amount, 0);
+      const remaining = Math.max(0, lineAmount - allocated);
+      return [...prev, { expenseId: bill.id, amount: Math.min(bill.balance_amount, remaining) }];
+    });
+  };
+
+  const setBillAllocationAmount = (expenseId: string, amount: number) => {
+    setBillAllocations(prev => prev.map(a => (a.expenseId === expenseId ? { ...a, amount } : a)));
+  };
+
+  // One canonical payment path: settling outstanding bills from Bank-Rec
+  // CREATES a payment voucher with allocations (same engine as Payment
+  // Vouchers) and links the bank line to the voucher's journal entry.
+  // matched_expense_id stays NULL — recalculate_expense_payment_state sums
+  // voucher_allocations AND directly-matched lines, so setting both would
+  // double-count the payment.
+  const handleSettleBills = async (line: StatementLine) => {
+    const allocs = billAllocations.filter(a => a.amount > 0);
+    if (allocs.length === 0) {
+      alert('Select at least one bill with an allocation amount');
+      return;
+    }
+
+    const bills = allocs
+      .map(a => outstandingBills.find(b => b.id === a.expenseId))
+      .filter((b): b is OutstandingBill => !!b);
+    const supplierIds = [...new Set(bills.map(b => b.supplier_id))];
+    if (supplierIds.length > 1) {
+      alert('A payment voucher has a single supplier — please select bills of one supplier only.');
+      return;
+    }
+    for (const a of allocs) {
+      const bill = bills.find(b => b.id === a.expenseId);
+      if (bill && a.amount > bill.balance_amount + 0.01) {
+        alert(`Allocation for ${bill.invoice_number || bill.id.slice(0, 8)} exceeds its outstanding balance.`);
+        return;
+      }
+    }
+    const total = allocs.reduce((s, a) => s + a.amount, 0);
+    if (total > line.debit + 0.01) {
+      alert(`Total allocated (Rp ${total.toLocaleString('id-ID')}) exceeds the bank amount (Rp ${line.debit.toLocaleString('id-ID')}).`);
+      return;
+    }
+    if (
+      Math.abs(total - line.debit) > 0.01 &&
+      !confirm(
+        `Total allocated Rp ${total.toLocaleString('id-ID')} differs from the bank amount Rp ${line.debit.toLocaleString('id-ID')} (partial payment or bank charges). Continue?`,
+      )
+    ) {
+      return;
+    }
+
+    setSettleSubmitting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Same numbering convention as PaymentVoucherManager.generateVoucherNumber
+      const fy = getFinancialYear(new Date(line.date));
+      const prefix = `PV/${fy}/`;
+      const { count } = await supabase
+        .from('payment_vouchers')
+        .select('*', { count: 'exact', head: true })
+        .like('voucher_number', `${prefix}%`);
+      const voucherNumber = `${prefix}${String((count || 0) + 1).padStart(3, '0')}`;
+
+      const { data: voucherId, error: saveError } = await supabase.rpc('save_payment_voucher_with_allocations', {
+        p_voucher_id: null,
+        p_voucher_number: voucherNumber,
+        p_voucher_date: line.date,
+        p_supplier_id: supplierIds[0],
+        p_payment_method: 'bank_transfer',
+        p_bank_account_id: selectedBank || null,
+        p_reference_number: line.reference || null,
+        p_amount: total,
+        p_pph_amount: 0,
+        p_pph_code_id: null,
+        p_description: `Bank settlement: ${line.description}`.slice(0, 500),
+        p_payment_currency: 'IDR',
+        p_exchange_rate: 1,
+        p_bank_amount: null,
+        p_bank_charge: 0,
+        p_created_by: user.id,
+        p_allocations: allocs.map(a => ({ finance_expense_id: a.expenseId, amount: a.amount, currency: 'IDR' })),
+      });
+      if (saveError) throw saveError;
+
+      const { error: postError } = await supabase.rpc('post_payment_voucher', {
+        p_pv_id: voucherId,
+        p_posted_by: user.id,
+      });
+      if (postError) {
+        alert(
+          `⚠️ Payment voucher ${voucherNumber} was created but could not be posted: ${postError.message}\n\n` +
+          `Post it in Finance > Payment Vouchers, then link this bank line via "Supplier Payment".`,
+        );
+        return;
+      }
+
+      const { data: pv } = await supabase
+        .from('payment_vouchers')
+        .select('journal_entry_id')
+        .eq('id', voucherId)
+        .maybeSingle();
+      if (!pv?.journal_entry_id) {
+        alert(`⚠️ Voucher ${voucherNumber} posted but its journal entry was not found. Link this bank line via "Supplier Payment".`);
+        return;
+      }
+
+      const { error: linkError } = await supabase
+        .from('bank_statement_lines')
+        .update({
+          reconciliation_status: 'matched',
+          matched_entry_id: pv.journal_entry_id,
+          matched_at: new Date().toISOString(),
+          matched_by: user.id,
+          manually_unlinked: false,
+          notes: `Settled ${allocs.length} expense bill(s) via ${voucherNumber}`,
+        })
+        .eq('id', line.id);
+      if (linkError) throw linkError;
+
+      setRecordModal(false);
+      setRecordingLine(null);
+      setLinkSettleBills(false);
+      setBillAllocations([]);
+      setOutstandingBills([]);
+      await loadStatementLines();
+      alert(`✅ ${voucherNumber} created, posted and linked — ${allocs.length} bill(s) settled`);
+    } catch (error: any) {
+      console.error('Error settling bills:', error);
+      alert('❌ ' + error.message);
+    } finally {
+      setSettleSubmitting(false);
+    }
+  };
+
   const loadAvailableTaxPayments = async (line: StatementLine) => {
     try {
       const amount = line.debit;
@@ -2980,6 +3160,9 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           setSupplierPayments([]);
           setLinkToTaxPayment(false);
           setAvailableTaxPayments([]);
+          setLinkSettleBills(false);
+          setBillAllocations([]);
+          setOutstandingBills([]);
         }}
         title="Record Transaction"
       >
@@ -3016,14 +3199,14 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               <div>
                 <div className="grid grid-cols-3 gap-2 mb-3">
                   <button
-                    onClick={() => { setLinkToExpense(false); setLinkJournalEntry(false); setLinkToSupplierPayment(false); setLinkToTaxPayment(false); }}
-                    className={`py-2 px-3 rounded-lg text-sm font-medium ${!linkToExpense && !linkJournalEntry && !linkToSupplierPayment && !linkToTaxPayment ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                    onClick={() => { setLinkToExpense(false); setLinkJournalEntry(false); setLinkToSupplierPayment(false); setLinkToTaxPayment(false); setLinkSettleBills(false); }}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium ${!linkToExpense && !linkJournalEntry && !linkToSupplierPayment && !linkToTaxPayment && !linkSettleBills ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
                   >
                     Create New Expense
                   </button>
                   <button
-                    onClick={() => { setLinkToExpense(true); setLinkJournalEntry(false); setLinkToSupplierPayment(false); setLinkToTaxPayment(false); }}
-                    className={`py-2 px-3 rounded-lg text-sm font-medium ${linkToExpense && !linkJournalEntry && !linkToSupplierPayment && !linkToTaxPayment ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                    onClick={() => { setLinkToExpense(true); setLinkJournalEntry(false); setLinkToSupplierPayment(false); setLinkToTaxPayment(false); setLinkSettleBills(false); }}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium ${linkToExpense && !linkJournalEntry && !linkToSupplierPayment && !linkToTaxPayment && !linkSettleBills ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
                   >
                     Link Expense
                   </button>
@@ -3033,6 +3216,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                       setLinkToExpense(false);
                       setLinkToSupplierPayment(false);
                       setLinkToTaxPayment(false);
+                      setLinkSettleBills(false);
                       loadAvailableJournals(recordingLine);
                     }}
                     className={`py-2 px-3 rounded-lg text-sm font-medium ${linkJournalEntry && !linkToSupplierPayment && !linkToTaxPayment ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
@@ -3045,6 +3229,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                       setLinkToExpense(false);
                       setLinkJournalEntry(false);
                       setLinkToTaxPayment(false);
+                      setLinkSettleBills(false);
                       loadSupplierPayments(recordingLine);
                     }}
                     className={`py-2 px-3 rounded-lg text-sm font-medium ${linkToSupplierPayment ? 'bg-orange-600 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}
@@ -3057,15 +3242,118 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                       setLinkToExpense(false);
                       setLinkJournalEntry(false);
                       setLinkToSupplierPayment(false);
+                      setLinkSettleBills(false);
                       loadAvailableTaxPayments(recordingLine);
                     }}
-                    className={`py-2 px-3 rounded-lg text-sm font-medium col-span-2 ${linkToTaxPayment ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 border border-purple-200'}`}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium ${linkToTaxPayment ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 border border-purple-200'}`}
                   >
                     Tax Payment
                   </button>
+                  <button
+                    onClick={() => {
+                      setLinkSettleBills(true);
+                      setLinkToExpense(false);
+                      setLinkJournalEntry(false);
+                      setLinkToSupplierPayment(false);
+                      setLinkToTaxPayment(false);
+                      setBillAllocations([]);
+                      loadOutstandingBills();
+                    }}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium ${linkSettleBills ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}
+                  >
+                    Settle Bills
+                  </button>
                 </div>
 
-                {linkJournalEntry ? (
+                {linkSettleBills ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500">
+                      Pay one or more outstanding supplier bills with this bank debit. A posted Payment Voucher is created and linked automatically. Bills of one supplier per payment.
+                    </p>
+                    {loadingBills ? (
+                      <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" /></div>
+                    ) : outstandingBills.length === 0 ? (
+                      <div className="p-3 text-center text-gray-500 text-sm border rounded-lg">
+                        No outstanding supplier bills found. Bills without a supplier can be linked via "Link Expense".
+                      </div>
+                    ) : (
+                      <>
+                        <div className="max-h-56 overflow-y-auto border border-emerald-200 rounded-lg">
+                          <table className="w-full text-xs">
+                            <thead className="bg-emerald-50 sticky top-0">
+                              <tr>
+                                <th className="px-2 py-1.5"></th>
+                                <th className="px-2 py-1.5 text-left font-medium text-emerald-700">Supplier / Invoice</th>
+                                <th className="px-2 py-1.5 text-right font-medium text-emerald-700">Outstanding</th>
+                                <th className="px-2 py-1.5 text-right font-medium text-emerald-700">Pay Now</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-emerald-100">
+                              {outstandingBills.map(bill => {
+                                const alloc = billAllocations.find(a => a.expenseId === bill.id);
+                                return (
+                                  <tr key={bill.id} className={alloc ? 'bg-emerald-50/60' : bill.days_overdue > 0 ? 'bg-red-50/50' : ''}>
+                                    <td className="px-2 py-1.5 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!alloc}
+                                        onChange={() => toggleBillAllocation(bill, recordingLine.debit)}
+                                        className="accent-emerald-600"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-1.5">
+                                      <div className="font-medium text-gray-800">{bill.supplier_name}</div>
+                                      <div className="text-gray-500 font-mono">{bill.invoice_number || bill.id.slice(0, 8)}</div>
+                                      <div className="text-gray-400">
+                                        {new Date(bill.invoice_date).toLocaleDateString('id-ID')}
+                                        {bill.days_overdue > 0 && <span className="text-red-500 ml-1">{bill.days_overdue}d overdue</span>}
+                                      </div>
+                                    </td>
+                                    <td className="px-2 py-1.5 text-right font-medium text-red-600">
+                                      Rp {bill.balance_amount.toLocaleString('id-ID')}
+                                    </td>
+                                    <td className="px-2 py-1.5 text-right">
+                                      {alloc && (
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={bill.balance_amount}
+                                          step="1"
+                                          value={alloc.amount || ''}
+                                          onChange={(e) => setBillAllocationAmount(bill.id, parseFloat(e.target.value) || 0)}
+                                          className="w-24 px-2 py-1 border border-emerald-300 rounded text-right focus:border-emerald-500 outline-none"
+                                        />
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        {(() => {
+                          const total = billAllocations.reduce((s, a) => s + a.amount, 0);
+                          const diff = recordingLine.debit - total;
+                          return (
+                            <div className="flex items-center justify-between text-xs font-medium">
+                              <span className={Math.abs(diff) < 0.01 ? 'text-emerald-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'}>
+                                Allocated: Rp {total.toLocaleString('id-ID')} / Rp {recordingLine.debit.toLocaleString('id-ID')}
+                                {Math.abs(diff) >= 0.01 && ` (${diff > 0 ? 'under' : 'over'} by Rp ${Math.abs(diff).toLocaleString('id-ID')})`}
+                              </span>
+                              <button
+                                onClick={() => handleSettleBills(recordingLine)}
+                                disabled={settleSubmitting || billAllocations.filter(a => a.amount > 0).length === 0}
+                                className="py-2 px-4 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm font-medium"
+                              >
+                                {settleSubmitting ? 'Settling…' : 'Create Voucher & Link'}
+                              </button>
+                            </div>
+                          );
+                        })()}
+                      </>
+                    )}
+                  </div>
+                ) : linkJournalEntry ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select a journal entry to link to this bank transaction (matching amount, +/-7 days).</p>
                     <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">

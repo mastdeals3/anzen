@@ -185,6 +185,36 @@ export default function PartyLedger() {
           });
         }
 
+        // Expense bills (A/P): approved outstanding-type expenses booked
+        // against this supplier. Settlement vouchers already appear via
+        // payment_vouchers below — without these credits the statement
+        // would show payments with no matching bill.
+        const { data: expenseBills } = await supabase
+          .from('finance_expenses')
+          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount')
+          .eq('supplier_id', selectedParty)
+          .is('payment_method', null)
+          .eq('approval_status', 'approved')
+          .gte('expense_date', globalDateRange.startDate)
+          .lte('expense_date', globalDateRange.endDate)
+          .order('expense_date');
+
+        if (expenseBills) {
+          expenseBills.forEach(bill => {
+            const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
+            entries.push({
+              id: bill.id,
+              entry_date: bill.expense_date,
+              particulars: `Expense Bill - ${(bill.expense_category || '').replace(/_/g, ' ')}${outstanding <= 0.01 ? ' (Paid)' : ''}`,
+              reference: bill.invoice_number || bill.voucher_number || '',
+              debit: 0,
+              credit: bill.amount,
+              running_balance: 0,
+              type: 'invoice',
+            });
+          });
+        }
+
         const { data: payments } = await supabase
           .from('payment_vouchers')
           .select('id, voucher_date, voucher_number, amount, description')

@@ -75,10 +75,18 @@ interface PrefillInvoice {
   currency?: string;
 }
 
+interface PrefillExpenseBill {
+  id: string;
+  supplier_id: string;
+  balance_amount: number;
+}
+
 interface PaymentVoucherManagerProps {
   canManage: boolean;
   prefillInvoice?: PrefillInvoice | null;
   onPrefillConsumed?: () => void;
+  prefillExpenseBill?: PrefillExpenseBill | null;
+  onPrefillExpenseBillConsumed?: () => void;
   onViewInvoice?: (invoiceId: string) => void;
 }
 
@@ -120,7 +128,7 @@ function fmt(amount: number, currency: string) {
 }
 
 
-export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillConsumed, onViewInvoice }: PaymentVoucherManagerProps) {
+export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice }: PaymentVoucherManagerProps) {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const [cancelPostingTarget, setCancelPostingTarget] = useState<PaymentVoucher | null>(null);
@@ -172,6 +180,18 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       onPrefillConsumed?.();
     }
   }, [prefillInvoice, loading]);
+
+  useEffect(() => {
+    // "Settle" from ExpenseManager: open a new voucher pre-allocated to the
+    // outstanding expense bill (same engine as manual expense allocation).
+    if (prefillExpenseBill && !loading) {
+      setFormData(prev => ({ ...prev, supplier_id: prefillExpenseBill.supplier_id, amount: prefillExpenseBill.balance_amount }));
+      loadOutstandingExpenseBillsForSupplier(prefillExpenseBill.supplier_id);
+      setExpenseBillAllocations([{ expenseId: prefillExpenseBill.id, amount: prefillExpenseBill.balance_amount }]);
+      setModalOpen(true);
+      onPrefillExpenseBillConsumed?.();
+    }
+  }, [prefillExpenseBill, loading]);
 
   useEffect(() => {
     // In edit mode handleEdit manages invoice loading — skip this effect entirely

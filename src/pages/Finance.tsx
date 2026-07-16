@@ -164,6 +164,7 @@ function FinanceContent() {
   }, []);
   const [editJournalEntryId, setEditJournalEntryId] = useState<string | null>(null);
   const [payInvoice, setPayInvoice] = useState<{ id: string; invoice_number: string; supplier_id: string; balance_amount: number } | null>(null);
+  const [payExpenseBill, setPayExpenseBill] = useState<{ id: string; supplier_id: string; balance_amount: number } | null>(null);
   const [focusExpenseId, setFocusExpenseId] = useState<string | null>(null);
   const [focusPettyCashId, setFocusPettyCashId] = useState<string | null>(null);
   const [ledgerDrillCode, setLedgerDrillCode] = useState<string | null>(null);
@@ -171,6 +172,11 @@ function FinanceContent() {
 
   const handlePayInvoice = (invoice: { id: string; invoice_number: string; supplier_id: string; balance_amount: number }) => {
     setPayInvoice(invoice);
+    setActiveTab('payment');
+  };
+
+  const handleSettleExpenseBill = (bill: { id: string; supplier_id: string; balance_amount: number }) => {
+    setPayExpenseBill(bill);
     setActiveTab('payment');
   };
 
@@ -268,7 +274,7 @@ function FinanceContent() {
       case 'receipt':
         return <ReceiptVoucherManager canManage={canManage} />;
       case 'payment':
-        return <PaymentVoucherManager canManage={canManage} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} onViewInvoice={() => setActiveTab('purchase')} />;
+        return <PaymentVoucherManager canManage={canManage} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} prefillExpenseBill={payExpenseBill} onPrefillExpenseBillConsumed={() => setPayExpenseBill(null)} onViewInvoice={() => setActiveTab('purchase')} />;
       case 'journal':
         return <GeneralJournalEntry
           canManage={canManage}
@@ -284,6 +290,7 @@ function FinanceContent() {
             canManage={canManage}
             initialViewExpenseId={focusExpenseId}
             onInitialViewHandled={() => setFocusExpenseId(null)}
+            onSettleBill={handleSettleExpenseBill}
           />
         );
       case 'petty_cash':
