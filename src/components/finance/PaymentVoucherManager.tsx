@@ -40,6 +40,7 @@ interface TaxCode {
   code: string;
   name: string;
   rate: number;
+  tax_type: string | null;
 }
 
 interface PaymentVoucher {
@@ -272,7 +273,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   };
 
   const loadTaxCodes = async () => {
-    const { data } = await supabase.from('tax_codes').select('id, code, name, rate').eq('is_withholding', true);
+    const { data } = await supabase.from('tax_codes').select('id, code, name, rate, tax_type').eq('is_withholding', true);
     setTaxCodes(data || []);
   };
 
@@ -1281,7 +1282,10 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
                     </div>
                     {viewingVoucher.pph_amount ? (
                       <div>
-                        <div className="text-xs text-gray-500">PPh Withholding ({invCcy})</div>
+                        <div className="text-xs text-gray-500">
+                          {/* Show the actual withholding type from the stored tax code */}
+                          {(viewingVoucher.pph_code_id && taxCodes.find(t => t.id === viewingVoucher.pph_code_id)?.tax_type) || 'PPh Withholding'} ({invCcy})
+                        </div>
                         <div className="font-semibold text-gray-900">{fmt(viewingVoucher.pph_amount, invCcy)}</div>
                       </div>
                     ) : null}
