@@ -3698,46 +3698,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               const supplierPaid = viewingExpense.paid_amount ?? 0;
               const pphTarget = viewingExpense.pph_amount || 0;
               const pphPaid = viewingExpense.pph_paid_amount ?? 0;
-              // Show the actual withholding type (PPh21, PPh23, PPh4(2), …)
-              // from the stored tax code instead of a generic label.
-              const pphCode = viewingExpense.pph_code_id
-                ? taxCodes.find(t => t.id === viewingExpense.pph_code_id)
-                : null;
-              const pphRowLabel = pphCode?.tax_type ?? 'PPh Withholding';
               const badge = (paid: number, target: number) => {
                 if (target <= 0) return null;
                 if (paid <= 0) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">Pending</span>;
                 if (paid >= target - 1) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">Paid ✓</span>;
                 return <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800">Partial</span>;
-              };
-              // Labeled Paid / Outstanding lines instead of an unexplained
-              // "paid / target" fraction. When nothing is paid yet only the
-              // outstanding amount is shown; when fully paid only the paid
-              // amount is shown. Values are the same ones used before.
-              const breakdownRow = (label: string, paid: number, target: number) => {
-                const outstanding = Math.max(target - paid, 0);
-                return (
-                  <div className="py-0.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-700 text-xs font-medium">{label}</span>
-                      {badge(paid, target)}
-                    </div>
-                    <div className="mt-0.5 space-y-0.5">
-                      {paid > 0 && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-400">Paid</span>
-                          <span className="font-mono text-green-700">{fmtMoney(paid)}</span>
-                        </div>
-                      )}
-                      {(outstanding > 0 || paid <= 0) && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-400">Outstanding</span>
-                          <span className="font-mono text-gray-900">{fmtMoney(outstanding)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
               };
               // Hide the supplier row if there's nothing owed (fully unbilled etc).
               const showSupplier = supplierTarget > 0 || supplierPaid > 0;
@@ -3747,9 +3712,25 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
                     Payment Breakdown ({allocs.length + bslLines.length} {allocs.length + bslLines.length === 1 ? 'line' : 'lines'})
                   </div>
-                  <div className="px-3 py-2 text-sm space-y-1.5">
-                    {showSupplier && breakdownRow('Supplier', supplierPaid, supplierTarget)}
-                    {showPph && breakdownRow(pphRowLabel, pphPaid, pphTarget)}
+                  <div className="px-3 py-2 text-sm space-y-1">
+                    {showSupplier && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700 text-xs">Supplier</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-gray-900 text-xs">{fmtMoney(supplierPaid)} / {fmtMoney(supplierTarget)}</span>
+                          {badge(supplierPaid, supplierTarget)}
+                        </div>
+                      </div>
+                    )}
+                    {showPph && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700 text-xs">PPh Withholding</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-gray-900 text-xs">{fmtMoney(pphPaid)} / {fmtMoney(pphTarget)}</span>
+                          {badge(pphPaid, pphTarget)}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   {(allocs.length + bslLines.length) > 1 && (
                     <div className="px-3 pb-2">

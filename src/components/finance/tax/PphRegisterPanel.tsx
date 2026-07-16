@@ -9,6 +9,7 @@ type PphType = 'PPh21' | 'PPh22' | 'PPh23' | 'PPh4(2)' | 'PPh_Unifikasi';
 const TABS: PphType[] = ['PPh21','PPh22','PPh23','PPh4(2)','PPh_Unifikasi'];
 
 function pphTabLabel(t: PphType): string {
+  if (t === 'PPh21') return 'PPh21 (Manual)';
   if (t === 'PPh_Unifikasi') return 'All Types (Consolidated)';
   return t;
 }
@@ -47,18 +48,6 @@ function fmtDate(s: string) {
   return isNaN(d.getTime()) ? s : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// Staff-paid expenses (salary etc.) have no supplier_id; ExpenseManager
-// stores the staff name in a "[Name · Period]" description prefix instead.
-// Parse it so the register can show WHO was paid and keep the description
-// readable. Returns null when there is no prefix.
-function parseStaffPrefix(description: string | null): { name: string; rest: string | null } | null {
-  if (!description) return null;
-  const m = description.match(/^\[([^·\]]+?)(?:\s*·\s*([^\]]+))?\]\s*(.*)$/s);
-  if (!m) return null;
-  const rest = [m[2]?.trim(), m[3]?.trim()].filter(Boolean).join(' · ');
-  return { name: m[1].trim(), rest: rest || null };
-}
-
 async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const yr = row.fiscal_year;
   const mo = row.period_month;
@@ -71,14 +60,9 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const endDate = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
 
   const [feRes, pvRes, importRes] = await Promise.all([
-    // NOTE: finance_expenses has no staff FK column — staff payees live in the
-    // "[Name · Period]" description prefix (see parseStaffPrefix). Embedding a
-    // non-existent relationship here makes PostgREST reject the WHOLE query
-    // (PGRST200), which is exactly the bug that left the PPh21 tab showing
-    // "No source documents" while the period totals were non-zero.
     supabase
       .from('finance_expenses')
-      .select('id, voucher_number, expense_date, pph_amount, description, payment_method, expense_category, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name)')
+      .select('id, voucher_number, expense_date, pph_amount, description, payment_method, expense_category, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:paid_by_staff_id(full_name)')
       .gte('expense_date', startDate)
       .lte('expense_date', endDate)
       .gt('pph_amount', 0),
@@ -100,10 +84,6 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
 
   const pphType = row.tax_type;
 
-  if (feRes.error) console.error('PPh register: expense detail query failed', feRes.error);
-  if (pvRes.error) console.error('PPh register: voucher detail query failed', pvRes.error);
-  if (importRes.error) console.error('PPh register: import detail query failed', importRes.error);
-
   const expenses: SourceLine[] = ((feRes.data ?? []) as any[])
     .filter(r => {
       // Import categories are handled by the import branch below; exclude here
@@ -112,21 +92,18 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       const codeType = r.pph_code?.tax_type ?? null;
       return pphType === 'PPh_Unifikasi' || codeType === pphType;
     })
-    .map(r => {
-      const staff = r.suppliers?.company_name ? null : parseStaffPrefix(r.description);
-      return {
-        module: 'expense' as const,
-        id: r.id,
-        doc_number: r.voucher_number ?? '—',
-        doc_date: r.expense_date,
-        party: r.suppliers?.company_name ?? staff?.name ?? '—',
-        description: staff ? staff.rest : r.description,
-        pph_code: r.pph_code?.code ?? null,
-        pph_amount: Number(r.pph_amount),
-        payment_method: r.payment_method,
-        recon_status: null,
-      };
-    });
+    .map(r => ({
+      module: 'expense' as const,
+      id: r.id,
+      doc_number: r.voucher_number ?? '—',
+      doc_date: r.expense_date,
+      party: r.suppliers?.company_name ?? r.staff?.full_name ?? '—',
+      description: r.description,
+      pph_code: r.pph_code?.code ?? null,
+      pph_amount: Number(r.pph_amount),
+      payment_method: r.payment_method,
+      recon_status: null,
+    }));
 
   const vouchers: SourceLine[] = ((pvRes.data ?? []) as any[])
     .filter(r => {

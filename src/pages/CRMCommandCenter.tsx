@@ -101,43 +101,16 @@ export function CRMCommandCenter() {
 
       console.log('[CRMCommandCenter] Looking up customer with primaryEmail:', primaryEmail);
 
-      // Match an existing contact by email OR by company name. Run as two
-      // parameter-safe query-builder calls instead of a raw `.or()` string —
-      // the builder encodes each value, so names containing commas, quotes,
-      // parentheses, ampersands, %, _ etc. can never break PostgREST's
-      // logic-tree parser (previously "failed to parse logic tree").
-      const lookupColumns = 'id, company_name, email, contact_person, phone, address';
-      let existingCustomers: {
-        id: string; company_name: string; email: string | null;
-        contact_person: string | null; phone: string | null; address: string | null;
-      } | null = null;
+      const { data: existingCustomers, error: lookupError } = await supabase
+        .from('crm_contacts')
+        .select('id, company_name, email, contact_person, phone, address')
+        .or(`email.eq.${primaryEmail},company_name.ilike.${formData.companyName}`)
+        .limit(1)
+        .maybeSingle();
 
-      if (primaryEmail) {
-        const { data, error } = await supabase
-          .from('crm_contacts')
-          .select(lookupColumns)
-          .eq('email', primaryEmail)
-          .limit(1)
-          .maybeSingle();
-        if (error) {
-          console.error('[CRMCommandCenter] Customer lookup error (email):', error);
-          throw error;
-        }
-        existingCustomers = data;
-      }
-
-      if (!existingCustomers && formData.companyName) {
-        const { data, error } = await supabase
-          .from('crm_contacts')
-          .select(lookupColumns)
-          .ilike('company_name', formData.companyName)
-          .limit(1)
-          .maybeSingle();
-        if (error) {
-          console.error('[CRMCommandCenter] Customer lookup error (company_name):', error);
-          throw error;
-        }
-        existingCustomers = data;
+      if (lookupError) {
+        console.error('[CRMCommandCenter] Customer lookup error:', lookupError);
+        throw lookupError;
       }
 
       if (existingCustomers) {

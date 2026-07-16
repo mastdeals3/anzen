@@ -3,14 +3,13 @@ import { Layout } from '../components/Layout';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Save, Building2, Mail, DollarSign, Package, Users, Calendar, FileText, Download, Upload, X, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { Save, Building2, Mail, DollarSign, Package, Users, Calendar, FileText, Download, Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { GmailSettings } from '../components/crm/GmailSettings';
 import { GmailVisibilityPanel } from '../components/crm/GmailVisibilityPanel';
 import { UserManagement } from '../components/settings/UserManagement';
 import { EmailTemplates } from '../components/settings/EmailTemplates';
 import { ExtractData } from '../components/settings/ExtractData';
 import { SuppliersManager } from '../components/settings/SuppliersManager';
-import { AboutSystem } from '../components/settings/AboutSystem';
 import { formatDate } from '../utils/dateFormat';
 
 interface AppSettings {
@@ -70,7 +69,7 @@ export function Settings() {
     return 'company';
   };
 
-  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'suppliers' | 'system' | 'financial' | 'gmail' | 'templates' | 'extract' | 'about'>(getDefaultTab());
+  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'suppliers' | 'system' | 'financial' | 'gmail' | 'templates' | 'extract'>(getDefaultTab());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -774,19 +773,6 @@ export function Settings() {
                   </div>
                 </button>
               )}
-              <button
-                onClick={() => setActiveTab('about')}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition ${
-                  activeTab === 'about'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Info className="w-4 h-4" />
-                  About
-                </div>
-              </button>
             </nav>
           </div>
 
@@ -804,10 +790,6 @@ export function Settings() {
 
             {activeTab === 'extract' && (
               <ExtractData />
-            )}
-
-            {activeTab === 'about' && (
-              <AboutSystem />
             )}
 
             {activeTab === 'suppliers' && (
