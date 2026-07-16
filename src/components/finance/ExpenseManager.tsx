@@ -1701,11 +1701,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       const { error } = await supabase
         .from('bank_statement_lines')
         .update({
-          expense_id: null,
-          status: 'unmatched',
-          matched_date: null
+          matched_expense_id: null,
+          reconciliation_status: 'unmatched',
+          matched_at: null,
+          matched_by: null,
         })
-        .eq('expense_id', expenseId);
+        .eq('matched_expense_id', expenseId);
 
       if (error) throw error;
 
