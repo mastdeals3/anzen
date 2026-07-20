@@ -25,6 +25,9 @@ interface Row {
   status: string;
   payment_due_date: string | null;
   filing_due_date: string | null;
+  // Derived by the engine (vw_pph_by_period_type), shared with Calendar / Period Close.
+  payment_status: string | null;
+  payment_source: string | null;
 }
 
 interface SourceLine {
@@ -284,7 +287,7 @@ export function PphRegisterPanel() {
                       </td>
                       <td className="px-3 py-2 font-medium">{r.fiscal_year}-{String(r.period_month).padStart(2,'0')}</td>
                       <td className="px-3 py-2">
-                        <StatusChip status={r.status} />
+                        <StatusChip status={r.payment_status ?? r.status} />
                       </td>
                       <td className="px-3 py-2 text-right">{fmt(r.pph_total)}</td>
                       <td className="px-3 py-2 text-right text-green-700">{fmt(r.pph_paid_total)}</td>

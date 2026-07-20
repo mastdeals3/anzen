@@ -3088,7 +3088,17 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                                   line.matchedEntry           ? 'journal:'       + line.matchedEntry : 'unknown'
                                 }`}
                               >
-                                → Linked (reference unresolved)
+                                {/* Reference didn't resolve, but the row IS linked and the
+                                    bank line always carries its own amount — show that plus
+                                    the link type so the amount is never blank. */}
+                                → Linked to {
+                                  line.matchedFundTransferId ? 'Fund Transfer' :
+                                  line.matchedExpenseId      ? 'Expense' :
+                                  line.matchedReceiptId      ? 'Receipt' :
+                                  line.matchedPettyCashId    ? 'Petty Cash' :
+                                  line.matchedTaxPaymentId   ? 'Tax Payment' :
+                                  line.matchedEntry          ? 'Journal' : 'document'
+                                }: {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {(line.debit || line.credit || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-gray-400">(reference unresolved)</span>
                               </span>
                             )}
                           </>

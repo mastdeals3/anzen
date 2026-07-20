@@ -47,8 +47,11 @@ export function TaxComplianceDashboardCards({ variant = 'grid' }: Props) {
         .select('tax_type, payment_due_date, outstanding_amount');
       const outRows = (outstanding as { tax_type: string; payment_due_date: string | null; outstanding_amount: number }[] | null) ?? [];
 
-      const ppnDueSoon = outRows.filter(r => r.tax_type === 'PPN' && r.payment_due_date && r.payment_due_date <= in7);
-      const pphOverdue = outRows.filter(r => r.tax_type !== 'PPN' && r.payment_due_date && r.payment_due_date < today);
+      // A period stays in vw_outstanding_tax until its lifecycle status is
+      // paid/closed, but settlement (Tax Payment or a reconciled PIB expense)
+      // can drive outstanding_amount to 0 first — so gate on a real balance.
+      const ppnDueSoon = outRows.filter(r => Number(r.outstanding_amount ?? 0) > 0.01 && r.tax_type === 'PPN' && r.payment_due_date && r.payment_due_date <= in7);
+      const pphOverdue = outRows.filter(r => Number(r.outstanding_amount ?? 0) > 0.01 && r.tax_type !== 'PPN' && r.payment_due_date && r.payment_due_date < today);
 
       // Missing faktur across all open PPN periods
       const { data: status } = await supabase
