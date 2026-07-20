@@ -19,17 +19,24 @@ interface PeriodStatus {
   reconciled_payments_count: number;
   unreconciled_payments_count: number;
   missing_faktur_count: number;
+  // Derived by the engine (vw_tax_period_status), shared with Register / Period Close.
+  paid_amount: number | null;
+  outstanding_amount: number | null;
+  payment_status: string | null;
+  payment_source: string | null;
 }
 
 function statusChip(period: PeriodStatus): { color: string; icon: JSX.Element; label: string } {
-  const today = new Date();
-  const dueDate = period.payment_due_date ? new Date(period.payment_due_date) : null;
-  const overdue = dueDate && dueDate < today && !['paid','closed','filed'].includes(period.status);
-  if (period.status === 'closed')          return { color: 'bg-green-100 text-green-800', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Closed' };
-  if (period.status === 'paid')            return { color: 'bg-green-50 text-green-700', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Paid' };
-  if (overdue)                             return { color: 'bg-red-100 text-red-800',   icon: <AlertCircle className="w-3 h-3" />, label: 'Overdue' };
-  if (period.status === 'payment_pending') return { color: 'bg-yellow-100 text-yellow-800', icon: <Clock className="w-3 h-3" />, label: 'Payment pending' };
-  return { color: 'bg-gray-100 text-gray-700', icon: <Clock className="w-3 h-3" />, label: 'Open' };
+  // Single derived status from the engine — Calendar now matches Register /
+  // Period Close / Dashboard exactly (no re-deriving overdue from stale status).
+  switch (period.payment_status) {
+    case 'closed':          return { color: 'bg-green-100 text-green-800', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Closed' };
+    case 'filed':           return { color: 'bg-green-100 text-green-700', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Filed' };
+    case 'paid':            return { color: 'bg-green-50 text-green-700',  icon: <CheckCircle2 className="w-3 h-3" />, label: 'Paid' };
+    case 'overdue':         return { color: 'bg-red-100 text-red-800',     icon: <AlertCircle className="w-3 h-3" />, label: 'Overdue' };
+    case 'payment_pending': return { color: 'bg-yellow-100 text-yellow-800', icon: <Clock className="w-3 h-3" />, label: 'Payment pending' };
+    default:                return { color: 'bg-gray-100 text-gray-700',   icon: <Clock className="w-3 h-3" />, label: 'Open' };
+  }
 }
 
 export function TaxCalendarPanel() {
@@ -79,11 +86,13 @@ export function TaxCalendarPanel() {
     const today = new Date();
     let overdue = 0, dueSoon = 0, missingFaktur = 0;
     for (const r of filtered) {
-      const due = r.payment_due_date ? new Date(r.payment_due_date) : null;
-      const settled = ['paid', 'closed', 'filed'].includes(r.status);
-      if (due && !settled) {
-        if (due < today) overdue++;
-        else if ((due.getTime() - today.getTime()) / 86400000 <= 7) dueSoon++;
+      // Use the engine's derived payment_status so Calendar counts match the
+      // chips (and the Register / Dashboard) instead of the manual status.
+      if (r.payment_status === 'overdue') {
+        overdue++;
+      } else if (!['paid', 'closed', 'filed'].includes(r.payment_status ?? '')) {
+        const due = r.payment_due_date ? new Date(r.payment_due_date) : null;
+        if (due && due >= today && (due.getTime() - today.getTime()) / 86400000 <= 7) dueSoon++;
       }
       missingFaktur += Number(r.missing_faktur_count || 0);
     }

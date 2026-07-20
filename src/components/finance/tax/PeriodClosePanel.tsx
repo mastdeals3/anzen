@@ -15,6 +15,10 @@ interface PeriodStatus {
   reconciled_payments_count: number;
   net_ppn: number | null;
   pph_total: number | null;
+  // Derived by the engine (vw_tax_period_status) — shown in the chip so the
+  // Close screen reads the same Paid/Overdue as Calendar and Register.
+  payment_status: string | null;
+  outstanding_amount: number | null;
 }
 interface OutstandingRow { tax_period_id: string; outstanding_amount: number; }
 
@@ -131,7 +135,7 @@ export function PeriodClosePanel() {
                   <tr key={p.id} className="border-t">
                     <td className="px-3 py-2 font-medium">{p.fiscal_year}-{String(p.period_month).padStart(2,'0')}</td>
                     <td className="px-3 py-2">{p.tax_type}</td>
-                    <td className="px-3 py-2"><StatusChip status={p.status} /></td>
+                    <td className="px-3 py-2"><StatusChip status={p.payment_status ?? p.status} /></td>
                     <td className="px-3 py-2 text-right">Rp {Number(amount).toLocaleString('id-ID')}</td>
                     <td className="px-3 py-2 text-right">{out > 0 ? <span className="text-red-700">Rp {out.toLocaleString('id-ID')}</span> : 'Rp 0'}</td>
                     <td className="px-3 py-2 text-xs">
