@@ -10,7 +10,7 @@ import { useFinance } from '../../contexts/FinanceContext';
 interface Party {
   id: string;
   name: string;
-  type: 'customer' | 'supplier';
+  type: 'customer' | 'supplier' | 'staff';
   email?: string;
   phone?: string;
   address?: string;
@@ -32,7 +32,7 @@ interface LedgerEntry {
 export default function PartyLedger() {
   const { dateRange: globalDateRange } = useFinance();
   const printRef = useRef<HTMLDivElement>(null);
-  const [partyType, setPartyType] = useState<'customer' | 'supplier'>('customer');
+  const [partyType, setPartyType] = useState<'customer' | 'supplier' | 'staff'>('customer');
   const [parties, setParties] = useState<Party[]>([]);
   const [selectedParty, setSelectedParty] = useState<string>('');
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
@@ -66,8 +66,25 @@ export default function PartyLedger() {
   }, [selectedParty, globalDateRange.startDate, globalDateRange.endDate]);
 
   const loadParties = async () => {
+    if (partyType === 'staff') {
+      const { data } = await supabase
+        .from('finance_staff_master')
+        .select('id, full_name, employee_code, department, npwp')
+        .order('full_name');
+      if (data) {
+        setParties(data.map(p => ({
+          id: p.id,
+          name: p.employee_code ? `${p.full_name} (${p.employee_code})` : p.full_name,
+          type: 'staff' as const,
+          address: p.department || undefined,
+          npwp: p.npwp || undefined,
+        })));
+      }
+      setSelectedParty('');
+      return;
+    }
+
     const tableName = partyType === 'customer' ? 'customers' : 'suppliers';
-    const nameField = 'company_name';
 
     const { data } = await supabase
       .from(tableName)
@@ -84,164 +101,268 @@ export default function PartyLedger() {
     setSelectedParty('');
   };
 
+  // Fetch ledger entries for [fromDate, toDate]. fromDate null = from the
+  // beginning of time (used to compute the opening balance before the period).
+  const fetchEntries = async (fromDate: string | null, toDate: string): Promise<LedgerEntry[]> => {
+    const entries: LedgerEntry[] = [];
+    const dateRange = <T,>(q: T, col: string): T => {
+      let qq = (q as any).lte(col, toDate);
+      if (fromDate) qq = qq.gte(col, fromDate);
+      return qq;
+    };
+
+    if (partyType === 'customer') {
+      const { data: invoices } = await dateRange(
+        supabase
+          .from('sales_invoices')
+          .select('id, invoice_date, invoice_number, total_amount, payment_status')
+          .eq('customer_id', selectedParty),
+        'invoice_date',
+      ).order('invoice_date');
+
+      if (invoices) {
+        invoices.forEach(inv => {
+          entries.push({
+            id: inv.id,
+            entry_date: inv.invoice_date,
+            particulars: `Sales Invoice - ${inv.payment_status || 'Unpaid'}`,
+            reference: inv.invoice_number,
+            debit: inv.total_amount,
+            credit: 0,
+            running_balance: 0,
+            type: 'invoice',
+          });
+        });
+      }
+
+      const { data: receipts } = await dateRange(
+        supabase
+          .from('receipt_vouchers')
+          .select('id, voucher_date, voucher_number, amount, description')
+          .eq('customer_id', selectedParty),
+        'voucher_date',
+      ).order('voucher_date');
+
+      if (receipts) {
+        receipts.forEach(rec => {
+          entries.push({
+            id: rec.id,
+            entry_date: rec.voucher_date,
+            particulars: rec.description || 'Receipt',
+            reference: rec.voucher_number,
+            debit: 0,
+            credit: rec.amount,
+            running_balance: 0,
+            type: 'receipt',
+          });
+        });
+      }
+
+      const { data: creditNotes } = await dateRange(
+        supabase
+          .from('credit_notes')
+          .select('id, credit_note_date, credit_note_number, total_amount')
+          .eq('customer_id', selectedParty)
+          .eq('status', 'approved'),
+        'credit_note_date',
+      ).order('credit_note_date');
+
+      if (creditNotes) {
+        creditNotes.forEach(cn => {
+          entries.push({
+            id: cn.id,
+            entry_date: cn.credit_note_date,
+            particulars: 'Credit Note',
+            reference: cn.credit_note_number,
+            debit: 0,
+            credit: cn.total_amount,
+            running_balance: 0,
+            type: 'receipt',
+          });
+        });
+      }
+    } else if (partyType === 'supplier') {
+      const { data: invoices } = await dateRange(
+        supabase
+          .from('purchase_invoices')
+          .select('id, invoice_date, invoice_number, total_amount, payment_status')
+          .eq('supplier_id', selectedParty),
+        'invoice_date',
+      ).order('invoice_date');
+
+      if (invoices) {
+        invoices.forEach(inv => {
+          entries.push({
+            id: inv.id,
+            entry_date: inv.invoice_date,
+            particulars: `Purchase Invoice - ${inv.payment_status || 'Unpaid'}`,
+            reference: inv.invoice_number,
+            debit: 0,
+            credit: inv.total_amount,
+            running_balance: 0,
+            type: 'invoice',
+          });
+        });
+      }
+
+      // Expense bills (A/P): approved outstanding-type expenses booked
+      // against this supplier. Settlement vouchers already appear via
+      // payment_vouchers below — without these credits the statement
+      // would show payments with no matching bill.
+      const { data: expenseBills } = await dateRange(
+        supabase
+          .from('finance_expenses')
+          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount')
+          .eq('supplier_id', selectedParty)
+          .is('payment_method', null)
+          .eq('approval_status', 'approved'),
+        'expense_date',
+      ).order('expense_date');
+
+      if (expenseBills) {
+        expenseBills.forEach(bill => {
+          const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
+          entries.push({
+            id: bill.id,
+            entry_date: bill.expense_date,
+            particulars: `Expense Bill - ${(bill.expense_category || '').replace(/_/g, ' ')}${outstanding <= 0.01 ? ' (Paid)' : ''}`,
+            reference: bill.invoice_number || bill.voucher_number || '',
+            debit: 0,
+            credit: bill.amount,
+            running_balance: 0,
+            type: 'invoice',
+          });
+        });
+      }
+
+      const { data: payments } = await dateRange(
+        supabase
+          .from('payment_vouchers')
+          .select('id, voucher_date, voucher_number, amount, description')
+          .eq('supplier_id', selectedParty),
+        'voucher_date',
+      ).order('voucher_date');
+
+      if (payments) {
+        payments.forEach(pay => {
+          entries.push({
+            id: pay.id,
+            entry_date: pay.voucher_date,
+            particulars: pay.description || 'Payment',
+            reference: pay.voucher_number,
+            debit: pay.amount,
+            credit: 0,
+            running_balance: 0,
+            type: 'payment',
+          });
+        });
+      }
+    } else {
+      // Staff ledger — one running account per staff member:
+      //   Cr  salary / staff bills recorded as outstanding (company owes staff)
+      //   Dr  payment vouchers paid to the staff member
+      //   Dr  advances given (staff_advance expenses, paid — staff owes company)
+      //   Dr+Cr  advance-adjustment vouchers (settle salary payable against the
+      //          advance — net zero on the running balance, shown for the trail)
+      const { data: bills } = await dateRange(
+        supabase
+          .from('finance_expenses')
+          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount')
+          .eq('staff_id', selectedParty)
+          .neq('expense_category', 'staff_advance')
+          .is('payment_method', null)
+          .eq('approval_status', 'approved'),
+        'expense_date',
+      ).order('expense_date');
+
+      if (bills) {
+        bills.forEach(bill => {
+          const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
+          entries.push({
+            id: bill.id,
+            entry_date: bill.expense_date,
+            particulars: `${(bill.expense_category || '').replace(/_/g, ' ')} Bill${outstanding <= 0.01 ? ' (Paid)' : ''}`,
+            reference: bill.invoice_number || bill.voucher_number || '',
+            debit: 0,
+            credit: bill.amount,
+            running_balance: 0,
+            type: 'invoice',
+          });
+        });
+      }
+
+      const { data: advances } = await dateRange(
+        supabase
+          .from('finance_expenses')
+          .select('id, expense_date, invoice_number, voucher_number, amount')
+          .eq('staff_id', selectedParty)
+          .eq('expense_category', 'staff_advance')
+          .not('payment_method', 'is', null)
+          .eq('approval_status', 'approved'),
+        'expense_date',
+      ).order('expense_date');
+
+      if (advances) {
+        advances.forEach(adv => {
+          entries.push({
+            id: adv.id,
+            entry_date: adv.expense_date,
+            particulars: 'Staff Advance Given',
+            reference: adv.invoice_number || adv.voucher_number || '',
+            debit: adv.amount,
+            credit: 0,
+            running_balance: 0,
+            type: 'payment',
+          });
+        });
+      }
+
+      const { data: vouchers } = await dateRange(
+        supabase
+          .from('payment_vouchers')
+          .select('id, voucher_date, voucher_number, amount, description, payment_method')
+          .eq('staff_id', selectedParty),
+        'voucher_date',
+      ).order('voucher_date');
+
+      if (vouchers) {
+        vouchers.forEach(pv => {
+          const isAdjustment = pv.payment_method === 'advance_adjustment';
+          entries.push({
+            id: pv.id,
+            entry_date: pv.voucher_date,
+            particulars: isAdjustment
+              ? 'Advance Adjusted Against Salary'
+              : (pv.description || 'Payment to Staff'),
+            reference: pv.voucher_number,
+            debit: pv.amount,
+            credit: isAdjustment ? pv.amount : 0,
+            running_balance: 0,
+            type: 'payment',
+          });
+        });
+      }
+    }
+
+    entries.sort((a, b) => new Date(a.entry_date).getTime() - new Date(b.entry_date).getTime());
+    return entries;
+  };
+
   const loadLedgerEntries = async () => {
     if (!selectedParty) return;
 
     setLoading(true);
     try {
-      const entries: LedgerEntry[] = [];
+      // Opening balance = net of all transactions before the period start.
+      const before = new Date(globalDateRange.startDate);
+      before.setDate(before.getDate() - 1);
+      const priorEntries = await fetchEntries(null, before.toISOString().split('T')[0]);
+      const opening = priorEntries.reduce((s, e) => s + e.debit - e.credit, 0);
+      setOpeningBalance(opening);
 
-      if (partyType === 'customer') {
-        const { data: invoices } = await supabase
-          .from('sales_invoices')
-          .select('id, invoice_date, invoice_number, total_amount, payment_status')
-          .eq('customer_id', selectedParty)
-          .gte('invoice_date', globalDateRange.startDate)
-          .lte('invoice_date', globalDateRange.endDate)
-          .order('invoice_date');
+      const entries = await fetchEntries(globalDateRange.startDate, globalDateRange.endDate);
 
-        if (invoices) {
-          invoices.forEach(inv => {
-            entries.push({
-              id: inv.id,
-              entry_date: inv.invoice_date,
-              particulars: `Sales Invoice - ${inv.payment_status || 'Unpaid'}`,
-              reference: inv.invoice_number,
-              debit: inv.total_amount,
-              credit: 0,
-              running_balance: 0,
-              type: 'invoice',
-            });
-          });
-        }
-
-        const { data: receipts } = await supabase
-          .from('receipt_vouchers')
-          .select('id, voucher_date, voucher_number, amount, description')
-          .eq('customer_id', selectedParty)
-          .gte('voucher_date', globalDateRange.startDate)
-          .lte('voucher_date', globalDateRange.endDate)
-          .order('voucher_date');
-
-        if (receipts) {
-          receipts.forEach(rec => {
-            entries.push({
-              id: rec.id,
-              entry_date: rec.voucher_date,
-              particulars: rec.description || 'Receipt',
-              reference: rec.voucher_number,
-              debit: 0,
-              credit: rec.amount,
-              running_balance: 0,
-              type: 'receipt',
-            });
-          });
-        }
-
-        const { data: creditNotes } = await supabase
-          .from('credit_notes')
-          .select('id, credit_note_date, credit_note_number, total_amount')
-          .eq('customer_id', selectedParty)
-          .gte('credit_note_date', globalDateRange.startDate)
-          .lte('credit_note_date', globalDateRange.endDate)
-          .eq('status', 'approved')
-          .order('credit_note_date');
-
-        if (creditNotes) {
-          creditNotes.forEach(cn => {
-            entries.push({
-              id: cn.id,
-              entry_date: cn.credit_note_date,
-              particulars: 'Credit Note',
-              reference: cn.credit_note_number,
-              debit: 0,
-              credit: cn.total_amount,
-              running_balance: 0,
-              type: 'receipt',
-            });
-          });
-        }
-      } else {
-        const { data: invoices } = await supabase
-          .from('purchase_invoices')
-          .select('id, invoice_date, invoice_number, total_amount, payment_status')
-          .eq('supplier_id', selectedParty)
-          .gte('invoice_date', globalDateRange.startDate)
-          .lte('invoice_date', globalDateRange.endDate)
-          .order('invoice_date');
-
-        if (invoices) {
-          invoices.forEach(inv => {
-            entries.push({
-              id: inv.id,
-              entry_date: inv.invoice_date,
-              particulars: `Purchase Invoice - ${inv.payment_status || 'Unpaid'}`,
-              reference: inv.invoice_number,
-              debit: 0,
-              credit: inv.total_amount,
-              running_balance: 0,
-              type: 'invoice',
-            });
-          });
-        }
-
-        // Expense bills (A/P): approved outstanding-type expenses booked
-        // against this supplier. Settlement vouchers already appear via
-        // payment_vouchers below — without these credits the statement
-        // would show payments with no matching bill.
-        const { data: expenseBills } = await supabase
-          .from('finance_expenses')
-          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount')
-          .eq('supplier_id', selectedParty)
-          .is('payment_method', null)
-          .eq('approval_status', 'approved')
-          .gte('expense_date', globalDateRange.startDate)
-          .lte('expense_date', globalDateRange.endDate)
-          .order('expense_date');
-
-        if (expenseBills) {
-          expenseBills.forEach(bill => {
-            const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
-            entries.push({
-              id: bill.id,
-              entry_date: bill.expense_date,
-              particulars: `Expense Bill - ${(bill.expense_category || '').replace(/_/g, ' ')}${outstanding <= 0.01 ? ' (Paid)' : ''}`,
-              reference: bill.invoice_number || bill.voucher_number || '',
-              debit: 0,
-              credit: bill.amount,
-              running_balance: 0,
-              type: 'invoice',
-            });
-          });
-        }
-
-        const { data: payments } = await supabase
-          .from('payment_vouchers')
-          .select('id, voucher_date, voucher_number, amount, description')
-          .eq('supplier_id', selectedParty)
-          .gte('voucher_date', globalDateRange.startDate)
-          .lte('voucher_date', globalDateRange.endDate)
-          .order('voucher_date');
-
-        if (payments) {
-          payments.forEach(pay => {
-            entries.push({
-              id: pay.id,
-              entry_date: pay.voucher_date,
-              particulars: pay.description || 'Payment',
-              reference: pay.voucher_number,
-              debit: pay.amount,
-              credit: 0,
-              running_balance: 0,
-              type: 'payment',
-            });
-          });
-        }
-      }
-
-      entries.sort((a, b) => new Date(a.entry_date).getTime() - new Date(b.entry_date).getTime());
-
-      let runningBalance = openingBalance;
+      let runningBalance = opening;
       entries.forEach(entry => {
         runningBalance += entry.debit - entry.credit;
         entry.running_balance = runningBalance;
@@ -350,7 +471,7 @@ export default function PartyLedger() {
             {partyType === 'customer'
               ? <Users className="w-3 h-3 text-blue-600" />
               : <Building2 className="w-3 h-3 text-purple-600" />}
-            {partyType === 'customer' ? 'Customer' : 'Supplier'} Ledger
+            {partyType === 'customer' ? 'Customer' : partyType === 'supplier' ? 'Supplier' : 'Staff'} Ledger
           </h1>
         </div>
         <div className="flex items-center gap-1">
@@ -388,18 +509,19 @@ export default function PartyLedger() {
             <select
               value={partyType}
               onChange={(e) => {
-                setPartyType(e.target.value as 'customer' | 'supplier');
+                setPartyType(e.target.value as 'customer' | 'supplier' | 'staff');
                 setSelectedParty('');
               }}
               className="w-full px-3 py-2 border rounded-lg"
             >
               <option value="customer">Customer (Debtor)</option>
               <option value="supplier">Supplier (Creditor)</option>
+              <option value="staff">Staff (Employee)</option>
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Select {partyType === 'customer' ? 'Customer' : 'Supplier'}
+              Select {partyType === 'customer' ? 'Customer' : partyType === 'supplier' ? 'Supplier' : 'Staff Member'}
             </label>
             <select
               value={selectedParty}
@@ -573,7 +695,7 @@ export default function PartyLedger() {
                 {/* Party Details */}
                 <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
                   <p style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '5px' }}>
-                    {partyType === 'customer' ? 'Customer:' : 'Supplier:'} {selectedPartyData.name}
+                    {partyType === 'customer' ? 'Customer:' : partyType === 'supplier' ? 'Supplier:' : 'Staff:'} {selectedPartyData.name}
                   </p>
                   {selectedPartyData.address && (
                     <p style={{ fontSize: '11px', margin: '2px 0' }}>{selectedPartyData.address}</p>

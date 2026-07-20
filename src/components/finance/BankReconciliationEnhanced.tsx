@@ -12,6 +12,8 @@ interface OutstandingBill {
   id: string;
   supplier_id: string | null;
   supplier_name: string | null;
+  staff_id?: string | null;
+  staff_name?: string | null;
   invoice_number: string | null;
   invoice_date: string;
   due_date: string | null;
@@ -2173,14 +2175,25 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       const from = new Date(lineDate); from.setDate(from.getDate() - 90);
       const to   = new Date(lineDate); to.setDate(to.getDate()   + 90);
 
-      // Fetch candidate vouchers in the window.
-      const { data: vouchers } = await supabase
+      // Fetch candidate vouchers in the window. The finance_staff_master embed
+      // requires the staff-accounting migration; fall back without it.
+      let { data: vouchers, error: pvErr } = await supabase
         .from('payment_vouchers')
-        .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, journal_entry_id, bank_account_id, payment_method, suppliers(company_name)')
+        .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, journal_entry_id, bank_account_id, payment_method, suppliers(company_name), finance_staff_master(full_name)')
         .gte('voucher_date', from.toISOString().split('T')[0])
         .lte('voucher_date', to.toISOString().split('T')[0])
         .order('voucher_date', { ascending: false })
         .limit(500);
+      if (pvErr && /finance_staff_master|staff_id/i.test(pvErr.message || '')) {
+        const fb = await supabase
+          .from('payment_vouchers')
+          .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, journal_entry_id, bank_account_id, payment_method, suppliers(company_name)')
+          .gte('voucher_date', from.toISOString().split('T')[0])
+          .lte('voucher_date', to.toISOString().split('T')[0])
+          .order('voucher_date', { ascending: false })
+          .limit(500);
+        vouchers = fb.data as typeof vouchers;
+      }
 
       // Derive "already reconciled" from bank_statement_lines (the single
       // source of truth — payment_vouchers has no reconciliation columns).
@@ -2191,6 +2204,8 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       const takenJeIds = new Set((takenLines || []).map((l: any) => l.matched_entry_id));
 
       const available = (vouchers || []).filter((pv: any) => {
+        // Advance-adjustment vouchers never touch the bank — exclude them.
+        if (pv.payment_method === 'advance_adjustment') return false;
         // Exclude vouchers whose journal entry is already matched to a bank line.
         if (pv.journal_entry_id && takenJeIds.has(pv.journal_entry_id)) return false;
         // If the voucher pinned a specific bank account, restrict to matches on that account.
@@ -2263,9 +2278,9 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       const today = new Date().toISOString().split('T')[0];
       const { data, error } = await supabase.rpc('get_outstanding_expense_bills', { p_as_of_date: today });
       if (error) throw error;
-      // Voucher settlement requires a supplier on the bill; supplier-less
+      // Voucher settlement needs a payee — supplier or staff. Payee-less
       // expenses keep using the direct "Link Expense" path.
-      setOutstandingBills((data || []).filter((b: OutstandingBill) => b.supplier_id));
+      setOutstandingBills((data || []).filter((b: OutstandingBill) => b.supplier_id || b.staff_id));
     } catch (err) {
       console.error('Error loading outstanding bills:', err);
       setOutstandingBills([]);
@@ -2305,11 +2320,15 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     const bills = allocs
       .map(a => outstandingBills.find(b => b.id === a.expenseId))
       .filter((b): b is OutstandingBill => !!b);
-    const supplierIds = [...new Set(bills.map(b => b.supplier_id))];
-    if (supplierIds.length > 1) {
-      alert('A payment voucher has a single supplier — please select bills of one supplier only.');
+    // One voucher = one payee: all selected bills must share the same
+    // supplier OR the same staff member (staff bills have no supplier).
+    const payeeKeys = [...new Set(bills.map(b => b.supplier_id ? `s:${b.supplier_id}` : `t:${b.staff_id}`))];
+    if (payeeKeys.length > 1) {
+      alert('A payment voucher has a single payee — please select bills of one supplier or one staff member only.');
       return;
     }
+    const payeeSupplierId = bills[0]?.supplier_id ?? null;
+    const payeeStaffId = payeeSupplierId ? null : (bills[0]?.staff_id ?? null);
     for (const a of allocs) {
       const bill = bills.find(b => b.id === a.expenseId);
       if (bill && a.amount > bill.balance_amount + 0.01) {
@@ -2349,7 +2368,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         p_voucher_id: null,
         p_voucher_number: voucherNumber,
         p_voucher_date: line.date,
-        p_supplier_id: supplierIds[0],
+        p_supplier_id: payeeSupplierId,
+        // Only sent for staff bills — keeps supplier settlement working on a
+        // live DB that has not yet applied the staff-accounting migration.
+        ...(payeeStaffId ? { p_staff_id: payeeStaffId } : {}),
         p_payment_method: 'bank_transfer',
         p_bank_account_id: selectedBank || null,
         p_reference_number: line.reference || null,
@@ -3268,13 +3290,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 {linkSettleBills ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">
-                      Pay one or more outstanding supplier bills with this bank debit. A posted Payment Voucher is created and linked automatically. Bills of one supplier per payment.
+                      Pay one or more outstanding bills with this bank debit. A posted Payment Voucher is created and linked automatically. Bills of one supplier or one staff member per payment.
                     </p>
                     {loadingBills ? (
                       <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" /></div>
                     ) : outstandingBills.length === 0 ? (
                       <div className="p-3 text-center text-gray-500 text-sm border rounded-lg">
-                        No outstanding supplier bills found. Bills without a supplier can be linked via "Link Expense".
+                        No outstanding supplier or staff bills found. Bills without a payee can be linked via "Link Expense".
                       </div>
                     ) : (
                       <>
@@ -3283,7 +3305,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                             <thead className="bg-emerald-50 sticky top-0">
                               <tr>
                                 <th className="px-2 py-1.5"></th>
-                                <th className="px-2 py-1.5 text-left font-medium text-emerald-700">Supplier / Invoice</th>
+                                <th className="px-2 py-1.5 text-left font-medium text-emerald-700">Payee / Invoice</th>
                                 <th className="px-2 py-1.5 text-right font-medium text-emerald-700">Outstanding</th>
                                 <th className="px-2 py-1.5 text-right font-medium text-emerald-700">Pay Now</th>
                               </tr>
@@ -3302,7 +3324,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                                       />
                                     </td>
                                     <td className="px-2 py-1.5">
-                                      <div className="font-medium text-gray-800">{bill.supplier_name}</div>
+                                      <div className="font-medium text-gray-800">
+                                        {bill.supplier_name || bill.staff_name}
+                                        {!bill.supplier_name && bill.staff_name && <span className="ml-1 text-[9px] text-teal-600 font-semibold">STAFF</span>}
+                                      </div>
                                       <div className="text-gray-500 font-mono">{bill.invoice_number || bill.id.slice(0, 8)}</div>
                                       <div className="text-gray-400">
                                         {new Date(bill.invoice_date).toLocaleDateString('id-ID')}
@@ -3400,7 +3425,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                             >
                               <div>
                                 <span className="font-mono font-medium text-orange-700">{pv.voucher_number}</span>
-                                <div className="text-xs text-gray-500 mt-0.5">{pv.suppliers?.company_name}</div>
+                                <div className="text-xs text-gray-500 mt-0.5">{pv.suppliers?.company_name || pv.finance_staff_master?.full_name}</div>
                                 <div className="text-xs text-gray-400">{new Date(pv.voucher_date).toLocaleDateString('id-ID')}</div>
                               </div>
                               <div className="text-right">

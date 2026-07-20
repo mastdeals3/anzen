@@ -164,7 +164,7 @@ function FinanceContent() {
   }, []);
   const [editJournalEntryId, setEditJournalEntryId] = useState<string | null>(null);
   const [payInvoice, setPayInvoice] = useState<{ id: string; invoice_number: string; supplier_id: string; balance_amount: number } | null>(null);
-  const [payExpenseBill, setPayExpenseBill] = useState<{ id: string; supplier_id: string; balance_amount: number } | null>(null);
+  const [payExpenseBill, setPayExpenseBill] = useState<{ id: string; supplier_id: string | null; staff_id?: string | null; balance_amount: number } | null>(null);
   const [focusExpenseId, setFocusExpenseId] = useState<string | null>(null);
   const [focusPettyCashId, setFocusPettyCashId] = useState<string | null>(null);
   const [ledgerDrillCode, setLedgerDrillCode] = useState<string | null>(null);
@@ -175,7 +175,7 @@ function FinanceContent() {
     setActiveTab('payment');
   };
 
-  const handleSettleExpenseBill = (bill: { id: string; supplier_id: string; balance_amount: number }) => {
+  const handleSettleExpenseBill = (bill: { id: string; supplier_id: string | null; staff_id?: string | null; balance_amount: number }) => {
     setPayExpenseBill(bill);
     setActiveTab('payment');
   };

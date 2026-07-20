@@ -120,6 +120,7 @@ interface FinanceExpense {
   created_at: string;
   // New supplier invoice fields
   supplier_id?: string | null;
+  staff_id?: string | null;
   invoice_number?: string | null;
   due_date?: string | null;
   paid_amount?: number | null;
@@ -219,7 +220,7 @@ interface ExpenseManagerProps {
   canManage: boolean;
   initialViewExpenseId?: string | null;
   onInitialViewHandled?: () => void;
-  onSettleBill?: (bill: { id: string; supplier_id: string; balance_amount: number }) => void;
+  onSettleBill?: (bill: { id: string; supplier_id: string | null; staff_id: string | null; balance_amount: number }) => void;
 }
 
 const moduleExpenseCategories = [
@@ -391,6 +392,15 @@ const moduleExpenseCategories = [
     type: 'staff',
     icon: Truck,
     description: 'Local travel, taxi, fuel reimbursements, tolls - EXPENSED to P&L',
+    requiresContainer: false,
+    group: 'Staff Costs'
+  },
+  {
+    value: 'staff_advance',
+    label: 'Staff Advance',
+    type: 'staff',
+    icon: DollarSign,
+    description: 'Advance paid to staff - booked to Staff Advances (ASSET), recovered against salary',
     requiresContainer: false,
     group: 'Staff Costs'
   },
@@ -1030,6 +1040,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         alert('Please pick a Staff member for this salary / staff expense.');
         return;
       }
+      if (formData.expense_category === 'staff_advance' && !formData.payment_method) {
+        alert('A staff advance is money paid out — select how it was paid (it cannot be recorded as an outstanding bill).');
+        return;
+      }
       if (preRules.utility === 'show' && !selectedUtilityId) {
         alert('Please pick a Utility Provider for this utility expense.');
         return;
@@ -1162,6 +1176,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         // Main invoice supplier. NEVER derived from broker_items[i].supplier_id
         // — broker line suppliers are used ONLY for tax invoice / PPN register.
         supplier_id: formData.supplier_id || null,
+        // Staff FK (salary / overtime / welfare / advance) — the description
+        // prefix stays for ledger traceability, but the FK is authoritative.
+        staff_id: rules.staff === 'show' ? (selectedStaffId || null) : null,
         invoice_number: formData.invoice_number || null,
         due_date: formData.due_date || null,
         // Broker items (only for import_broker). Per-line supplier_id inside these
@@ -1201,6 +1218,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       const OPTIONAL_NEW_COLUMNS = [
         'ppn_manual_override', 'bank_charges_amount',
         'ppn_calc_mode', 'dpp_amount', 'ppn_rate',
+        'staff_id',
       ] as const;
       const stripOptionalColumns = (row: any) => {
         const clone: any = { ...row };
@@ -1532,6 +1550,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         if (u) loadedUtilityId = u.id;
       }
     }
+    // staff_id FK (Phase 2) is authoritative over the description-prefix match
+    if (rules.staff === 'show' && expense.staff_id) loadedStaffId = expense.staff_id;
     setSelectedStaffId(loadedStaffId);
     setSelectedUtilityId(loadedUtilityId);
     setPeriodLabel(loadedPeriod);
@@ -2457,12 +2477,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           {onSettleBill &&
                             expense.payment_method === null &&
                             expense.approval_status === 'approved' &&
-                            expense.supplier_id &&
+                            (expense.supplier_id || expense.staff_id) &&
                             (expense.amount || 0) - (expense.paid_amount ?? 0) > 0.01 && (
                             <button
                               onClick={() => onSettleBill({
                                 id: expense.id,
-                                supplier_id: expense.supplier_id!,
+                                supplier_id: expense.supplier_id ?? null,
+                                staff_id: expense.staff_id ?? null,
                                 balance_amount: (expense.amount || 0) - (expense.paid_amount ?? 0),
                               })}
                               className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"

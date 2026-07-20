@@ -17,6 +17,12 @@ interface Supplier {
   company_name: string;
 }
 
+interface StaffMember {
+  id: string;
+  full_name: string;
+  employee_code: string | null;
+}
+
 interface BankAccount {
   id: string;
   account_name: string;
@@ -46,7 +52,8 @@ interface PaymentVoucher {
   id: string;
   voucher_number: string;
   voucher_date: string;
-  supplier_id: string;
+  supplier_id: string | null;
+  staff_id: string | null;
   payment_method: string;
   bank_account_id: string | null;
   reference_number: string | null;
@@ -61,6 +68,7 @@ interface PaymentVoucher {
   description: string | null;
   is_posted: boolean;
   suppliers?: { company_name: string };
+  finance_staff_master?: { full_name: string };
   bank_accounts?: { account_name: string; bank_name: string; alias: string | null; currency: string | null };
   // derived
   invoice_currency: string;
@@ -77,7 +85,8 @@ interface PrefillInvoice {
 
 interface PrefillExpenseBill {
   id: string;
-  supplier_id: string;
+  supplier_id: string | null;
+  staff_id?: string | null;
   balance_amount: number;
 }
 
@@ -109,6 +118,8 @@ interface OutstandingExpenseBillForPV {
   id: string;
   supplier_id: string | null;
   supplier_name: string | null;
+  staff_id?: string | null;
+  staff_name?: string | null;
   invoice_number: string | null;
   invoice_date: string;
   due_date: string | null;
@@ -137,6 +148,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   const [postingLoading, setPostingLoading] = useState<string | null>(null);
   const [vouchers, setVouchers] = useState<PaymentVoucher[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [pendingInvoices, setPendingInvoices] = useState<PurchaseInvoice[]>([]);
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
@@ -153,7 +165,9 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
 
   const [formData, setFormData] = useState({
     voucher_date: new Date().toISOString().split('T')[0],
+    payee_type: 'supplier' as 'supplier' | 'staff',
     supplier_id: '',
+    staff_id: '',
     payment_method: 'bank_transfer',
     bank_account_id: '',
     reference_number: '',
@@ -169,6 +183,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   useEffect(() => {
     loadVouchers();
     loadSuppliers();
+    loadStaff();
     loadBankAccounts();
     loadTaxCodes();
   }, []);
@@ -184,9 +199,20 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   useEffect(() => {
     // "Settle" from ExpenseManager: open a new voucher pre-allocated to the
     // outstanding expense bill (same engine as manual expense allocation).
+    // Works for supplier bills and staff bills (salary/advance).
     if (prefillExpenseBill && !loading) {
-      setFormData(prev => ({ ...prev, supplier_id: prefillExpenseBill.supplier_id, amount: prefillExpenseBill.balance_amount }));
-      loadOutstandingExpenseBillsForSupplier(prefillExpenseBill.supplier_id);
+      const isStaff = !!prefillExpenseBill.staff_id;
+      setFormData(prev => ({
+        ...prev,
+        payee_type: isStaff ? 'staff' : 'supplier',
+        supplier_id: isStaff ? '' : (prefillExpenseBill.supplier_id || ''),
+        staff_id: isStaff ? (prefillExpenseBill.staff_id || '') : '',
+        amount: prefillExpenseBill.balance_amount,
+      }));
+      loadOutstandingExpenseBillsForPayee(
+        isStaff ? null : prefillExpenseBill.supplier_id,
+        isStaff ? prefillExpenseBill.staff_id || null : null,
+      );
       setExpenseBillAllocations([{ expenseId: prefillExpenseBill.id, amount: prefillExpenseBill.balance_amount }]);
       setModalOpen(true);
       onPrefillExpenseBillConsumed?.();
@@ -196,6 +222,18 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   useEffect(() => {
     // In edit mode handleEdit manages invoice loading — skip this effect entirely
     if (editingVoucher) return;
+    if (formData.payee_type === 'staff') {
+      // Staff payee: no purchase invoices, only the staff member's outstanding bills
+      setPendingInvoices([]);
+      setAllocations([]);
+      if (formData.staff_id) {
+        loadOutstandingExpenseBillsForPayee(null, formData.staff_id);
+      } else {
+        setOutstandingExpenseBills([]);
+        setExpenseBillAllocations([]);
+      }
+      return;
+    }
     if (formData.supplier_id) {
       const isPrefill = prefillInvoice && prefillInvoice.supplier_id === formData.supplier_id;
       loadPendingInvoices(
@@ -208,7 +246,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       setPendingInvoices([]);
       setAllocations([]);
     }
-  }, [formData.supplier_id, editingVoucher]);
+  }, [formData.supplier_id, formData.staff_id, formData.payee_type, editingVoucher]);
 
   useEffect(() => {
     if (formData.bank_account_id) {
@@ -237,11 +275,20 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
 
   const loadVouchers = async () => {
     try {
-      const { data, error } = await supabase
+      // finance_staff_master embed requires the staff-accounting migration;
+      // fall back to the supplier-only select on a DB that predates it.
+      let { data, error } = await supabase
         .from('payment_vouchers')
-        .select('*, suppliers(company_name), bank_accounts(account_name, bank_name, alias, currency)')
+        .select('*, suppliers(company_name), finance_staff_master(full_name), bank_accounts(account_name, bank_name, alias, currency)')
         .order('voucher_date', { ascending: false })
         .order('voucher_number', { ascending: false });
+      if (error && /finance_staff_master|staff_id/i.test(error.message || '')) {
+        ({ data, error } = await supabase
+          .from('payment_vouchers')
+          .select('*, suppliers(company_name), bank_accounts(account_name, bank_name, alias, currency)')
+          .order('voucher_date', { ascending: false })
+          .order('voucher_number', { ascending: false }));
+      }
       if (error) throw error;
 
       const voucherIds = (data || []).map((v: PaymentVoucher) => v.id);
@@ -286,6 +333,15 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     setSuppliers(data || []);
   };
 
+  const loadStaff = async () => {
+    const { data } = await supabase
+      .from('finance_staff_master')
+      .select('id, full_name, employee_code')
+      .eq('status', 'active')
+      .order('full_name');
+    setStaffList(data || []);
+  };
+
   const loadBankAccounts = async () => {
     const { data } = await supabase.from('bank_accounts').select('id, account_name, bank_name, alias, currency').eq('is_active', true);
     setBankAccounts(data || []);
@@ -311,17 +367,18 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     }
 
     // Also load outstanding expense bills for this supplier
-    await loadOutstandingExpenseBillsForSupplier(supplierId);
+    await loadOutstandingExpenseBillsForPayee(supplierId, null);
     setExpenseBillAllocations([]);
   };
 
-  const loadOutstandingExpenseBillsForSupplier = async (supplierId: string) => {
+  const loadOutstandingExpenseBillsForPayee = async (supplierId: string | null, staffId: string | null) => {
     try {
       const today = new Date().toISOString().split('T')[0];
       const { data } = await supabase.rpc('get_outstanding_expense_bills', { p_as_of_date: today });
-      // Filter to this supplier only (or show all if no supplier)
       const filtered = (data || []).filter((b: OutstandingExpenseBillForPV) =>
-        !supplierId || b.supplier_id === supplierId
+        staffId ? b.staff_id === staffId
+        : supplierId ? b.supplier_id === supplierId
+        : true
       );
       setOutstandingExpenseBills(filtered);
     } catch (err) {
@@ -392,7 +449,9 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   const resetForm = () => {
     setFormData({
       voucher_date: new Date().toISOString().split('T')[0],
+      payee_type: 'supplier',
       supplier_id: '',
+      staff_id: '',
       payment_method: 'bank_transfer',
       bank_account_id: '',
       reference_number: '',
@@ -468,7 +527,9 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     setEditingVoucher(v);
     setFormData({
       voucher_date: v.voucher_date,
-      supplier_id: v.supplier_id,
+      payee_type: v.staff_id ? 'staff' : 'supplier',
+      supplier_id: v.supplier_id || '',
+      staff_id: v.staff_id || '',
       payment_method: v.payment_method,
       bank_account_id: v.bank_account_id || '',
       reference_number: v.reference_number || '',
@@ -484,19 +545,23 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       const bank = bankAccounts.find(b => b.id === v.bank_account_id);
       if (bank) setSelectedBank(bank);
     }
-    // Load all invoices for this supplier (including paid ones so we can re-allocate)
-    const { data: invData } = await supabase
-      .from('purchase_invoices')
-      .select('id, invoice_number, invoice_date, total_amount, paid_amount, balance_amount, currency')
-      .eq('supplier_id', v.supplier_id)
-      .order('invoice_date');
+    // Load all invoices for this supplier (including paid ones so we can re-allocate).
+    // Staff vouchers have no purchase invoices.
+    const { data: invData } = v.supplier_id
+      ? await supabase
+          .from('purchase_invoices')
+          .select('id, invoice_number, invoice_date, total_amount, paid_amount, balance_amount, currency')
+          .eq('supplier_id', v.supplier_id)
+          .order('invoice_date')
+      : { data: [] as PurchaseInvoice[] };
     setPendingInvoices(invData || []);
-    // Load existing allocations for this voucher
+    // Load existing allocations for this voucher — both invoice and expense-bill
+    // kinds, so updating the voucher doesn't silently drop expense allocations.
     const { data: allocs } = await supabase
       .from('voucher_allocations')
-      .select('purchase_invoice_id, allocated_amount, allocated_currency')
+      .select('purchase_invoice_id, finance_expense_id, allocated_amount, allocated_currency')
       .eq('payment_voucher_id', v.id);
-    setAllocations((allocs || []).map(a => {
+    setAllocations((allocs || []).filter(a => a.purchase_invoice_id).map(a => {
       // Always use invoice currency for allocation amounts.
       // If stored currency doesn't match the invoice currency (e.g. IDR bank debit was
       // accidentally stored instead of the USD invoice amount), normalise to invoice currency
@@ -514,6 +579,44 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         currency: invCurrency,
       };
     }));
+    // Expense-bill allocations: restore them and show the payee's bills so
+    // they remain editable (previously they were dropped on edit).
+    const expenseAllocs = (allocs || []).filter(a => a.finance_expense_id);
+    setExpenseBillAllocations(expenseAllocs.map(a => ({
+      expenseId: a.finance_expense_id as string,
+      amount: a.allocated_amount,
+    })));
+    await loadOutstandingExpenseBillsForPayee(v.supplier_id, v.staff_id);
+    if (expenseAllocs.length > 0) {
+      // Bills fully paid by THIS voucher won't be in the outstanding list —
+      // fetch them so their allocation rows stay visible/editable.
+      const { data: allocBills } = await supabase
+        .from('finance_expenses')
+        .select('id, supplier_id, staff_id, invoice_number, expense_date, due_date, expense_category, description, amount, paid_amount')
+        .in('id', expenseAllocs.map(a => a.finance_expense_id as string));
+      setOutstandingExpenseBills(prev => {
+        const have = new Set(prev.map(b => b.id));
+        const extra = (allocBills || [])
+          .filter(b => !have.has(b.id))
+          .map(b => ({
+            id: b.id,
+            supplier_id: b.supplier_id,
+            supplier_name: null,
+            staff_id: b.staff_id,
+            staff_name: null,
+            invoice_number: b.invoice_number,
+            invoice_date: b.expense_date,
+            due_date: b.due_date,
+            expense_category: b.expense_category,
+            description: b.description,
+            amount: b.amount,
+            paid_amount: b.paid_amount ?? 0,
+            balance_amount: (b.amount || 0) - (b.paid_amount ?? 0),
+            days_overdue: 0,
+          }));
+        return [...prev, ...extra];
+      });
+    }
     setModalOpen(true);
   };
 
@@ -521,15 +624,18 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     setViewingVoucher(v);
     const { data } = await supabase
       .from('voucher_allocations')
-      .select('allocated_amount, allocated_currency, purchase_invoices(id, invoice_number, invoice_date)')
+      .select('allocated_amount, allocated_currency, purchase_invoices(id, invoice_number, invoice_date), finance_expenses(id, voucher_number, invoice_number, expense_date)')
       .eq('payment_voucher_id', v.id);
     setViewAllocations(
-      ((data || []) as ViewAllocationRow[]).map((a) => ({
-        invoice_id: a.purchase_invoices?.id || '',
-        invoice_number: a.purchase_invoices?.invoice_number || '—',
-        invoice_date: a.purchase_invoices?.invoice_date || '',
+      ((data || []) as unknown as (ViewAllocationRow & { finance_expenses?: { id: string; voucher_number: string | null; invoice_number: string | null; expense_date?: string } | null })[]).map((a) => ({
+        invoice_id: a.purchase_invoices?.id || a.finance_expenses?.id || '',
+        invoice_number: a.purchase_invoices?.invoice_number
+          || (a.finance_expenses ? `${a.finance_expenses.invoice_number || a.finance_expenses.voucher_number || 'Expense Bill'}` : '—'),
+        invoice_date: a.purchase_invoices?.invoice_date || a.finance_expenses?.expense_date || '',
         allocated_amount: a.allocated_amount || 0,
         allocated_currency: a.allocated_currency || 'IDR',
+        is_expense_bill: !!a.finance_expenses,
+        expense_id: a.finance_expenses?.id,
       })),
     );
   };
@@ -555,6 +661,16 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    const isStaffPayee = formData.payee_type === 'staff';
+    if (isStaffPayee ? !formData.staff_id : !formData.supplier_id) {
+      alert(isStaffPayee ? 'Please select a staff member.' : 'Please select a supplier.');
+      return;
+    }
+    if (formData.payment_method === 'advance_adjustment' && !isStaffPayee) {
+      alert('Advance Adjustment is only available for staff payees.');
+      return;
+    }
+
     // ── Currency / bank account guard ──────────────────────────────
     if (currencyMismatchWithoutRate) {
       alert(
@@ -574,7 +690,8 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
 
       const payload = {
         voucher_date: formData.voucher_date,
-        supplier_id: formData.supplier_id,
+        supplier_id: isStaffPayee ? null : formData.supplier_id,
+        staff_id: isStaffPayee ? formData.staff_id : null,
         payment_method: formData.payment_method,
         bank_account_id: formData.bank_account_id || null,
         reference_number: formData.reference_number || null,
@@ -594,6 +711,9 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         p_voucher_number: voucherNumber,
         p_voucher_date: payload.voucher_date,
         p_supplier_id: payload.supplier_id,
+        // Only sent for staff payees — keeps supplier vouchers working on a
+        // live DB that has not yet applied the staff-accounting migration.
+        ...(payload.staff_id ? { p_staff_id: payload.staff_id } : {}),
         p_payment_method: payload.payment_method,
         p_bank_account_id: payload.bank_account_id,
         p_reference_number: payload.reference_number,
@@ -694,10 +814,11 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           columns={[
             { header: 'Voucher No', cell: (v) => <span className="font-mono font-medium">{v.voucher_number}</span> },
             { header: 'Date',       cell: (v) => new Date(v.voucher_date).toLocaleDateString('id-ID') },
-            { header: 'Supplier',   cell: (v) => v.suppliers?.company_name ?? '—' },
+            { header: 'Payee',      cell: (v) => v.suppliers?.company_name
+              ?? (v.finance_staff_master ? <span>{v.finance_staff_master.full_name} <span className="text-[9px] text-teal-600 font-semibold">STAFF</span></span> : '—') },
             { header: 'Method',     cell: (v) => (
               <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] capitalize">
-                {v.payment_method.replace('_', ' ')}
+                {v.payment_method.replace(/_/g, ' ')}
               </span>
             ) },
             { header: 'Invoice',    cell: (v) => {
@@ -793,20 +914,49 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       >
         <form id="payment-voucher-form" onSubmit={handleSubmit} className="flex flex-col gap-1.5">
 
-          {/* Row A: Date · Supplier · Method */}
+          {/* Row A: Date · Payee · Method */}
           <SapRow>
-            <SapField label="Date" required span={4}>
+            <SapField label="Date" required span={3}>
               <input type="date" required value={formData.voucher_date}
                 onChange={(e) => setFormData({ ...formData, voucher_date: e.target.value })}
                 className={SAP_INPUT} />
             </SapField>
-            <SapField label="Supplier" required span={4}>
-              <SearchableSelect
-                value={formData.supplier_id}
-                onChange={(val) => setFormData({ ...formData, supplier_id: val })}
-                options={suppliers.map(s => ({ value: s.id, label: s.company_name }))}
-                placeholder="Select supplier"
-              />
+            <SapField label="Pay To" required span={2}>
+              <select
+                value={formData.payee_type}
+                onChange={(e) => {
+                  const payeeType = e.target.value as 'supplier' | 'staff';
+                  setFormData({
+                    ...formData,
+                    payee_type: payeeType,
+                    supplier_id: '',
+                    staff_id: '',
+                    payment_method: formData.payment_method === 'advance_adjustment' ? 'bank_transfer' : formData.payment_method,
+                  });
+                  setExpenseBillAllocations([]);
+                  setOutstandingExpenseBills([]);
+                }}
+                className={SAP_INPUT}>
+                <option value="supplier">Supplier</option>
+                <option value="staff">Staff</option>
+              </select>
+            </SapField>
+            <SapField label={formData.payee_type === 'staff' ? 'Staff Member' : 'Supplier'} required span={3}>
+              {formData.payee_type === 'staff' ? (
+                <SearchableSelect
+                  value={formData.staff_id}
+                  onChange={(val) => setFormData({ ...formData, staff_id: val })}
+                  options={staffList.map(s => ({ value: s.id, label: s.employee_code ? `${s.full_name} (${s.employee_code})` : s.full_name }))}
+                  placeholder="Select staff"
+                />
+              ) : (
+                <SearchableSelect
+                  value={formData.supplier_id}
+                  onChange={(val) => setFormData({ ...formData, supplier_id: val })}
+                  options={suppliers.map(s => ({ value: s.id, label: s.company_name }))}
+                  placeholder="Select supplier"
+                />
+              )}
             </SapField>
             <SapField label="Method" required span={4}>
               <select required value={formData.payment_method}
@@ -817,21 +967,25 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
                 <option value="check">Check</option>
                 <option value="giro">Giro</option>
                 <option value="other">Other</option>
+                {formData.payee_type === 'staff' && (
+                  <option value="advance_adjustment">Adjust Against Staff Advance</option>
+                )}
               </select>
             </SapField>
           </SapRow>
 
-          {/* Row B: Amount · Bank Account · Reference (bank account/ref only for non-cash) */}
+          {/* Row B: Amount · Bank Account · Reference (bank account/ref only for
+              methods that actually move money through a bank) */}
           <SapRow>
             <SapField
               label={`Amount${pendingInvoices.length > 0 ? ` (${invoiceCurrency})` : ''}`}
               required
-              span={formData.payment_method === 'cash' ? 12 : 4}>
+              span={['cash', 'advance_adjustment'].includes(formData.payment_method) ? 12 : 4}>
               <input type="number" required step="0.01" value={formData.amount || ''}
                 onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
                 className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} />
             </SapField>
-            {formData.payment_method !== 'cash' && (
+            {!['cash', 'advance_adjustment'].includes(formData.payment_method) && (
               <>
                 <SapField
                   label="Bank Account"
@@ -887,7 +1041,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
               </>
             )}
           </SapRow>
-          {formData.payment_method !== 'cash' && (
+          {!['cash', 'advance_adjustment'].includes(formData.payment_method) && (
             <>
               {currencyMismatchWithoutRate && (
                 <p className="text-[10px] text-red-600 font-medium">

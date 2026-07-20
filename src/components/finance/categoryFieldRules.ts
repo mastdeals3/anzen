@@ -84,6 +84,7 @@ const STAFF_CATEGORIES = new Set([
   'staff_overtime',
   'staff_welfare',
   'travel_conveyance',
+  'staff_advance',
 ]);
 
 /**
