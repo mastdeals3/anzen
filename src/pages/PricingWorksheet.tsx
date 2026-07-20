@@ -6,6 +6,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { formatDate } from '../utils/dateFormat';
 import { buildUniqueDocumentNames } from '../utils/documentNaming';
 import { getSignedUrlCached, invalidateSignedUrl } from '../utils/signedUrlCache';
+import { loadMakeSuggestions, resetMakeSuggestions } from '../services/makeSuggestions';
 import {
   Calculator,
   CheckCircle2,
@@ -15,12 +16,14 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Send,
   Trash2,
   Upload,
   X,
 } from 'lucide-react';
 import { showToast } from '../components/ToastNotification';
 import { KunalInternalReplyModal, type KunalReplyInquiry, type KunalReplyDraft, type KunalReplySourceOption } from '../components/crm/KunalInternalReplyModal';
+import { KunalCustomerQuoteModal, type CustomerQuoteInquiry, type CustomerQuoteOption } from '../components/crm/KunalCustomerQuoteModal';
 import { KunalIndiaPriceReview } from '../components/crm/KunalIndiaPriceReview';
 import { KunalPendingPriceTracker, type TrackerBucket } from '../components/crm/KunalPendingPriceTracker';
 import type { KunalIndiaReviewRow } from '../services/kunalIndiaPrice';
@@ -67,7 +70,25 @@ interface PricingOption {
   remark: string | null;
   is_selected: boolean;
   confidence: number | null;
+  // Part 5 — inline pricing-grid fields. All nullable; persisted by the
+  // 20260720120000_pricing_option_grid_fields migration. Until that migration
+  // is applied these live in local state only (see updateOption fallback).
+  moq: string | null;
+  packing: string | null;
+  lead_time: string | null;
+  origin: string | null;
+  supplier: string | null;
+  specification: string | null;
+  margin_pct: number | null;
+  selling_price: number | null;
+  selling_currency: string | null;
 }
+
+// Columns added by the Part-5 migration. Kept in one place so updateOption can
+// degrade gracefully when the migration has not yet been applied.
+const EXTENDED_OPTION_KEYS: (keyof PricingOption)[] = [
+  'moq', 'packing', 'lead_time', 'origin', 'supplier', 'specification', 'margin_pct', 'selling_price', 'selling_currency',
+];
 
 interface RowDraft {
   purchase_price: string;
@@ -191,6 +212,7 @@ export function PricingWorksheet() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [makeOptions, setMakeOptions] = useState<string[]>([]);
 
   // Document state per inquiry
   const [docs, setDocs] = useState<Record<string, CrmDoc[]>>({});
@@ -201,6 +223,10 @@ export function PricingWorksheet() {
     inquiry: KunalReplyInquiry;
     draft: KunalReplyDraft;
     sourceOption: KunalReplySourceOption | null;
+  } | null>(null);
+  const [quoteTarget, setQuoteTarget] = useState<{
+    inquiry: CustomerQuoteInquiry;
+    option: CustomerQuoteOption | null;
   } | null>(null);
   const [aiIndiaBucket, setAiIndiaBucket] = useState<TrackerBucket | null>(null);
   const [aiRefreshKey, setAiRefreshKey] = useState(0);
@@ -263,6 +289,7 @@ export function PricingWorksheet() {
   }, [tab]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadMakeSuggestions().then(setMakeOptions); }, []);
 
   const customerOptions = useMemo(() => {
     return Array.from(new Set(inquiries.map(i => i.company_name).filter(Boolean))).sort();
@@ -353,12 +380,30 @@ export function PricingWorksheet() {
     setExpanded(inq.id);
   };
 
+  const gridMigrationWarned = useRef(false);
+
   const updateOption = async (opt: PricingOption, patch: Partial<PricingOption>) => {
     setOptions(current => ({
       ...current,
       [opt.inquiry_id]: (current[opt.inquiry_id] || []).map(item => item.id === opt.id ? { ...item, ...patch } as PricingOption : item),
     }));
-    await supabase.from('crm_inquiry_pricing_options').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', opt.id);
+    const { error } = await supabase.from('crm_inquiry_pricing_options').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', opt.id);
+    if (error && EXTENDED_OPTION_KEYS.some(key => key in patch)) {
+      // Migration not applied yet — persist only the base columns so the write
+      // still lands, keep the grid values in local state, and warn once. The UI
+      // never throws; the values reappear on reload once the migration is run.
+      const basePatch: Partial<PricingOption> = {};
+      for (const key of Object.keys(patch) as (keyof PricingOption)[]) {
+        if (!EXTENDED_OPTION_KEYS.includes(key)) (basePatch as any)[key] = (patch as any)[key];
+      }
+      if (Object.keys(basePatch).length > 0) {
+        await supabase.from('crm_inquiry_pricing_options').update({ ...basePatch, updated_at: new Date().toISOString() }).eq('id', opt.id);
+      }
+      if (!gridMigrationWarned.current) {
+        gridMigrationWarned.current = true;
+        showToast({ type: 'info', title: 'Grid fields not yet saved to DB', message: 'Apply the pricing_option_grid_fields migration to persist MOQ/packing/lead time/margin etc. Values are kept for this session.' });
+      }
+    }
   };
 
   const removeOption = async (opt: PricingOption) => {
@@ -629,6 +674,9 @@ export function PricingWorksheet() {
 
   return (
     <Layout>
+      <datalist id="make-suggestions">
+        {makeOptions.map(m => <option key={m} value={m} />)}
+      </datalist>
       <div className="p-4 md:p-6">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
@@ -865,6 +913,42 @@ export function PricingWorksheet() {
                                   <Mail className="w-3.5 h-3.5" />
                                 </button>
                               )}
+                              {(tab === 'completed' || (inq.purchase_price != null && inq.offered_price != null) || inq.kunal_price_status === 'entered') && isManager && (
+                                <button
+                                  onClick={() => setQuoteTarget({
+                                    inquiry: {
+                                      id: inq.id,
+                                      inquiry_number: inq.inquiry_number,
+                                      aceerp_no: inq.aceerp_no,
+                                      product_name: inq.product_name,
+                                      quantity: inq.quantity,
+                                      email_subject: inq.email_subject,
+                                      company_name: inq.company_name,
+                                    },
+                                    option: sourceOption ? {
+                                      offered_make: sourceOption.offered_make,
+                                      origin: sourceOption.origin ?? null,
+                                      specification: sourceOption.specification ?? inq.specification ?? null,
+                                      moq: sourceOption.moq ?? null,
+                                      packing: sourceOption.packing ?? null,
+                                      lead_time: sourceOption.lead_time ?? null,
+                                      selling_price: sourceOption.selling_price ?? (draft.offered_price ? parseFloat(draft.offered_price) : null),
+                                      selling_currency: sourceOption.selling_currency ?? draft.offered_currency ?? null,
+                                      source_currency: sourceOption.source_currency,
+                                      remark: sourceOption.remark ?? null,
+                                    } : {
+                                      offered_make: null, origin: null, specification: inq.specification ?? null,
+                                      moq: null, packing: null, lead_time: null,
+                                      selling_price: draft.offered_price ? parseFloat(draft.offered_price) : null,
+                                      selling_currency: draft.offered_currency ?? null, source_currency: 'USD', remark: null,
+                                    },
+                                  })}
+                                  title="Send Customer Quotation"
+                                  className="p-1 border border-gray-200 rounded hover:bg-emerald-50 text-emerald-600"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button onClick={() => submit(inq)} disabled={savingId === inq.id || !isManager}
                                 className={`flex items-center gap-1 px-2 py-1 text-xs rounded disabled:opacity-50 ${tab === 'completed' ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
                                 <Save className="w-3 h-3" /> {savingId === inq.id ? '...' : tab === 'completed' ? 'Re-submit' : 'Submit'}
@@ -894,7 +978,8 @@ export function PricingWorksheet() {
                               ) : (
                                 <div className="space-y-1.5">
                                   {rowOptions.map(opt => (
-                                    <div key={opt.id} className={`grid grid-cols-12 gap-2 items-center text-xs px-2 py-1.5 rounded border ${opt.is_selected ? 'border-blue-300 bg-white' : 'border-gray-200 bg-white/70'}`}>
+                                    <div key={opt.id} className={`rounded border ${opt.is_selected ? 'border-blue-300 bg-white' : 'border-gray-200 bg-white/70'}`}>
+                                    <div className="grid grid-cols-12 gap-2 items-center text-xs px-2 py-1.5">
                                       <label className="col-span-1 flex items-center gap-1.5 cursor-pointer">
                                         <input type="radio" name={`opt-${inq.id}`} checked={opt.is_selected}
                                           onChange={() => selectOption(inq.id, opt.id)} disabled={!isManager}
@@ -905,7 +990,9 @@ export function PricingWorksheet() {
                                         className="col-span-1 border border-gray-200 rounded px-1 py-0.5 text-xs">
                                         {['india', 'china', 'local'].map(source => <option key={source}>{source}</option>)}
                                       </select>
-                                      <input value={opt.offered_make || ''} onChange={e => updateOption(opt, { offered_make: e.target.value })} disabled={!isManager}
+                                      <input value={opt.offered_make || ''} list="make-suggestions"
+                                        onChange={e => updateOption(opt, { offered_make: e.target.value })}
+                                        onBlur={() => { resetMakeSuggestions(); loadMakeSuggestions().then(setMakeOptions); }} disabled={!isManager}
                                         placeholder="Make" className="col-span-2 border border-gray-200 rounded px-2 py-0.5 text-xs" />
                                       <div className="col-span-2 flex gap-1">
                                         <select value={opt.source_currency} onChange={e => updateOption(opt, { source_currency: e.target.value })} disabled={!isManager}
@@ -929,6 +1016,32 @@ export function PricingWorksheet() {
                                         className="col-span-1 p-1 text-gray-400 hover:text-red-600 disabled:opacity-30 justify-self-end">
                                         <Trash2 className="w-3.5 h-3.5" />
                                       </button>
+                                    </div>
+                                    {/* ── Part 5: extended pricing-grid fields (inline, no popup) ── */}
+                                    <div className="grid grid-cols-12 gap-2 items-center text-xs px-2 pb-1.5 border-t border-gray-100 pt-1.5">
+                                      <input value={opt.supplier || ''} onChange={e => updateOption(opt, { supplier: e.target.value })} disabled={!isManager}
+                                        placeholder="Supplier" className="col-span-2 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Supplier" />
+                                      <input value={opt.origin || ''} onChange={e => updateOption(opt, { origin: e.target.value })} disabled={!isManager}
+                                        placeholder="Origin" className="col-span-1 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Country of origin" />
+                                      <input value={opt.moq || ''} onChange={e => updateOption(opt, { moq: e.target.value })} disabled={!isManager}
+                                        placeholder="MOQ" className="col-span-1 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Minimum order quantity" />
+                                      <input value={opt.packing || ''} onChange={e => updateOption(opt, { packing: e.target.value })} disabled={!isManager}
+                                        placeholder="Packing" className="col-span-1 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Packing" />
+                                      <input value={opt.lead_time || ''} onChange={e => updateOption(opt, { lead_time: e.target.value })} disabled={!isManager}
+                                        placeholder="Lead time" className="col-span-1 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Lead time" />
+                                      <input value={opt.specification || ''} onChange={e => updateOption(opt, { specification: e.target.value })} disabled={!isManager}
+                                        placeholder="Specification" className="col-span-2 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Specification" />
+                                      <input type="number" value={opt.margin_pct ?? ''} onChange={e => updateOption(opt, { margin_pct: e.target.value ? parseFloat(e.target.value) : null })} disabled={!isManager}
+                                        placeholder="Margin %" className="col-span-1 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Margin %" />
+                                      <div className="col-span-3 flex gap-1">
+                                        <select value={opt.selling_currency || opt.source_currency} onChange={e => updateOption(opt, { selling_currency: e.target.value })} disabled={!isManager}
+                                          className="border border-gray-200 rounded px-1 py-0.5 text-xs w-14" title="Selling currency">
+                                          {['USD','INR','CNY','IDR'].map(currency => <option key={currency}>{currency}</option>)}
+                                        </select>
+                                        <input type="number" value={opt.selling_price ?? ''} onChange={e => updateOption(opt, { selling_price: e.target.value ? parseFloat(e.target.value) : null })} disabled={!isManager}
+                                          placeholder="Selling price" className="flex-1 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Selling price" />
+                                      </div>
+                                    </div>
                                     </div>
                                   ))}
                                 </div>
@@ -1040,6 +1153,14 @@ export function PricingWorksheet() {
           inquiry={replyTarget.inquiry}
           draft={replyTarget.draft}
           sourceOption={replyTarget.sourceOption}
+        />
+      )}
+      {quoteTarget && (
+        <KunalCustomerQuoteModal
+          isOpen={true}
+          onClose={() => setQuoteTarget(null)}
+          inquiry={quoteTarget.inquiry}
+          option={quoteTarget.option}
         />
       )}
     </Layout>

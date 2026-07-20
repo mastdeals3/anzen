@@ -106,6 +106,9 @@ export function CRM() {
   const [activeTab, setActiveTab] = useState<'inquiry-360' | 'table' | 'pipeline' | 'calendar' | 'email' | 'customers' | 'activities' | 'archive' | 'sales-team' | 'delivery-log' | 'documents'>('inquiry-360');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingInquiry, setEditingInquiry] = useState<Inquiry | null>(null);
+  // Prefill payload for creating a NEW inquiry (e.g. from AI Pricing "Create new
+  // inquiry"). Distinct from editingInquiry so isEditing stays false → INSERT.
+  const [prefillInquiry, setPrefillInquiry] = useState<any>(null);
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [selectedInquiryForEmail, setSelectedInquiryForEmail] = useState<any>(null);
 
@@ -131,6 +134,18 @@ export function CRM() {
     setModalOpen(true);
     clearNavigationData();
   }, [clearNavigationData, inquiries, navigationData]);
+
+  // Open a prefilled "New Inquiry" form when another module (e.g. AI Pricing's
+  // "Create new inquiry" on an unmatched email) hands over draft fields.
+  useEffect(() => {
+    const create = navigationData?.crmCreateInquiry;
+    if (!create || typeof create !== 'object') return;
+    setEditingInquiry(null);
+    setPrefillInquiry(create);
+    setActiveTab('table');
+    setModalOpen(true);
+    clearNavigationData();
+  }, [clearNavigationData, navigationData]);
 
   const loadInquiries = async () => {
     try {
@@ -608,6 +623,7 @@ export function CRM() {
           onClose={() => {
             setModalOpen(false);
             setEditingInquiry(null);
+            setPrefillInquiry(null);
           }}
           title={editingInquiry ? t('crm.editInquiry') : t('crm.addNewInquiry')}
         >
@@ -616,8 +632,9 @@ export function CRM() {
             onCancel={() => {
               setModalOpen(false);
               setEditingInquiry(null);
+              setPrefillInquiry(null);
             }}
-            initialData={editingInquiry}
+            initialData={editingInquiry || prefillInquiry}
             isEditing={!!editingInquiry}
           />
         </Modal>

@@ -33,7 +33,7 @@ interface RequestBody {
   inquiryId: string;
   productName: string;
   make?: string | null;
-  documentType: "COA" | "MSDS" | "MHD" | "TDS" | "SPEC" | "COC" | "GMP" | "ISO" | "DMF" | "OTHER";
+  documentType: "COA" | "MSDS" | "MHD" | "TDS" | "SPEC" | "COC" | "GMP" | "ISO" | "DMF" | "CATALOGUE" | "PRICE_LIST" | "OTHER";
   sourceEmailSubject?: string | null;
 }
 
@@ -160,7 +160,12 @@ Deno.serve(async (req: Request) => {
       });
     if (uploadError) return json({ success: false, code: "STORAGE_UPLOAD_FAILED", error: uploadError.message }, 500);
 
-    const docType = body.documentType || "OTHER";
+    // DB CHECK currently allows COA/MSDS/MHD/TDS/SPEC/COC/GMP/ISO/DMF/OTHER.
+    // CATALOGUE / PRICE_LIST are detected upstream but fold to OTHER on insert
+    // until the CHECK constraint is widened (keeps this change migration-free).
+    const DB_DOC_TYPES = ["COA","MSDS","MHD","TDS","SPEC","COC","GMP","ISO","DMF","OTHER"];
+    const requestedType = body.documentType || "OTHER";
+    const docType = DB_DOC_TYPES.includes(requestedType) ? requestedType : "OTHER";
     const { data: doc, error: docError } = await supabase
       .from("crm_product_documents")
       .insert({
@@ -194,6 +199,8 @@ Deno.serve(async (req: Request) => {
       document: doc,
       storageBucket: "crm-documents",
       storagePath,
+      requestedDocumentType: requestedType,
+      storedDocumentType: docType,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN_ERROR";

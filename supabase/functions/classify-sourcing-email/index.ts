@@ -44,7 +44,7 @@ interface ClassifiedEmail {
   suggestedAction: string;
   confidence: number;
   extractedQuestion: string | null;
-  documentType: "COA" | "MSDS" | "COC" | "GMP" | "ISO" | "DMF" | "OTHER" | null;
+  documentType: "COA" | "MSDS" | "COC" | "GMP" | "ISO" | "DMF" | "TDS" | "SPEC" | "CATALOGUE" | "PRICE_LIST" | "OTHER" | null;
   make: string | null;
   sourceTypeHint: "india" | "china" | "local";
   needsSourceParser: boolean;
@@ -82,16 +82,20 @@ function fallbackClassify(email: EmailInput): ClassifiedEmail {
   let documentType: ClassifiedEmail["documentType"] = null;
   let extractedQuestion: string | null = null;
 
-  const hasDoc = email.hasAttachments || /(coa|msds|coc|certificate|gmp|iso|dmf)/i.test(all);
+  const hasDoc = email.hasAttachments || /(coa|msds|coc|certificate|gmp|iso|dmf|tds|technical data|specification|spec sheet|catalogue|catalog|price list|pricelist)/i.test(all);
   if (hasDoc) {
     aiType = "Document / Certificate Received";
     suggestedAction = "Review document type and link it to the matched inquiry.";
-    if (all.includes("coa")) documentType = "COA";
+    if (all.includes("coa") || /certificate of analysis/i.test(all)) documentType = "COA";
     else if (all.includes("msds") || all.includes("sds")) documentType = "MSDS";
     else if (all.includes("coc")) documentType = "COC";
     else if (all.includes("gmp")) documentType = "GMP";
     else if (all.includes("iso")) documentType = "ISO";
     else if (all.includes("dmf")) documentType = "DMF";
+    else if (all.includes("tds") || /technical data sheet/i.test(all)) documentType = "TDS";
+    else if (/price\s*list|pricelist/i.test(all)) documentType = "PRICE_LIST";
+    else if (/catalogue|catalog/i.test(all)) documentType = "CATALOGUE";
+    else if (/specification|spec sheet/i.test(all)) documentType = "SPEC";
     else documentType = "OTHER";
   }
 
@@ -160,7 +164,7 @@ Return STRICT JSON only:
       "suggestedAction": string,
       "confidence": number,
       "extractedQuestion": string | null,
-      "documentType": "COA" | "MSDS" | "COC" | "GMP" | "ISO" | "DMF" | "OTHER" | null,
+      "documentType": "COA" | "MSDS" | "COC" | "GMP" | "ISO" | "DMF" | "TDS" | "SPEC" | "CATALOGUE" | "PRICE_LIST" | "OTHER" | null,
       "make": string | null,
       "sourceTypeHint": "india" | "china" | "local",
       "needsSourceParser": boolean
@@ -171,7 +175,7 @@ Return STRICT JSON only:
 Rules:
 - Supplier Price Reply: contains source/supplier price, availability, make, lead time, or NA.
 - India Office Query / Revert Needed: asks for quantity, grade, spec, delivery timeline, target price, clarification, or alternative-source approval.
-- Document / Certificate Received: attachments or text indicate COA, MSDS/SDS, COC, GMP, ISO, DMF, certificate.
+- Document / Certificate Received: attachments or text indicate COA, MSDS/SDS, COC, GMP, ISO, DMF, certificate, TDS (technical data sheet), SPEC (specification sheet), CATALOGUE, or PRICE_LIST. Choose the most specific documentType.
 - Do not invent inquiry numbers. Extract only if visible.
 - Keep summaries and actions short and practical.
 - Confidence must be 0..1.`;
@@ -212,7 +216,7 @@ Rules:
       suggestedAction: String(r.suggestedAction || "Review this email.").slice(0, 220),
       confidence: clampConfidence(r.confidence),
       extractedQuestion: r.extractedQuestion ? String(r.extractedQuestion).slice(0, 500) : null,
-      documentType: ["COA","MSDS","COC","GMP","ISO","DMF","OTHER"].includes(r.documentType) ? r.documentType : null,
+      documentType: ["COA","MSDS","COC","GMP","ISO","DMF","TDS","SPEC","CATALOGUE","PRICE_LIST","OTHER"].includes(r.documentType) ? r.documentType : null,
       make: r.make ? String(r.make).slice(0, 140) : null,
       sourceTypeHint: ["india","china","local"].includes(r.sourceTypeHint) ? r.sourceTypeHint : "india",
       needsSourceParser: type === "Supplier Price Reply" || !!r.needsSourceParser,

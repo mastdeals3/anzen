@@ -88,3 +88,62 @@ export function buildInternalPriceTable(items: InternalPriceRow[]): string {
     <tbody>${rows}</tbody>
   </table>`;
 }
+
+export interface CustomerQuoteRow {
+  product: string;
+  make: string | null;
+  origin: string | null;
+  specification: string | null;
+  moq: string | null;
+  packing: string | null;
+  leadTime: string | null;
+  qty: string | null;
+  quotePrice: string;
+  remarks: string | null;
+}
+
+/**
+ * Build a CUSTOMER-FACING quote table. Deliberately customer-safe: it exposes
+ * only the selling price and commercial terms — never the INR source price or
+ * USD landed cost that appear in the internal table above.
+ */
+export function buildCustomerQuoteTable(items: CustomerQuoteRow[]): string {
+  const headerStyle =
+    'padding:10px 12px;border:1px solid #b7c9df;background:#073763;color:#ffffff;text-align:left;font-weight:700;font-size:13px;';
+  const cellBase =
+    'padding:9px 12px;border:1px solid #d1d5db;color:#1f2937;font-size:13px;vertical-align:top;';
+
+  const rows = items
+    .map((row, idx) => {
+      const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+      return `<tr style="background:${bg};">
+      <td style="${cellBase}font-weight:600;">${escapeHtml(row.product)}</td>
+      <td style="${cellBase}">${escapeHtml(row.make || '-')}</td>
+      <td style="${cellBase}">${escapeHtml(row.origin || '-')}</td>
+      <td style="${cellBase}">${escapeHtml(row.specification || '-')}</td>
+      <td style="${cellBase}">${escapeHtml(row.moq || '-')}</td>
+      <td style="${cellBase}">${escapeHtml(row.packing || '-')}</td>
+      <td style="${cellBase}">${escapeHtml(row.leadTime || '-')}</td>
+      <td style="${cellBase}">${escapeHtml(row.qty || '-')}</td>
+      <td style="${cellBase}font-weight:600;white-space:nowrap;">${escapeHtml(row.quotePrice)}</td>
+      <td style="${cellBase}">${escapeHtml(row.remarks || '-')}</td>
+    </tr>`;
+    })
+    .join('');
+
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;max-width:820px;font-family:Arial,Helvetica,sans-serif;font-size:13px;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+    <thead><tr>
+      <th style="${headerStyle}">Product</th>
+      <th style="${headerStyle}">Make</th>
+      <th style="${headerStyle}">Origin</th>
+      <th style="${headerStyle}">Specification</th>
+      <th style="${headerStyle}">MOQ</th>
+      <th style="${headerStyle}">Packing</th>
+      <th style="${headerStyle}">Lead Time</th>
+      <th style="${headerStyle}">Qty</th>
+      <th style="${headerStyle}">Price</th>
+      <th style="${headerStyle}">Remarks</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}

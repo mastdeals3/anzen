@@ -18,6 +18,14 @@ export type PricingWorkflowType =
   | 'customer_quote'
   | 'payment_reminder'; // accounts/Synthia — future use
 
+export interface PricingEmailAttachment {
+  /** Signed https URL on the Supabase host (required — edge drops url-less payloads). */
+  url: string;
+  storagePath?: string;
+  filename?: string;
+  mimeType?: string;
+}
+
 export interface PricingEmailRequest {
   workflowType: PricingWorkflowType;
   priceRequestId?: string | null;
@@ -31,6 +39,8 @@ export interface PricingEmailRequest {
   body: string;
   isHtml?: boolean;
   senderName?: string;
+  /** Storage-path attachments (e.g. COA/MSDS from crm-documents) to attach. */
+  attachmentUrls?: PricingEmailAttachment[];
   /** When true, write a row in email_thread_map for the sent message. Default: true. */
   recordThread?: boolean;
 }
@@ -89,6 +99,12 @@ export async function sendPricingWorkflowEmail(req: PricingEmailRequest): Promis
         body: req.body,
         senderName: req.senderName || '',
         isHtml: req.isHtml ?? true,
+        attachmentUrls: (req.attachmentUrls || []).map(a => ({
+          url: a.url,
+          storagePath: a.storagePath,
+          filename: a.filename,
+          mimeType: a.mimeType,
+        })),
       }),
     });
   } catch (err: unknown) {

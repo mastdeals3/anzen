@@ -17,14 +17,15 @@
  *   - Documents only saved on explicit confirm
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import { Search, RefreshCw, Loader, FileText, Paperclip, AlertTriangle, CheckCircle2, Save, X, Eye, Download, FolderPlus } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, RefreshCw, Loader, FileText, Paperclip, AlertTriangle, CheckCircle2, Save, X, Eye, Download, FolderPlus, Sparkles } from 'lucide-react';
 import { showToast } from '../ToastNotification';
 // Reuse the Gmail-quality renderer that Command Center's InquiryFormPanel uses.
 // Same iframe-based viewer with permissive DOMPurify, entity decoding,
 // blockquote collapse, and Gmail-style CSS — no behavior change for Command Center.
 import { EmailBodyViewer } from './EmailBodyViewer';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigation } from '../../contexts/NavigationContext';
 import { supabase } from '../../lib/supabase';
 import {
   loadGmailMailbox,
@@ -55,7 +56,63 @@ type ViewerState = {
   url: string;
   loading: boolean;
 } | null;
-type DocType = 'COA' | 'MSDS' | 'COC' | 'GMP' | 'ISO' | 'DMF' | 'SPEC' | 'TDS' | 'MHD' | 'OTHER';
+type DocType = 'COA' | 'MSDS' | 'COC' | 'GMP' | 'ISO' | 'DMF' | 'SPEC' | 'TDS' | 'MHD' | 'CATALOGUE' | 'PRICE_LIST' | 'OTHER';
+
+// Detect a document type for an attachment before saving, so the user sees the
+// AI's guess up-front and can override it. Order: the email-level AI documentType
+// (from classify-sourcing-email) → filename keyword heuristic → OTHER.
+const DOC_TYPE_LABELS: Record<DocType, string> = {
+  COA: 'Certificate of Analysis',
+  MSDS: 'Safety Data Sheet (MSDS/SDS)',
+  COC: 'Certificate of Conformance',
+  GMP: 'GMP Certificate',
+  ISO: 'ISO Certificate',
+  DMF: 'Drug Master File',
+  SPEC: 'Specification Sheet',
+  TDS: 'Technical Data Sheet',
+  MHD: 'Method / Handling Doc',
+  CATALOGUE: 'Product Catalogue',
+  PRICE_LIST: 'Price List',
+  OTHER: 'Other Document',
+};
+
+const DOC_TYPE_OPTIONS: DocType[] = ['COA','MSDS','COC','GMP','ISO','DMF','SPEC','TDS','CATALOGUE','PRICE_LIST','MHD','OTHER'];
+
+function detectAttachmentDocType(filename: string, emailDocType?: string | null): { docType: DocType; source: 'ai' | 'filename' | 'default' } {
+  const fname = (filename || '').toLowerCase();
+  const fnameRules: Array<[RegExp, DocType]> = [
+    [/coa|certificate of analysis/, 'COA'],
+    [/msds|sds|safety data/, 'MSDS'],
+    [/\bcoc\b|conformance|conformity/, 'COC'],
+    [/gmp/, 'GMP'],
+    [/\biso\b/, 'ISO'],
+    [/dmf|drug master/, 'DMF'],
+    [/tds|technical data/, 'TDS'],
+    [/price\s*list|pricelist/, 'PRICE_LIST'],
+    [/catalog(ue)?/, 'CATALOGUE'],
+    [/spec(ification)?/, 'SPEC'],
+  ];
+  // Filename is the most specific signal for an individual attachment.
+  for (const [re, dt] of fnameRules) {
+    if (re.test(fname)) return { docType: dt, source: 'filename' };
+  }
+  // Fall back to the email-level AI classification, if usable.
+  const valid = DOC_TYPE_OPTIONS as string[];
+  if (emailDocType && valid.includes(emailDocType)) {
+    return { docType: emailDocType as DocType, source: 'ai' };
+  }
+  return { docType: 'OTHER', source: 'default' };
+}
+
+// Map a 0–1 candidate score to a 1–5 star rating for an at-a-glance match
+// strength badge on candidate cards.
+function scoreToStars(score: number): number {
+  if (score >= 0.75) return 5;
+  if (score >= 0.60) return 4;
+  if (score >= 0.45) return 3;
+  if (score >= 0.30) return 2;
+  return 1;
+}
 
 interface Props {
   /** Called whenever an extraction is saved or a document is linked, so PendingPriceTracker can refresh. */
@@ -130,6 +187,7 @@ type ListMode = 'mailbox' | 'queue';
 
 export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, onRowsChange }: Props) {
   const { profile } = useAuth();
+  const { setCurrentPage, setNavigationData } = useNavigation();
   const isManager = profile?.role === 'admin' || profile?.role === 'manager';
 
   const [query, setQuery] = useState('in:inbox');
@@ -266,6 +324,24 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
     [rows, selectedId],
   );
 
+  // ── Part 1: Auto-summary on open ──────────────────────────────────────────
+  // When a manager opens an un-analyzed email, classify it automatically so the
+  // AI summary, product, match and confidence appear without a manual click.
+  // Explainable + safe: manager-only, once per message (ref guard prevents any
+  // loop), waits until the body has loaded for full context, and the manual
+  // "Analyze This Email" button stays available. Never auto-saves anything.
+  const autoAnalyzeAttempted = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isManager || !selected) return;
+    if (selected.analyzed) return;                       // already classified
+    if (analyzingBatch || analyzingId) return;           // don't race a manual run
+    if (!(selected.body || selected.bodyHtml)) return;   // wait for body load
+    if (autoAnalyzeAttempted.current.has(selected.messageId)) return;
+    autoAnalyzeAttempted.current.add(selected.messageId);
+    void analyzeOne(selected, { auto: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, selected?.body, selected?.bodyHtml, selected?.analyzed, isManager, analyzingBatch, analyzingId]);
+
   // Refresh Gmail (mailbox mode): pull the live Gmail inbox + join AI status.
   // No LLM here — that runs only on explicit Analyze / Rescan All.
   const refreshMailbox = async () => {
@@ -304,21 +380,36 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
   };
 
   // Analyze the currently selected email via LLM. Errors are surfaced.
-  const analyzeOne = async () => {
-    if (!selected) return;
+  // `msg` defaults to the selected row so existing button handlers keep working;
+  // the auto-analyze effect passes an explicit row + { auto: true }.
+  const analyzeOne = async (
+    msg: KunalIndiaReviewRow | null | undefined = selected,
+    opts?: { auto?: boolean },
+  ) => {
+    if (!msg) return;
     setAnalyzingBatch(true);
     try {
-      const updated = await analyzeMessages([selected], profile?.id || null);
+      const updated = await analyzeMessages([msg], profile?.id || null);
       const next = updated[0];
       if (next) {
         setMailboxRows(prev => prev.map(r => r.messageId === next.messageId ? { ...r, ...next } : r));
         setQueueRows(prev => prev.map(r => r.messageId === next.messageId ? { ...r, ...next } : r));
       }
-      showToast({ type: 'success', title: 'Analyzed', message: `Classified as ${next?.aiType}.` });
+      showToast({
+        type: 'success',
+        title: opts?.auto ? 'Auto-analyzed on open' : 'Analyzed',
+        message: `Classified as ${next?.aiType}.`,
+      });
       onChange?.();
     } catch (err: any) {
       console.error('[KunalAI] analyze failed:', err);
-      showToast({ type: 'error', title: 'AI relevance classifier failed', message: err?.message || 'unknown' });
+      // Auto-analyze failures stay quiet-ish: the manual Analyze button remains
+      // available, so surface as info rather than a scary error on open.
+      showToast({
+        type: opts?.auto ? 'info' : 'error',
+        title: opts?.auto ? 'Auto-analyze unavailable' : 'AI relevance classifier failed',
+        message: err?.message || 'unknown',
+      });
     } finally {
       setAnalyzingBatch(false);
     }
@@ -413,6 +504,28 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
     }
   };
 
+  // Part 2: one-click "Create new inquiry" from an unmatched email. Hands the
+  // extracted fields to CRM as a prefilled New Inquiry form (no silent writes —
+  // the user reviews and saves there).
+  const createNewInquiry = () => {
+    if (!selected) return;
+    const emailMatch = (selected.from || '').match(/<([^>]+)>/) || (selected.from || '').match(/[\w.+-]+@[\w.-]+\.\w+/);
+    const contactEmail = emailMatch ? (emailMatch[1] || emailMatch[0]) : '';
+    const prefill = {
+      product_name: selected.product || '',
+      mail_subject: selected.subject || '',
+      aceerp_no: selected.aceerpNo || '',
+      supplier_name: selected.make || '',
+      contact_email: contactEmail,
+      inquiry_source: 'email',
+      pipeline_status: 'new',
+      remarks: selected.subject ? `Created from AI Pricing email: ${selected.subject}`.slice(0, 300) : '',
+    };
+    setNavigationData({ crmCreateInquiry: prefill });
+    setCurrentPage('crm');
+    showToast({ type: 'info', title: 'Create inquiry', message: 'Opening a prefilled New Inquiry form in CRM.' });
+  };
+
   const markNoAction = async () => {
     if (!selected) return;
     setRows(prev => prev.map(r => r.messageId === selected.messageId ? { ...r, reviewed: true, aiType: 'No Action' } : r));
@@ -500,7 +613,7 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
     }
   };
 
-  const saveAttachmentAsDoc = async (att: { filename: string; mimeType: string; size: number; attachmentId: string }, docType: 'COA' | 'MSDS' | 'COC' | 'GMP' | 'ISO' | 'DMF' | 'SPEC' | 'TDS' | 'MHD' | 'OTHER') => {
+  const saveAttachmentAsDoc = async (att: { filename: string; mimeType: string; size: number; attachmentId: string }, docType: DocType) => {
     if (!isManager || !selected) return;
     const inquiryId = selected.selectedInquiryId;
     if (!inquiryId) {
@@ -787,6 +900,16 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                     <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium border ${selected.analyzed ? AI_TYPE_BADGE[selected.aiType] : 'bg-gray-100 text-gray-700 border-gray-200'}`}>
                       {selected.analyzed ? selected.aiType : 'Unanalyzed'}
                     </span>
+                    {!selected.analyzed && analyzingBatch && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-blue-600 font-medium">
+                        <Loader className="w-3 h-3 animate-spin" /> Auto-analyzing on open…
+                      </span>
+                    )}
+                    {selected.analyzed && (
+                      <span className="text-[10px] text-gray-500">
+                        Confidence <span className="font-semibold text-gray-700">{Math.round((selected.confidence || 0) * 100)}%</span>
+                      </span>
+                    )}
                     {!isNoAction(selected) && selected.analyzed && (
                       <span className="text-[10px] text-gray-500">
                         {selected.selectedInquiryId
@@ -833,10 +956,34 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                 </div>
               </div>
 
-              {/* Suggested action */}
+              {/* Suggested action + AI-extracted fields (surfaced on open) */}
               <div className="text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded p-2 mb-2">
                 <strong>Suggested:</strong> {selected.suggestedAction}
                 {selected.summary && <div className="text-[11px] text-gray-500 mt-1">{selected.summary}</div>}
+                {selected.analyzed && (selected.product || selected.make || selected.documentType) && (
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {selected.product && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-white border border-gray-200 text-gray-700">
+                        Product: <span className="font-semibold ml-1">{selected.product}</span>
+                      </span>
+                    )}
+                    {selected.make && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-white border border-gray-200 text-gray-700">
+                        Make: <span className="font-semibold ml-1">{selected.make}</span>
+                      </span>
+                    )}
+                    {selected.documentType && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700">
+                        Doc: <span className="font-semibold ml-1">{selected.documentType}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {selected.extractedQuestion && (
+                  <div className="text-[11px] text-amber-700 mt-1.5 bg-amber-50 border border-amber-200 rounded p-1.5">
+                    <strong>Question to answer:</strong> {selected.extractedQuestion}
+                  </div>
+                )}
               </div>
 
               {/* Full email body */}
@@ -928,18 +1075,29 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                 <div className="mb-3">
                   <div className="text-[11px] text-gray-500 mb-1 flex items-center gap-1"><Paperclip className="w-3 h-3" />Attachments</div>
                   <div className="text-[10px] text-gray-500 mb-1.5 italic">
-                    View lets you read the attachment. Save to CRM links it to the inquiry/product.
+                    View lets you read the attachment. Extract &amp; Save links it to the inquiry/product with the detected document type.
                   </div>
                   <div className="space-y-1">
                     {selected.attachments.map(att => {
                       const isDownloading = downloadingId === att.attachmentId;
                       const isSaving = savingDocId === att.attachmentId;
+                      // Part 3: show the detected doc-type BEFORE extraction so the
+                      // user sees the AI's guess and can override it.
+                      const detected = detectAttachmentDocType(att.filename, selected.documentType);
                       return (
                         <div key={att.attachmentId} className="flex items-center gap-2 border border-gray-200 rounded p-2">
                           <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-medium text-gray-800 truncate">{att.filename}</div>
-                            <div className="text-[10px] text-gray-500">{att.mimeType} • {Math.round(att.size / 1024)} KB</div>
+                            <div className="text-[10px] text-gray-500 flex items-center gap-1.5 flex-wrap">
+                              <span>{att.mimeType} • {Math.round(att.size / 1024)} KB</span>
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-medium"
+                                title={`${DOC_TYPE_LABELS[detected.docType]} — detected from ${detected.source === 'ai' ? 'AI email classification' : detected.source === 'filename' ? 'the file name' : 'default (no strong signal)'}. Use "Change type…" to override.`}
+                              >
+                                {detected.docType}{detected.source !== 'default' ? ' · detected' : ''}
+                              </span>
+                            </div>
                           </div>
                           <button
                             onClick={() => handleViewAttachment(att)}
@@ -958,13 +1116,21 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                             Download
                           </button>
                           <button
-                            onClick={() => setSavePrompt({ attachment: att, docType: 'COA' })}
+                            onClick={() => saveAttachmentAsDoc(att, detected.docType)}
                             disabled={!isManager || isSaving || !selected.selectedInquiryId}
                             className="inline-flex items-center gap-1 px-2 py-1 text-[10px] bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                            title="Link this file to the inquiry/product permanently"
+                            title={`Save as ${DOC_TYPE_LABELS[detected.docType]} and link to the inquiry in one click`}
                           >
                             {isSaving ? <Loader className="w-3 h-3 animate-spin" /> : <FolderPlus className="w-3 h-3" />}
-                            Save to CRM
+                            Extract & Save
+                          </button>
+                          <button
+                            onClick={() => setSavePrompt({ attachment: att, docType: detected.docType })}
+                            disabled={!isManager || isSaving || !selected.selectedInquiryId}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[10px] border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                            title="Choose a different document type before saving"
+                          >
+                            Change type…
                           </button>
                         </div>
                       );
@@ -990,8 +1156,46 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                     <span className="text-[10px] text-green-600 font-medium">Inquiry confirmed</span>
                   )}
                 </div>
+                {/* Part 8 — reversible auto-link banner. AI linked a clear-winner
+                    inquiry automatically; user can Undo to pick manually. */}
+                {selected.autoLinked && selected.selectedInquiryId && (
+                  <div className="mb-2 flex items-center justify-between gap-2 p-1.5 rounded border border-blue-300 bg-blue-50 text-[10px] text-blue-800">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3 flex-shrink-0" />
+                      Auto-linked to <span className="font-semibold">{selected.candidates.find(c => c.id === selected.selectedInquiryId)?.inquiry_number || selected.matchedInquiryNumber}</span> (high confidence). Not saved yet — review before saving.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setRows(prev => prev.map(r => r.messageId === selected.messageId
+                          ? { ...r, selectedInquiryId: null, autoLinked: false, needsManualLink: r.candidates.length === 0 }
+                          : r));
+                        try {
+                          await updateReviewStatus(selected.messageId, 'pending_review', { matched_inquiry_id: null });
+                          onChange?.();
+                        } catch { /* non-critical */ }
+                      }}
+                      className="px-1.5 py-0.5 rounded border border-blue-300 bg-white text-blue-700 hover:bg-blue-100 font-medium whitespace-nowrap"
+                    >
+                      Undo
+                    </button>
+                  </div>
+                )}
                 {selected.candidates.length === 0 ? (
-                  <div className="text-xs text-amber-700">No candidates found. Use the Sourcing Sheet to identify the inquiry, then re-scan.</div>
+                  <div className="space-y-2">
+                    <div className="text-xs text-amber-700">No matching inquiry found for this email.</div>
+                    <button
+                      type="button"
+                      onClick={createNewInquiry}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                      title="Open a prefilled New Inquiry form in CRM using this email's product, subject and sender"
+                    >
+                      <FolderPlus className="w-3.5 h-3.5" /> Create new inquiry from this email
+                    </button>
+                    <div className="text-[10px] text-gray-500">
+                      Prefills product{selected.product ? ` “${selected.product}”` : ''}, subject and sender. You review &amp; save in CRM.
+                    </div>
+                  </div>
                 ) : (
                   <>
                     {/* Safety warning — multiple similar active inquiries */}
@@ -1020,7 +1224,7 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                             onClick={async () => {
                               const newId = c.id;
                               setRows(prev => prev.map(r => r.messageId === selected.messageId
-                                ? { ...r, selectedInquiryId: newId, matchedInquiryNumber: newId ? r.candidates.find(x => x.id === newId)?.inquiry_number || null : null, needsManualLink: false }
+                                ? { ...r, selectedInquiryId: newId, autoLinked: false, matchedInquiryNumber: newId ? r.candidates.find(x => x.id === newId)?.inquiry_number || null : null, needsManualLink: false }
                                 : r));
                               try {
                                 await updateReviewStatus(selected.messageId, 'pending_review', { matched_inquiry_id: newId });
@@ -1065,6 +1269,10 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${scorePct >= 75 ? 'bg-green-600 text-white' : scorePct >= 45 ? 'bg-blue-600 text-white' : 'bg-amber-600 text-white'}`}>
                                   {scorePct}%
                                 </span>
+                                <div className="text-[11px] leading-none mt-1 tracking-tight" title={`Match strength: ${scoreToStars(c.score)} of 5`}>
+                                  <span className="text-amber-500">{'★'.repeat(scoreToStars(c.score))}</span>
+                                  <span className="text-gray-300">{'★'.repeat(5 - scoreToStars(c.score))}</span>
+                                </div>
                               </div>
                             </div>
                             {/* Reason chips */}
@@ -1236,6 +1444,42 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                             <input value={row.lead_time || ''} onChange={e => updateExtractionRow(idx, { lead_time: e.target.value })}
                               className="w-full border border-gray-300 rounded px-1 py-0.5 text-[11px]" />
                           </div>
+                          {/* Part 4 — product/body extracted fields (editable; low-confidence rows correctable) */}
+                          <div>
+                            <label className="block text-[10px] text-gray-500">Grade</label>
+                            <input value={row.grade || ''} onChange={e => updateExtractionRow(idx, { grade: e.target.value })}
+                              placeholder="USP / BP / IP…"
+                              className="w-full border border-gray-300 rounded px-1 py-0.5 text-[11px]" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-500">CAS No.</label>
+                            <input value={row.cas || ''} onChange={e => updateExtractionRow(idx, { cas: e.target.value })}
+                              placeholder="e.g. 50-00-0"
+                              className="w-full border border-gray-300 rounded px-1 py-0.5 text-[11px]" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-500">Unit</label>
+                            <input value={row.unit || ''} onChange={e => updateExtractionRow(idx, { unit: e.target.value })}
+                              placeholder="kg / MT / L"
+                              className="w-full border border-gray-300 rounded px-1 py-0.5 text-[11px]" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-500">Preferred Mfr</label>
+                            <input value={row.preferred_manufacturer || ''} onChange={e => updateExtractionRow(idx, { preferred_manufacturer: e.target.value })}
+                              className="w-full border border-gray-300 rounded px-1 py-0.5 text-[11px]" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-500">Required Origin</label>
+                            <input value={row.required_origin || ''} onChange={e => updateExtractionRow(idx, { required_origin: e.target.value })}
+                              placeholder="European / Germany…"
+                              className="w-full border border-gray-300 rounded px-1 py-0.5 text-[11px]" />
+                          </div>
+                          <div className="md:col-span-3">
+                            <label className="block text-[10px] text-gray-500">Specification</label>
+                            <input value={row.specification || ''} onChange={e => updateExtractionRow(idx, { specification: e.target.value })}
+                              placeholder="e.g. min 99%, <10 ppm heavy metals"
+                              className="w-full border border-gray-300 rounded px-1 py-0.5 text-[11px]" />
+                          </div>
                           <div className="md:col-span-4">
                             <label className="block text-[10px] text-gray-500">India Comments / Remark</label>
                             <input value={row.remark || ''} onChange={e => updateExtractionRow(idx, { remark: e.target.value })}
@@ -1360,10 +1604,13 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                   onChange={e => setSavePrompt({ ...savePrompt, docType: e.target.value as DocType })}
                   className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
                 >
-                  {(['COA', 'MSDS', 'COC', 'GMP', 'ISO', 'DMF', 'SPEC', 'TDS', 'MHD', 'OTHER'] as DocType[]).map(t => (
-                    <option key={t} value={t}>{t}</option>
+                  {DOC_TYPE_OPTIONS.map(t => (
+                    <option key={t} value={t}>{t} — {DOC_TYPE_LABELS[t]}</option>
                   ))}
                 </select>
+                {(savePrompt.docType === 'CATALOGUE' || savePrompt.docType === 'PRICE_LIST') && (
+                  <div className="text-[10px] text-amber-600 mt-1">Stored as “Other” until the document-type list is expanded in the database.</div>
+                )}
               </div>
               <div className="text-[10px] text-gray-500 italic">
                 This will upload the file to the private crm-documents bucket and link it to the inquiry/product. Cannot be undone from here.

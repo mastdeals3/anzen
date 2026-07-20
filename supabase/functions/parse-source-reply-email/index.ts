@@ -41,6 +41,14 @@ interface ParsedRow {
   remark: string | null;
   confidence: number;
   raw_excerpt: string;
+  // Part 4 — product/body extraction (all nullable, no DB column required;
+  // folded into the pricing-option remark on save until columns exist).
+  grade: string | null;
+  cas: string | null;
+  unit: string | null;
+  specification: string | null;
+  preferred_manufacturer: string | null;
+  required_origin: string | null;
 }
 
 interface ParsedResponse {
@@ -76,7 +84,13 @@ Return STRICT JSON with this shape only:
       "lead_time": string | null,
       "remark": string | null,
       "confidence": number,              // 0..1
-      "raw_excerpt": string              // 1-2 line excerpt from email body
+      "raw_excerpt": string,             // 1-2 line excerpt from email body
+      "grade": string | null,            // pharma/food grade, e.g. "USP", "BP", "IP", "Food Grade"
+      "cas": string | null,              // CAS registry number if present, e.g. "50-00-0"
+      "unit": string | null,             // pricing/quantity unit, e.g. "kg", "MT", "L", "per kg"
+      "specification": string | null,    // purity / spec text, e.g. "min 99%", "<10 ppm heavy metals"
+      "preferred_manufacturer": string | null, // manufacturer the customer/inquiry asked for (distinct from offered_make)
+      "required_origin": string | null   // required country of origin, e.g. "European", "Made in Germany"
     }
   ]
 }
@@ -88,6 +102,8 @@ EXTRACTION RULES:
 - Strip currency symbols and commas from numbers ("₹ 1,250" → 1250).
 - "Awaiting COA" / "COA pending" → document_status="pending".
 - "COA attached" / "COA available" → document_status="received".
+- grade/cas/unit/specification/preferred_manufacturer/required_origin: extract ONLY if clearly present; otherwise null. Never guess a CAS number.
+- offered_make is what the supplier is offering; preferred_manufacturer is what the buyer requested — keep them distinct.
 - If product, make, or price is ambiguous, lower confidence.
 - raw_excerpt must be present and verbatim (1-2 lines max).
 - DO NOT invent products that are not in the body.
@@ -129,9 +145,15 @@ Return ONLY the JSON object described in the system prompt.`;
   const raw = data?.choices?.[0]?.message?.content || "{}";
   const parsed = JSON.parse(raw);
   const rows: ParsedRow[] = Array.isArray(parsed.rows) ? parsed.rows : [];
+  // Server-side CAS validation: keep the model's CAS only if it matches the
+  // canonical registry format (2-7 / 2 / 1 digits). Never trust free text.
+  const CAS_RE = /^\d{2,7}-\d{2}-\d$/;
   return rows
     .filter(r => r && typeof r.product_name === "string" && r.product_name.trim().length > 0)
-    .map(r => ({
+    .map(r => {
+      const casRaw = r.cas ? String(r.cas).trim() : "";
+      const cas = CAS_RE.test(casRaw) ? casRaw : null;
+      return {
       product_name:     String(r.product_name).slice(0, 200),
       inquiry_number:   r.inquiry_number ? String(r.inquiry_number).slice(0, 60) : null,
       aceerp_no:        r.aceerp_no ? String(r.aceerp_no).slice(0, 60) : null,
@@ -145,7 +167,14 @@ Return ONLY the JSON object described in the system prompt.`;
       remark:           r.remark ? String(r.remark).slice(0, 500) : null,
       confidence:       typeof r.confidence === "number" ? Math.max(0, Math.min(1, r.confidence)) : 0.5,
       raw_excerpt:      r.raw_excerpt ? String(r.raw_excerpt).slice(0, 600) : "",
-    }));
+      grade:            r.grade ? String(r.grade).slice(0, 80) : null,
+      cas,
+      unit:             r.unit ? String(r.unit).slice(0, 40) : null,
+      specification:    r.specification ? String(r.specification).slice(0, 300) : null,
+      preferred_manufacturer: r.preferred_manufacturer ? String(r.preferred_manufacturer).slice(0, 120) : null,
+      required_origin:  r.required_origin ? String(r.required_origin).slice(0, 80) : null,
+      };
+    });
 }
 
 Deno.serve(async (req: Request) => {

@@ -24,6 +24,14 @@ export interface ParsedSourceRow {
   remark: string | null;
   confidence: number;
   raw_excerpt: string;
+  // Part 4 — product/body extraction (nullable; no dedicated DB column yet, so
+  // these are folded into `remark` on save and editable in the review grid).
+  grade?: string | null;
+  cas?: string | null;
+  unit?: string | null;
+  specification?: string | null;
+  preferred_manufacturer?: string | null;
+  required_origin?: string | null;
 }
 
 export interface ParseSourceReplyResult {
@@ -95,6 +103,18 @@ export async function saveSourceReplyRow(args: SaveSourceReplyArgs): Promise<{ o
   const { inquiryId, sourceType, row, gmailMessageId, gmailThreadId, parserConfidence, actorId } = args;
 
   // 1. Insert pricing option (NOT marked selected — Kunal picks one later)
+  // Part 4 fields have no dedicated columns yet, so fold any present ones into
+  // the remark alongside lead time (backward-compatible, no schema change).
+  const extraBits = [
+    row.remark,
+    row.lead_time ? `Lead time: ${row.lead_time}` : null,
+    row.grade ? `Grade: ${row.grade}` : null,
+    row.cas ? `CAS: ${row.cas}` : null,
+    row.unit ? `Unit: ${row.unit}` : null,
+    row.specification ? `Spec: ${row.specification}` : null,
+    row.preferred_manufacturer ? `Preferred mfr: ${row.preferred_manufacturer}` : null,
+    row.required_origin ? `Origin: ${row.required_origin}` : null,
+  ].filter(Boolean);
   const { error: optErr } = await supabase
     .from('crm_inquiry_pricing_options')
     .insert({
@@ -105,7 +125,7 @@ export async function saveSourceReplyRow(args: SaveSourceReplyArgs): Promise<{ o
       source_currency: row.source_currency,
       availability:    row.availability,
       document_status: row.document_status,
-      remark:          [row.remark, row.lead_time ? `Lead time: ${row.lead_time}` : null].filter(Boolean).join(' · ') || null,
+      remark:          extraBits.join(' · ') || null,
       is_selected:     false,
       confidence:      row.confidence,
       created_by:      actorId || null,
@@ -184,6 +204,21 @@ function textContainsWord(hay: string, word: string): boolean {
   return hay.toUpperCase().includes(word.toUpperCase());
 }
 
+/**
+ * Extract CAS registry numbers (e.g. 50-00-0) from free text.
+ * Anchored regex avoids matching arbitrary hyphenated digit runs; used only as
+ * a scoring boost, never as a sole match signal.
+ */
+const CAS_RE = /\b(\d{2,7}-\d{2}-\d)\b/g;
+
+function extractCasNumbers(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const out = new Set<string>();
+  const matches = text.match(CAS_RE);
+  if (matches) for (const m of matches) out.add(m.trim());
+  return Array.from(out);
+}
+
 // ── Candidate types ─────────────────────────────────────────────────────────
 
 export interface InquiryCandidate {
@@ -223,6 +258,8 @@ export interface FindInquiryContext {
   customerName?: string;
   /** Offered make/manufacturer mentioned in the email. */
   make?: string | null;
+  /** CAS number extracted from the email (matched against specification/product text). */
+  cas?: string | null;
   /** Quantity mentioned in the email. */
   qty?: string | null;
   /** Gmail thread id — scored higher if already linked to an inquiry. */
@@ -241,6 +278,7 @@ const WEIGHTS = {
   PRODUCT_EXACT:     45,
   PRODUCT_FUZZY:     25,
   PRODUCT_ILIKE:     10,
+  CAS_MATCH:         40,
   SUBJECT_HAS_PRODUCT: 15,
   BODY_HAS_PRODUCT:  10,
   CUSTOMER_IN_EMAIL: 15,
@@ -415,6 +453,16 @@ export async function findInquiryCandidatesWithContext(
       }
     }
 
+    // CAS number match — boost only. Compare the email's CAS against any CAS
+    // found in the candidate's specification or product name text.
+    if (ctx.cas) {
+      const candidateCas = extractCasNumbers(`${c.product_name || ''} ${c.specification || ''}`);
+      if (candidateCas.includes(ctx.cas)) {
+        raw += WEIGHTS.CAS_MATCH;
+        reasons.push('CAS match');
+      }
+    }
+
     // Email subject contains the product name
     if (ctx.product_name && ctx.emailSubject && textContainsWord(ctx.emailSubject, ctx.product_name)) {
       raw += WEIGHTS.SUBJECT_HAS_PRODUCT;
@@ -507,10 +555,12 @@ export async function findInquiryCandidates(hint: {
   inquiry_number?: string | null;
   aceerp_no?: string | null;
   product_name?: string;
+  cas?: string | null;
 }): Promise<InquiryCandidate[]> {
   return findInquiryCandidatesWithContext({
     product_name: hint.product_name,
     inquiry_number: hint.inquiry_number,
     aceerp_no: hint.aceerp_no,
+    cas: hint.cas,
   });
 }

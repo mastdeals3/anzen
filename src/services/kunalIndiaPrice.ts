@@ -93,13 +93,17 @@ export interface KunalIndiaReviewRow extends KunalGmailMessage {
   suggestedAction: string;
   confidence: number;
   extractedQuestion: string | null;
-  documentType: 'COA' | 'MSDS' | 'COC' | 'GMP' | 'ISO' | 'DMF' | 'OTHER' | null;
+  documentType: 'COA' | 'MSDS' | 'COC' | 'GMP' | 'ISO' | 'DMF' | 'TDS' | 'SPEC' | 'CATALOGUE' | 'PRICE_LIST' | 'OTHER' | null;
   make: string | null;
   candidates: InquiryCandidate[];
   /** The top-scoring candidate (score >= 0.75). Shown as "Suggested" in UI. Never auto-saved. */
   suggestedInquiryId: string | null;
   /** User must explicitly select before Review & Save. Always null initially. */
   selectedInquiryId: string | null;
+  /** True iff selectedInquiryId was set automatically from a clear-winner
+   *  candidate (score >= threshold AND gap >= 0.20). Reversible via "Undo" in
+   *  the UI. Never triggers an auto-save of prices or documents. */
+  autoLinked: boolean;
   reviewed: boolean;
   needsManualLink: boolean;
   /** True iff multiple product-matched active inquiries exist with close scores. */
@@ -287,6 +291,10 @@ function buildMatchContext(row: {
     toEmail: row.to,
   });
 
+  // CAS number (e.g. 50-00-0) from subject/body — boost-only matching signal.
+  const casMatch = `${row.subject} ${bodyText}`.match(/\b(\d{2,7}-\d{2}-\d)\b/);
+  const cas = casMatch ? casMatch[1] : null;
+
   return {
     product_name: extractedProduct || row.product || undefined,
     inquiry_number: extractedInquiryNumber || row.matchedInquiryNumber || null,
@@ -296,6 +304,7 @@ function buildMatchContext(row: {
     forwardedSubjects: forwardedSubjects.length > 0 ? forwardedSubjects : undefined,
     customerName: customerName || undefined,
     make: row.make || null,
+    cas,
     gmailThreadId: row.threadId || null,
     gmailMessageId: row.messageId || null,
   };
@@ -618,7 +627,7 @@ export async function scanKunalIndiaInbox(opts: ScanOptions = {}): Promise<ScanR
     suggestedAction?: string;
     confidence?: number;
     extractedQuestion?: string | null;
-    documentType?: 'COA' | 'MSDS' | 'COC' | 'GMP' | 'ISO' | 'DMF' | 'OTHER' | null;
+    documentType?: 'COA' | 'MSDS' | 'COC' | 'GMP' | 'ISO' | 'DMF' | 'TDS' | 'SPEC' | 'CATALOGUE' | 'PRICE_LIST' | 'OTHER' | null;
     make?: string | null;
     sourceTypeHint?: SourceType;
   }> = [];
@@ -692,7 +701,8 @@ export async function scanKunalIndiaInbox(opts: ScanOptions = {}): Promise<ScanR
       make: result?.make || relevance.extractedMake || null,
       candidates,
       suggestedInquiryId: safety.suggestedInquiryId,
-      selectedInquiryId: null, // user must explicitly pick
+      selectedInquiryId: safety.suggestedInquiryId, // Part 8: auto-link clear winner (reversible)
+      autoLinked: !!safety.suggestedInquiryId,
       reviewed: false,
       needsManualLink,
       hasMultipleSimilarCandidates: safety.hasMultipleSimilarCandidates,
@@ -854,7 +864,7 @@ export interface SaveDocumentArgs {
   inquiryId: string;
   productName: string;
   make?: string | null;
-  documentType: 'COA' | 'MSDS' | 'MHD' | 'TDS' | 'SPEC' | 'COC' | 'GMP' | 'ISO' | 'DMF' | 'OTHER';
+  documentType: 'COA' | 'MSDS' | 'MHD' | 'TDS' | 'SPEC' | 'COC' | 'GMP' | 'ISO' | 'DMF' | 'CATALOGUE' | 'PRICE_LIST' | 'OTHER';
   sourceEmailSubject?: string | null;
   displayFileName?: string;
 }
@@ -1125,7 +1135,11 @@ export function hydrateReviewAsRow(p: PersistedReview, fullMessage: Partial<Kuna
       mail_subject: c.mail_subject || null,
     })) : [],
     suggestedInquiryId: raw.suggestedInquiryId || null,
-    selectedInquiryId: null, // must be explicitly re-selected
+    // Restore a persisted auto/manual link so it survives reload; still fully
+    // reversible in the UI. Only restore when it matches a known candidate.
+    selectedInquiryId: (p.matched_inquiry_id && (Array.isArray(raw.candidates) ? raw.candidates.some((c: any) => c.id === p.matched_inquiry_id) : false))
+      ? p.matched_inquiry_id : null,
+    autoLinked: !!(p.matched_inquiry_id && p.matched_inquiry_id === (raw.suggestedInquiryId || null)),
     reviewed: p.action_status !== 'pending_review' && p.action_status !== 'needs_manual_link',
     // No Action rows can never be Needs Manual Link, even if matched_inquiry_id is null.
     needsManualLink: p.action_status === 'needs_manual_link' && p.ai_type !== 'No Action',
@@ -1288,7 +1302,8 @@ export async function autoScanKunalInbox(opts: {
           make: result?.make || relevance.extractedMake || null,
           candidates,
           suggestedInquiryId: safety.suggestedInquiryId,
-          selectedInquiryId: null, // user must explicitly pick
+          selectedInquiryId: safety.suggestedInquiryId, // Part 8: auto-link clear winner (reversible)
+          autoLinked: !!safety.suggestedInquiryId,
           reviewed: false,
           needsManualLink,
           hasMultipleSimilarCandidates: safety.hasMultipleSimilarCandidates,
@@ -1386,6 +1401,7 @@ export async function loadGmailMailbox(opts: {
       candidates: [],
       suggestedInquiryId: null,
       selectedInquiryId: null,
+      autoLinked: false,
       reviewed: false,
       needsManualLink: false,
       hasMultipleSimilarCandidates: false,
@@ -1489,7 +1505,8 @@ export async function analyzeMessages(
       make: result?.make || v.extractedMake || null,
       candidates,
       suggestedInquiryId: safety.suggestedInquiryId,
-      selectedInquiryId: null, // user must explicitly pick
+      selectedInquiryId: safety.suggestedInquiryId, // Part 8: auto-link clear winner (reversible)
+      autoLinked: !!safety.suggestedInquiryId,
       reviewed: false,
       needsManualLink,
       hasMultipleSimilarCandidates: safety.hasMultipleSimilarCandidates,
