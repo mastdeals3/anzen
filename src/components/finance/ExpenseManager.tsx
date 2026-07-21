@@ -98,16 +98,6 @@ import {
   EXPENSE_CATEGORY_LABELS,
 } from '../../utils/taxCalculations';
 
-// Strips a leading "[Name · Period]" or "[Name]" prefix that was historically
-// prepended to the description on save. The Staff/Supplier fields are now the
-// source of truth for party identity; the description should be shown as the
-// user entered it, without the synthesized prefix.
-function stripDescriptionPrefix(desc: string): string {
-  if (!desc) return '';
-  const m = desc.match(/^\[[^\]]*\]\s*(.*)$/s);
-  return m ? m[1] : desc;
-}
-
 interface FinanceExpense {
   id: string;
   expense_category: string;
@@ -2072,7 +2062,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           } else if (exp.suppliers) {
             partyName = exp.suppliers.company_name;
           }
-          const desc = stripDescriptionPrefix(exp.description || '');
+          const desc = exp.description || '';
           if (partyName && desc) return `[${partyName}] ${desc}`;
           if (partyName) return `[${partyName}]`;
           return desc;
@@ -2412,7 +2402,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           } else if (expense.suppliers) {
                             partyName = expense.suppliers.company_name;
                           }
-                          const desc = stripDescriptionPrefix(expense.description || '');
+                          const desc = expense.description || '';
                           if (partyName && desc) return `[${partyName}] ${desc}`;
                           if (partyName) return `[${partyName}]`;
                           return desc || '—';
@@ -3660,16 +3650,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <div className="text-gray-900 text-xs font-mono">{viewingExpense.payment_reference}</div>
                   </div>
                 )}
-                {(() => {
-                  const desc = stripDescriptionPrefix(viewingExpense.description || '');
-                  if (!desc) return null;
-                  return (
-                    <div className="col-span-3">
-                      <div className="text-[10px] uppercase font-medium text-gray-400">Description</div>
-                      <div className="text-gray-900 text-xs whitespace-pre-wrap">{desc}</div>
-                    </div>
-                  );
-                })()}
+                {viewingExpense.description && (
+                  <div className="col-span-3">
+                    <div className="text-[10px] uppercase font-medium text-gray-400">Description</div>
+                    <div className="text-gray-900 text-xs whitespace-pre-wrap">{viewingExpense.description}</div>
+                  </div>
+                )}
               </div>
             </div>
 
