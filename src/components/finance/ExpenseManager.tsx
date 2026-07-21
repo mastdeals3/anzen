@@ -1304,6 +1304,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             .update({
               matched_expense_id: editingExpense.id,
               reconciliation_status: 'matched',
+              payment_kind: 'supplier',
               matched_at: new Date().toISOString(),
               matched_by: currentUser?.id
             })
@@ -1313,6 +1314,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             console.error('Error linking to bank transaction:', linkError);
             alert('Expense updated but failed to link to bank transaction. Please link manually from Bank Reconciliation.');
           } else {
+            // Recompute expense paid state so Payment Breakdown matches Bank Reconciliation.
+            await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: editingExpense.id });
             // Fetch the expense again to get updated bank_statement_lines
             const { data: refreshedExpense, error: refreshError } = await supabase
               .from('finance_expenses')
@@ -1433,6 +1436,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             .update({
               matched_expense_id: newExpense.id,
               reconciliation_status: 'matched',
+              payment_kind: 'supplier',
               matched_at: new Date().toISOString(),
               matched_by: user.id
             })
@@ -1442,6 +1446,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             console.error('Error linking to bank transaction:', linkError);
             alert('Expense created but failed to link to bank transaction. Please link manually from Bank Reconciliation.');
           } else {
+            // Recompute expense paid state so Payment Breakdown matches Bank Reconciliation.
+            await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: newExpense.id });
             // Fetch the expense again to get updated bank_statement_lines
             const { data: refreshedExpense, error: refreshError } = await supabase
               .from('finance_expenses')
@@ -1729,6 +1735,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         .eq('matched_expense_id', expenseId);
 
       if (error) throw error;
+
+      // Recompute expense paid state so Payment Breakdown matches Bank Reconciliation.
+      await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: expenseId });
 
       // Fetch the updated expense with relations
       const { data: updatedExpense, error: fetchError } = await supabase
@@ -3754,7 +3763,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 (viewingExpense.amount || 0)
                 + (viewingExpense.ppn_amount || 0)
                 - (viewingExpense.pph_amount || 0)
-                + (viewingExpense.stamp_duty_amount || 0);
+                + (viewingExpense.stamp_duty_amount || 0)
+                + (viewingExpense.bank_charges_amount || 0);
               const supplierPaid = viewingExpense.paid_amount ?? 0;
               const pphTarget = viewingExpense.pph_amount || 0;
               const pphPaid = viewingExpense.pph_paid_amount ?? 0;

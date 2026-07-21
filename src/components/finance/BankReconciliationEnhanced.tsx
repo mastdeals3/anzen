@@ -1783,13 +1783,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       try {
         const { data: exp } = await supabase
           .from('finance_expenses')
-          .select('amount, ppn_amount, pph_amount, stamp_duty_amount, paid_amount, pph_paid_amount')
+          .select('amount, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, paid_amount, pph_paid_amount')
           .eq('id', expenseId)
           .single();
         if (exp) {
           const thisAmount = (line.debit || 0) + (line.credit || 0);
           if (linkPaymentKind === 'supplier') {
-            const target = (exp.amount || 0) + (exp.ppn_amount || 0) - (exp.pph_amount || 0) + (exp.stamp_duty_amount || 0);
+            const target = (exp.amount || 0) + (exp.ppn_amount || 0) - (exp.pph_amount || 0) + (exp.stamp_duty_amount || 0) + (exp.bank_charges_amount || 0);
             if ((exp.paid_amount || 0) + thisAmount > target + 1) {
               const proceed = confirm(`Warning: supplier paid amount (${((exp.paid_amount||0)+thisAmount).toLocaleString('id-ID')}) would exceed target (${target.toLocaleString('id-ID')}). Link anyway?`);
               if (!proceed) return;
