@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, DollarSign, Package, Truck, Building2, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, Lock, RotateCcw, UserPlus, AlertCircle, Banknote } from 'lucide-react';
+import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, Lock, RotateCcw, UserPlus, AlertCircle, Banknote } from 'lucide-react';
 import { Modal } from '../Modal';
 import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
@@ -8,6 +8,7 @@ import { FinanceModal } from './FinanceModal';
 import { FormSection, F_LABEL, F_INPUT, F_INPUT_MONEY, F_SELECT, F_TEXTAREA, F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { getCategoryFieldRules } from './categoryFieldRules';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
+import { moduleExpenseCategories, sortExpenseCategories } from './expenseCategories';
 
 // Tiny inline helper used inside the SAP header PPN cell — a 3-state
 // selector rendered as a right-side chip so it doesn't consume a column.
@@ -223,270 +224,6 @@ interface ExpenseManagerProps {
   onSettleBill?: (bill: { id: string; supplier_id: string | null; staff_id: string | null; balance_amount: number }) => void;
 }
 
-const moduleExpenseCategories = [
-  {
-    value: 'pib_import',
-    label: 'PIB Import (BM + PPN + PPh)',
-    type: 'import',
-    icon: FileText,
-    description: 'ONE bank payment from the official PIB document covering Import Duty (BM), PPN Import, and PPh 22 Import. Requires breakdown.',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'duty_customs',
-    label: 'Duty & Customs (BM)',
-    type: 'import',
-    icon: Building2,
-    description: 'Import duties and customs charges - CAPITALIZED to inventory',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'ppn_import',
-    label: 'PPN Import',
-    type: 'import',
-    icon: Building2,
-    description: 'Import VAT - posted to PPN Masukan (Input VAT). NOT an expense. NOT in landed cost.',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'pph_import',
-    label: 'PPh Import',
-    type: 'import',
-    icon: Building2,
-    description: 'Import withholding tax (PPh 22) - posted to Advance Income Tax. NOT an expense. NOT in landed cost.',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'freight_import',
-    label: 'Freight (Import)',
-    type: 'import',
-    icon: Package,
-    description: 'International freight charges - CAPITALIZED to inventory',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'clearing_forwarding',
-    label: 'Clearing & Forwarding',
-    type: 'import',
-    icon: Building2,
-    description: 'Customs clearance - CAPITALIZED to inventory',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'port_charges',
-    label: 'Port Charges',
-    type: 'import',
-    icon: Building2,
-    description: 'Port handling charges - CAPITALIZED to inventory',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'container_handling',
-    label: 'Container Handling',
-    type: 'import',
-    icon: Package,
-    description: 'Container unloading - CAPITALIZED to inventory',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'transport_import',
-    label: 'Transportation (Import)',
-    type: 'import',
-    icon: Truck,
-    description: 'Port to godown transport - CAPITALIZED to inventory',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'loading_import',
-    label: 'Loading / Unloading (Import)',
-    type: 'import',
-    icon: Truck,
-    description: 'Import container loading/unloading - CAPITALIZED to inventory',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'bpom_ski_fees',
-    label: 'BPOM / SKI Fees',
-    type: 'import',
-    icon: FileText,
-    description: 'BPOM/SKI regulatory fees - CAPITALIZED to inventory',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'other_import',
-    label: 'Other (Import)',
-    type: 'import',
-    icon: DollarSign,
-    description: 'Other import-related expenses - CAPITALIZED to inventory',
-    requiresContainer: true,
-    group: 'Import Costs'
-  },
-  {
-    value: 'delivery_sales',
-    label: 'Delivery / Dispatch (Sales)',
-    type: 'sales',
-    icon: Truck,
-    description: 'Customer delivery - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Sales & Distribution'
-  },
-  {
-    value: 'loading_sales',
-    label: 'Loading / Unloading (Sales)',
-    type: 'sales',
-    icon: Truck,
-    description: 'Sales loading charges - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Sales & Distribution'
-  },
-  {
-    value: 'other_sales',
-    label: 'Other (Sales)',
-    type: 'sales',
-    icon: DollarSign,
-    description: 'Other sales-related expenses - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Sales & Distribution'
-  },
-  {
-    value: 'salary',
-    label: 'Salary',
-    type: 'staff',
-    icon: DollarSign,
-    description: 'Staff salaries - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Staff Costs'
-  },
-  {
-    value: 'staff_overtime',
-    label: 'Staff Overtime',
-    type: 'staff',
-    icon: DollarSign,
-    description: 'Overtime payments - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Staff Costs'
-  },
-  {
-    value: 'staff_welfare',
-    label: 'Staff Welfare / Allowances',
-    type: 'staff',
-    icon: DollarSign,
-    description: 'Driver food, snacks, overtime meals, welfare - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Staff Costs'
-  },
-  {
-    value: 'travel_conveyance',
-    label: 'Travel & Conveyance',
-    type: 'staff',
-    icon: Truck,
-    description: 'Local travel, taxi, fuel reimbursements, tolls - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Staff Costs'
-  },
-  {
-    value: 'staff_advance',
-    label: 'Staff Advance',
-    type: 'staff',
-    icon: DollarSign,
-    description: 'Advance paid to staff - booked to Staff Advances (ASSET), recovered against salary',
-    requiresContainer: false,
-    group: 'Staff Costs'
-  },
-  {
-    value: 'warehouse_rent',
-    label: 'Warehouse Rent',
-    type: 'operations',
-    icon: Building2,
-    description: 'Rent expense - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Operations'
-  },
-  {
-    value: 'utilities',
-    label: 'Utilities',
-    type: 'operations',
-    icon: Building2,
-    description: 'Electricity, water, etc - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Operations'
-  },
-  {
-    value: 'bank_charges',
-    label: 'Bank Charges',
-    type: 'operations',
-    icon: DollarSign,
-    description: 'Bank fees, charges, and transaction costs - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Operations'
-  },
-  {
-    value: 'office_admin',
-    label: 'Office & Admin',
-    type: 'admin',
-    icon: Building2,
-    description: 'General admin expenses - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Administrative'
-  },
-  {
-    value: 'office_shifting_renovation',
-    label: 'Office Shifting & Renovation',
-    type: 'admin',
-    icon: Building2,
-    description: 'Office shifting, partition work, electrical, cabling, interior renovation - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Administrative'
-  },
-  {
-    value: 'other',
-    label: 'Other',
-    type: 'admin',
-    icon: DollarSign,
-    description: 'Miscellaneous expenses - EXPENSED to P&L',
-    requiresContainer: false,
-    group: 'Administrative'
-  },
-  {
-    value: 'fixed_asset',
-    label: 'Fixed Asset',
-    type: 'admin',
-    icon: Building2,
-    description: 'Purchase of fixed asset (equipment, vehicle, etc.) - CAPITALIZED to asset account',
-    requiresContainer: false,
-    group: 'Administrative'
-  },
-  {
-    value: 'import_broker',
-    label: 'Customs Broker Invoice',
-    type: 'admin',
-    icon: FileText,
-    description: 'Invoice from customs broker for clearing, forwarding, DO charges, port fees — EXPENSED to P&L (COA 5300)',
-    requiresContainer: false,
-    group: 'Supplier Invoices'
-  },
-  {
-    value: 'professional_services',
-    label: 'Professional Services',
-    type: 'admin',
-    icon: DollarSign,
-    description: 'Legal, accounting, consulting, or other professional fees — EXPENSED to P&L (COA 6410)',
-    requiresContainer: false,
-    group: 'Supplier Invoices'
-  },
-];
-
 export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewHandled, onSettleBill }: ExpenseManagerProps) {
   const { profile } = useAuth();
   const { t } = useLanguage();
@@ -526,6 +263,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [signedUrlCache, setSignedUrlCache] = useState<Record<string, string>>({});
   const [filterType, setFilterType] = useState<'all' | 'import' | 'sales' | 'staff' | 'operations' | 'admin'>('all');
   const [reconFilter, setReconFilter] = useState<'all' | 'reconciled' | 'not_reconciled'>('all');
+  const [approvalFilter, setApprovalFilter] = useState<'all' | 'approved' | 'pending_approval'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
   const [showPasteHint, setShowPasteHint] = useState(false);
@@ -1963,6 +1701,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       if (reconciledExpenseIds.has(exp.id)) return false;
     }
 
+    // Filter by approval status
+    if (approvalFilter === 'approved') {
+      if (exp.approval_status !== 'approved') return false;
+    } else if (approvalFilter === 'pending_approval') {
+      if (exp.approval_status !== 'pending_approval') return false;
+    }
+
     // perf: date range filtered server-side in loadData().
 
     return true;
@@ -1977,8 +1722,30 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     setSortConfig({ key, direction });
   };
 
+  // Accountant-priority sort: Pending Approval → Approved+Outstanding → Partial → Paid+Unlinked → Paid+Linked.
+  // Only applies when no explicit user sort is active.
+  const accountantPriorityRank = (exp: FinanceExpense): number => {
+    const isReconciled = exp.bank_statement_lines && exp.bank_statement_lines.length > 0;
+    if (exp.approval_status === 'pending_approval') return 0;
+    if (exp.approval_status === 'rejected') return 1;
+    if (exp.payment_method === null) {
+      const balance = (exp.amount || 0) - (exp.paid_amount ?? 0);
+      if (balance > 0.01 && (exp.paid_amount ?? 0) > 0) return 2; // Partial
+      if (balance > 0.01) return 2; // Approved but Outstanding
+      return 3; // Paid (A/P settled)
+    }
+    if (!isReconciled) return 4; // Paid but Unlinked
+    return 5; // Paid & Linked
+  };
+
   const sortedExpenses = [...filteredExpenses].sort((a, b) => {
-    if (!sortConfig) return 0;
+    if (!sortConfig) {
+      const rankA = accountantPriorityRank(a);
+      const rankB = accountantPriorityRank(b);
+      if (rankA !== rankB) return rankA - rankB;
+      // Secondary: newest first within the same rank
+      return new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime();
+    }
 
     const { key, direction } = sortConfig;
     let aValue: any;
@@ -2008,6 +1775,17 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       const bReconciled = b.bank_statement_lines && b.bank_statement_lines.length > 0;
       aValue = aReconciled ? 1 : 0;
       bValue = bReconciled ? 1 : 0;
+    } else if (key === 'payment_status') {
+      // Sort by payment status: Outstanding(0) < Partial(1) < Paid(2)
+      const payRank = (e: FinanceExpense) => {
+        if (e.payment_method !== null) return 2;
+        const bal = (e.amount || 0) - (e.paid_amount ?? 0);
+        if (bal <= 0.01) return 2;
+        if ((e.paid_amount ?? 0) > 0) return 1;
+        return 0;
+      };
+      aValue = payRank(a);
+      bValue = payRank(b);
     } else {
       aValue = a[key as keyof FinanceExpense];
       bValue = b[key as keyof FinanceExpense];
@@ -2036,6 +1814,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       'Amount',
       'Payment Method',
       'Bank Account',
+      'Payment Status',
+      'Recon Status',
       'Approval Status',
     ];
     const rows = filteredExpenses.map(exp => {
@@ -2049,6 +1829,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         : (exp.bank_statement_lines?.[0]?.bank_accounts?.alias ||
            exp.bank_statement_lines?.[0]?.bank_accounts?.bank_name ||
            '');
+      // Payment status (independent of reconciliation)
+      let paymentStatus = 'Paid';
+      if (exp.payment_method === null) {
+        const balance = (exp.amount || 0) - (exp.paid_amount ?? 0);
+        if (balance > 0.01 && (exp.paid_amount ?? 0) > 0) paymentStatus = 'Partial';
+        else if (balance > 0.01) paymentStatus = 'Outstanding';
+      }
+      // Recon status (independent of payment)
+      const isReconciled = exp.bank_statement_lines && exp.bank_statement_lines.length > 0;
+      const reconStatus = isReconciled ? 'Linked' : 'Unlinked';
       return [
         exp.voucher_number || '',
         category?.type || '',
@@ -2071,6 +1861,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         exp.amount.toString(),
         (exp.payment_method || '').replace(/_/g, ' '),
         bankInfo,
+        paymentStatus,
+        reconStatus,
         exp.approval_status || '',
       ];
     });
@@ -2208,20 +2000,33 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           ))}
         </div>
 
+        <div className="h-4 w-px bg-gray-300"></div>
+
+        <div className="flex gap-0.5">
+          {[
+            { value: 'all', label: 'All' },
+            { value: 'pending_approval', label: 'Pending' },
+            { value: 'approved', label: 'Approved' },
+          ].map((filter) => (
+            <button
+              key={filter.value}
+              onClick={() => setApprovalFilter(filter.value as any)}
+              className={`h-6 px-2 rounded text-[11px] font-medium transition-colors ${
+                approvalFilter === filter.value ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
           className="h-6 px-1.5 border border-gray-300 rounded text-[11px] bg-white"
         >
           <option value="all">All Categories</option>
-          {expenseCategories
-            .sort((a, b) => {
-              const groupOrder = { 'Import Costs': 1, 'Sales & Distribution': 2, 'Staff Costs': 3, 'Operations': 4, 'Administrative': 5 };
-              const aOrder = groupOrder[a.group as keyof typeof groupOrder] || 999;
-              const bOrder = groupOrder[b.group as keyof typeof groupOrder] || 999;
-              if (aOrder !== bOrder) return aOrder - bOrder;
-              return a.label.localeCompare(b.label);
-            })
+          {sortExpenseCategories(expenseCategories)
             .map((category) => (
               <option key={category.value} value={category.value}>{category.label}</option>
             ))}
@@ -2313,11 +2118,22 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </th>
               <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Type</th>
               <th
+                onClick={() => handleSort('payment_status')}
+                className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center justify-center gap-1">
+                  Payment
+                  {sortConfig?.key === 'payment_status' && (
+                    <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                  )}
+                </div>
+              </th>
+              <th
                 onClick={() => handleSort('reconciliation')}
                 className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center justify-center gap-1">
-                  Status
+                  Recon
                   {sortConfig?.key === 'reconciliation' && (
                     <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                   )}
@@ -2330,13 +2146,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={canManage ? 11 : 10} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={canManage ? 12 : 11} className="px-6 py-8 text-center text-gray-500">
                   Loading...
                 </td>
               </tr>
             ) : filteredExpenses.length === 0 ? (
               <tr>
-                <td colSpan={canManage ? 10 : 9} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={canManage ? 11 : 10} className="px-6 py-8 text-center text-gray-500">
                   No expenses found
                 </td>
               </tr>
@@ -2349,7 +2165,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                 // Get bank info from reconciled statement line
                 const reconciledBankInfo = isReconciled
-                  ? expense.bank_statement_lines[0].bank_accounts
+                  ? expense.bank_statement_lines?.[0]?.bank_accounts
                   : null;
 
                 return (
@@ -2441,12 +2257,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       </span>
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
-                      {expense.payment_method === null ? (() => {
+                      {(() => {
+                        // Payment status — independent of reconciliation
+                        if (expense.payment_method !== null) {
+                          return (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-300 rounded">
+                              Paid
+                            </span>
+                          );
+                        }
                         const billBalance = (expense.amount || 0) - (expense.paid_amount ?? 0);
                         if (billBalance <= 0.01) {
                           return (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded">
-                              ✓ PAID
+                              ✓ Paid
                             </span>
                           );
                         }
@@ -2456,22 +2280,25 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-300 rounded"
                               title={`Paid Rp ${(expense.paid_amount ?? 0).toLocaleString('id-ID')} of Rp ${(expense.amount || 0).toLocaleString('id-ID')}`}
                             >
-                              PARTIAL · Rp {billBalance.toLocaleString('id-ID')} left
+                              Partial · Rp {billBalance.toLocaleString('id-ID')} left
                             </span>
                           );
                         }
                         return (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded">
-                            A/P Outstanding
+                            Outstanding
                           </span>
                         );
-                      })() : isReconciled ? (
+                      })()}
+                    </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
+                      {isReconciled ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded">
-                          ✓ LINKED
+                          ✓ Linked
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-300 rounded">
-                          ⚠ UNLINKED
+                          ⚠ Unlinked
                         </span>
                       )}
                     </td>
@@ -2584,7 +2411,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             {/* Totals Row */}
             {!loading && sortedExpenses.length > 0 && (
               <tr className="bg-gradient-to-r from-blue-50 to-blue-100 border-t-2 border-blue-200 font-bold">
-                <td colSpan={4} className="px-2 py-1.5 text-right text-xs text-gray-900">
+                <td colSpan={5} className="px-2 py-1.5 text-right text-xs text-gray-900">
                   TOTAL ({sortedExpenses.length} expenses):
                 </td>
                 <td className="px-2 py-1.5 text-right text-sm text-blue-900 font-bold">
@@ -3764,7 +3591,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         <span className="text-gray-900 capitalize">{viewingExpense.payment_method?.replace('_', ' ')}</span>
                       )}
                     </span>
-                    {viewingExpense.bank_accounts && (
+                    {viewingExpense.bank_accounts && !(viewingExpense.bank_statement_lines && viewingExpense.bank_statement_lines.length > 0) && (
                       <span className="flex items-center gap-1">
                         <span className="text-[10px] uppercase font-medium text-gray-400">Bank</span>
                         <span className="text-gray-900 text-xs">

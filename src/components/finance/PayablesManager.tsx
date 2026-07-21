@@ -3,8 +3,9 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DataTable } from '../DataTable';
 import { Modal } from '../Modal';
-import { Plus, Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
+import { Plus, CreditCard as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
 import { formatDate } from '../../utils/dateFormat';
+import { EXPENSE_CATEGORY_LABELS } from '../../utils/taxCalculations';
 
 interface VendorBill {
   id: string;
@@ -472,7 +473,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
   const overdueExpenseBills = outstandingExpenseBills.filter(b => b.days_overdue > 0);
 
   const categoryLabel = (cat: string) =>
-    cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    EXPENSE_CATEGORY_LABELS[cat] || cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   const billColumns = [
     {
