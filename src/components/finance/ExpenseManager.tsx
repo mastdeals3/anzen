@@ -3591,7 +3591,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         <span className="text-gray-900 capitalize">{viewingExpense.payment_method?.replace('_', ' ')}</span>
                       )}
                     </span>
-                    {viewingExpense.bank_accounts && !(viewingExpense.bank_statement_lines && viewingExpense.bank_statement_lines.length > 0) && (
+                    {viewingExpense.bank_accounts && (
                       <span className="flex items-center gap-1">
                         <span className="text-[10px] uppercase font-medium text-gray-400">Bank</span>
                         <span className="text-gray-900 text-xs">
@@ -3818,15 +3818,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       <div key={line.id} className="text-xs">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                           <span className="text-gray-700">
-                            <span className="text-[10px] uppercase font-medium text-gray-500 mr-1">Bank</span>
-                            {line.bank_accounts?.alias || line.bank_accounts?.bank_name} · {line.bank_accounts?.account_number}
-                            {lineCurrency && lineCurrency !== 'IDR' && (
-                              <span className="ml-1 text-[10px] text-purple-700 font-semibold">({lineCurrency})</span>
-                            )}
-                          </span>
-                          <span className="text-gray-700">
                             <span className="text-[10px] uppercase font-medium text-gray-500 mr-1">Date</span>
                             {new Date(line.transaction_date).toLocaleDateString('id-ID')}
+                          </span>
+                          <span className="text-gray-700">
+                            <span className="text-[10px] uppercase font-medium text-gray-500 mr-1">Ref</span>
+                            {line.description?.slice(0, 30) || '—'}
                           </span>
                           <span className="ml-auto flex items-center gap-3">
                             <span className="flex items-center gap-1">
