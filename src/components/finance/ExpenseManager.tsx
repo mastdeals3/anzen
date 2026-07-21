@@ -98,6 +98,16 @@ import {
   EXPENSE_CATEGORY_LABELS,
 } from '../../utils/taxCalculations';
 
+// Strips a leading "[Name · Period]" or "[Name]" prefix that was historically
+// prepended to the description on save. The Staff/Supplier fields are now the
+// source of truth for party identity; the description should be shown as the
+// user entered it, without the synthesized prefix.
+function stripDescriptionPrefix(desc: string): string {
+  if (!desc) return '';
+  const m = desc.match(/^\[[^\]]*\]\s*(.*)$/s);
+  return m ? m[1] : desc;
+}
+
 interface FinanceExpense {
   id: string;
   expense_category: string;
@@ -2054,7 +2064,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         category?.type || '',
         exp.expense_date,
         category?.label || exp.expense_category,
-        exp.description || '',
+        (() => {
+          const rules = getCategoryFieldRules(exp.expense_category);
+          let partyName = '';
+          if (rules.staff === 'show' && exp.staff_id) {
+            partyName = staffRoster.find(s => s.id === exp.staff_id)?.full_name || '';
+          } else if (exp.suppliers) {
+            partyName = exp.suppliers.company_name;
+          }
+          const desc = stripDescriptionPrefix(exp.description || '');
+          if (partyName && desc) return `[${partyName}] ${desc}`;
+          if (partyName) return `[${partyName}]`;
+          return desc;
+        })(),
         linkedTo,
         exp.amount.toString(),
         (exp.payment_method || '').replace(/_/g, ' '),
@@ -2381,7 +2403,21 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       )}
                     </td>
                     <td className="px-2 py-1.5">
-                      <div className="text-xs text-gray-700 line-clamp-1">{expense.description || '—'}</div>
+                      <div className="text-xs text-gray-700 line-clamp-1">
+                        {(() => {
+                          const rules = getCategoryFieldRules(expense.expense_category);
+                          let partyName = '';
+                          if (rules.staff === 'show' && expense.staff_id) {
+                            partyName = staffRoster.find(s => s.id === expense.staff_id)?.full_name || '';
+                          } else if (expense.suppliers) {
+                            partyName = expense.suppliers.company_name;
+                          }
+                          const desc = stripDescriptionPrefix(expense.description || '');
+                          if (partyName && desc) return `[${partyName}] ${desc}`;
+                          if (partyName) return `[${partyName}]`;
+                          return desc || '—';
+                        })()}
+                      </div>
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-right">
                       <div className="text-xs font-semibold text-gray-900">
@@ -3590,6 +3626,18 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <div className="text-gray-900 font-medium">{viewingExpense.suppliers.company_name}</div>
                   </div>
                 )}
+                {(() => {
+                  const rules = getCategoryFieldRules(viewingExpense.expense_category);
+                  if (rules.staff !== 'show' || !viewingExpense.staff_id) return null;
+                  const staff = staffRoster.find(s => s.id === viewingExpense.staff_id);
+                  if (!staff) return null;
+                  return (
+                    <div>
+                      <div className="text-[10px] uppercase font-medium text-gray-400">Employee</div>
+                      <div className="text-gray-900 font-medium">{staff.full_name}</div>
+                    </div>
+                  );
+                })()}
                 <div>
                   <div className="text-[10px] uppercase font-medium text-gray-400">Amount</div>
                   <div className="text-base font-bold text-gray-900 font-mono">{fmtMoney(viewingExpense.amount, 2)}</div>
@@ -3612,12 +3660,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <div className="text-gray-900 text-xs font-mono">{viewingExpense.payment_reference}</div>
                   </div>
                 )}
-                {viewingExpense.description && (
-                  <div className="col-span-3">
-                    <div className="text-[10px] uppercase font-medium text-gray-400">Description</div>
-                    <div className="text-gray-900 text-xs whitespace-pre-wrap">{viewingExpense.description}</div>
-                  </div>
-                )}
+                {(() => {
+                  const desc = stripDescriptionPrefix(viewingExpense.description || '');
+                  if (!desc) return null;
+                  return (
+                    <div className="col-span-3">
+                      <div className="text-[10px] uppercase font-medium text-gray-400">Description</div>
+                      <div className="text-gray-900 text-xs whitespace-pre-wrap">{desc}</div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
