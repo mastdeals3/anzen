@@ -1913,7 +1913,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       {/* Compact single-strip header — KPIs + primary actions */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded px-2 py-1 text-white shadow-sm flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <h2 className="text-xs font-bold whitespace-nowrap">Expenses</h2>
+          <h2 className="text-sm font-semibold text-gray-800 whitespace-nowrap">Expenses</h2>
           <div className="flex gap-1.5">
             <div className="bg-white/20 rounded px-1.5 py-0.5">
               <span className="text-blue-100 text-[9px] mr-1">TOTAL</span>
@@ -2119,10 +2119,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Type</th>
               <th
                 onClick={() => handleSort('payment_status')}
-                className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
+                className="px-1 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors w-8"
+                title="Payment Status"
               >
                 <div className="flex items-center justify-center gap-1">
-                  Payment
+                  Pay
                   {sortConfig?.key === 'payment_status' && (
                     <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                   )}
@@ -2130,16 +2131,17 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </th>
               <th
                 onClick={() => handleSort('reconciliation')}
-                className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
+                className="px-1 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors w-8"
+                title="Reconciliation Status"
               >
                 <div className="flex items-center justify-center gap-1">
-                  Recon
+                  Rec
                   {sortConfig?.key === 'reconciliation' && (
                     <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                   )}
                 </div>
               </th>
-              <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Approval</th>
+              <th className="px-1 py-1.5 text-center text-xs font-semibold text-gray-600 w-8" title="Approval Status">App</th>
               {canManage && <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Actions</th>}
             </tr>
           </thead>
@@ -2256,64 +2258,88 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         {category?.type === 'admin' && 'EXP'}
                       </span>
                     </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-center">
                       {(() => {
-                        // Payment status — independent of reconciliation
+                        // Payment status — compact icon with tooltip
                         if (expense.payment_method !== null) {
                           return (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-300 rounded">
-                              Paid
+                            <span
+                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700"
+                              title="Paid"
+                            >
+                              <CheckCircle className="w-3 h-3" />
                             </span>
                           );
                         }
                         const billBalance = (expense.amount || 0) - (expense.paid_amount ?? 0);
                         if (billBalance <= 0.01) {
                           return (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded">
-                              ✓ Paid
+                            <span
+                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700"
+                              title="Paid"
+                            >
+                              <CheckCircle className="w-3 h-3" />
                             </span>
                           );
                         }
                         if ((expense.paid_amount ?? 0) > 0) {
                           return (
                             <span
-                              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-300 rounded"
-                              title={`Paid Rp ${(expense.paid_amount ?? 0).toLocaleString('id-ID')} of Rp ${(expense.amount || 0).toLocaleString('id-ID')}`}
+                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-yellow-100 text-yellow-700"
+                              title={`Partial · Paid Rp ${(expense.paid_amount ?? 0).toLocaleString('id-ID')} of Rp ${(expense.amount || 0).toLocaleString('id-ID')} · Rp ${billBalance.toLocaleString('id-ID')} left`}
                             >
-                              Partial · Rp {billBalance.toLocaleString('id-ID')} left
+                              <Clock className="w-3 h-3" />
                             </span>
                           );
                         }
                         return (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded">
-                            Outstanding
+                          <span
+                            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-700"
+                            title="Outstanding"
+                          >
+                            <AlertCircle className="w-3 h-3" />
                           </span>
                         );
                       })()}
                     </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-center">
                       {isReconciled ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-300 rounded">
-                          ✓ Linked
+                        <span
+                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700"
+                          title="Linked"
+                        >
+                          <CheckCircle className="w-3 h-3" />
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-300 rounded">
-                          ⚠ Unlinked
+                        <span
+                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-100 text-gray-500"
+                          title="Unlinked"
+                        >
+                          <XCircle className="w-3 h-3" />
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
+                    <td className="px-1 py-1.5 whitespace-nowrap text-center">
                       {expense.approval_status === 'approved' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full">
-                          <CheckCircle className="w-3 h-3" />Approved
+                        <span
+                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700"
+                          title="Approved"
+                        >
+                          <CheckCircle className="w-3 h-3" />
                         </span>
                       ) : expense.approval_status === 'rejected' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 rounded-full" title={expense.rejection_reason || ''}>
-                          <XCircle className="w-3 h-3" />Rejected
+                        <span
+                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-700"
+                          title={`Rejected${expense.rejection_reason ? ': ' + expense.rejection_reason : ''}`}
+                        >
+                          <XCircle className="w-3 h-3" />
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-full">
-                          <Clock className="w-3 h-3" />Pending
+                        <span
+                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-yellow-100 text-yellow-700"
+                          title="Pending"
+                        >
+                          <Clock className="w-3 h-3" />
                         </span>
                       )}
                     </td>
