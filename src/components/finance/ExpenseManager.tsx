@@ -950,46 +950,46 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       console.log('document_urls:', expenseData.document_urls);
       console.log('Full expense data:', expenseData);
 
-      // Columns added in the 2026-07-06 / 2026-07-07 finance stabilization sprints.
-      // If the production DB has not yet applied those migrations, the insert/update
-      // will fail with "column X does not exist". Strip them and retry so the
-      // save always succeeds; the fields are optional to the accounting flow.
-      const OPTIONAL_NEW_COLUMNS = [
+      // Columns added by recent finance-stabilization migrations. If a DB has
+      // not applied one of those migrations yet, PostgREST returns PGRST204
+      // "Could not find the 'X' column ... in the schema cache" (or Postgres
+      // returns "column \"X\" does not exist"). Previously we stripped ALL of
+      // these columns collectively on any missing-column error — which silently
+      // dropped columns that ARE present in the DB (e.g. bank_charges_amount,
+      // which was added long ago in 20260706120300), causing user-entered
+      // values to disappear on save. We now parse the offending column name
+      // out of the error and strip ONLY that column, retrying in a loop.
+      const OPTIONAL_NEW_COLUMNS: readonly string[] = [
         'ppn_manual_override', 'bank_charges_amount',
         'ppn_calc_mode', 'dpp_amount', 'ppn_rate',
         'staff_id',
-      ] as const;
-      const stripOptionalColumns = (row: any) => {
-        const clone: any = { ...row };
-        for (const c of OPTIONAL_NEW_COLUMNS) delete clone[c];
-        return clone;
+      ];
+      const extractMissingColumn = (err: any): string | null => {
+        if (!err || typeof err.message !== 'string') return null;
+        const m1 = err.message.match(/Could not find the '([^']+)' column/);
+        if (m1 && OPTIONAL_NEW_COLUMNS.includes(m1[1])) return m1[1];
+        const m2 = err.message.match(/column "([^"]+)" does not exist/);
+        if (m2 && OPTIONAL_NEW_COLUMNS.includes(m2[1])) return m2[1];
+        return null;
       };
-      const isMissingColumnError = (err: any) =>
-        !!err && typeof err.message === 'string' &&
-        OPTIONAL_NEW_COLUMNS.some(c => err.message.includes(c)) &&
-        /column.*does not exist|schema cache|could not find/i.test(err.message);
 
       if (editingExpense) {
         // Regular update - bank expenses only (cash expenses go to Petty Cash Manager)
         console.log('=== UPDATING EXPENSE ===');
         console.log('Expense ID:', editingExpense.id);
 
-        let updateErr: any;
-        {
+        let updateErr: any = null;
+        let updatePayload: any = { ...expenseData };
+        for (let attempt = 0; attempt <= OPTIONAL_NEW_COLUMNS.length; attempt++) {
           const { error } = await supabase
             .from('finance_expenses')
-            .update(expenseData)
+            .update(updatePayload)
             .eq('id', editingExpense.id);
-          updateErr = error;
-        }
-
-        if (updateErr && isMissingColumnError(updateErr)) {
-          console.warn('Retrying update without sprint-stabilization columns:', updateErr.message);
-          const { error: retryErr } = await supabase
-            .from('finance_expenses')
-            .update(stripOptionalColumns(expenseData))
-            .eq('id', editingExpense.id);
-          updateErr = retryErr;
+          if (!error) { updateErr = null; break; }
+          const missingCol = extractMissingColumn(error);
+          if (!missingCol || !(missingCol in updatePayload)) { updateErr = error; break; }
+          console.warn(`Retrying update without missing column '${missingCol}' (DB migration not applied)`);
+          delete updatePayload[missingCol];
         }
 
         if (updateErr) {
@@ -1134,26 +1134,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           `;
 
         let newExpense: any = null;
-        let insertErr: any;
-        {
+        let insertErr: any = null;
+        let workingInsertPayload: any = { ...insertPayload };
+        for (let attempt = 0; attempt <= OPTIONAL_NEW_COLUMNS.length; attempt++) {
           const { data, error } = await supabase
             .from('finance_expenses')
-            .insert([insertPayload])
+            .insert([workingInsertPayload])
             .select(selectClause)
             .single();
-          newExpense = data;
-          insertErr = error;
-        }
-
-        if (insertErr && isMissingColumnError(insertErr)) {
-          console.warn('Retrying insert without sprint-stabilization columns:', insertErr.message);
-          const { data, error: retryErr } = await supabase
-            .from('finance_expenses')
-            .insert([stripOptionalColumns(insertPayload)])
-            .select(selectClause)
-            .single();
-          newExpense = data;
-          insertErr = retryErr;
+          if (!error) { newExpense = data; insertErr = null; break; }
+          const missingCol = extractMissingColumn(error);
+          if (!missingCol || !(missingCol in workingInsertPayload)) { insertErr = error; break; }
+          console.warn(`Retrying insert without missing column '${missingCol}' (DB migration not applied)`);
+          delete workingInsertPayload[missingCol];
         }
 
         if (insertErr) {
