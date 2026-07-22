@@ -3505,11 +3505,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               if ((viewingExpense.pib_ppn_amount || 0) > 0) rows.push(['PPN Import', viewingExpense.pib_ppn_amount || 0, 'text-amber-700']);
               if ((viewingExpense.pib_pph_amount || 0) > 0) rows.push(['PPh 22 Import', viewingExpense.pib_pph_amount || 0, 'text-amber-700']);
               if (rows.length === 0) return null;
-              const netPayable = (viewingExpense.amount || 0)
-                + (viewingExpense.ppn_amount || 0)
-                - (viewingExpense.pph_amount || 0)
-                + (viewingExpense.stamp_duty_amount || 0)
-                + (viewingExpense.bank_charges_amount || 0);
+              const netPayable = calculateExpenseTotals(viewingExpense).netPayable;
               return (
                 <div className="border border-gray-200 rounded-lg bg-white">
                   <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Tax & Charges</div>
@@ -3622,12 +3618,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               const bslLines = viewingExpense.bank_statement_lines || [];
               // Only render when there's actual settlement data.
               if (allocs.length === 0 && bslLines.length === 0) return null;
-              const supplierTarget =
-                (viewingExpense.amount || 0)
-                + (viewingExpense.ppn_amount || 0)
-                - (viewingExpense.pph_amount || 0)
-                + (viewingExpense.stamp_duty_amount || 0)
-                + (viewingExpense.bank_charges_amount || 0);
+              const supplierTarget = calculateExpenseTotals(viewingExpense).netPayable;
               const supplierPaid = viewingExpense.paid_amount ?? 0;
               const pphTarget = viewingExpense.pph_amount || 0;
               const pphPaid = viewingExpense.pph_paid_amount ?? 0;
