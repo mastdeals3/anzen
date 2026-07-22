@@ -93,6 +93,7 @@ import {
   type BrokerItem,
   type DocumentType,
   calculatePPN,
+  calculateExpenseTotals,
   computeBrokerLinePpn,
   getDueDateFromTerms,
   getSingleCategoryForDocType,
@@ -3088,8 +3089,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                   {/* Non-broker payment summary — horizontal formula bar */}
                   {formData.expense_category !== 'import_broker' && !taxCfg.pib && (formData.amount > 0 || formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0) && (() => {
-                    const bc = formData.expense_category === 'utilities' ? (formData.bank_charges_amount || 0) : 0;
-                    const payable = (formData.amount || 0) + (formData.ppn_amount || 0) - (formData.pph_amount || 0) + (formData.stamp_duty_amount || 0) + bc;
+                    const totals = calculateExpenseTotals(formData);
+                    const bc = totals.bankChargesAmount;
+                    const payable = totals.netPayable;
                     const fmt = (n: number) => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
                     type FormulaCell = { label: string; value: number; valueColor: string; op?: string; show: boolean };
                     const cells: FormulaCell[] = [

@@ -190,6 +190,96 @@ export function calculatePPh(
 }
 
 // ---------------------------------------------------------------------------
+// Expense totals — single source of truth
+// ---------------------------------------------------------------------------
+// This is the ONLY place the "net payable" formula for a finance_expenses row
+// is defined on the client. Every screen (Expense form, Payment Voucher, Bank
+// Reconciliation, Payables, Party Ledger) must call this so the numbers stay
+// consistent across the ERP.
+//
+// The formula mirrors the DB trigger auto_post_expense_accounting
+// (supabase/migrations/20260721123642_...sql line 222-226) which is the
+// authoritative posting engine. Do not diverge from that formula.
+//
+//   net_payable = amount + ppn − pph + stamp_duty
+//                          + (expense_category === 'utilities' ? bank_charges : 0)
+//
+// Bank charges only apply when expense_category is 'utilities' — this matches
+// the trigger and the form's business rule.
+
+/** Input shape — accepts any object with finance_expenses-style fields. */
+export interface ExpenseTotalsInput {
+  amount?: number | null;
+  ppn_amount?: number | null;
+  pph_amount?: number | null;
+  stamp_duty_amount?: number | null;
+  bank_charges_amount?: number | null;
+  expense_category?: string | null;
+}
+
+export interface ExpenseTotals {
+  amount: number;
+  ppnAmount: number;
+  pphAmount: number;
+  stampDutyAmount: number;
+  /** Bank charges as applied (0 unless expense_category === 'utilities'). */
+  bankChargesAmount: number;
+  /** amount + ppn − pph + stamp + effective bank_charges. */
+  netPayable: number;
+}
+
+/**
+ * Returns the canonical financial totals for a finance_expenses row.
+ * Every displayed "total payable" in the ERP should come from here.
+ */
+export function calculateExpenseTotals(exp: ExpenseTotalsInput): ExpenseTotals {
+  const amount = Number(exp.amount) || 0;
+  const ppn = Number(exp.ppn_amount) || 0;
+  const pph = Number(exp.pph_amount) || 0;
+  const stamp = Number(exp.stamp_duty_amount) || 0;
+  const rawBank = Number(exp.bank_charges_amount) || 0;
+  const bank = exp.expense_category === 'utilities' ? rawBank : 0;
+  return {
+    amount,
+    ppnAmount: ppn,
+    pphAmount: pph,
+    stampDutyAmount: stamp,
+    bankChargesAmount: bank,
+    netPayable: amount + ppn - pph + stamp + bank,
+  };
+}
+
+/** Input for outstanding calculation — same as totals plus paid_amount. */
+export interface OutstandingInput extends ExpenseTotalsInput {
+  paid_amount?: number | null;
+}
+
+export interface Outstanding {
+  netPayable: number;
+  paidAmount: number;
+  /** max(0, netPayable − paidAmount). */
+  outstandingAmount: number;
+  isFullyPaid: boolean;
+}
+
+/**
+ * Returns the outstanding balance for an expense.
+ * Kept separate from calculateExpenseTotals() because outstanding depends on
+ * payment state (paid_amount) while totals depend only on the expense itself.
+ */
+export function calculateOutstanding(exp: OutstandingInput): Outstanding {
+  const { netPayable } = calculateExpenseTotals(exp);
+  const paid = Number(exp.paid_amount) || 0;
+  const outstanding = Math.max(0, netPayable - paid);
+  return {
+    netPayable,
+    paidAmount: paid,
+    outstandingAmount: outstanding,
+    isFullyPaid: outstanding === 0 && netPayable > 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Date utilities
 // ---------------------------------------------------------------------------
 
