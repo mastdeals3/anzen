@@ -2039,10 +2039,20 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       const takenJeIds = new Set((takenLines || []).map((l: any) => l.matched_entry_id));
 
       const available = (vouchers || []).filter((pv: any) => {
+        // A payment voucher without a journal_entry_id has never been posted
+        // (or its posting was cancelled — cancel_payment_voucher_posting nulls
+        // this column by design). bank_statement_lines.matched_entry_id FKs
+        // journal_entries, so an unposted PV cannot be linked. The link-time
+        // guard at handleLinkSupplierPayment already refuses this state; apply
+        // the same requirement at the picker so we don't offer a link that
+        // will error. This closes the reported inconsistency where PV/26-26/003
+        // appeared in Supplier Payment but the link failed with
+        // "Payment voucher not yet posted (no journal entry)."
+        if (!pv.journal_entry_id) return false;
         // Advance-adjustment vouchers never touch the bank — exclude them.
         if (pv.payment_method === 'advance_adjustment') return false;
         // Exclude vouchers whose journal entry is already matched to a bank line.
-        if (pv.journal_entry_id && takenJeIds.has(pv.journal_entry_id)) return false;
+        if (takenJeIds.has(pv.journal_entry_id)) return false;
         // If the voucher pinned a specific bank account, restrict to matches on that account.
         if (pv.bank_account_id && selectedBank && pv.bank_account_id !== selectedBank) return false;
         return true;
