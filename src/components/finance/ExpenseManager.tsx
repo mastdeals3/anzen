@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, Lock, RotateCcw, UserPlus, AlertCircle, Banknote } from 'lucide-react';
+import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, ClipboardCheck, Lock, RotateCcw, UserPlus, AlertCircle, Banknote, Link2 } from 'lucide-react';
 import { Modal } from '../Modal';
 import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
@@ -2105,17 +2105,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   )}
                 </div>
               </th>
-              <th
-                onClick={() => handleSort('payment_method')}
-                className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center justify-center gap-1">
-                  Payment
-                  {sortConfig?.key === 'payment_method' && (
-                    <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                  )}
-                </div>
-              </th>
               <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Type</th>
               <th
                 onClick={() => handleSort('payment_status')}
@@ -2123,7 +2112,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 title="Payment Status"
               >
                 <div className="flex items-center justify-center gap-1">
-                  Pay
+                  <Banknote className="w-3.5 h-3.5 text-gray-500" />
                   {sortConfig?.key === 'payment_status' && (
                     <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                   )}
@@ -2135,20 +2124,24 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 title="Reconciliation Status"
               >
                 <div className="flex items-center justify-center gap-1">
-                  Rec
+                  <Link2 className="w-3.5 h-3.5 text-gray-500" />
                   {sortConfig?.key === 'reconciliation' && (
                     <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                   )}
                 </div>
               </th>
-              <th className="px-1 py-1.5 text-center text-xs font-semibold text-gray-600 w-8" title="Approval Status">App</th>
+              <th className="px-1 py-1.5 text-center text-xs font-semibold text-gray-600 w-8" title="Approval Status">
+                <div className="flex items-center justify-center">
+                  <ClipboardCheck className="w-3.5 h-3.5 text-gray-500" />
+                </div>
+              </th>
               {canManage && <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={canManage ? 12 : 11} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={canManage ? 11 : 10} className="px-6 py-8 text-center text-gray-500">
                   Loading...
                 </td>
               </tr>
@@ -2231,23 +2224,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       <div className="text-xs font-semibold text-gray-900">
                         {expense.bank_accounts?.currency === 'USD' ? '$' : 'Rp'} {expense.amount.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </div>
-                    </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
-                      {expense.payment_method === null ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded">
-                          Outstanding (A/P)
-                        </span>
-                      ) : isReconciled && reconciledBankInfo ? (
-                        <div className="text-xs">
-                          <div className="font-medium text-blue-700">{reconciledBankInfo.alias || reconciledBankInfo.bank_name}</div>
-                        </div>
-                      ) : expense.bank_account_id && expense.bank_accounts ? (
-                        <div className="text-xs">
-                          <div className="font-medium text-gray-700">{expense.bank_accounts.alias || expense.bank_accounts.bank_name}</div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-600">{expense.payment_method.replace('_', ' ')}</span>
-                      )}
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded ${getTypeColor(category?.type || 'admin')}`}>
