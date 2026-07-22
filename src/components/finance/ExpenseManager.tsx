@@ -2108,11 +2108,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Type</th>
               <th
                 onClick={() => handleSort('payment_status')}
-                className="px-1 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors w-8"
-                title="Payment Status"
+                className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center justify-center gap-1">
-                  <Banknote className="w-3.5 h-3.5 text-gray-500" />
+                  Payment
                   {sortConfig?.key === 'payment_status' && (
                     <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                   )}
@@ -2120,21 +2119,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </th>
               <th
                 onClick={() => handleSort('reconciliation')}
-                className="px-1 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors w-8"
-                title="Reconciliation Status"
+                className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center justify-center gap-1">
-                  <Link2 className="w-3.5 h-3.5 text-gray-500" />
+                  Recon
                   {sortConfig?.key === 'reconciliation' && (
                     <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                   )}
                 </div>
               </th>
-              <th className="px-1 py-1.5 text-center text-xs font-semibold text-gray-600 w-8" title="Approval Status">
-                <div className="flex items-center justify-center">
-                  <ClipboardCheck className="w-3.5 h-3.5 text-gray-500" />
-                </div>
-              </th>
+              <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Approval</th>
               {canManage && <th className="px-2 py-1.5 text-center text-xs font-semibold text-gray-600">Actions</th>}
             </tr>
           </thead>
@@ -2234,16 +2228,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         {category?.type === 'admin' && 'EXP'}
                       </span>
                     </td>
-                    <td className="px-1 py-1.5 whitespace-nowrap text-center">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {(() => {
-                        // Payment status — compact icon with tooltip
+                        // Payment status — Banknote icon colored by status
                         if (expense.payment_method !== null) {
                           return (
                             <span
-                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700"
+                              className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700"
                               title="Paid"
                             >
-                              <CheckCircle className="w-3 h-3" />
+                              <Banknote className="w-3 h-3" />
                             </span>
                           );
                         }
@@ -2251,71 +2245,71 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         if (billBalance <= 0.01) {
                           return (
                             <span
-                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700"
+                              className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700"
                               title="Paid"
                             >
-                              <CheckCircle className="w-3 h-3" />
+                              <Banknote className="w-3 h-3" />
                             </span>
                           );
                         }
                         if ((expense.paid_amount ?? 0) > 0) {
                           return (
                             <span
-                              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-yellow-100 text-yellow-700"
+                              className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-100 text-yellow-700"
                               title={`Partial · Paid Rp ${(expense.paid_amount ?? 0).toLocaleString('id-ID')} of Rp ${(expense.amount || 0).toLocaleString('id-ID')} · Rp ${billBalance.toLocaleString('id-ID')} left`}
                             >
-                              <Clock className="w-3 h-3" />
+                              <Banknote className="w-3 h-3" />
                             </span>
                           );
                         }
                         return (
                           <span
-                            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-700"
+                            className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-700"
                             title="Outstanding"
                           >
-                            <AlertCircle className="w-3 h-3" />
+                            <Banknote className="w-3 h-3" />
                           </span>
                         );
                       })()}
                     </td>
-                    <td className="px-1 py-1.5 whitespace-nowrap text-center">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {isReconciled ? (
                         <span
-                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700"
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700"
                           title="Linked"
                         >
-                          <CheckCircle className="w-3 h-3" />
+                          <Link2 className="w-3 h-3" />
                         </span>
                       ) : (
                         <span
-                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-100 text-gray-500"
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-400"
                           title="Unlinked"
                         >
-                          <XCircle className="w-3 h-3" />
+                          <Link2 className="w-3 h-3" />
                         </span>
                       )}
                     </td>
-                    <td className="px-1 py-1.5 whitespace-nowrap text-center">
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {expense.approval_status === 'approved' ? (
                         <span
-                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700"
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700"
                           title="Approved"
                         >
-                          <CheckCircle className="w-3 h-3" />
+                          <ClipboardCheck className="w-3 h-3" />
                         </span>
                       ) : expense.approval_status === 'rejected' ? (
                         <span
-                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-700"
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-700"
                           title={`Rejected${expense.rejection_reason ? ': ' + expense.rejection_reason : ''}`}
                         >
-                          <XCircle className="w-3 h-3" />
+                          <ClipboardCheck className="w-3 h-3" />
                         </span>
                       ) : (
                         <span
-                          className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-yellow-100 text-yellow-700"
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-100 text-yellow-700"
                           title="Pending"
                         >
-                          <Clock className="w-3 h-3" />
+                          <ClipboardCheck className="w-3 h-3" />
                         </span>
                       )}
                     </td>
