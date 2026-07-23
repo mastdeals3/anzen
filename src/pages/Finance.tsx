@@ -168,6 +168,17 @@ function FinanceContent() {
   const [focusExpenseId, setFocusExpenseId] = useState<string | null>(null);
   const [focusPettyCashId, setFocusPettyCashId] = useState<string | null>(null);
   const [focusFundTransferId, setFocusFundTransferId] = useState<string | null>(null);
+  const [focusBankAccountId, setFocusBankAccountId] = useState<string | null>(null);
+  const [focusBankStatementLineId, setFocusBankStatementLineId] = useState<string | null>(null);
+  const handleOpenBankReconciliation = useCallback((bankAccountId: string, bankStatementLineId: string) => {
+    setFocusBankAccountId(bankAccountId);
+    setFocusBankStatementLineId(bankStatementLineId);
+    setActiveTab('bank_recon');
+  }, [setActiveTab]);
+  const handleBankReconciliationFocusHandled = useCallback(() => {
+    setFocusBankAccountId(null);
+    setFocusBankStatementLineId(null);
+  }, []);
   const [ledgerDrillCode, setLedgerDrillCode] = useState<string | null>(null);
   const canManage = profile?.role === 'admin' || profile?.role === 'accounts';
 
@@ -289,6 +300,7 @@ function FinanceContent() {
             canManage={canManage}
             initialViewTransferId={focusFundTransferId}
             onInitialViewHandled={() => setFocusFundTransferId(null)}
+            onOpenBankReconciliation={handleOpenBankReconciliation}
           />
         );
       case 'expenses':
@@ -321,7 +333,14 @@ function FinanceContent() {
       case 'party_ledger':
         return <PartyLedger />;
       case 'bank_recon':
-        return <BankReconciliation canManage={canManage} />;
+        return (
+          <BankReconciliation
+            canManage={canManage}
+            initialBankAccountId={focusBankAccountId}
+            initialStatementLineId={focusBankStatementLineId}
+            onInitialFocusHandled={handleBankReconciliationFocusHandled}
+          />
+        );
       case 'trial_balance':
         return <FinancialReports initialReport="trial_balance" onDrillDown={(code) => { setLedgerDrillCode(code); setActiveTab('ledger'); }} />;
       case 'pnl':

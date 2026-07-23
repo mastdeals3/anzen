@@ -106,9 +106,17 @@ interface StatementLine {
 
 interface BankReconciliationEnhancedProps {
   canManage: boolean;
+  initialBankAccountId?: string | null;
+  initialStatementLineId?: string | null;
+  onInitialFocusHandled?: () => void;
 }
 
-export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnhancedProps) {
+export function BankReconciliationEnhanced({
+  canManage,
+  initialBankAccountId,
+  initialStatementLineId,
+  onInitialFocusHandled,
+}: BankReconciliationEnhancedProps) {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selectedBank, setSelectedBank] = useState<string>(() => {
     try { return localStorage.getItem('bank_recon_selected_bank') || ''; } catch { return ''; }
@@ -119,6 +127,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   const [uploading, setUploading] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'matched' | 'suggested' | 'unmatched'>('unmatched');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [highlightedLineId, setHighlightedLineId] = useState<string | null>(null);
 
   // Use master date range from Finance context
   const { dateRange: financeDateRange } = useFinance();
@@ -205,6 +214,32 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     loadExpenses();
     loadCustomers();
   }, []);
+
+  useEffect(() => {
+    if (!initialBankAccountId || !initialStatementLineId) return;
+    setSelectedBank(initialBankAccountId);
+    setActiveFilter('all');
+    setHighlightedLineId(initialStatementLineId);
+    try { localStorage.setItem('bank_recon_selected_bank', initialBankAccountId); } catch {
+      // Reconciliation still works when browser storage is unavailable.
+    }
+  }, [initialBankAccountId, initialStatementLineId]);
+
+  useEffect(() => {
+    if (!highlightedLineId || !statementLines.some(line => line.id === highlightedLineId)) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`bank-statement-line-${highlightedLineId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    const timer = window.setTimeout(() => setHighlightedLineId(null), 5000);
+    onInitialFocusHandled?.();
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [highlightedLineId, statementLines, onInitialFocusHandled]);
 
   // Shared "coalesce statement refresh" scheduler across the two realtime hooks below.
   const statementScheduledRef = useRef(false);
@@ -322,7 +357,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
       const endDateStr = endDatePlusOne.toISOString().split('T')[0];
 
-      const { data, error } = await supabase
+      const { data: rangeData, error } = await supabase
         .from('bank_statement_lines')
         // perf: projected columns (was select('*'))
         .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
@@ -333,16 +368,33 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
       if (error) throw error;
 
+      let data = rangeData || [];
+      if (
+        initialStatementLineId
+        && initialBankAccountId === selectedBank
+        && !data.some(row => row.id === initialStatementLineId)
+      ) {
+        const { data: focusedLine, error: focusedLineError } = await supabase
+          .from('bank_statement_lines')
+          .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
+          .eq('id', initialStatementLineId)
+          .eq('bank_account_id', selectedBank)
+          .maybeSingle();
+
+        if (focusedLineError) throw focusedLineError;
+        if (focusedLine) data = [focusedLine, ...data];
+      }
+
       // HARDENING FIX #5: Batch load all matched records to eliminate N+1 queries
       // Collect all IDs. Petty cash IS a valid recon target (petty_cash_transactions
       // linked via matched_petty_cash_id). Journal entry is the canonical link
       // (matched_entry_id) resolved for display fallback.
-      const expenseIds = (data || []).map(r => r.matched_expense_id).filter(Boolean);
-      const receiptIds = (data || []).map(r => r.matched_receipt_id).filter(Boolean);
-      const fundTransferIds = (data || []).map(r => r.matched_fund_transfer_id).filter(Boolean);
-      const pettyCashIds = (data || []).map(r => r.matched_petty_cash_id).filter(Boolean);
-      const entryIds = (data || []).map(r => r.matched_entry_id).filter(Boolean);
-      const taxPaymentIds = (data || []).map(r => r.matched_tax_payment_id).filter(Boolean);
+      const expenseIds = data.map(r => r.matched_expense_id).filter(Boolean);
+      const receiptIds = data.map(r => r.matched_receipt_id).filter(Boolean);
+      const fundTransferIds = data.map(r => r.matched_fund_transfer_id).filter(Boolean);
+      const pettyCashIds = data.map(r => r.matched_petty_cash_id).filter(Boolean);
+      const entryIds = data.map(r => r.matched_entry_id).filter(Boolean);
+      const taxPaymentIds = data.map(r => r.matched_tax_payment_id).filter(Boolean);
 
       // Batch load all expenses
       const expenseMap = new Map();
@@ -452,7 +504,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       }
 
       // Map lines with pre-loaded data (NO MORE QUERIES!)
-      const lines: StatementLine[] = (data || []).map(row => {
+      const lines: StatementLine[] = data.map(row => {
         return {
           id: row.id,
           date: row.transaction_date,
@@ -2797,7 +2849,16 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sortedLines.map(line => (
-                <tr key={line.id} className="hover:bg-gray-50">
+                <tr
+                  id={`bank-statement-line-${line.id}`}
+                  data-statement-line-id={line.id}
+                  key={line.id}
+                  className={
+                    line.id === highlightedLineId
+                      ? 'bg-amber-100 ring-2 ring-inset ring-amber-400'
+                      : 'hover:bg-gray-50'
+                  }
+                >
                   <td className="px-1.5 py-1 text-gray-700 whitespace-nowrap">
                     {new Date(line.date).toLocaleDateString('id-ID')}
                   </td>
