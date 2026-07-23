@@ -10,6 +10,7 @@ import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 import { notifyFinanceReconciliationRefresh } from './bankTransactionLinking';
+import { formatCurrency } from '../../utils/currency';
 
 interface FundTransfer {
   id: string;
@@ -51,13 +52,6 @@ interface BankStatementLine {
   description: string | null;
   debit_amount: number | null;
   credit_amount: number | null;
-  reconciliation_status: string | null;
-}
-
-interface BankStatementOwnership {
-  id: string;
-  matched_fund_transfer_id: string | null;
-  matched_entry_id: string | null;
   reconciliation_status: string | null;
 }
 
@@ -103,7 +97,7 @@ export function FundTransferManager({
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [fromBankStatements, setFromBankStatements] = useState<BankStatementLine[]>([]);
   const [toBankStatements, setToBankStatements] = useState<BankStatementLine[]>([]);
-  const [bankStatementOwnership, setBankStatementOwnership] = useState<Record<string, BankStatementOwnership>>({});
+  const [linkedBankStatementIds, setLinkedBankStatementIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransfer, setEditingTransfer] = useState<FundTransfer | null>(null);
@@ -200,23 +194,26 @@ export function FundTransferManager({
       if (banksRes.error) throw banksRes.error;
 
       const loadedTransfers = (transfersRes.data || []) as FundTransfer[];
-      const transferIds = loadedTransfers.map((transfer) => transfer.id);
+      const statementLineIds = Array.from(new Set(
+        loadedTransfers.flatMap((transfer) => [
+          transfer.from_bank_statement_line_id,
+          transfer.to_bank_statement_line_id,
+        ]).filter((id): id is string => Boolean(id)),
+      ));
 
-      let ownershipById: Record<string, BankStatementOwnership> = {};
-      if (transferIds.length > 0) {
-        const { data: ownershipRows, error: ownershipError } = await supabase
+      let validStatementIds = new Set<string>();
+      if (statementLineIds.length > 0) {
+        const { data: statementRows, error: statementError } = await supabase
           .from('bank_statement_lines')
-          .select('id, matched_fund_transfer_id, matched_entry_id, reconciliation_status')
-          .in('matched_fund_transfer_id', transferIds);
+          .select('id')
+          .in('id', statementLineIds);
 
-        if (ownershipError) throw ownershipError;
-        ownershipById = Object.fromEntries(
-          ((ownershipRows || []) as BankStatementOwnership[]).map((line) => [line.id, line]),
-        );
+        if (statementError) throw statementError;
+        validStatementIds = new Set((statementRows || []).map((line) => line.id));
       }
 
       setTransfers(loadedTransfers);
-      setBankStatementOwnership(ownershipById);
+      setLinkedBankStatementIds(validStatementIds);
       setBankAccounts(banksRes.data || []);
     } catch (error: any) {
       console.error('Error loading fund transfers:', error.message);
@@ -663,32 +660,21 @@ export function FundTransferManager({
     }
   };
 
-  const fmtAmount = (ccy: string, amt: number) =>
-    `${ccy === 'USD' ? '$' : 'Rp'} ${amt.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtAmount = (ccy: string, amt: number) => formatCurrency(amt, ccy);
 
-  const isBankSideLinked = (transfer: FundTransfer, side: 'from' | 'to'): boolean | null => {
-    if (transfer[`${side}_account_type`] !== 'bank') return null;
-
+  const isBankSideLinked = (transfer: FundTransfer, side: 'from' | 'to'): boolean => {
     const statementLineId = transfer[`${side}_bank_statement_line_id`];
-    if (!statementLineId) return false;
-
-    const ownership = bankStatementOwnership[statementLineId];
-    if (!ownership) return false;
-
-    const journalMatches = transfer.journal_entry_id
-      ? ownership.matched_entry_id === transfer.journal_entry_id
-      : ownership.matched_entry_id === null;
-
-    return ownership.matched_fund_transfer_id === transfer.id
-      && journalMatches
-      && ownership.reconciliation_status === 'matched';
+    return Boolean(statementLineId && linkedBankStatementIds.has(statementLineId));
   };
 
   const getReconciliationState = (transfer: FundTransfer): ReconciliationState => {
-    const bankSides = [
-      isBankSideLinked(transfer, 'from'),
-      isBankSideLinked(transfer, 'to'),
-    ].filter((status): status is boolean => status !== null);
+    const bankSides: boolean[] = [];
+    if (transfer.from_bank_account_id || transfer.from_bank_statement_line_id) {
+      bankSides.push(isBankSideLinked(transfer, 'from'));
+    }
+    if (transfer.to_bank_account_id || transfer.to_bank_statement_line_id) {
+      bankSides.push(isBankSideLinked(transfer, 'to'));
+    }
 
     if (bankSides.length === 0) return 'not_applicable';
     if (bankSides.every(Boolean)) return 'fully_linked';
@@ -990,7 +976,7 @@ export function FundTransferManager({
                       <option value="">No link</option>
                       {fromBankStatements.map((stmt) => (
                         <option key={stmt.id} value={stmt.id}>
-                          {formatDateDDMMYY(stmt.transaction_date)} · {stmt.description?.substring(0, 30)} · {(stmt.debit_amount || stmt.credit_amount || 0).toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                          {formatDateDDMMYY(stmt.transaction_date)} · {stmt.description?.substring(0, 30)} · {fmtAmount(getFromCurrency(), stmt.debit_amount || stmt.credit_amount || 0)}
                         </option>
                       ))}
                     </select>
@@ -1008,7 +994,7 @@ export function FundTransferManager({
                       <option value="">No link</option>
                       {toBankStatements.map((stmt) => (
                         <option key={stmt.id} value={stmt.id}>
-                          {formatDateDDMMYY(stmt.transaction_date)} · {stmt.description?.substring(0, 30)} · {(stmt.debit_amount || stmt.credit_amount || 0).toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                          {formatDateDDMMYY(stmt.transaction_date)} · {stmt.description?.substring(0, 30)} · {fmtAmount(getToCurrency(), stmt.debit_amount || stmt.credit_amount || 0)}
                         </option>
                       ))}
                     </select>
@@ -1144,11 +1130,7 @@ export function FundTransferManager({
               </dd>
               <dt className="text-gray-500">Amount</dt>
               <dd className="font-medium text-gray-900">
-                {new Intl.NumberFormat('id-ID', {
-                  style: 'currency',
-                  currency: reconciliationConflict.currency || 'IDR',
-                  minimumFractionDigits: 2,
-                }).format(Number(reconciliationConflict.amount) || 0)}
+                {formatCurrency(reconciliationConflict.amount, reconciliationConflict.currency)}
               </dd>
               <dt className="text-gray-500">Current Document Type</dt>
               <dd className="font-medium text-gray-900">{reconciliationConflict.document_type}</dd>

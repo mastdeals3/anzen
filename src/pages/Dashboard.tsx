@@ -12,6 +12,7 @@ import { SalesDashboard } from '../components/dashboard/SalesDashboard';
 import { AlertTriangle, Clock, TrendingUp, FileText, ClipboardCheck, ClipboardList, Zap, CircleUser as UserCircle, ArrowRight, Sparkles } from 'lucide-react';
 import { fetchSalesOrderDeliveryAlerts, summarizeDeliveryAlerts } from '../utils/salesOrderDeliveryAlerts';
 import { TaxComplianceDashboardCards } from '../components/finance/tax/TaxComplianceDashboardCards';
+import { formatCurrency } from '../utils/currency';
 
 interface DashboardStats {
   totalProducts: number;
@@ -198,7 +199,7 @@ export function Dashboard() {
     statCards.push({
       title: 'Overdue Invoices',
       value: stats.overdueInvoicesCount,
-      subtitle: `Rp ${stats.overdueInvoicesAmount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      subtitle: formatCurrency(stats.overdueInvoicesAmount, 'IDR'),
       icon: AlertTriangle,
       color: 'red-gradient',
       link: 'sales'

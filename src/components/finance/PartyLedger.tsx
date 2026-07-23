@@ -7,6 +7,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useFinance } from '../../contexts/FinanceContext';
 import { FINANCE_RECONCILIATION_REFRESH_EVENT } from './bankTransactionLinking';
+import { formatCurrency } from '../../utils/currency';
 
 interface Party {
   id: string;
@@ -387,11 +388,7 @@ export default function PartyLedger() {
   };
 
   const formatAmount = (amount: number) => {
-    if (amount === 0) return '-';
-    return `Rp ${amount.toLocaleString('id-ID', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+    return formatCurrency(amount, 'IDR', { zeroAsDash: true });
   };
 
   const formatBalance = (balance: number) => {

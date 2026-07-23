@@ -2,12 +2,14 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Upload, RefreshCw, CheckCircle2, AlertCircle, XCircle, Plus, Calendar, Landmark } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { formatCurrency } from '../../utils/currency';
 
 interface BankAccount {
   id: string;
   account_name: string;
   bank_name: string;
   account_number: string;
+  currency: string;
 }
 
 interface StatementLine {
@@ -54,7 +56,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
     try {
       const { data, error } = await supabase
         .from('bank_accounts')
-        .select('id, account_name, bank_name, account_number')
+        .select('id, account_name, bank_name, account_number, currency')
         .order('account_name');
       if (error) throw error;
       setBankAccounts(data || []);
@@ -327,6 +329,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
     if (activeFilter === 'no_link') return !line.matchedEntry;
     return line.status === activeFilter;
   });
+  const selectedCurrency = bankAccounts.find(account => account.id === selectedBank)?.currency || 'IDR';
 
   const stats = {
     total: statementLines.length,
@@ -502,13 +505,13 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
                     <td className="px-3 py-2 text-gray-700 max-w-xs truncate">{line.description}</td>
                     <td className="px-3 py-2 text-gray-500 font-mono text-xs">{line.reference || '-'}</td>
                     <td className="px-3 py-2 text-right text-red-600 font-medium">
-                      {line.debit > 0 ? `Rp ${line.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                      {line.debit > 0 ? formatCurrency(line.debit, selectedCurrency) : '-'}
                     </td>
                     <td className="px-3 py-2 text-right text-green-600 font-medium">
-                      {line.credit > 0 ? `Rp ${line.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                      {line.credit > 0 ? formatCurrency(line.credit, selectedCurrency) : '-'}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-900 font-semibold">
-                      Rp {line.balance.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(line.balance, selectedCurrency)}
                     </td>
                     <td className="px-3 py-2 text-center">
                       {line.status === 'matched' && (

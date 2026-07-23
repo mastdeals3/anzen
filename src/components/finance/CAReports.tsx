@@ -662,6 +662,7 @@ export function CAReports() {
           'Voucher Type': row.voucher_type,
           'Account Code': row.account_code,
           'Account Name': row.account_name,
+          'Currency': 'IDR',
           'Debit': row.debit,
           'Credit': row.credit,
           'Narration': row.narration
@@ -677,6 +678,7 @@ export function CAReports() {
           'Account Name': row.account_name,
           'Date': row.entry_date,
           'Voucher No': row.voucher_number,
+          'Currency': 'IDR',
           'Debit': row.debit,
           'Credit': row.credit,
           'Description': row.description
@@ -717,6 +719,7 @@ export function CAReports() {
           'Date': row.date,
           'Voucher No': row.voucher_no,
           'Bank Account': row.account_name,
+          'Currency': row.currency || 'IDR',
           'Debit': row.debit,
           'Credit': row.credit,
           'Narration': row.narration

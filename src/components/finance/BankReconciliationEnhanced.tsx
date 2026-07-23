@@ -10,6 +10,7 @@ import { getFinancialYear } from '../../utils/dateFormat';
 import { moduleExpenseCategories } from './expenseCategories';
 import { calculateExpenseTotals } from '../../utils/taxCalculations';
 import { FINANCE_RECONCILIATION_REFRESH_EVENT } from './bankTransactionLinking';
+import { formatCurrency } from '../../utils/currency';
 
 interface OutstandingBill {
   id: string;
@@ -1040,7 +1041,7 @@ export function BankReconciliationEnhanced({
             duplicates.slice(0, 5).forEach((dup, idx) => {
               const date = new Date(dup.transaction_date).toLocaleDateString('en-GB');
               const amt = dup.debit_amount || dup.credit_amount;
-              dupMessage += `${idx + 1}. ${date} - ${dup.description.substring(0, 40)} - Rp ${amt.toLocaleString()}\n`;
+              dupMessage += `${idx + 1}. ${date} - ${dup.description.substring(0, 40)} - ${formatCurrency(amt, selectedAccount?.currency)}\n`;
             });
             if (duplicates.length > 5) {
               dupMessage += `... and ${duplicates.length - 5} more\n`;
@@ -2247,13 +2248,13 @@ export function BankReconciliationEnhanced({
     }
     const total = allocs.reduce((s, a) => s + a.amount, 0);
     if (total > line.debit + 0.01) {
-      alert(`Total allocated (Rp ${total.toLocaleString('id-ID')}) exceeds the bank amount (Rp ${line.debit.toLocaleString('id-ID')}).`);
+      alert(`Total allocated (${formatCurrency(total, line.currency)}) exceeds the bank amount (${formatCurrency(line.debit, line.currency)}).`);
       return;
     }
     if (
       Math.abs(total - line.debit) > 0.01 &&
       !confirm(
-        `Total allocated Rp ${total.toLocaleString('id-ID')} differs from the bank amount Rp ${line.debit.toLocaleString('id-ID')} (partial payment or bank charges). Continue?`,
+        `Total allocated ${formatCurrency(total, line.currency)} differs from the bank amount ${formatCurrency(line.debit, line.currency)} (partial payment or bank charges). Continue?`,
       )
     ) {
       return;
@@ -2476,10 +2477,6 @@ export function BankReconciliationEnhanced({
     matched: statementLines.filter(l => l.status === 'matched' || l.status === 'recorded').length,
     suggested: statementLines.filter(l => l.status === 'suggested').length,
     unmatched: statementLines.filter(l => l.status === 'unmatched').length,
-  };
-
-  const getCurrencySymbol = (currency: string) => {
-    return currency === 'USD' ? '$' : 'Rp';
   };
 
   const openEditModal = (line: StatementLine) => {
@@ -2869,10 +2866,10 @@ export function BankReconciliationEnhanced({
                     )}
                   </td>
                   <td className="px-1.5 py-1 text-right text-red-600 font-medium whitespace-nowrap">
-                    {line.debit > 0 ? `${getCurrencySymbol(line.currency)} ${line.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                    {line.debit > 0 ? formatCurrency(line.debit, line.currency) : '-'}
                   </td>
                   <td className="px-1.5 py-1 text-right text-green-600 font-medium whitespace-nowrap">
-                    {line.credit > 0 ? `${getCurrencySymbol(line.currency)} ${line.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                    {line.credit > 0 ? formatCurrency(line.credit, line.currency) : '-'}
                   </td>
                   <td className="px-1.5 py-1">
                     <div className="flex flex-col gap-1">
@@ -3016,7 +3013,7 @@ export function BankReconciliationEnhanced({
                                   line.matchedPettyCashId    ? 'Petty Cash' :
                                   line.matchedTaxPaymentId   ? 'Tax Payment' :
                                   line.matchedEntry          ? 'Journal' : 'document'
-                                }: {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {(line.debit || line.credit || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-gray-400">(reference unresolved)</span>
+                                }: {formatCurrency(line.debit || line.credit || 0, selectedAccount?.currency)} <span className="text-gray-400">(reference unresolved)</span>
                               </span>
                             )}
                           </>
@@ -3083,13 +3080,13 @@ export function BankReconciliationEnhanced({
                   TOTAL ({sortedLines.length} transactions):
                 </td>
                 <td className="px-1.5 py-1 text-right text-red-700 font-bold whitespace-nowrap">
-                  {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {sortedLines.reduce((sum, line) => sum + line.debit, 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(sortedLines.reduce((sum, line) => sum + line.debit, 0), selectedAccount?.currency)}
                 </td>
                 <td className="px-1.5 py-1 text-right text-green-700 font-bold whitespace-nowrap">
-                  {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {sortedLines.reduce((sum, line) => sum + line.credit, 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(sortedLines.reduce((sum, line) => sum + line.credit, 0), selectedAccount?.currency)}
                 </td>
                 <td colSpan={2} className="px-1.5 py-1 text-center text-gray-600 text-sm">
-                  Net: {getCurrencySymbol(selectedAccount?.currency || 'IDR')} {(sortedLines.reduce((sum, line) => sum + line.credit, 0) - sortedLines.reduce((sum, line) => sum + line.debit, 0)).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  Net: {formatCurrency(sortedLines.reduce((sum, line) => sum + line.credit, 0) - sortedLines.reduce((sum, line) => sum + line.debit, 0), selectedAccount?.currency)}
                 </td>
               </tr>
             </tbody>
@@ -3131,7 +3128,7 @@ export function BankReconciliationEnhanced({
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-sm text-gray-600">Amount:</span>
                   <span className="text-lg font-bold text-red-600">
-                    {getCurrencySymbol(recordingLine.currency)} {recordingLine.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrency(recordingLine.debit, recordingLine.currency)}
                   </span>
                 </div>
               )}
@@ -3139,7 +3136,7 @@ export function BankReconciliationEnhanced({
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-sm text-gray-600">Amount:</span>
                   <span className="text-lg font-bold text-green-600">
-                    {getCurrencySymbol(recordingLine.currency)} {recordingLine.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrency(recordingLine.credit, recordingLine.currency)}
                   </span>
                 </div>
               )}
@@ -3263,7 +3260,7 @@ export function BankReconciliationEnhanced({
                                       </div>
                                     </td>
                                     <td className="px-2 py-1.5 text-right font-medium text-red-600">
-                                      Rp {bill.balance_amount.toLocaleString('id-ID')}
+                                      {formatCurrency(bill.balance_amount, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                     </td>
                                     <td className="px-2 py-1.5 text-right">
                                       {alloc && (
@@ -3290,8 +3287,8 @@ export function BankReconciliationEnhanced({
                           return (
                             <div className="flex items-center justify-between text-xs font-medium">
                               <span className={Math.abs(diff) < 0.01 ? 'text-emerald-700' : diff < 0 ? 'text-red-600' : 'text-amber-600'}>
-                                Allocated: Rp {total.toLocaleString('id-ID')} / Rp {recordingLine.debit.toLocaleString('id-ID')}
-                                {Math.abs(diff) >= 0.01 && ` (${diff > 0 ? 'under' : 'over'} by Rp ${Math.abs(diff).toLocaleString('id-ID')})`}
+                                Allocated: {formatCurrency(total, recordingLine.currency)} / {formatCurrency(recordingLine.debit, recordingLine.currency)}
+                                {Math.abs(diff) >= 0.01 && ` (${diff > 0 ? 'under' : 'over'} by ${formatCurrency(Math.abs(diff), recordingLine.currency)})`}
                               </span>
                               <button
                                 onClick={() => handleSettleBills(recordingLine)}
@@ -3328,7 +3325,7 @@ export function BankReconciliationEnhanced({
                               <div className="text-xs text-gray-400">{new Date(j.entry_date).toLocaleDateString('id-ID')}</div>
                             </div>
                             <span className="font-medium text-green-600">
-                              Rp {(j.total_debit || j.total_credit).toLocaleString('id-ID', { minimumFractionDigits: 2 })}
+                              {formatCurrency(j.total_debit || j.total_credit, recordingLine.currency)}
                             </span>
                           </button>
                         ))
@@ -3357,8 +3354,8 @@ export function BankReconciliationEnhanced({
                                 <div className="text-xs text-gray-400">{new Date(pv.voucher_date).toLocaleDateString('id-ID')}</div>
                               </div>
                               <div className="text-right">
-                                <div className="font-medium text-red-600">Rp {Number(pv.net_amount).toLocaleString('id-ID', { minimumFractionDigits: 2 })}</div>
-                                {pv.pph_amount > 0 && <div className="text-xs text-orange-500">Gross: Rp {Number(pv.amount).toLocaleString('id-ID', { minimumFractionDigits: 0 })}</div>}
+                                <div className="font-medium text-red-600">{formatCurrency(pv.net_amount, recordingLine.currency)}</div>
+                                {pv.pph_amount > 0 && <div className="text-xs text-orange-500">Gross: {formatCurrency(pv.amount, recordingLine.currency)}</div>}
                               </div>
                             </button>
                           ))
@@ -3386,7 +3383,7 @@ export function BankReconciliationEnhanced({
                               {tp.ntpn && <div className="text-xs text-gray-400 font-mono">NTPN: {tp.ntpn}</div>}
                             </div>
                             <div className="text-right">
-                              <div className="font-medium text-red-600">Rp {Number(tp.amount).toLocaleString('id-ID', { minimumFractionDigits: 2 })}</div>
+                              <div className="font-medium text-red-600">{formatCurrency(tp.amount, 'IDR')}</div>
                               <div className={`text-xs px-1.5 py-0.5 rounded font-medium ${tp.status === 'posted' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{tp.status}</div>
                             </div>
                           </button>
@@ -3509,7 +3506,7 @@ export function BankReconciliationEnhanced({
                             <option key={expense.id} value={expense.id}>
                               {formattedDate} - {expense.voucher_number ? `[${expense.voucher_number}] ` : ''}
                               {expense.description} -
-                              Rp {expense.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {formatCurrency(expense.amount, recordingLine.currency)}
                             </option>
                           );
                         })}
@@ -3592,7 +3589,7 @@ export function BankReconciliationEnhanced({
                               <div className="text-xs text-gray-400">{new Date(r.voucher_date).toLocaleDateString('id-ID')}</div>
                             </div>
                             <span className="font-medium text-green-600">
-                              Rp {r.amount?.toLocaleString('id-ID', { minimumFractionDigits: 2 })}
+                              {formatCurrency(r.amount, recordingLine.currency)}
                             </span>
                           </button>
                         ))
@@ -3621,7 +3618,7 @@ export function BankReconciliationEnhanced({
                               <div className="text-xs text-gray-400">{new Date(j.entry_date).toLocaleDateString('id-ID')}</div>
                             </div>
                             <span className="font-medium text-green-600">
-                              Rp {(j.total_debit || j.total_credit).toLocaleString('id-ID', { minimumFractionDigits: 2 })}
+                              {formatCurrency(j.total_debit || j.total_credit, recordingLine.currency)}
                             </span>
                           </button>
                         ))
@@ -3705,7 +3702,7 @@ export function BankReconciliationEnhanced({
                                 />
                                 <div className="flex-1 min-w-0">
                                   <span className="font-mono">{inv.invoice_number}</span>
-                                  <span className="text-red-500 ml-1">Bal: Rp {inv.balance_amount?.toLocaleString('id-ID')}</span>
+                                  <span className="text-red-500 ml-1">Bal: {formatCurrency(inv.balance_amount, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
                                 {isChecked && (
                                   <input
@@ -3727,7 +3724,7 @@ export function BankReconciliationEnhanced({
                         <div className="mt-2 pt-2 border-t text-xs flex justify-between">
                           <span>Allocated:</span>
                           <span className="font-medium text-green-600">
-                            Rp {Object.values(receiptAllocations).reduce((a, b) => a + b, 0).toLocaleString('id-ID', { minimumFractionDigits: 2 })}
+                            {formatCurrency(Object.values(receiptAllocations).reduce((a, b) => a + b, 0), recordingLine.currency)}
                           </span>
                         </div>
                       </div>
@@ -3833,13 +3830,13 @@ export function BankReconciliationEnhanced({
                 <div>
                   <span className="text-gray-600">Opening Balance:</span>
                   <span className="ml-2 font-medium text-gray-900">
-                    {selectedAccount?.currency} {ocrPreview.openingBalance.toLocaleString()}
+                    {formatCurrency(ocrPreview.openingBalance, selectedAccount?.currency)}
                   </span>
                 </div>
                 <div>
                   <span className="text-gray-600">Closing Balance:</span>
                   <span className="ml-2 font-medium text-gray-900">
-                    {selectedAccount?.currency} {ocrPreview.closingBalance.toLocaleString()}
+                    {formatCurrency(ocrPreview.closingBalance, selectedAccount?.currency)}
                   </span>
                 </div>
                 <div>
@@ -3866,7 +3863,7 @@ export function BankReconciliationEnhanced({
                         <td className="px-2 py-1">{txn.date}</td>
                         <td className="px-2 py-1 truncate max-w-xs">{txn.description}</td>
                         <td className="px-2 py-1 text-right">
-                          {selectedAccount?.currency} {(txn.debitAmount || txn.creditAmount).toLocaleString()}
+                          {formatCurrency(txn.debitAmount || txn.creditAmount, selectedAccount?.currency)}
                         </td>
                       </tr>
                     ))}
@@ -4086,7 +4083,7 @@ export function BankReconciliationEnhanced({
                     <div className="flex justify-between">
                       <span className="text-gray-600">Amount:</span>
                       <span className="font-medium text-gray-900">
-                        {editingLine.currency === 'USD' ? '$' : 'Rp'} {editingLine.matchedExpense.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatCurrency(editingLine.matchedExpense.amount, editingLine.currency)}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -4123,7 +4120,7 @@ export function BankReconciliationEnhanced({
                     <div className="flex justify-between">
                       <span className="text-gray-600">Amount:</span>
                       <span className="font-medium text-gray-900">
-                        {editingLine.currency === 'USD' ? '$' : 'Rp'} {editingLine.matchedReceipt.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatCurrency(editingLine.matchedReceipt.amount, editingLine.currency)}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -4156,7 +4153,7 @@ export function BankReconciliationEnhanced({
                     <div className="flex justify-between">
                       <span className="text-gray-600">Amount:</span>
                       <span className="font-medium text-gray-900">
-                        {editingLine.currency === 'USD' ? '$' : 'Rp'} {editingLine.matchedFundTransfer.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatCurrency(editingLine.matchedFundTransfer.amount, editingLine.currency)}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -4302,7 +4299,10 @@ export function BankReconciliationEnhanced({
                           <span className="ml-2 text-gray-800">{String(e.description).substring(0, 55)}</span>
                         </div>
                         <span className={`ml-2 font-medium text-xs whitespace-nowrap ${isDebit ? 'text-red-600' : 'text-green-600'}`}>
-                          {isDebit ? '-' : '+'}Rp {Number(amt).toLocaleString('id-ID')}
+                          {isDebit ? '-' : '+'}{formatCurrency(amt, selectedAccount?.currency, {
+                            minimumFractionDigits: selectedAccount?.currency === 'IDR' ? 0 : 2,
+                            maximumFractionDigits: selectedAccount?.currency === 'IDR' ? 0 : 2,
+                          })}
                         </span>
                       </div>
                     );

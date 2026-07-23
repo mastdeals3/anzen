@@ -5,6 +5,7 @@ import { Search, FileText, Edit, Trash2 } from 'lucide-react';
 import { Modal } from '../Modal';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
+import { formatCurrency } from '../../utils/currency';
 
 interface JournalEntry {
   id: string;
@@ -273,7 +274,7 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
                   </td>
                   <td className="px-1.5 py-1 text-right whitespace-nowrap border-r">
                     <span className="text-gray-900 font-medium text-xs">
-                      Rp {voucher.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(voucher.amount, 'IDR')}
                     </span>
                   </td>
                   <td className="px-1.5 py-1 text-gray-600 text-xs border-r">
@@ -324,7 +325,7 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
               <tr>
                 <td colSpan={4} className="px-1.5 py-1 text-right">Total:</td>
                 <td className="px-1.5 py-1 text-right text-gray-900 border-r">
-                  Rp {totals.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(totals.debit, 'IDR')}
                 </td>
                 <td colSpan={2}></td>
               </tr>
@@ -383,10 +384,10 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
                       </td>
                       <td className="px-1.5 py-1 text-gray-600">{line.description || '-'}</td>
                       <td className="px-1.5 py-1 text-right text-blue-600">
-                        {line.debit > 0 ? `Rp ${line.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
+                        {line.debit > 0 ? formatCurrency(line.debit, 'IDR') : ''}
                       </td>
                       <td className="px-1.5 py-1 text-right text-green-600">
-                        {line.credit > 0 ? `Rp ${line.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
+                        {line.credit > 0 ? formatCurrency(line.credit, 'IDR') : ''}
                       </td>
                     </tr>
                   ))}
@@ -395,10 +396,10 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
                   <tr>
                     <td colSpan={2} className="px-1.5 py-1 text-right">Total:</td>
                     <td className="px-1.5 py-1 text-right text-blue-700">
-                      Rp {selectedEntry.total_debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(selectedEntry.total_debit, 'IDR')}
                     </td>
                     <td className="px-1.5 py-1 text-right text-green-700">
-                      Rp {selectedEntry.total_credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(selectedEntry.total_credit, 'IDR')}
                     </td>
                   </tr>
                 </tfoot>

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { DataTable } from '../DataTable';
 import { Modal } from '../Modal';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
+import { formatCurrency } from '../../utils/currency';
 import { Plus, Edit } from 'lucide-react';
 
 interface BankAccount {
@@ -158,8 +159,7 @@ export function BankAccountsManager({ canManage }: Props) {
         const isNegative = item.ledger_balance < 0;
         return (
           <span className={`font-semibold ${isNegative ? 'text-red-600' : 'text-gray-900'}`}>
-            {item.currency === 'USD' ? 'USD ' : 'Rp '}
-            {Math.abs(item.ledger_balance).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatCurrency(Math.abs(item.ledger_balance), item.currency)}
             {isNegative && ' (Dr)'}
           </span>
         );

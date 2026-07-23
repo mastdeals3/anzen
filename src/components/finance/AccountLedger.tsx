@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useFinance } from '../../contexts/FinanceContext';
 import { Search, Printer, Download } from 'lucide-react';
+import { formatCurrency } from '../../utils/currency';
 
 interface AccountLedger {
   id: string;
@@ -40,6 +41,7 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [ledgerData, setLedgerData] = useState<AccountLedger[]>([]);
   const [openingBalance, setOpeningBalance] = useState(0);
+  const [displayCurrency, setDisplayCurrency] = useState('IDR');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -94,11 +96,12 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
       // Check if this COA is linked to a bank account — if so, use bank_statement_lines (same as Bank Ledger)
       const { data: bankAccountData } = await supabase
         .from('bank_accounts')
-        .select('id, opening_balance, opening_balance_date')
+        .select('id, opening_balance, opening_balance_date, currency')
         .eq('coa_id', selectedAccount.id)
         .maybeSingle();
 
       if (bankAccountData) {
+        setDisplayCurrency(bankAccountData.currency || 'IDR');
         // === BANK ACCOUNT: mirror exactly what Bank Ledger does ===
         const storedOpeningBalance = Number(bankAccountData.opening_balance) || 0;
         const openingBalanceDate = bankAccountData.opening_balance_date || '2025-01-01';
@@ -166,6 +169,7 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
       }
 
       // === NON-BANK ACCOUNT: use journal_entry_lines as before ===
+      setDisplayCurrency('IDR');
 
       // Get opening balance (all transactions before start date)
       const { data: openingData, error: openingError } = await supabase
@@ -380,17 +384,18 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
   const exportToCSV = () => {
     if (!selectedAccount || ledgerData.length === 0) return;
 
-    const headers = ['Date', 'Number', 'Type', 'Account', 'Description', 'Debit', 'Credit', 'Balance', 'Linked Ref'];
+    const headers = ['Date', 'Number', 'Type', 'Account', 'Currency', 'Description', 'Debit', 'Credit', 'Balance', 'Linked Ref'];
     const accountLabel = `${selectedAccount.code} - ${selectedAccount.name}`;
     const rows = ledgerData.map(line => [
       line.entry_date,
       line.canonical_number,
       sourceLabel(line.source_module),
       accountLabel,
+      displayCurrency,
       line.description || '',
-      line.debit ? line.debit.toFixed(2) : '',
-      line.credit ? line.credit.toFixed(2) : '',
-      line.balance.toFixed(2),
+      line.debit ? formatCurrency(line.debit, displayCurrency) : '',
+      line.credit ? formatCurrency(line.credit, displayCurrency) : '',
+      formatCurrency(line.balance, displayCurrency),
       line.reference_number || '',
     ]);
 
@@ -398,12 +403,13 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
     const csv = [
       `Account Ledger - ${accountLabel}`,
       `Period: ${dateRange.startDate} to ${dateRange.endDate}`,
-      `Opening Balance: ${openingBalance.toFixed(2)}`,
+      `Currency: ${displayCurrency}`,
+      `Opening Balance: ${formatCurrency(openingBalance, displayCurrency)}`,
       '',
       headers.map(escape).join(','),
       ...rows.map(row => row.map(c => escape(String(c))).join(',')),
       '',
-      `Closing Balance: ${closingBalance.toFixed(2)}`,
+      `Closing Balance: ${formatCurrency(closingBalance, displayCurrency)}`,
     ].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -524,7 +530,7 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
             <div className="flex justify-between items-center py-2 border-t border-b font-medium bg-gray-50 px-3">
               <span>Opening Balance:</span>
               <span className={openingBalance >= 0 ? 'text-green-600' : 'text-red-600'}>
-                Rp {Math.abs(openingBalance).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatCurrency(Math.abs(openingBalance), displayCurrency)}
                 {openingBalance < 0 && ' (Cr)'}
               </span>
             </div>
@@ -558,14 +564,14 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
                         </span>
                       </td>
                       <td className="px-1.5 py-1 text-right whitespace-nowrap text-blue-600">
-                        {line.debit > 0 ? `Rp ${line.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
+                        {line.debit > 0 ? formatCurrency(line.debit, displayCurrency) : ''}
                       </td>
                       <td className="px-1.5 py-1 text-right whitespace-nowrap text-green-600">
-                        {line.credit > 0 ? `Rp ${line.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}
+                        {line.credit > 0 ? formatCurrency(line.credit, displayCurrency) : ''}
                       </td>
                       <td className="px-1.5 py-1 text-right whitespace-nowrap font-medium">
                         <span className={line.balance >= 0 ? 'text-green-600' : 'text-red-600'}>
-                          Rp {Math.abs(line.balance).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {formatCurrency(Math.abs(line.balance), displayCurrency)}
                         </span>
                       </td>
                       <td className="px-1.5 py-1 text-gray-600 text-xs max-w-xs truncate">
@@ -578,10 +584,10 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
                   <tr>
                     <td colSpan={3} className="px-1.5 py-1 text-right">Total:</td>
                     <td className="px-1.5 py-1 text-right text-blue-700">
-                      Rp {totals.debit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(totals.debit, displayCurrency)}
                     </td>
                     <td className="px-1.5 py-1 text-right text-green-700">
-                      Rp {totals.credit.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(totals.credit, displayCurrency)}
                     </td>
                     <td colSpan={2}></td>
                   </tr>
@@ -589,7 +595,7 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
                     <td colSpan={5} className="px-1.5 py-1 text-right">Closing Balance:</td>
                     <td className="px-1.5 py-1 text-right">
                       <span className={closingBalance >= 0 ? 'text-green-700' : 'text-red-700'}>
-                        Rp {Math.abs(closingBalance).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatCurrency(Math.abs(closingBalance), displayCurrency)}
                         {closingBalance < 0 && ' (Cr)'}
                       </span>
                     </td>

@@ -18,6 +18,7 @@ import {
   notifyFinanceReconciliationRefresh,
   unlinkBankTransaction,
 } from './bankTransactionLinking';
+import { formatCurrency } from '../../utils/currency';
 
 interface PettyCashDocument {
   id: string;
@@ -1100,7 +1101,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       return;
     }
 
-    const headers = ['Date', 'Number', 'Type', 'Category', 'Description', 'Source / Destination', 'Amount', 'Paid To'];
+    const headers = ['Date', 'Number', 'Type', 'Category', 'Description', 'Source / Destination', 'Currency', 'Amount', 'Paid To'];
     const rows = filteredTransactions.map(tx => {
       const category = tx.expense_category ? getCategoryInfo(tx.expense_category) : null;
       const amountSign = tx.transaction_type === 'withdraw' ? '+' : '-';
@@ -1113,7 +1114,8 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
         category?.label || '',
         tx.description,
         tx.source || '',
-        `${amountSign} Rp ${Number(tx.amount).toLocaleString('id-ID')}`,
+        'IDR',
+        `${amountSign} ${formatCurrency(tx.amount, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
         tx.paid_to || ''
       ];
     });
@@ -1245,15 +1247,15 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
         <div className="border border-gray-200 rounded bg-white px-2 py-1.5">
           <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Balance</div>
-          <div className="text-xs font-mono font-bold text-green-600">Rp {cashBalance.toLocaleString('id-ID')}</div>
+          <div className="text-xs font-mono font-bold text-green-600">{formatCurrency(cashBalance, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
         </div>
         <div className="border border-gray-200 rounded bg-white px-2 py-1.5">
           <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Cash In</div>
-          <div className="text-xs font-mono font-bold text-blue-600">Rp {totalInflow.toLocaleString('id-ID')}</div>
+          <div className="text-xs font-mono font-bold text-blue-600">{formatCurrency(totalInflow, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
         </div>
         <div className="border border-gray-200 rounded bg-white px-2 py-1.5">
           <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Cash Out</div>
-          <div className="text-xs font-mono font-bold text-red-600">Rp {totalOutflow.toLocaleString('id-ID')}</div>
+          <div className="text-xs font-mono font-bold text-red-600">{formatCurrency(totalOutflow, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
         </div>
       </div>
 
@@ -1462,7 +1464,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                       <span className={`text-sm font-medium ${
                         tx.transaction_type === 'withdraw' ? 'text-blue-600' : 'text-red-600'
                       }`}>
-                        {tx.transaction_type === 'withdraw' ? '+' : '-'} Rp {Number(tx.amount).toLocaleString('id-ID')}
+                        {tx.transaction_type === 'withdraw' ? '+' : '-'} {formatCurrency(tx.amount, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </span>
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
@@ -1973,7 +1975,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                 <div>
                   <p className="text-xs text-gray-500 mb-0.5">Amount</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {viewingTransaction.transaction_type === 'withdraw' ? '+' : '-'} Rp {Number(viewingTransaction.amount).toLocaleString('id-ID')}
+                    {viewingTransaction.transaction_type === 'withdraw' ? '+' : '-'} {formatCurrency(viewingTransaction.amount, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   </p>
                 </div>
               </div>

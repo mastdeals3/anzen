@@ -14,6 +14,7 @@ import { showConfirm } from '../ConfirmDialog';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { type CompanySnapshot } from '../../types/company';
 import { waitForImages } from '../../utils/companyLogoUrl';
+import { formatCurrency } from '../../utils/currency';
 
 interface Customer {
   id: string;
@@ -65,7 +66,7 @@ interface ReceiptVoucher {
   journal_entry_id: string | null;
   created_at: string;
   customers?: { company_name: string };
-  bank_accounts?: { account_name: string; bank_name: string; alias?: string };
+  bank_accounts?: { account_name: string; bank_name: string; alias?: string; currency: string };
   allocated_to?: string;
   company_snapshot?: CompanySnapshot | null;
 }
@@ -141,7 +142,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     try {
       const { data, error } = await supabase
         .from('receipt_vouchers')
-        .select('*, customers(company_name), bank_accounts(account_name, bank_name, alias), is_posted, journal_entry_id, company_snapshot')
+        .select('*, customers(company_name), bank_accounts(account_name, bank_name, alias, currency), is_posted, journal_entry_id, company_snapshot')
         .order('voucher_date', { ascending: false });
 
       if (error) throw error;
@@ -312,6 +313,8 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
   };
 
   const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
+  const formCurrency = bankAccounts.find(bank => bank.id === formData.bank_account_id)?.currency || 'IDR';
+  const voucherCurrency = (voucher: ReceiptVoucher) => voucher.bank_accounts?.currency || 'IDR';
 
   const getInvoiceAllocationPreview = (target: AllocationTarget) => {
     if (target.type !== 'invoice') {
@@ -743,7 +746,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                 </td>
                 <td className="px-2 py-1.5 text-sm text-gray-600">{voucher.allocated_to}</td>
                 <td className="px-2 py-1.5 text-right font-medium text-green-600">
-                  Rp {voucher.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(voucher.amount, voucherCurrency(voucher))}
                 </td>
                 <td className="px-2 py-1.5">
                   <div className="flex items-center justify-center gap-1">
@@ -860,7 +863,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           </SapRow>
 
           <SapRow>
-            <SapField label="Amount (Rp)" required span={formData.payment_method === 'cash' ? 12 : 4}>
+            <SapField label={`Amount (${formCurrency})`} required span={formData.payment_method === 'cash' ? 12 : 4}>
               <input type="number" required min="0" step="0.01" value={formData.amount}
                 onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
                 className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} />
@@ -952,7 +955,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                             </span>
                           </td>
                           <td className="px-3 py-2 text-right text-red-600 font-medium">
-                            Rp {balance.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {formatCurrency(balance, formCurrency)}
                           </td>
                           <td className="px-3 py-2">
                             <input
@@ -968,7 +971,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                           <td className="px-3 py-2 text-right text-xs font-medium">
                             {target.type === 'invoice' ? (
                               <span className={roundingAdjustment === 0 ? 'text-gray-400' : 'text-amber-700'}>
-                                Rp {roundingAdjustment.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {formatCurrency(roundingAdjustment, formCurrency)}
                               </span>
                             ) : (
                               <span className="text-gray-400">-</span>
@@ -1004,9 +1007,9 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                 <div className="text-right">
                   <span className="text-gray-500">Total Allocated:</span>
                   <span className={`ml-2 font-bold text-lg ${totalAllocated > formData.amount ? 'text-red-600' : 'text-green-600'}`}>
-                    Rp {totalAllocated.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrency(totalAllocated, formCurrency)}
                   </span>
-                  <span className="text-gray-400 ml-1">/ Rp {formData.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-gray-400 ml-1">/ {formatCurrency(formData.amount, formCurrency)}</span>
                 </div>
               </div>
               <div className="mt-2 text-xs text-gray-500">
@@ -1053,7 +1056,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-500">Amount</label>
-                <p className="text-sm font-bold text-green-600">Rp {selectedVoucher.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className="text-sm font-bold text-green-600">{formatCurrency(selectedVoucher.amount, voucherCurrency(selectedVoucher))}</p>
               </div>
               {selectedVoucher.description && (
                 <div className="col-span-2">
@@ -1091,7 +1094,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                             </span>
                           </td>
                           <td className="px-3 py-2 text-right font-medium">
-                            Rp {alloc.allocated_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {formatCurrency(alloc.allocated_amount, voucherCurrency(selectedVoucher))}
                           </td>
                         </tr>
                       ))}
@@ -1237,7 +1240,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#dbeafe', borderRadius: '8px', border: '2px solid #2563eb' }}>
             <p style={{ fontSize: '11px', fontWeight: '600', color: '#1e40af', margin: '0 0 5px 0' }}>Amount Received:</p>
             <p style={{ fontSize: '24px', fontWeight: 'bold', margin: '0', color: '#1e40af' }}>
-              Rp {selectedVoucher.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {formatCurrency(selectedVoucher.amount, voucherCurrency(selectedVoucher))}
             </p>
           </div>
 
@@ -1294,7 +1297,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                         {alloc.sales_order_id ? 'SO (Advance)' : 'Invoice'}
                       </td>
                       <td style={{ padding: '8px', textAlign: 'right', borderBottom: idx < voucherAllocations.length - 1 ? '1px solid #e5e7eb' : 'none', fontWeight: '600' }}>
-                        Rp {alloc.allocated_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatCurrency(alloc.allocated_amount, voucherCurrency(selectedVoucher))}
                       </td>
                     </tr>
                   ))}

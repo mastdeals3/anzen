@@ -11,6 +11,7 @@ import { FileUpload } from '../FileUpload';
 import { showToast } from '../ToastNotification';
 import { formatDate } from '../../utils/dateFormat';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
+import { formatCurrency } from '../../utils/currency';
 
 interface Supplier {
   id: string;
@@ -660,17 +661,17 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                   </td>
                   <td className="px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm text-right text-gray-900 font-medium">
                     <div className="flex flex-col items-end">
-                      <span>{invoice.currency} {invoice.total_amount.toLocaleString()}</span>
+                      <span>{formatCurrency(invoice.total_amount, invoice.currency)}</span>
                       <span className="lg:hidden text-xs">
                         <span className={invoice.balance_amount > 0 ? 'text-red-600' : 'text-green-600'}>
-                          Bal: {invoice.balance_amount.toLocaleString()}
+                          Bal: {formatCurrency(invoice.balance_amount, invoice.currency)}
                         </span>
                       </span>
                     </div>
                   </td>
                   <td className="hidden xl:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap text-sm text-right font-medium">
                     <span className={invoice.balance_amount > 0 ? 'text-red-600' : 'text-green-600'}>
-                      {invoice.currency} {invoice.balance_amount.toLocaleString()}
+                      {formatCurrency(invoice.balance_amount, invoice.currency)}
                     </span>
                   </td>
                   <td className="hidden lg:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap">
@@ -1061,7 +1062,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
             <div className="mt-3 border-t pt-2 ml-auto w-full max-w-sm space-y-1">
               <div className="flex justify-between text-xs">
                 <span className="text-gray-600">Subtotal:</span>
-                <span className="font-medium">{formData.currency} {totals.subtotal.toLocaleString()}</span>
+                <span className="font-medium">{formatCurrency(totals.subtotal, formData.currency)}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
@@ -1075,7 +1076,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                     <option value={11}>11%</option>
                   </select>
                 </div>
-                <span className="font-medium">{formData.currency} {totals.ppnAmount.toLocaleString()}</span>
+                <span className="font-medium">{formatCurrency(totals.ppnAmount, formData.currency)}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-600">Bea Meterai:</span>
@@ -1091,7 +1092,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
               </div>
               <div className="flex justify-between text-sm font-bold border-t pt-1.5">
                 <span>Total:</span>
-                <span className="text-blue-600">{formData.currency} {totals.total.toLocaleString()}</span>
+                <span className="text-blue-600">{formatCurrency(totals.total, formData.currency)}</span>
               </div>
               {formData.currency === 'USD' && formData.exchange_rate > 1 && (
                 <div className="flex justify-between text-xs text-gray-500">
@@ -1147,21 +1148,21 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
               </div>
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Subtotal</p>
-                <p className="font-semibold text-gray-900">{selectedInvoice.currency} {Number(selectedInvoice.subtotal).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                <p className="font-semibold text-gray-900">{formatCurrency(selectedInvoice.subtotal, selectedInvoice.currency)}</p>
                 {Number(selectedInvoice.tax_amount) > 0 && (
-                  <p className="text-xs text-gray-500 mt-0.5">PPN: {selectedInvoice.currency} {Number(selectedInvoice.tax_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">PPN: {formatCurrency(selectedInvoice.tax_amount, selectedInvoice.currency)}</p>
                 )}
                 {Number(selectedInvoice.stamp_duty_amount) > 0 && (
-                  <p className="text-xs text-gray-500 mt-0.5">Bea Meterai: {selectedInvoice.currency} {Number(selectedInvoice.stamp_duty_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Bea Meterai: {formatCurrency(selectedInvoice.stamp_duty_amount, selectedInvoice.currency)}</p>
                 )}
               </div>
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Paid Amount</p>
-                <p className="font-semibold text-green-700">{selectedInvoice.currency} {Number(selectedInvoice.paid_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                <p className="font-semibold text-green-700">{formatCurrency(selectedInvoice.paid_amount, selectedInvoice.currency)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Balance Due</p>
-                <p className="font-bold text-lg text-blue-700">{selectedInvoice.currency} {Number(selectedInvoice.balance_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                <p className="font-bold text-lg text-blue-700">{formatCurrency(selectedInvoice.balance_amount, selectedInvoice.currency)}</p>
               </div>
             </div>
 
@@ -1198,8 +1199,8 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                           </td>
                           <td className="px-3 py-2 text-right text-gray-900">{Number(item.quantity).toLocaleString()}</td>
                           <td className="px-3 py-2 text-gray-500">{item.unit}</td>
-                          <td className="px-3 py-2 text-right text-gray-900">{selectedInvoice.currency} {Number(item.unit_price).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-3 py-2 text-right font-medium text-gray-900">{selectedInvoice.currency} {Number(item.line_total).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-3 py-2 text-right text-gray-900">{formatCurrency(item.unit_price, selectedInvoice.currency)}</td>
+                          <td className="px-3 py-2 text-right font-medium text-gray-900">{formatCurrency(item.line_total, selectedInvoice.currency)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1207,7 +1208,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       <tr>
                         <td colSpan={6} className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Total</td>
                         <td className="px-3 py-2 text-right text-sm font-bold text-gray-900">
-                          {selectedInvoice.currency} {Number(selectedInvoice.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          {formatCurrency(selectedInvoice.total_amount, selectedInvoice.currency)}
                         </td>
                       </tr>
                     </tfoot>

@@ -3,20 +3,32 @@
  * Ensures consistent decimal place display across the application
  */
 
-export const formatCurrency = (amount: number | string | null | undefined, currency: string = 'IDR'): string => {
+export interface CurrencyFormatOptions {
+  minimumFractionDigits?: number;
+  maximumFractionDigits?: number;
+  zeroAsDash?: boolean;
+}
+
+export const normalizeCurrency = (currency: string | null | undefined): string =>
+  (currency || 'IDR').trim().toUpperCase() || 'IDR';
+
+export const formatCurrency = (
+  amount: number | string | null | undefined,
+  currency: string | null | undefined = 'IDR',
+  options: CurrencyFormatOptions = {},
+): string => {
   const numAmount = Number(amount) || 0;
+  if (options.zeroAsDash && numAmount === 0) return '-';
 
-  if (currency === 'USD' || currency === 'usd') {
-    return `$ ${numAmount.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`;
-  }
+  const normalizedCurrency = normalizeCurrency(currency);
+  const minimumFractionDigits = options.minimumFractionDigits ?? 2;
+  const maximumFractionDigits = options.maximumFractionDigits ?? 2;
+  const locale = normalizedCurrency === 'IDR' ? 'id-ID' : 'en-US';
+  const prefix = normalizedCurrency === 'IDR' ? 'Rp' : normalizedCurrency;
 
-  // Default to IDR
-  return `Rp ${numAmount.toLocaleString('id-ID', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+  return `${prefix} ${numAmount.toLocaleString(locale, {
+    minimumFractionDigits,
+    maximumFractionDigits,
   })}`;
 };
 

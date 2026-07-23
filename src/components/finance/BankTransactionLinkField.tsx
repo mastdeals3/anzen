@@ -5,6 +5,7 @@ import {
   type BankTransactionLine,
   loadUnmatchedDebitBankTransactions,
 } from './bankTransactionLinking';
+import { formatCurrency } from '../../utils/currency';
 
 interface BankTransactionLinkFieldProps {
   bankAccountId: string;
@@ -23,9 +24,7 @@ interface BankTransactionLinkFieldProps {
 function formatAmount(line: BankTransactionLine) {
   const currency = line.bank_accounts?.currency || 'IDR';
   const amount = Number(line.debit_amount || 0);
-  return currency === 'USD'
-    ? `USD ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : `Rp ${amount.toLocaleString('id-ID')}`;
+  return formatCurrency(amount, currency);
 }
 
 function bankLabel(line: BankTransactionLine) {

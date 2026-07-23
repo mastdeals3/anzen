@@ -11,6 +11,7 @@ import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
+import { formatCurrency } from '../../utils/currency';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
 import {
   type BankTransactionLine,
@@ -142,10 +143,10 @@ interface OutstandingExpenseBillForPV {
 }
 
 function fmt(amount: number, currency: string) {
-  if (currency === 'USD') {
-    return `US$ ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
-  return `Rp ${amount.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return formatCurrency(amount, currency, {
+    minimumFractionDigits: currency === 'IDR' ? 0 : 2,
+    maximumFractionDigits: currency === 'IDR' ? 0 : 2,
+  });
 }
 
 

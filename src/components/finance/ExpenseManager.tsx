@@ -90,6 +90,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
+import { formatCurrency, normalizeCurrency } from '../../utils/currency';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 import {
   DOCUMENT_TYPES,
@@ -172,6 +173,12 @@ interface FinanceExpense {
   }> | null;
   suppliers?: { id: string; company_name: string } | null;
 }
+
+const getExpenseCurrency = (expense: FinanceExpense): string =>
+  normalizeCurrency(
+    expense.bank_accounts?.currency
+      ?? expense.bank_statement_lines?.[0]?.bank_accounts?.currency,
+  );
 
 interface Supplier {
   id: string;
@@ -1769,6 +1776,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       'Category',
       'Description',
       'Linked To',
+      'Currency',
       'Amount',
       'Payment Method',
       'Bank Account',
@@ -1816,6 +1824,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           return desc;
         })(),
         linkedTo,
+        getExpenseCurrency(exp),
         exp.amount.toString(),
         (exp.payment_method || '').replace(/_/g, ' '),
         bankInfo,
@@ -1854,9 +1863,24 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return `Rp ${amount?.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatExpenseTotals = (expensesToTotal: FinanceExpense[]) => {
+    const totals = expensesToTotal.reduce<Record<string, number>>((result, expense) => {
+      const currency = getExpenseCurrency(expense);
+      result[currency] = (result[currency] || 0) + Number(expense.amount || 0);
+      return result;
+    }, {});
+    return Object.entries(totals)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([currency, amount]) => formatCurrency(amount, currency, {
+        minimumFractionDigits: currency === 'IDR' ? 0 : 2,
+        maximumFractionDigits: currency === 'IDR' ? 0 : 2,
+      }))
+      .join(' · ');
   };
+
+  const expenseFormCurrency = normalizeCurrency(
+    bankAccounts.find((bank) => bank.id === formData.bank_account_id)?.currency,
+  );
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -1876,7 +1900,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             <div className="bg-white/20 rounded px-1.5 py-0.5">
               <span className="text-blue-100 text-[9px] mr-1">TOTAL</span>
               <span className="text-[11px] font-bold">
-                Rp {filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0).toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                {formatExpenseTotals(filteredExpenses) || formatCurrency(0)}
               </span>
             </div>
             <div className="bg-white/20 rounded px-1.5 py-0.5">
@@ -2174,7 +2198,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-right">
                       <div className="text-xs font-semibold text-gray-900">
-                        {expense.bank_accounts?.currency === 'USD' ? '$' : 'Rp'} {expense.amount.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        {formatCurrency(expense.amount, getExpenseCurrency(expense), {
+                          minimumFractionDigits: getExpenseCurrency(expense) === 'IDR' ? 0 : 2,
+                          maximumFractionDigits: getExpenseCurrency(expense) === 'IDR' ? 0 : 2,
+                        })}
                       </div>
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
@@ -2214,7 +2241,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           return (
                             <span
                               className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-100 text-yellow-700"
-                              title={`Partial · Paid Rp ${(expense.paid_amount ?? 0).toLocaleString('id-ID')} of Rp ${(expense.amount || 0).toLocaleString('id-ID')} · Rp ${billBalance.toLocaleString('id-ID')} left`}
+                              title={`Partial · Paid ${formatCurrency(expense.paid_amount ?? 0, getExpenseCurrency(expense))} of ${formatCurrency(expense.amount || 0, getExpenseCurrency(expense))} · ${formatCurrency(billBalance, getExpenseCurrency(expense))} left`}
                             >
                               <Banknote className="w-3 h-3" />
                             </span>
@@ -2369,7 +2396,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   TOTAL ({sortedExpenses.length} expenses):
                 </td>
                 <td className="px-2 py-1.5 text-right text-sm text-blue-900 font-bold">
-                  Rp {sortedExpenses.reduce((sum, exp) => sum + exp.amount, 0).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  {formatExpenseTotals(sortedExpenses)}
                 </td>
                 <td colSpan={canManage ? 5 : 4}></td>
               </tr>
@@ -2533,7 +2560,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                   {/* ── Row C: Invoice Amount · Invoice DPP (broker) · PPN · PPh · Stamp · Bank Chg ── */}
                   <SapRow>
-                    <SapField label={isBroker ? 'Broker Invoice Amount' : 'Amount'} required span={4}>
+                    <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={4}>
                       <MoneyInput value={formData.amount} required placeholder="0.00"
                         onChange={(amt) => {
                           setFormData(prev => {
@@ -2862,7 +2889,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       + totalPpn
                       - parentPph
                       + parentStamp;
-                    const fmt = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
+                    const fmt = (n: number) => formatCurrency(n, expenseFormCurrency, {
+                      minimumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
+                      maximumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
+                    });
                     // Excel density — 10 data cells per row + delete.
                     const cellInputCls = 'w-full h-[30px] px-1.5 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none rounded-none text-[11px] bg-transparent';
                     // # | Supplier | Inv# | Tax Inv# | Inv Date | Amount | DDP | PPN% | PPN Amt | Total | Del
@@ -3049,7 +3079,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     const totals = calculateExpenseTotals(formData);
                     const bc = totals.bankChargesAmount;
                     const payable = totals.netPayable;
-                    const fmt = (n: number) => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
+                    const fmt = (n: number) => formatCurrency(n, expenseFormCurrency, {
+                      minimumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
+                      maximumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
+                    });
                     type FormulaCell = { label: string; value: number; valueColor: string; op?: string; show: boolean };
                     const cells: FormulaCell[] = [
                       { label: 'Invoice Amount', value: formData.amount || 0, valueColor: 'text-gray-900', op: '+', show: true },
@@ -3325,13 +3358,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         // expense was paid from a bank), or falls back to the reconciled bank line's
         // account, or IDR when there's no bank context (petty cash / outstanding).
         // Priority 8 #1: never hardcode Rp.
-        const currency = viewingExpense.bank_accounts?.currency
-          ?? viewingExpense.bank_statement_lines?.[0]?.bank_accounts?.currency
-          ?? 'IDR';
+        const currency = getExpenseCurrency(viewingExpense);
         const fmtMoney = (n: number | null | undefined, decimals: 0 | 2 = 0) => {
-          const v = Number(n ?? 0);
-          if (currency === 'USD') return `USD ${v.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
-          return `Rp ${v.toLocaleString('id-ID', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+          return formatCurrency(n, currency, {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+          });
         };
         return (
         <Modal
@@ -3609,9 +3641,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           {bslLines.map((b) => {
                             const lineCurrency = b.bank_accounts?.currency ?? currency;
                             const lineAmount = (b.debit_amount || 0) + (b.credit_amount || 0);
-                            const fmtLine = (n: number) => lineCurrency === 'USD'
-                              ? `USD ${n.toLocaleString('en-US', { minimumFractionDigits: 0 })}`
-                              : `Rp ${n.toLocaleString('id-ID', { minimumFractionDigits: 0 })}`;
+                            const fmtLine = (n: number) => formatCurrency(n, lineCurrency, {
+                              minimumFractionDigits: lineCurrency === 'IDR' ? 0 : 2,
+                              maximumFractionDigits: lineCurrency === 'IDR' ? 0 : 2,
+                            });
                             return (
                               <tr key={`bsl-${b.id}`} className="border-t border-gray-100">
                                 <td className="py-1 text-gray-700">{new Date(b.transaction_date).toLocaleDateString('id-ID')}</td>
@@ -3729,9 +3762,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 <div className="px-3 py-2 space-y-2">
                   {viewingExpense.bank_statement_lines.map((line) => {
                     const lineCurrency = line.bank_accounts?.currency ?? currency;
-                    const fmtLine = (n: number) => lineCurrency === 'USD'
-                      ? `USD ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : `Rp ${n.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    const fmtLine = (n: number) => formatCurrency(n, lineCurrency);
                     const bankAmount = line.debit_amount || line.credit_amount || 0;
                     return (
                       <div key={line.id} className="text-xs">
@@ -3843,7 +3874,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         <Modal isOpen={cancelPostingModalOpen} onClose={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }} title="Cancel Expense Posting" maxWidth="max-w-md">
           <div className="space-y-4">
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
-              <p className="font-semibold mb-1">{cancelPostingTarget.expense_category} — Rp {Number(cancelPostingTarget.amount).toLocaleString('id-ID')}</p>
+              <p className="font-semibold mb-1">{cancelPostingTarget.expense_category} — {formatCurrency(cancelPostingTarget.amount, getExpenseCurrency(cancelPostingTarget))}</p>
               <p>This will delete the posted journal entry and return the expense to Draft. Edit and re-approve to repost.</p>
               <p className="mt-1 text-xs flex items-center gap-1"><Lock className="w-3 h-3" /> Not allowed if the accounting period is closed.</p>
             </div>

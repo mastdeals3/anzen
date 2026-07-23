@@ -4,6 +4,7 @@ import { BookOpen, Download, RefreshCw } from 'lucide-react';
 import { Modal } from '../Modal';
 import { useFinance } from '../../contexts/FinanceContext';
 import { getSignedUrlCached } from '../../utils/signedUrlCache';
+import { formatCurrency } from '../../utils/currency';
 
 interface BankAccount {
   id: string;
@@ -273,21 +274,8 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
     }
   };
 
-  const getCurrencySymbol = (currency: string) => {
-    const symbols: Record<string, string> = {
-      IDR: 'Rp',
-      USD: '$',
-      EUR: '€',
-    };
-    return symbols[currency] || currency;
-  };
-
   const formatAmount = (amount: number, currency: string) => {
-    if (amount === 0) return '-';
-    return `${getCurrencySymbol(currency)} ${amount.toLocaleString('id-ID', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+    return formatCurrency(amount, currency, { zeroAsDash: true });
   };
 
   const exportToExcel = () => {
@@ -306,6 +294,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
 
     const csv = [
       `Bank Ledger - ${selectedBankData.bank_name} (${selectedBankData.account_number})`,
+      `Currency: ${selectedBankData.currency}`,
       `Period: ${new Date(globalDateRange.startDate).toLocaleDateString('id-ID')} to ${new Date(globalDateRange.endDate).toLocaleDateString('id-ID')}`,
       `Opening Balance: ${formatAmount(openingBalance, selectedBankData.currency)}`,
       '',
