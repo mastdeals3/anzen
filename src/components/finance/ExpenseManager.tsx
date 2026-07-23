@@ -807,6 +807,17 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         }
       }
 
+      // Fixed Asset: account selection is mandatory before save.
+      if (formData.expense_category === 'fixed_asset' && !formData.fixed_asset_account_id) {
+        alert(
+          '❌ Fixed Asset Account Required\n\n' +
+          'This expense is categorised as Fixed Asset.\n\n' +
+          'Select the Fixed Asset GL account (e.g. Equipment, Furniture, Machinery) ' +
+          'before saving. The Journal Entry cannot be generated without it.'
+        );
+        return;
+      }
+
       // Validate: PPh code is required whenever a PPh amount is entered.
       // pib_import expenses use the pib_pph_amount breakdown field instead.
       if (formData.expense_category !== 'pib_import'
@@ -1392,6 +1403,18 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
   const handleApproveExpense = async (id: string) => {
     if (!isAdmin) return;
+
+    // Block approval if this is a fixed_asset expense with no account selected.
+    const target = expenses.find(e => e.id === id);
+    if (target?.expense_category === 'fixed_asset' && !target.fixed_asset_account_id) {
+      alert(
+        '❌ Cannot Approve — Fixed Asset Account Missing\n\n' +
+        'This expense is categorised as Fixed Asset but no GL account has been selected.\n\n' +
+        'Open the expense, select the Fixed Asset Account, save it, then approve.'
+      );
+      return;
+    }
+
     setApprovalLoading(id);
     try {
       const { error } = await supabase
