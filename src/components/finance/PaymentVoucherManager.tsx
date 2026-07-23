@@ -11,6 +11,13 @@ import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { getFinancialYear } from '../../utils/dateFormat';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
+import { BankTransactionLinkField } from './BankTransactionLinkField';
+import {
+  type BankTransactionLine,
+  linkBankTransaction,
+  notifyFinanceReconciliationRefresh,
+  unlinkBankTransaction,
+} from './bankTransactionLinking';
 
 interface Supplier {
   id: string;
@@ -67,6 +74,9 @@ interface PaymentVoucher {
   bank_charge: number | null;
   description: string | null;
   is_posted: boolean;
+  journal_entry_id: string | null;
+  bank_statement_line_id?: string | null;
+  bank_statement_line?: BankTransactionLine | null;
   suppliers?: { company_name: string };
   finance_staff_master?: { full_name: string };
   bank_accounts?: { account_name: string; bank_name: string; alias: string | null; currency: string | null };
@@ -292,8 +302,12 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       if (error) throw error;
 
       const voucherIds = (data || []).map((v: PaymentVoucher) => v.id);
+      const journalEntryIds = (data || [])
+        .map((v: PaymentVoucher) => v.journal_entry_id)
+        .filter((id): id is string => !!id);
       const allocCcyMap: Record<string, string> = {};
       const invoicesMap: Record<string, { id: string; number: string }[]> = {};
+      const bankLineMap = new Map<string, BankTransactionLine>();
       if (voucherIds.length > 0) {
         const { data: allocs } = await supabase
           .from('voucher_allocations')
@@ -314,11 +328,39 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         }
       }
 
+      if (journalEntryIds.length > 0) {
+        const { data: bankLines, error: bankLineError } = await supabase
+          .from('bank_statement_lines')
+          .select(`
+            id,
+            transaction_date,
+            description,
+            reference,
+            debit_amount,
+            credit_amount,
+            bank_account_id,
+            matched_entry_id,
+            bank_accounts(bank_name, account_name, account_number, alias, currency)
+          `)
+          .in('matched_entry_id', journalEntryIds);
+        if (bankLineError) throw bankLineError;
+        for (const line of (bankLines || []) as unknown as BankTransactionLine[]) {
+          if (line.matched_entry_id) bankLineMap.set(line.matched_entry_id, line);
+        }
+      }
+
       const enriched = (data || []).map((v: PaymentVoucher) => {
         const bankCcy = v.bank_accounts?.currency || 'IDR';
         const isCross = v.bank_amount != null && v.bank_amount > 0 && Math.abs((v.exchange_rate || 1) - 1) > 0.0001;
         const invCcy = allocCcyMap[v.id] || v.payment_currency || (isCross ? 'USD' : bankCcy);
-        return { ...v, invoice_currency: invCcy, invoice_numbers: invoicesMap[v.id] || [] };
+        const bankLine = v.journal_entry_id ? bankLineMap.get(v.journal_entry_id) || null : null;
+        return {
+          ...v,
+          invoice_currency: invCcy,
+          invoice_numbers: invoicesMap[v.id] || [],
+          bank_statement_line_id: bankLine?.id || null,
+          bank_statement_line: bankLine,
+        };
       });
       setVouchers(enriched);
     } catch (error) {
@@ -655,6 +697,56 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       loadVouchers();
     } catch (err) {
       alert('Delete failed: ' + supabaseErrorMessage(err));
+    }
+  };
+
+  const handleLinkBankTransaction = async (voucher: PaymentVoucher, transaction: BankTransactionLine) => {
+    if (!voucher.is_posted || !voucher.journal_entry_id) {
+      throw new Error('Post the payment voucher before linking a bank transaction.');
+    }
+
+    try {
+      await linkBankTransaction({
+        bankStatementLineId: transaction.id,
+        matchedJournalEntryId: voucher.journal_entry_id,
+        note: `Linked to supplier payment ${voucher.voucher_number}`,
+      });
+
+      const updatedVoucher = {
+        ...voucher,
+        bank_statement_line_id: transaction.id,
+        bank_statement_line: transaction,
+      };
+      setVouchers((prev) => prev.map((item) => item.id === voucher.id ? updatedVoucher : item));
+      setViewingVoucher(updatedVoucher);
+      notifyFinanceReconciliationRefresh();
+    } catch (error) {
+      console.error('Error linking payment voucher to bank transaction:', error);
+      alert('Failed to link bank transaction: ' + supabaseErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const handleUnlinkBankTransaction = async (voucher: PaymentVoucher) => {
+    if (!voucher.bank_statement_line_id) return;
+    if (!confirm(
+      `Unlink ${voucher.voucher_number} from this bank transaction?\n\n` +
+      'The bank statement line will return to Unmatched.'
+    )) return;
+
+    try {
+      await unlinkBankTransaction(voucher.bank_statement_line_id);
+      const updatedVoucher = {
+        ...voucher,
+        bank_statement_line_id: null,
+        bank_statement_line: null,
+      };
+      setVouchers((prev) => prev.map((item) => item.id === voucher.id ? updatedVoucher : item));
+      setViewingVoucher(updatedVoucher);
+      notifyFinanceReconciliationRefresh();
+    } catch (error) {
+      console.error('Error unlinking payment voucher from bank transaction:', error);
+      alert('Failed to unlink bank transaction: ' + supabaseErrorMessage(error));
     }
   };
 
@@ -1412,6 +1504,21 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
                     ? `${viewingVoucher.bank_accounts.alias || viewingVoucher.bank_accounts.bank_name || viewingVoucher.bank_accounts.account_name} (${viewingVoucher.bank_accounts.currency})`
                     : '—'}
                 </div>
+                {viewingVoucher.bank_account_id && (
+                  <div className="mt-2">
+                    <BankTransactionLinkField
+                      bankAccountId={viewingVoucher.bank_account_id}
+                      linkedTransaction={viewingVoucher.bank_statement_line || null}
+                      selectedTransactionId={viewingVoucher.bank_statement_line_id || ''}
+                      currentJournalEntryId={viewingVoucher.journal_entry_id}
+                      disabled={!viewingVoucher.is_posted || !viewingVoucher.journal_entry_id}
+                      disabledMessage="Post this voucher to create its journal entry before linking a bank transaction."
+                      canUnlink={canManage}
+                      onSelect={(transaction) => handleLinkBankTransaction(viewingVoucher, transaction)}
+                      onUnlink={() => handleUnlinkBankTransaction(viewingVoucher)}
+                    />
+                  </div>
+                )}
               </div>
               <div>
                 <div className="text-xs text-gray-500 mb-0.5">Reference No.</div>

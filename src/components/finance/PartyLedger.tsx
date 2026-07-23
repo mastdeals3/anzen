@@ -6,6 +6,7 @@ import { Users, Building2, Download, Mail, RefreshCw } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useFinance } from '../../contexts/FinanceContext';
+import { FINANCE_RECONCILIATION_REFRESH_EVENT } from './bankTransactionLinking';
 
 interface Party {
   id: string;
@@ -64,6 +65,14 @@ export default function PartyLedger() {
       setOpeningBalance(0);
     }
   }, [selectedParty, globalDateRange.startDate, globalDateRange.endDate]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (selectedParty) void loadLedgerEntries();
+    };
+    window.addEventListener(FINANCE_RECONCILIATION_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(FINANCE_RECONCILIATION_REFRESH_EVENT, refresh);
+  });
 
   const loadParties = async () => {
     if (partyType === 'staff') {

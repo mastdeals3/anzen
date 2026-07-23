@@ -9,6 +9,7 @@ import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChann
 import { getFinancialYear } from '../../utils/dateFormat';
 import { moduleExpenseCategories } from './expenseCategories';
 import { calculateExpenseTotals } from '../../utils/taxCalculations';
+import { FINANCE_RECONCILIATION_REFRESH_EVENT } from './bankTransactionLinking';
 
 interface OutstandingBill {
   id: string;
@@ -189,6 +190,15 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   useEffect(() => { selectedBankRef.current = selectedBank; }, [selectedBank]);
   useEffect(() => { loadStatementLinesRef.current = loadStatementLines; });
   useEffect(() => { loadExpensesRef.current = loadExpenses; });
+
+  useEffect(() => {
+    const refresh = () => {
+      loadExpensesRef.current();
+      if (selectedBankRef.current) loadStatementLinesRef.current();
+    };
+    window.addEventListener(FINANCE_RECONCILIATION_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(FINANCE_RECONCILIATION_REFRESH_EVENT, refresh);
+  }, []);
 
   useEffect(() => {
     loadBankAccounts();

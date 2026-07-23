@@ -9,6 +9,12 @@ import { FormSection, F_LABEL, F_INPUT, F_INPUT_MONEY, F_SELECT, F_TEXTAREA, F_B
 import { getCategoryFieldRules } from './categoryFieldRules';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { moduleExpenseCategories, sortExpenseCategories } from './expenseCategories';
+import { BankTransactionLinkField } from './BankTransactionLinkField';
+import {
+  linkBankTransaction,
+  notifyFinanceReconciliationRefresh,
+  unlinkBankTransaction,
+} from './bankTransactionLinking';
 
 // Tiny inline helper used inside the SAP header PPN cell — a 3-state
 // selector rendered as a right-side chip so it doesn't consume a column.
@@ -252,7 +258,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [challans, setChallans] = useState<DeliveryChallan[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [reconciledExpenseIds, setReconciledExpenseIds] = useState<Set<string>>(new Set());
-  const [unlinkedBankTransactions, setUnlinkedBankTransactions] = useState<any[]>([]);
   const [selectedBankTransactionId, setSelectedBankTransactionId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -695,47 +700,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     }
   };
 
-  const loadUnlinkedBankTransactions = async (bankAccountId?: string, currentExpenseId?: string) => {
-    try {
-      let query = supabase
-        .from('bank_statement_lines')
-        .select(`
-          id,
-          transaction_date,
-          description,
-          debit_amount,
-          credit_amount,
-          bank_account_id,
-          bank_accounts(bank_name, account_number, alias, currency)
-        `)
-        .or(`matched_expense_id.is.null,matched_expense_id.eq.${currentExpenseId || 'NULL'}`)
-        .is('matched_receipt_id', null)
-        .is('matched_petty_cash_id', null)
-        .is('matched_entry_id', null)
-        .is('matched_fund_transfer_id', null)
-        .is('matched_tax_payment_id', null)
-        .order('transaction_date', { ascending: false });
-
-      // Filter by bank account if provided
-      if (bankAccountId) {
-        query = query.eq('bank_account_id', bankAccountId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      // Filter to only show debit transactions (expenses) with amount > 0
-      const debitTransactions = (data || []).filter(txn =>
-        txn.debit_amount && txn.debit_amount > 0
-      );
-
-      setUnlinkedBankTransactions(debitTransactions);
-    } catch (error) {
-      console.error('Error loading unlinked transactions:', error);
-    }
-  };
-
-
   const getSignedUrl = (fileUrl: string): Promise<string> =>
     resolveStorageUrlCached(fileUrl, 3600);
 
@@ -1048,22 +1012,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
         // Link to bank transaction if selected
         if (selectedBankTransactionId) {
-          const { data: { user: currentUser } } = await supabase.auth.getUser();
-          const { error: linkError } = await supabase
-            .from('bank_statement_lines')
-            .update({
-              matched_expense_id: editingExpense.id,
-              reconciliation_status: 'matched',
-              payment_kind: 'supplier',
-              matched_at: new Date().toISOString(),
-              matched_by: currentUser?.id
-            })
-            .eq('id', selectedBankTransactionId);
-
-          if (linkError) {
+          let linkFailed = false;
+          try {
+            await linkBankTransaction({
+              bankStatementLineId: selectedBankTransactionId,
+              matchedExpenseId: editingExpense.id,
+              note: `Linked to expense ${updatedExpense.voucher_number || editingExpense.id}`,
+            });
+          } catch (linkError) {
+            linkFailed = true;
             console.error('Error linking to bank transaction:', linkError);
             alert('Expense updated but failed to link to bank transaction. Please link manually from Bank Reconciliation.');
-          } else {
+          }
+
+          if (!linkFailed) {
             // Recompute expense paid state so Payment Breakdown matches Bank Reconciliation.
             await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: editingExpense.id });
             // Fetch the expense again to get updated bank_statement_lines
@@ -1094,13 +1056,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 exp.id === editingExpense.id ? refreshedExpense : exp
               ));
 
-              // Remove from unlinked transactions
-              setUnlinkedBankTransactions(prev =>
-                prev.filter(txn => txn.id !== selectedBankTransactionId)
-              );
-
               // Add to reconciled list
               setReconciledExpenseIds(prev => new Set(prev).add(editingExpense.id));
+              notifyFinanceReconciliationRefresh();
             }
           }
         }
@@ -1174,21 +1132,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
         // Link to bank transaction if selected
         if (selectedBankTransactionId && newExpense) {
-          const { error: linkError } = await supabase
-            .from('bank_statement_lines')
-            .update({
-              matched_expense_id: newExpense.id,
-              reconciliation_status: 'matched',
-              payment_kind: 'supplier',
-              matched_at: new Date().toISOString(),
-              matched_by: user.id
-            })
-            .eq('id', selectedBankTransactionId);
-
-          if (linkError) {
+          let linkFailed = false;
+          try {
+            await linkBankTransaction({
+              bankStatementLineId: selectedBankTransactionId,
+              matchedExpenseId: newExpense.id,
+              note: `Linked to expense ${newExpense.voucher_number || newExpense.id}`,
+            });
+          } catch (linkError) {
+            linkFailed = true;
             console.error('Error linking to bank transaction:', linkError);
             alert('Expense created but failed to link to bank transaction. Please link manually from Bank Reconciliation.');
-          } else {
+          }
+
+          if (!linkFailed) {
             // Recompute expense paid state so Payment Breakdown matches Bank Reconciliation.
             await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: newExpense.id });
             // Fetch the expense again to get updated bank_statement_lines
@@ -1217,13 +1174,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               // Use refreshed expense with bank_statement_lines included
               finalExpense = refreshedExpense;
 
-              // Remove from unlinked transactions
-              setUnlinkedBankTransactions(prev =>
-                prev.filter(txn => txn.id !== selectedBankTransactionId)
-              );
-
               // Add to reconciled list
               setReconciledExpenseIds(prev => new Set(prev).add(newExpense.id));
+              notifyFinanceReconciliationRefresh();
             }
           }
         }
@@ -1339,11 +1292,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
     // Set selected bank transaction if expense is already linked
     setSelectedBankTransactionId(reconciledBankInfo?.id || '');
-
-    // Load unlinked bank transactions for the selected bank account
-    if (effectiveBankAccountId) {
-      await loadUnlinkedBankTransactions(effectiveBankAccountId, expense.id);
-    }
 
     setModalOpen(true);
   };
@@ -1479,17 +1427,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     )) return;
 
     try {
-      const { error } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          matched_expense_id: null,
-          reconciliation_status: 'unmatched',
-          matched_at: null,
-          matched_by: null,
-        })
-        .eq('matched_expense_id', expenseId);
-
-      if (error) throw error;
+      const linkedLine = editingExpense?.bank_statement_lines?.[0];
+      if (!linkedLine) throw new Error('Linked bank transaction not found.');
+      await unlinkBankTransaction(linkedLine.id);
 
       // Recompute expense paid state so Payment Breakdown matches Bank Reconciliation.
       await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: expenseId });
@@ -1522,6 +1462,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       setExpenses(prev => prev.map(exp =>
         exp.id === expenseId ? updatedExpense : exp
       ));
+      notifyFinanceReconciliationRefresh();
 
       alert('Expense unlinked from bank statement successfully');
       setModalOpen(false);
@@ -3155,7 +3096,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       const val = e.target.value === 'outstanding' ? null : e.target.value;
                       setFormData(prev => ({ ...prev, payment_method: val, bank_account_id: val ? prev.bank_account_id : '' }));
                       if (!e.target.value || e.target.value === 'outstanding') {
-                        setUnlinkedBankTransactions([]);
                         setSelectedBankTransactionId('');
                       }
                     }}
@@ -3177,8 +3117,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <select value={formData.bank_account_id}
                       onChange={(e) => {
                         setFormData({ ...formData, bank_account_id: e.target.value });
-                        if (e.target.value) loadUnlinkedBankTransactions(e.target.value, editingExpense?.id);
-                        else setUnlinkedBankTransactions([]);
                         setSelectedBankTransactionId('');
                       }}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" required={formData.payment_method !== null}>
@@ -3189,25 +3127,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 )}
 
                 {formData.payment_method !== null && formData.bank_account_id && (
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Link to Bank Transaction</label>
-                    {unlinkedBankTransactions.length > 0 ? (
-                      <select value={selectedBankTransactionId} onChange={(e) => setSelectedBankTransactionId(e.target.value)}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs">
-                        <option value="">Choose...</option>
-                        {unlinkedBankTransactions.map((txn) => {
-                          const d = new Date(txn.transaction_date);
-                          return (
-                            <option key={txn.id} value={txn.id}>
-                              {String(d.getDate()).padStart(2,'0')}/{String(d.getMonth()+1).padStart(2,'0')}/{String(d.getFullYear()).slice(-2)} — {txn.description?.substring(0,30) || '—'} — Rp {txn.debit_amount?.toLocaleString()}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    ) : (
-                      <div className="text-xs text-gray-400 italic py-1.5 px-2 bg-gray-50 rounded border border-gray-200">No unreconciled transactions</div>
-                    )}
-                  </div>
+                  <BankTransactionLinkField
+                    bankAccountId={formData.bank_account_id}
+                    selectedTransactionId={selectedBankTransactionId}
+                    linkedTransaction={editingExpense?.bank_statement_lines?.[0] || null}
+                    currentExpenseId={editingExpense?.id}
+                    canUnlink={canManage}
+                    onSelect={(transaction) => setSelectedBankTransactionId(transaction.id)}
+                    onUnlink={() => handleUnlinkFromBankStatement(editingExpense!.id)}
+                  />
                 )}
 
                 {formData.payment_method === null && formData.due_date && (
@@ -3218,20 +3146,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   </div>
                 )}
 
-                {editingExpense?.bank_statement_lines && editingExpense.bank_statement_lines.length > 0 && (
-                  <div className="p-2 bg-green-50 border border-green-300 rounded">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-green-900">Linked Bank Txn</span>
-                      {canManage && <button type="button" onClick={() => handleUnlinkFromBankStatement(editingExpense.id)} className="text-[10px] text-red-600 hover:text-red-700">Unlink</button>}
-                    </div>
-                    {editingExpense.bank_statement_lines.map(line => (
-                      <div key={line.id} className="text-[10px] text-gray-600">
-                        {line.bank_accounts?.alias || line.bank_accounts?.bank_name} — Rp {(line.debit_amount || line.credit_amount || 0).toLocaleString('id-ID')}
-                        <span className="ml-1 text-gray-400">{new Date(line.transaction_date).toLocaleDateString('id-ID')}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {/* RIGHT: Attachments */}
