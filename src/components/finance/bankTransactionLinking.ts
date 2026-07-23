@@ -29,6 +29,7 @@ interface LoadUnmatchedDebitOptions {
   bankAccountId: string;
   currentExpenseId?: string | null;
   currentJournalEntryId?: string | null;
+  currentPettyCashId?: string | null;
 }
 
 interface LinkBankTransactionOptions {
@@ -43,10 +44,12 @@ function isAvailableTransaction(
   line: BankTransactionLine,
   currentExpenseId?: string | null,
   currentJournalEntryId?: string | null,
+  currentPettyCashId?: string | null,
 ) {
   const isCurrent =
     (!!currentExpenseId && line.matched_expense_id === currentExpenseId) ||
-    (!!currentJournalEntryId && line.matched_entry_id === currentJournalEntryId);
+    (!!currentJournalEntryId && line.matched_entry_id === currentJournalEntryId) ||
+    (!!currentPettyCashId && line.matched_petty_cash_id === currentPettyCashId);
 
   if (isCurrent) return true;
 
@@ -64,6 +67,7 @@ export async function loadUnmatchedDebitBankTransactions({
   bankAccountId,
   currentExpenseId,
   currentJournalEntryId,
+  currentPettyCashId,
 }: LoadUnmatchedDebitOptions): Promise<BankTransactionLine[]> {
   const { data, error } = await supabase
     .from('bank_statement_lines')
@@ -90,7 +94,7 @@ export async function loadUnmatchedDebitBankTransactions({
   if (error) throw error;
 
   return ((data || []) as unknown as BankTransactionLine[]).filter((line) =>
-    isAvailableTransaction(line, currentExpenseId, currentJournalEntryId)
+    isAvailableTransaction(line, currentExpenseId, currentJournalEntryId, currentPettyCashId)
   );
 }
 

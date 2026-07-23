@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye } from 'lucide-react';
-import { Modal } from '../Modal';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
@@ -55,6 +54,8 @@ interface BankStatementLine {
 
 interface FundTransferManagerProps {
   canManage: boolean;
+  initialViewTransferId?: string | null;
+  onInitialViewHandled?: () => void;
 }
 
 // Helper function to format date as dd/mm/yy
@@ -66,7 +67,11 @@ const formatDateDDMMYY = (dateStr: string): string => {
   return `${day}/${month}/${year}`;
 };
 
-export function FundTransferManager({ canManage }: FundTransferManagerProps) {
+export function FundTransferManager({
+  canManage,
+  initialViewTransferId,
+  onInitialViewHandled,
+}: FundTransferManagerProps) {
   const [transfers, setTransfers] = useState<FundTransfer[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [fromBankStatements, setFromBankStatements] = useState<BankStatementLine[]>([]);
@@ -161,7 +166,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
     }
   };
 
-  const loadBankStatements = async (bankAccountId: string, type: 'from' | 'to', includeLinkedId?: string) => {
+  const loadBankStatements = useCallback(async (bankAccountId: string, type: 'from' | 'to', includeLinkedId?: string) => {
     if (!bankAccountId) {
       if (type === 'from') setFromBankStatements([]);
       else setToBankStatements([]);
@@ -171,7 +176,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
     try {
       // Load ALL unlinked statements (no date or limit restrictions)
       // Must not be linked to any other transaction types
-      let query = supabase
+      const query = supabase
         .from('bank_statement_lines')
         .select('id, transaction_date, description, debit_amount, credit_amount, reconciliation_status')
         .eq('bank_account_id', bankAccountId)
@@ -206,7 +211,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
     } catch (error) {
       console.error('Error loading bank statements:', error);
     }
-  };
+  }, []);
 
   const getFromCurrency = (): string => {
     if (formData.from_account_type === 'bank' && formData.from_bank_account_id) {
@@ -383,7 +388,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
     setModalOpen(true);
   };
 
-  const handleView = async (transfer: FundTransfer) => {
+  const handleView = useCallback(async (transfer: FundTransfer) => {
     setEditingTransfer(transfer);
     setViewOnly(true);
 
@@ -408,7 +413,35 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
     }
 
     setModalOpen(true);
-  };
+  }, [loadBankStatements]);
+
+  useEffect(() => {
+    if (!initialViewTransferId || loading) return;
+
+    const openInitialTransfer = async () => {
+      let transfer = transfers.find(item => item.id === initialViewTransferId);
+      if (!transfer) {
+        const { data, error } = await supabase
+          .from('vw_fund_transfers_detailed')
+          .select('id, transfer_number, transfer_date, amount, from_amount, to_amount, exchange_rate, from_account_type, to_account_type, from_account_name, to_account_name, from_currency, to_currency, from_bank_account_id, to_bank_account_id, from_bank_statement_line_id, to_bank_statement_line_id, description, status, posted_at, created_at, created_by_name')
+          .eq('id', initialViewTransferId)
+          .maybeSingle();
+        if (error) {
+          console.error('Error loading originating fund transfer:', error);
+        }
+        transfer = data || undefined;
+      }
+
+      if (transfer) {
+        await handleView(transfer);
+      } else {
+        showToast({ type: 'error', title: 'Not Found', message: 'The originating Contra Voucher could not be found.' });
+      }
+      onInitialViewHandled?.();
+    };
+
+    void openInitialTransfer();
+  }, [initialViewTransferId, loading, transfers, onInitialViewHandled, handleView]);
 
   const handleDelete = async (transferId: string) => {
     const transfer = transfers.find(t => t.id === transferId);
@@ -528,6 +561,7 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
         <FinanceTable
           rows={transfers}
           rowKey={(t) => t.id}
+          onRowClick={(transfer) => handleView(transfer)}
           loading={loading}
           empty="No fund transfers found"
           columns={[
@@ -549,12 +583,12 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
             { header: 'Description', cell: (t) => t.description || '-' },
             { header: 'Amount', align: 'right', cell: (t) => (
               t.from_currency === t.to_currency
-                ? <span className="font-medium">{fmtAmount(t.from_currency, t.from_amount)}</span>
+                ? <span className="font-medium">{fmtAmount(t.from_currency || 'IDR', t.from_amount)}</span>
                 : (
                   <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                    <span className="text-red-600">{fmtAmount(t.from_currency, t.from_amount)}</span>
+                    <span className="text-red-600">{fmtAmount(t.from_currency || 'IDR', t.from_amount)}</span>
                     <span className="text-gray-400">→</span>
-                    <span className="text-green-600">{fmtAmount(t.to_currency, t.to_amount)}</span>
+                    <span className="text-green-600">{fmtAmount(t.to_currency || 'IDR', t.to_amount)}</span>
                   </span>
                 )
             ) },
@@ -563,9 +597,14 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
               header: 'Actions', align: 'center' as const,
               cell: (t: FundTransfer) => (
                 <div className="flex items-center justify-center gap-0.5">
-                  {(t.status === 'pending' || t.status === 'posted') && (
+                  {t.status === 'pending' && (
                     <button onClick={(e) => { e.stopPropagation(); handleEdit(t); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit Transfer">
                       <Edit className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {t.status === 'posted' && (
+                    <button onClick={(e) => { e.stopPropagation(); handleView(t); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="View Transfer">
+                      <Eye className="w-3.5 h-3.5" />
                     </button>
                   )}
                   {t.status === 'posted' && (
@@ -573,14 +612,16 @@ export function FundTransferManager({ canManage }: FundTransferManagerProps) {
                       <RotateCcw className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {t.status === 'reversed' && (
+                  {(t.status === 'reversed' || t.status === 'cancelled') && (
                     <button onClick={(e) => { e.stopPropagation(); handleView(t); }} className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded" title="View Transfer">
                       <Eye className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete permanently">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {t.status !== 'posted' && (
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete permanently">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               ),
             }] : []),

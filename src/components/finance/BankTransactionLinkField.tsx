@@ -12,6 +12,7 @@ interface BankTransactionLinkFieldProps {
   linkedTransaction?: BankTransactionLine | null;
   currentExpenseId?: string | null;
   currentJournalEntryId?: string | null;
+  currentPettyCashId?: string | null;
   disabled?: boolean;
   disabledMessage?: string;
   canUnlink?: boolean;
@@ -38,6 +39,7 @@ export function BankTransactionLinkField({
   linkedTransaction,
   currentExpenseId,
   currentJournalEntryId,
+  currentPettyCashId,
   disabled = false,
   disabledMessage,
   canUnlink = false,
@@ -72,6 +74,7 @@ export function BankTransactionLinkField({
         bankAccountId,
         currentExpenseId,
         currentJournalEntryId,
+        currentPettyCashId,
       });
       setTransactions(rows);
     } catch (error) {

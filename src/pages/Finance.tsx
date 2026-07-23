@@ -167,6 +167,7 @@ function FinanceContent() {
   const [payExpenseBill, setPayExpenseBill] = useState<{ id: string; supplier_id: string | null; staff_id?: string | null; balance_amount: number } | null>(null);
   const [focusExpenseId, setFocusExpenseId] = useState<string | null>(null);
   const [focusPettyCashId, setFocusPettyCashId] = useState<string | null>(null);
+  const [focusFundTransferId, setFocusFundTransferId] = useState<string | null>(null);
   const [ledgerDrillCode, setLedgerDrillCode] = useState<string | null>(null);
   const canManage = profile?.role === 'admin' || profile?.role === 'accounts';
 
@@ -283,7 +284,13 @@ function FinanceContent() {
           onEditComplete={() => setEditJournalEntryId(null)}
         />;
       case 'contra':
-        return <FundTransferManager canManage={canManage} />;
+        return (
+          <FundTransferManager
+            canManage={canManage}
+            initialViewTransferId={focusFundTransferId}
+            onInitialViewHandled={() => setFocusFundTransferId(null)}
+          />
+        );
       case 'expenses':
         return (
           <ExpenseManager
@@ -297,7 +304,10 @@ function FinanceContent() {
         return (
           <PettyCashManager
             canManage={canManage}
-            onNavigateToFundTransfer={() => setActiveTab('contra')}
+            onNavigateToFundTransfer={(fundTransferId) => {
+              setFocusFundTransferId(fundTransferId || null);
+              setActiveTab('contra');
+            }}
             initialViewTransactionId={focusPettyCashId}
             onInitialViewHandled={() => setFocusPettyCashId(null)}
           />

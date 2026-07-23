@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Upload, X, FileText, Image, Eye, CreditCard as Edit2, Trash2, ExternalLink, Download, Clipboard, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw } from 'lucide-react';
+import { Plus, ArrowDownCircle, ArrowUpCircle, Upload, X, FileText, Image, Eye, CreditCard as Edit2, Trash2, ExternalLink, Download, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw } from 'lucide-react';
 import { Modal } from '../Modal';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
@@ -12,6 +12,12 @@ import { showConfirm } from '../ConfirmDialog';
 import { formatDate } from '../../utils/dateFormat';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
+import { BankTransactionLinkField } from './BankTransactionLinkField';
+import {
+  type BankTransactionLine,
+  notifyFinanceReconciliationRefresh,
+  unlinkBankTransaction,
+} from './bankTransactionLinking';
 
 interface PettyCashDocument {
   id: string;
@@ -41,6 +47,11 @@ interface PettyCashTransaction {
   import_container_id: string | null;
   delivery_challan_id: string | null;
   voucher_number: string | null;
+  source_account_id: string | null;
+  bank_statement_line_id: string | null;
+  fund_transfer_id?: string | null;
+  fund_transfer_status?: string | null;
+  source_account_name?: string | null;
   approval_status: 'pending_approval' | 'approved' | 'rejected';
   approved_by: string | null;
   approved_at: string | null;
@@ -50,6 +61,7 @@ interface PettyCashTransaction {
   delivery_challans?: { challan_number: string } | null;
   created_at: string;
   petty_cash_documents?: PettyCashDocument[];
+  bank_statement_lines?: BankTransactionLine | null;
 }
 
 interface ImportContainer {
@@ -74,9 +86,33 @@ interface BankAccount {
   currency: string;
 }
 
+interface PostingAccount {
+  id: string;
+  code: string;
+  name: string;
+  account_type: string;
+}
+
+interface FundTransferActivityRow {
+  id: string;
+  transfer_number: string;
+  transfer_date: string;
+  from_amount: number;
+  to_amount: number;
+  from_account_type: string;
+  to_account_type: string;
+  from_account_name: string;
+  to_account_name: string;
+  from_bank_account_id: string | null;
+  to_bank_account_id: string | null;
+  description: string | null;
+  status: string;
+  created_at: string;
+}
+
 interface PettyCashManagerProps {
   canManage: boolean;
-  onNavigateToFundTransfer?: () => void;
+  onNavigateToFundTransfer?: (fundTransferId?: string) => void;
   initialViewTransactionId?: string | null;
   onInitialViewHandled?: () => void;
 }
@@ -322,6 +358,8 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
   const [containers, setContainers] = useState<ImportContainer[]>([]);
   const [challans, setChallans] = useState<DeliveryChallan[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [postingAccounts, setPostingAccounts] = useState<PostingAccount[]>([]);
+  const [selectedBankTransaction, setSelectedBankTransaction] = useState<BankTransactionLine | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -329,7 +367,6 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
   const [editingTransaction, setEditingTransaction] = useState<PettyCashTransaction | null>(null);
   const [signedUrlCache, setSignedUrlCache] = useState<Record<string, string>>({});
   const [cashBalance, setCashBalance] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
   const [existingDocuments, setExistingDocuments] = useState<PettyCashDocument[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -353,6 +390,9 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     paid_to: '',
     paid_by_staff_name: '',
     paid_by: 'cash' as 'cash' | 'bank',
+    inflow_source_type: 'account' as 'bank' | 'account',
+    source_account_id: '',
+    bank_statement_line_id: '',
     source: '',
     received_by_staff_name: '',
     import_container_id: '',
@@ -361,7 +401,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
   const loadData = useCallback(async () => {
     try {
-      const [txRes, containersRes, challansRes, bankRes] = await Promise.all([
+      const [txRes, transfersRes, containersRes, challansRes, bankRes, accountsRes] = await Promise.all([
         supabase
           .from('petty_cash_transactions')
           .select(`
@@ -378,12 +418,41 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
             delivery_challans:delivery_challan_id (
               challan_number
             ),
-            petty_cash_documents (*)
+            petty_cash_documents (*),
+            bank_statement_lines:bank_statement_line_id (
+              id,
+              transaction_date,
+              description,
+              reference,
+              debit_amount,
+              credit_amount,
+              bank_account_id,
+              matched_expense_id,
+              matched_entry_id,
+              matched_receipt_id,
+              matched_petty_cash_id,
+              matched_fund_transfer_id,
+              matched_tax_payment_id,
+              bank_accounts (
+                bank_name,
+                account_name,
+                account_number,
+                alias,
+                currency
+              )
+            )
           `)
+          .is('fund_transfer_id', null)
           .gte('transaction_date', startDate)
           .lte('transaction_date', endDate)
           .order('transaction_date', { ascending: false })
           .order('transaction_number', { ascending: false }),
+        supabase
+          .from('vw_fund_transfers_detailed')
+          .select('id, transfer_number, transfer_date, from_amount, to_amount, from_account_type, to_account_type, from_account_name, to_account_name, from_bank_account_id, to_bank_account_id, description, status, created_at')
+          .or('from_account_type.eq.petty_cash,to_account_type.eq.petty_cash')
+          .gte('transfer_date', startDate)
+          .lte('transfer_date', endDate),
         supabase
           .from('import_containers')
           .select('id, container_ref')
@@ -405,37 +474,83 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           .from('bank_accounts')
           // perf: projected columns (was select('*'))
           .select('id, account_number, bank_name, alias, currency')
-          .order('bank_name', { ascending: true })
+          .order('bank_name', { ascending: true }),
+        supabase
+          .from('chart_of_accounts')
+          .select('id, code, name, account_type')
+          .eq('is_active', true)
+          .eq('is_header', false)
+          .neq('code', '1102')
+          .order('code')
       ]);
 
       if (txRes.error) throw txRes.error;
+      if (transfersRes.error) throw transfersRes.error;
+      if (containersRes.error) throw containersRes.error;
+      if (challansRes.error) throw challansRes.error;
+      if (bankRes.error) throw bankRes.error;
+      if (accountsRes.error) throw accountsRes.error;
 
-      let balance = 0;
-      const balanceByDateRes = await supabase.rpc('get_petty_cash_balance_by_date', { start_date: startDate, end_date: endDate });
+      const fundTransferActivity: PettyCashTransaction[] = ((transfersRes.data || []) as FundTransferActivityRow[]).map((transfer) => {
+        const isInflow = transfer.to_account_type === 'petty_cash';
+        const approvalStatus: PettyCashTransaction['approval_status'] =
+          transfer.status === 'posted'
+            ? 'approved'
+            : transfer.status === 'pending'
+              ? 'pending_approval'
+              : 'rejected';
 
-      if (balanceByDateRes.error) {
-        if (balanceByDateRes.error.code === 'PGRST202') {
-          const legacyBalanceRes = await supabase.rpc('get_petty_cash_balance');
-          if (legacyBalanceRes.error) throw legacyBalanceRes.error;
-          balance = legacyBalanceRes.data || 0;
-        } else {
-          throw balanceByDateRes.error;
-        }
-      } else {
-        balance = balanceByDateRes.data || 0;
-      }
+        return {
+          id: transfer.id,
+          transaction_number: transfer.transfer_number,
+          transaction_date: transfer.transfer_date,
+          transaction_type: isInflow ? 'withdraw' : 'expense',
+          amount: Number(isInflow ? transfer.to_amount : transfer.from_amount),
+          description: transfer.description || (isInflow ? 'Fund Transfer into Petty Cash' : 'Fund Transfer from Petty Cash'),
+          expense_category: null,
+          bank_account_id: isInflow ? transfer.from_bank_account_id : transfer.to_bank_account_id,
+          paid_to: null,
+          paid_by_staff_id: null,
+          paid_by_staff_name: null,
+          source: `${isInflow ? 'From' : 'To'} ${isInflow ? transfer.from_account_name : transfer.to_account_name}`,
+          received_by_staff_id: null,
+          received_by_staff_name: null,
+          import_container_id: null,
+          delivery_challan_id: null,
+          voucher_number: null,
+          source_account_id: null,
+          bank_statement_line_id: null,
+          fund_transfer_id: transfer.id,
+          fund_transfer_status: transfer.status,
+          source_account_name: isInflow ? transfer.from_account_name : transfer.to_account_name,
+          approval_status: approvalStatus,
+          approved_by: null,
+          approved_at: null,
+          rejection_reason: transfer.status === 'reversed' ? 'Reversed from Contra' : null,
+          created_at: transfer.created_at,
+          petty_cash_documents: [],
+          bank_statement_lines: null,
+        };
+      });
 
-      setTransactions(txRes.data || []);
+      const balanceRes = await supabase.rpc('get_petty_cash_balance');
+      if (balanceRes.error) throw balanceRes.error;
+      const balance = Number(balanceRes.data || 0);
+
+      setTransactions([...(txRes.data || []), ...fundTransferActivity] as PettyCashTransaction[]);
       setCashBalance(balance);
       setContainers(containersRes.data || []);
-      setChallans(challansRes.data || []);
+      setChallans((challansRes.data || []).map((challan) => ({
+        ...challan,
+        customers: Array.isArray(challan.customers) ? challan.customers[0] || null : challan.customers,
+      })) as DeliveryChallan[]);
       setBankAccounts(bankRes.data || []);
+      setPostingAccounts(accountsRes.data || []);
     } catch (error: any) {
       console.error('Error loading petty cash data:', error);
       showToast({ type: 'error', title: 'Error', message: 'Failed to load petty cash data: ' + error.message });
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [startDate, endDate]);
 
@@ -468,6 +583,12 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     channelName: 'petty_cash_changes',
     table: 'petty_cash_transactions',
     onEvent: patchPettyCashRow,
+  });
+
+  useSupabaseRealtimeChannel({
+    channelName: 'petty_cash_fund_transfer_changes',
+    table: 'fund_transfers',
+    onEvent: () => loadDataRef.current(),
   });
 
   useEffect(() => {
@@ -522,11 +643,6 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
     openTransaction();
   }, [initialViewTransactionId, transactions, onInitialViewHandled]);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    loadData();
-  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -589,6 +705,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     setEditingTransaction(null);
     setExistingDocuments([]);
     setUploadingFiles([]);
+    setSelectedBankTransaction(null);
   };
 
   const openAddModal = () => {
@@ -603,6 +720,9 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       paid_to: '',
       paid_by_staff_name: '',
       paid_by: 'cash',
+      inflow_source_type: 'account',
+      source_account_id: '',
+      bank_statement_line_id: '',
       source: '',
       received_by_staff_name: '',
       import_container_id: '',
@@ -610,10 +730,15 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     });
     setExistingDocuments([]);
     setUploadingFiles([]);
+    setSelectedBankTransaction(null);
     setModalOpen(true);
   };
 
   const openEditModal = (transaction: PettyCashTransaction) => {
+    if (transaction.fund_transfer_id) {
+      onNavigateToFundTransfer?.(transaction.fund_transfer_id);
+      return;
+    }
     if (transaction.approval_status === 'approved') {
       showToast({ type: 'error', title: 'Posted', message: 'This transaction is posted. Cancel Posting first to make changes.' });
       return;
@@ -629,6 +754,9 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       paid_to: transaction.paid_to || '',
       paid_by_staff_name: transaction.paid_by_staff_name || '',
       paid_by: 'cash',
+      inflow_source_type: transaction.bank_account_id ? 'bank' : 'account',
+      source_account_id: transaction.source_account_id || '',
+      bank_statement_line_id: transaction.bank_statement_line_id || '',
       source: transaction.source || '',
       received_by_staff_name: transaction.received_by_staff_name || '',
       import_container_id: transaction.import_container_id || '',
@@ -637,6 +765,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     const docs = transaction.petty_cash_documents || [];
     setExistingDocuments(docs);
     setUploadingFiles([]);
+    setSelectedBankTransaction(transaction.bank_statement_lines || null);
     setModalOpen(true);
     if (docs.length) {
       Promise.all(docs.map(async (doc) => [doc.file_url, await getSignedUrl(doc.file_url)] as [string, string]))
@@ -660,6 +789,17 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       return;
     }
 
+    if (formData.transaction_type === 'withdraw') {
+      if (formData.inflow_source_type === 'bank' && !formData.bank_account_id) {
+        showToast({ type: 'error', title: 'Error', message: 'Please select the source bank account' });
+        return;
+      }
+      if (formData.inflow_source_type === 'account' && !formData.source_account_id) {
+        showToast({ type: 'error', title: 'Error', message: 'Please select the offset GL account' });
+        return;
+      }
+    }
+
     const selectedCategory = expenseCategories.find(c => c.value === formData.expense_category);
     if (selectedCategory?.requiresContainer && !formData.import_container_id) {
       showToast({ type: 'error', title: 'Error', message: `${selectedCategory.label} requires linking to an import container` });
@@ -673,7 +813,18 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
         amount: formData.amount,
         description: formData.description,
         expense_category: formData.transaction_type === 'expense' ? formData.expense_category : null,
-        bank_account_id: formData.transaction_type === 'withdraw' ? formData.bank_account_id : null,
+        bank_account_id:
+          formData.transaction_type === 'withdraw' && formData.inflow_source_type === 'bank'
+            ? formData.bank_account_id
+            : null,
+        source_account_id:
+          formData.transaction_type === 'withdraw' && formData.inflow_source_type === 'account'
+            ? formData.source_account_id
+            : null,
+        bank_statement_line_id:
+          formData.transaction_type === 'withdraw' && formData.inflow_source_type === 'bank'
+            ? formData.bank_statement_line_id || null
+            : null,
         paid_to: formData.transaction_type === 'expense' ? formData.paid_to : null,
         paid_by_staff_name: formData.transaction_type === 'expense' ? formData.paid_by_staff_name : null,
         source: formData.transaction_type === 'withdraw' ? formData.source : null,
@@ -748,8 +899,9 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       }
 
       showToast({ type: 'success', title: 'Success', message: editingTransaction ? 'Petty cash transaction updated successfully!' : 'Petty cash transaction added successfully!' });
+      notifyFinanceReconciliationRefresh();
       closeModal();
-      loadData();
+      await loadData();
     } catch (error: any) {
       console.error('Error saving petty cash transaction:', error);
       showToast({ type: 'error', title: 'Error', message: 'Failed to save transaction: ' + error.message });
@@ -845,8 +997,9 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
         .update({ approval_status: 'approved', approved_by: profile?.id, approved_at: new Date().toISOString() })
         .eq('id', id);
       if (error) throw error;
-      setTransactions(prev => prev.map(t => t.id === id ? { ...t, approval_status: 'approved' } : t));
-      setViewingTransaction(prev => prev?.id === id ? { ...prev, approval_status: 'approved' } : prev);
+      notifyFinanceReconciliationRefresh();
+      setViewModalOpen(false);
+      await loadData();
     } catch (err: any) {
       showToast({ type: 'error', title: 'Error', message: err.message });
     } finally {
@@ -890,7 +1043,8 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       setCancelPostingTarget(null);
       setCancelPostingReason('');
       setViewModalOpen(false);
-      loadData();
+      notifyFinanceReconciliationRefresh();
+      await loadData();
     } catch (err: any) {
       const msg: string = err.message || '';
       if (msg.includes('closed')) {
@@ -909,22 +1063,55 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     setCancelPostingModalOpen(true);
   };
 
+  const handleUnlinkBankTransaction = async (transaction: PettyCashTransaction) => {
+    const linkedLineId = transaction.bank_statement_line_id || transaction.bank_statement_lines?.id;
+    if (!linkedLineId) return;
+
+    const confirmed = await showConfirm({
+      title: 'Unlink Bank Transaction',
+      message: `Unlink the bank transaction from ${transaction.transaction_number}? The bank statement line will return to Unmatched.`,
+      variant: 'danger',
+      confirmLabel: 'Unlink',
+    });
+    if (!confirmed) return;
+
+    try {
+      await unlinkBankTransaction(linkedLineId);
+      const { error } = await supabase
+        .from('petty_cash_transactions')
+        .update({ bank_statement_line_id: null })
+        .eq('id', transaction.id);
+      if (error) throw error;
+
+      setFormData(prev => ({ ...prev, bank_statement_line_id: '' }));
+      setSelectedBankTransaction(null);
+      notifyFinanceReconciliationRefresh();
+      await loadData();
+      showToast({ type: 'success', title: 'Unlinked', message: 'Bank transaction unlinked successfully.' });
+    } catch (error: any) {
+      showToast({ type: 'error', title: 'Error', message: 'Failed to unlink bank transaction: ' + error.message });
+    }
+  };
+
   const exportToCSV = () => {
     if (filteredTransactions.length === 0) {
       showToast({ type: 'info', title: 'Notice', message: 'No transactions to export' });
       return;
     }
 
-    const headers = ['Date', 'Number', 'Type', 'Category', 'Description', 'Amount', 'Paid To'];
+    const headers = ['Date', 'Number', 'Type', 'Category', 'Description', 'Source / Destination', 'Amount', 'Paid To'];
     const rows = filteredTransactions.map(tx => {
       const category = tx.expense_category ? getCategoryInfo(tx.expense_category) : null;
       const amountSign = tx.transaction_type === 'withdraw' ? '+' : '-';
       return [
         tx.transaction_date,
         tx.transaction_number,
-        tx.transaction_type === 'withdraw' ? 'Withdrawal' : 'Expense',
+        tx.fund_transfer_id
+          ? (tx.transaction_type === 'withdraw' ? 'Contra Inflow' : 'Contra Outflow')
+          : (tx.transaction_type === 'withdraw' ? 'Cash In' : 'Expense'),
         category?.label || '',
         tx.description,
+        tx.source || '',
         `${amountSign} Rp ${Number(tx.amount).toLocaleString('id-ID')}`,
         tx.paid_to || ''
       ];
@@ -947,6 +1134,10 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
   };
 
   const viewTransaction = async (transaction: PettyCashTransaction) => {
+    if (transaction.fund_transfer_id) {
+      onNavigateToFundTransfer?.(transaction.fund_transfer_id);
+      return;
+    }
     setViewingTransaction(transaction);
     setViewModalOpen(true);
     const docs = transaction.petty_cash_documents || [];
@@ -1003,11 +1194,15 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     return <div className="flex items-center justify-center h-64">Loading petty cash data...</div>;
   }
 
-  const totalExpense = filteredTransactions
+  const postedActivity = filteredTransactions.filter(t =>
+    t.fund_transfer_id ? t.fund_transfer_status === 'posted' : t.approval_status === 'approved'
+  );
+
+  const totalOutflow = postedActivity
     .filter(t => t.transaction_type === 'expense')
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  const totalWithdraw = filteredTransactions
+  const totalInflow = postedActivity
     .filter(t => t.transaction_type === 'withdraw')
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
@@ -1025,15 +1220,23 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       <div className="flex items-center justify-between h-8 px-2 bg-white border border-gray-200 rounded">
         <div className="flex items-baseline gap-2 min-w-0">
           <h1 className="text-xs font-bold text-gray-900 truncate">Petty Cash</h1>
-          <span className="text-[10px] text-gray-400 truncate">Track cash withdrawals and expenses</span>
+          <span className="text-[10px] text-gray-400 truncate">Operational activity reconciled to GL 1102</span>
         </div>
         {canManage && (
-          <button
-            onClick={openAddModal}
-            className="inline-flex items-center gap-1 h-7 px-2 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700"
-          >
-            <Plus className="w-3 h-3" /> New
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onNavigateToFundTransfer?.()}
+              className="inline-flex items-center gap-1 h-7 px-2 border border-blue-300 text-blue-700 bg-blue-50 rounded text-xs font-semibold hover:bg-blue-100"
+            >
+              <ArrowDownCircle className="w-3 h-3" /> Fund Petty Cash
+            </button>
+            <button
+              onClick={openAddModal}
+              className="inline-flex items-center gap-1 h-7 px-2 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700"
+            >
+              <Plus className="w-3 h-3" /> New
+            </button>
+          </div>
         )}
       </div>
 
@@ -1044,12 +1247,12 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           <div className="text-xs font-mono font-bold text-green-600">Rp {cashBalance.toLocaleString('id-ID')}</div>
         </div>
         <div className="border border-gray-200 rounded bg-white px-2 py-1.5">
-          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Withdrawals</div>
-          <div className="text-xs font-mono font-bold text-blue-600">Rp {totalWithdraw.toLocaleString('id-ID')}</div>
+          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Cash In</div>
+          <div className="text-xs font-mono font-bold text-blue-600">Rp {totalInflow.toLocaleString('id-ID')}</div>
         </div>
         <div className="border border-gray-200 rounded bg-white px-2 py-1.5">
-          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Expenses</div>
-          <div className="text-xs font-mono font-bold text-red-600">Rp {totalExpense.toLocaleString('id-ID')}</div>
+          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Cash Out</div>
+          <div className="text-xs font-mono font-bold text-red-600">Rp {totalOutflow.toLocaleString('id-ID')}</div>
         </div>
       </div>
 
@@ -1164,13 +1367,23 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                 const Icon = categoryInfo?.icon;
 
                 return (
-                  <tr key={tx.id} className="hover:bg-gray-50">
+                  <tr
+                    key={`${tx.fund_transfer_id ? 'fund-transfer' : 'petty-cash'}-${tx.id}`}
+                    onClick={tx.fund_transfer_id ? () => viewTransaction(tx) : undefined}
+                    className={`hover:bg-gray-50 ${tx.fund_transfer_id ? 'cursor-pointer' : ''} ${
+                      tx.fund_transfer_status === 'reversed' || tx.fund_transfer_status === 'cancelled'
+                        ? 'text-gray-400 bg-gray-50/60'
+                        : ''
+                    }`}
+                  >
                     <td className="px-2 py-1.5 whitespace-nowrap text-sm text-gray-900">
                       {formatDate(tx.transaction_date)}
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-blue-600">{tx.transaction_number}</span>
+                        <span className={`text-sm font-medium ${tx.fund_transfer_id ? 'text-indigo-600 underline decoration-dotted underline-offset-2' : 'text-blue-600'}`}>
+                          {tx.transaction_number}
+                        </span>
                         {tx.voucher_number && (
                           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                             {tx.voucher_number}
@@ -1184,10 +1397,15 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                           ? 'bg-blue-100 text-blue-800'
                           : 'bg-red-100 text-red-800'
                       }`}>
-                        {tx.transaction_type === 'withdraw' ? (
+                        {tx.fund_transfer_id ? (
+                          <>
+                            <ArrowDownCircle className={`h-3 w-3 ${tx.transaction_type === 'withdraw' ? '' : 'rotate-180'}`} />
+                            Contra {tx.transaction_type === 'withdraw' ? 'Inflow' : 'Outflow'}
+                          </>
+                        ) : tx.transaction_type === 'withdraw' ? (
                           <>
                             <ArrowDownCircle className="h-3 w-3" />
-                            Withdrawal
+                            Cash In
                           </>
                         ) : (
                           <>
@@ -1225,6 +1443,18 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                             <span className="text-xs">{tx.delivery_challans.challan_number}</span>
                           </div>
                         )}
+                        {tx.source && (
+                          <div className={`flex items-center gap-1 ${tx.fund_transfer_id ? 'text-indigo-600' : 'text-gray-600'}`}>
+                            {tx.fund_transfer_id ? <ArrowDownCircle className="h-3 w-3" /> : <Building2 className="h-3 w-3" />}
+                            <span className="text-xs">{tx.source}</span>
+                          </div>
+                        )}
+                        {tx.bank_statement_line_id && (
+                          <div className="flex items-center gap-1 text-green-700">
+                            <CheckCircle className="h-3 w-3" />
+                            <span className="text-xs">Bank transaction linked</span>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-right">
@@ -1235,7 +1465,24 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                       </span>
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
-                      {tx.approval_status === 'approved' ? (
+                      {tx.fund_transfer_id ? (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border rounded-full ${
+                          tx.fund_transfer_status === 'posted'
+                            ? 'text-green-700 bg-green-50 border-green-200'
+                            : tx.fund_transfer_status === 'pending'
+                              ? 'text-yellow-700 bg-yellow-50 border-yellow-200'
+                              : 'text-gray-600 bg-gray-100 border-gray-200'
+                        }`}>
+                          {tx.fund_transfer_status === 'posted' ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                          {tx.fund_transfer_status === 'posted'
+                            ? 'Posted'
+                            : tx.fund_transfer_status === 'pending'
+                              ? 'Pending'
+                              : tx.fund_transfer_status === 'reversed'
+                                ? 'Reversed'
+                                : 'Cancelled'}
+                        </span>
+                      ) : tx.approval_status === 'approved' ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full">
                           <CheckCircle className="w-3 h-3" />Approved
                         </span>
@@ -1252,16 +1499,16 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                     <td className="px-2 py-1.5 whitespace-nowrap text-right text-sm">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => viewTransaction(tx)}
+                          onClick={(event) => { event.stopPropagation(); viewTransaction(tx); }}
                           className="text-blue-600 hover:text-blue-900"
-                          title="View Details"
+                          title={tx.fund_transfer_id ? 'Open Contra Voucher' : 'View Details'}
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        {isAdmin && tx.approval_status === 'pending_approval' && (
+                        {!tx.fund_transfer_id && isAdmin && tx.approval_status === 'pending_approval' && (
                           <>
                             <button
-                              onClick={() => handleApprovePettyCash(tx.id)}
+                              onClick={(event) => { event.stopPropagation(); handleApprovePettyCash(tx.id); }}
                               disabled={approvalLoading === tx.id}
                               className="text-green-600 hover:text-green-900 disabled:opacity-50"
                               title="Approve"
@@ -1269,7 +1516,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                               <CheckCircle className="h-4 w-4" />
                             </button>
                             <button
-                              onClick={() => { setPcRejectionTarget(tx.id); setPcRejectionModalOpen(true); }}
+                              onClick={(event) => { event.stopPropagation(); setPcRejectionTarget(tx.id); setPcRejectionModalOpen(true); }}
                               disabled={approvalLoading === tx.id}
                               className="text-red-600 hover:text-red-900 disabled:opacity-50"
                               title="Reject"
@@ -1278,26 +1525,26 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                             </button>
                           </>
                         )}
-                        {isAdmin && tx.approval_status === 'approved' && (
+                        {!tx.fund_transfer_id && isAdmin && tx.approval_status === 'approved' && (
                           <button
-                            onClick={() => openCancelPostingModal(tx)}
+                            onClick={(event) => { event.stopPropagation(); openCancelPostingModal(tx); }}
                             className="text-orange-600 hover:text-orange-900"
                             title="Cancel Posting"
                           >
                             <RotateCcw className="h-4 w-4" />
                           </button>
                         )}
-                        {canManage && tx.approval_status !== 'approved' && (
+                        {!tx.fund_transfer_id && canManage && tx.approval_status !== 'approved' && (
                           <>
                             <button
-                              onClick={() => openEditModal(tx)}
+                              onClick={(event) => { event.stopPropagation(); openEditModal(tx); }}
                               className="text-yellow-600 hover:text-yellow-900"
                               title="Edit"
                             >
                               <Edit2 className="h-4 w-4" />
                             </button>
                             <button
-                              onClick={() => handleDelete(tx.id)}
+                              onClick={(event) => { event.stopPropagation(); handleDelete(tx.id); }}
                               className="text-red-600 hover:text-red-900"
                               title="Delete"
                             >
@@ -1335,10 +1582,20 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           <SapRow>
             <SapField label="Type" required span={4}>
               <select value={formData.transaction_type}
-                onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value as 'withdraw' | 'expense' })}
+                onChange={(e) => {
+                  const transactionType = e.target.value as 'withdraw' | 'expense';
+                  setFormData(prev => ({
+                    ...prev,
+                    transaction_type: transactionType,
+                    bank_account_id: transactionType === 'withdraw' ? prev.bank_account_id : '',
+                    source_account_id: transactionType === 'withdraw' ? prev.source_account_id : '',
+                    bank_statement_line_id: transactionType === 'withdraw' ? prev.bank_statement_line_id : '',
+                  }));
+                  if (transactionType === 'expense') setSelectedBankTransaction(null);
+                }}
                 className={SAP_INPUT} required>
                 <option value="expense">Expense (Cash Out)</option>
-                <option value="withdraw">Withdraw from Bank</option>
+                <option value="withdraw">Refund / Cash Return (Cash In)</option>
               </select>
             </SapField>
             <SapField label="Date" required span={4}>
@@ -1425,19 +1682,89 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           {formData.transaction_type === 'withdraw' && (
             <>
               <SapRow>
-                <SapField label="Bank Account" required span={12}>
-                  <select value={formData.bank_account_id}
-                    onChange={(e) => setFormData({ ...formData, bank_account_id: e.target.value })}
-                    className={SAP_INPUT} required>
-                    <option value="">Select bank account</option>
-                    {bankAccounts.map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.alias || acc.bank_name} - {acc.account_number} ({acc.currency})
-                      </option>
-                    ))}
+                <SapField label="Source Type" required span={4}>
+                  <select
+                    value={formData.inflow_source_type}
+                    onChange={(e) => {
+                      const sourceType = e.target.value as 'bank' | 'account';
+                      setFormData(prev => ({
+                        ...prev,
+                        inflow_source_type: sourceType,
+                        bank_account_id: sourceType === 'bank' ? prev.bank_account_id : '',
+                        bank_statement_line_id: sourceType === 'bank' ? prev.bank_statement_line_id : '',
+                        source_account_id: sourceType === 'account' ? prev.source_account_id : '',
+                      }));
+                      if (sourceType === 'account') setSelectedBankTransaction(null);
+                    }}
+                    className={SAP_INPUT}
+                    required
+                  >
+                    <option value="account">GL Account</option>
+                    <option value="bank">Bank Account</option>
                   </select>
                 </SapField>
+                {formData.inflow_source_type === 'bank' ? (
+                  <SapField label="Source Bank" required span={8}>
+                    <select
+                      value={formData.bank_account_id}
+                      onChange={(e) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          bank_account_id: e.target.value,
+                          bank_statement_line_id: '',
+                        }));
+                        setSelectedBankTransaction(null);
+                      }}
+                      className={SAP_INPUT}
+                      required
+                    >
+                      <option value="">Select bank account</option>
+                      {bankAccounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.alias || acc.bank_name} - {acc.account_number} ({acc.currency})
+                        </option>
+                      ))}
+                    </select>
+                  </SapField>
+                ) : (
+                  <SapField label="Offset GL Account" required span={8}>
+                    <select
+                      value={formData.source_account_id}
+                      onChange={(e) => setFormData(prev => ({ ...prev, source_account_id: e.target.value }))}
+                      className={SAP_INPUT}
+                      required
+                    >
+                      <option value="">Select source account</option>
+                      {postingAccounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.code} - {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </SapField>
+                )}
               </SapRow>
+
+              {formData.inflow_source_type === 'bank' && formData.bank_account_id && (
+                <BankTransactionLinkField
+                  bankAccountId={formData.bank_account_id}
+                  selectedTransactionId={formData.bank_statement_line_id}
+                  linkedTransaction={selectedBankTransaction}
+                  currentPettyCashId={editingTransaction?.id}
+                  canUnlink={!!selectedBankTransaction}
+                  onSelect={(transaction) => {
+                    setSelectedBankTransaction(transaction);
+                    setFormData(prev => ({ ...prev, bank_statement_line_id: transaction.id }));
+                  }}
+                  onUnlink={() => {
+                    if (editingTransaction?.bank_statement_line_id) {
+                      return handleUnlinkBankTransaction(editingTransaction);
+                    }
+                    setSelectedBankTransaction(null);
+                    setFormData(prev => ({ ...prev, bank_statement_line_id: '' }));
+                  }}
+                />
+              )}
 
               <SapRow>
                 <SapField label="Source Ref" span={6}>
@@ -1489,7 +1816,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                       </div>
                     )}
                     <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs px-2 py-1.5 flex items-center justify-between">
-                      <span>{(doc.file_size / 1024).toFixed(0)} KB</span>
+                      <span>{(Number(doc.file_size) / 1024).toFixed(0)} KB</span>
                       <div className="flex gap-1">
                         <button
                           type="button"
@@ -1751,8 +2078,22 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
               )}
             </div>
 
+            {viewingTransaction.bank_account_id && viewingTransaction.bank_statement_lines && (
+              <div className="py-2 border-b border-gray-200">
+                <BankTransactionLinkField
+                  bankAccountId={viewingTransaction.bank_account_id}
+                  linkedTransaction={viewingTransaction.bank_statement_lines}
+                  currentPettyCashId={viewingTransaction.id}
+                  disabled
+                  canUnlink={canManage}
+                  onSelect={() => undefined}
+                  onUnlink={() => handleUnlinkBankTransaction(viewingTransaction)}
+                />
+              </div>
+            )}
+
             {/* Linked References - Compact */}
-            {(viewingTransaction.import_containers || viewingTransaction.delivery_challans || viewingTransaction.bank_accounts) && (
+            {(viewingTransaction.import_containers || viewingTransaction.delivery_challans || viewingTransaction.bank_accounts || viewingTransaction.source_account_id) && (
               <div className="py-2 border-b border-gray-200">
                 <p className="text-xs text-gray-500 mb-1.5">Linked To</p>
                 <div className="space-y-1">
@@ -1776,6 +2117,18 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                       <span className="text-gray-600">Bank:</span>
                       <span className="font-medium text-gray-900">
                         {viewingTransaction.bank_accounts.alias || viewingTransaction.bank_accounts.bank_name}
+                      </span>
+                    </div>
+                  )}
+                  {viewingTransaction.source_account_id && (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <Building2 className="h-3.5 w-3.5 text-indigo-600" />
+                      <span className="text-gray-600">Offset account:</span>
+                      <span className="font-medium text-gray-900">
+                        {(() => {
+                          const account = postingAccounts.find(item => item.id === viewingTransaction.source_account_id);
+                          return account ? `${account.code} - ${account.name}` : viewingTransaction.source_account_id;
+                        })()}
                       </span>
                     </div>
                   )}
