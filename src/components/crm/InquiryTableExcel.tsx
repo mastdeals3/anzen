@@ -18,7 +18,7 @@ import { sanitizeExportRows } from '../../utils/csvSafe';
 import { canSeeInternalPricing, canSeeFinalQuote } from '../../utils/permissions';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
-import { loadRouteRecipients } from '../../services/sourcingRecipients';
+import { loadAllRouteRecipients, recipientConfigurationError } from '../../services/sourcingRecipients';
 
 interface InquiryItem {
   id: string;
@@ -1401,7 +1401,15 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
       }
     }
 
-    const recipients = await loadRouteRecipients('india');
+    const recipients = (await loadAllRouteRecipients()).india;
+    if (recipients.to.length === 0) {
+      showToast({
+        type: 'error',
+        title: 'Send To India unavailable',
+        message: recipientConfigurationError('india'),
+      });
+      return;
+    }
     setSelectedInquiryForEmail(selected[0]);
     setSelectedInquiriesForEmail(expandedRows);
     setIndiaDefaultTo(recipients.to.join(', '));

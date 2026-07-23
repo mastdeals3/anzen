@@ -13,7 +13,7 @@
 - ACE ERP Reference Number is required on every selected inquiry before sending.
 - Multi-product inquiries (`has_items = true`) are automatically expanded into individual product rows — each child item's product name, specification, quantity, make, delivery date, and remarks are used in the email table.
 - One consolidated email is generated per send. No per-row emails.
-- Recipients are loaded from the `sourcing_email_recipients` database table (`india` route), with `sourcingConfig.ts` as a static fallback. Previously hardcoded to `indiaPricingConfig.ts`.
+- Recipients are loaded from the `sourcing_email_recipients` database table (`india` route). No static recipient fallback is used.
 - Sender is always `kunal@sapharmajaya.co.id` (resolved server-side via `requiredSenderEmail`).
 - Subject: `India Pricing Request - ACE Ref <deduped refs>` — ACE refs are deduplicated so a multi-item inquiry does not repeat the same ref.
 - HTML body built by `buildIndiaTable()` in `GmailLikeComposer.tsx`. Columns: ACE ERP Ref, Customer Name, Product Name, Specification, Make, Quantity, Required Delivery Date, Documents Available, Remarks.
@@ -26,7 +26,7 @@
 - Completed inquiries (`price_ready = true`, or `received + kunal_price_status != pending`, or `unavailable`, or `won`/`lost`) are hidden from the active queue.
 - Reminder due threshold: 3 days since last send.
 - AI mail review: scans inbox for supplier replies and surfaces match confidence scores.
-- Recipients per route loaded from `sourcing_email_recipients` DB table via `loadRouteRecipients()`.
+- Recipients per route loaded from `sourcing_email_recipients` DB table via `loadAllRouteRecipients()`.
 
 ### Consolidated Reminder Emails
 
@@ -69,7 +69,7 @@ Internal variable names, database columns, and API routes are unchanged.
 
 - **Subject deduplication**: child items sharing a parent's ACE ref no longer produce repeated refs in the subject line.
 - **Single-child expansion**: `has_items = true` parents with exactly one child item now correctly use the child's product fields (product name, specification, quantity, etc.) in the email table. Previously the unmodified parent row was used.
-- **Recipient loading**: replaced synchronous hardcoded `INDIA_RECIPIENTS` with async `loadRouteRecipients('india')` so the DB-configured recipient list is used at send time.
+- **Recipient loading**: Admin, Sales, and legacy sourcing screens use `loadAllRouteRecipients()` so the DB-configured recipient list is used at send time.
 
 ### Production Fixes Completed
 

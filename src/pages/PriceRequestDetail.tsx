@@ -7,8 +7,13 @@ import {
   ArrowLeft, Plus, Save, Clock, CheckCircle2, FileText, MessageSquare,
   Send, Mail, AlertCircle, RefreshCw,
 } from 'lucide-react';
-import { SOURCING_CONTACTS } from '../config/sourcingConfig';
 import { sendPricingWorkflowEmail, userHasConnectedGmail } from '../services/pricingEmail';
+import {
+  loadAllRouteRecipients,
+  recipientConfigurationError,
+  type RouteRecipients,
+  type SourcingRoute,
+} from '../services/sourcingRecipients';
 
 interface PriceRequest {
   id: string;
@@ -230,7 +235,7 @@ function ItemRow({ item, onSave }: { item: PRItem; onSave: (updated: Partial<PRI
 // ─── SourcingRequestModal ────────────────────────────────────────────────────
 interface SourcingGroup {
   sourceType: 'india' | 'china';
-  contact: typeof SOURCING_CONTACTS.india;
+  recipients: RouteRecipients;
   items: PRItem[];
 }
 
@@ -270,6 +275,22 @@ function SourcingRequestModal({
 }) {
   const { profile } = useAuth();
   const [allowResend, setAllowResend] = useState(false);
+  const [routeRecipients, setRouteRecipients] = useState<Record<SourcingRoute, RouteRecipients>>({
+    india: { route: 'india', to: [], cc: [], bcc: [] },
+    china: { route: 'china', to: [], cc: [], bcc: [] },
+    local: { route: 'local', to: [], cc: [], bcc: [] },
+  });
+
+  useEffect(() => {
+    loadAllRouteRecipients().then(recipients => {
+      setRouteRecipients(recipients);
+      const missingRoute = (['india', 'china'] as const).find(route =>
+        pendingItems.some(item => item.source_type === route) && recipients[route].to.length === 0
+      );
+      if (missingRoute) setError(recipientConfigurationError(missingRoute));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Eligible items: india/china and not already received.
   // By default, also exclude items that already have a sourcing_request_sent
@@ -285,7 +306,7 @@ function SourcingRequestModal({
   const groups: SourcingGroup[] = (['india', 'china'] as const)
     .map(src => ({
       sourceType: src,
-      contact: SOURCING_CONTACTS[src],
+      recipients: routeRecipients[src],
       items: pendingItems.filter(i => i.source_type === src),
     }))
     .filter(g => g.items.length > 0);
@@ -302,7 +323,7 @@ function SourcingRequestModal({
     setSelectedIds(new Set(pendingItems.map(i => i.id)));
     setPreviewGroup(groups[0] || null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowResend]);
+  }, [allowResend, routeRecipients]);
 
   const toggleItem = (id: string) => {
     setSelectedIds(prev => {
@@ -333,6 +354,11 @@ function SourcingRequestModal({
     for (const group of groups) {
       const groupItems = group.items.filter(i => selectedIds.has(i.id));
       if (groupItems.length === 0) continue;
+      if (group.recipients.to.length === 0) {
+        setError(recipientConfigurationError(group.sourceType));
+        setSending(false);
+        return;
+      }
 
       const subject = getPreviewSubject({ ...group, items: groupItems });
       const body = getPreviewBody({ ...group, items: groupItems });
@@ -344,9 +370,9 @@ function SourcingRequestModal({
         priceRequestId: pr.id,
         itemIds: groupItems.map(i => i.id),
         sourceType: group.sourceType,
-        to: [group.contact.email],
-        cc: group.contact.cc || [],
-        bcc: group.contact.bcc || [],
+        to: group.recipients.to,
+        cc: group.recipients.cc,
+        bcc: group.recipients.bcc,
         subject,
         body: body.replace(/\n/g, '<br/>'),
         isHtml: true,
@@ -354,7 +380,7 @@ function SourcingRequestModal({
       });
 
       if (!result.success) {
-        setError(`Failed to send to ${group.contact.name}: ${result.error || 'Unknown error'}`);
+        setError(`Failed to send to ${group.sourceType}: ${result.error || 'Unknown error'}`);
         setSending(false);
         return;
       }
@@ -374,10 +400,12 @@ function SourcingRequestModal({
         event_type: 'sourcing_request_sent',
         actor_id: profile?.id || null,
         actor_name: profile?.full_name || profile?.username || null,
-        description: `Sourcing request sent to ${group.contact.name} (${group.contact.email}) for: ${groupItems.map(i => i.product_name).join(', ')}${allowResend ? ' (resend)' : ''}`,
+        description: `Sourcing request sent to ${group.sourceType} (${group.recipients.to.join(', ')}) for: ${groupItems.map(i => i.product_name).join(', ')}${allowResend ? ' (resend)' : ''}`,
         metadata: {
           source_type: group.sourceType,
-          to: group.contact.email,
+          to: group.recipients.to,
+          cc: group.recipients.cc,
+          bcc: group.recipients.bcc,
           item_count: groupItems.length,
           resend: allowResend,
           sender_mode: result.senderMode,
@@ -442,7 +470,7 @@ function SourcingRequestModal({
               <div key={group.sourceType}>
                 <div className="flex items-center gap-2 mb-2">
                   <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium ${SOURCE_COLORS[group.sourceType]}`}>{group.sourceType}</span>
-                  <span className="text-xs text-gray-600">→ {group.contact.name} ({group.contact.email})</span>
+                  <span className="text-xs text-gray-600">→ {group.sourceType} ({group.recipients.to.join(', ')})</span>
                 </div>
                 <div className="space-y-1.5">
                   {group.items.map(item => (
@@ -483,8 +511,8 @@ function SourcingRequestModal({
                     </button>
                   ))}
                 </div>
-                <div className="text-[10px] text-gray-500 mb-1">To: {previewGroup.contact.name} &lt;{previewGroup.contact.email}&gt;</div>
-                {(previewGroup.contact.cc?.length ?? 0) > 0 && <div className="text-[10px] text-gray-500 mb-1">CC: {previewGroup.contact.cc?.join(', ')}</div>}
+                <div className="text-[10px] text-gray-500 mb-1">To: {previewGroup.sourceType} &lt;{previewGroup.recipients.to.join(', ')}&gt;</div>
+                {previewGroup.recipients.cc.length > 0 && <div className="text-[10px] text-gray-500 mb-1">CC: {previewGroup.recipients.cc.join(', ')}</div>}
                 <div className="text-xs font-medium text-gray-700 mb-2 border-b border-gray-200 pb-2">
                   Subject: {getPreviewSubject(previewGroup)}
                 </div>
@@ -926,6 +954,22 @@ function PendingReminderModal({
   onLogged: () => void;
 }) {
   const { profile } = useAuth();
+  const [routeRecipients, setRouteRecipients] = useState<Record<SourcingRoute, RouteRecipients>>({
+    india: { route: 'india', to: [], cc: [], bcc: [] },
+    china: { route: 'china', to: [], cc: [], bcc: [] },
+    local: { route: 'local', to: [], cc: [], bcc: [] },
+  });
+
+  useEffect(() => {
+    loadAllRouteRecipients().then(recipients => {
+      setRouteRecipients(recipients);
+      const missingRoute = (['india', 'china'] as const).find(route =>
+        pendingItems.some(item => item.source_type === route) && recipients[route].to.length === 0
+      );
+      if (missingRoute) setSendError(recipientConfigurationError(missingRoute));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Only items still pending a source reply
   const pendingItems = items.filter(i =>
@@ -939,7 +983,6 @@ function PendingReminderModal({
     .filter(g => g.items.length > 0);
 
   const buildReminderBody = (sourceType: 'india' | 'china') => {
-    const contact = SOURCING_CONTACTS[sourceType];
     const groupItems = pendingItems.filter(i => i.source_type === sourceType);
     const rows = groupItems.map(i => {
       const qtyStr = i.quantity ? `${i.quantity} ${i.unit || ''}` : '-';
@@ -947,7 +990,7 @@ function PendingReminderModal({
       const daysSinceSent = i.price_status === 'sourcing_request_sent' ? ' (request already sent)' : '';
       return `• ${i.product_name} | Spec: ${specStr} | Qty: ${qtyStr}${daysSinceSent}`;
     }).join('\n');
-    return `Hi ${contact.name},
+    return `Hi ${sourceType} Team,
 
 This is a gentle reminder for pricing on the below products for ${pr.customer_name || 'our client'} (Ref: ${pr.pr_number}):
 
@@ -993,7 +1036,13 @@ Thanks & regards`;
     setSendError('');
     setSending(true);
 
-    const contact = SOURCING_CONTACTS[activeGroup];
+    const recipients = routeRecipients[activeGroup];
+    if (recipients.to.length === 0) {
+      setSending(false);
+      setSendError(recipientConfigurationError(activeGroup));
+      return;
+    }
+
     // Filter out anything already received — defensive, pendingItems already excludes received
     const groupItems = pendingItems.filter(i =>
       i.source_type === activeGroup && i.price_status !== 'received'
@@ -1012,9 +1061,9 @@ Thanks & regards`;
       priceRequestId: pr.id,
       itemIds: groupItems.map(i => i.id),
       sourceType: activeGroup,
-      to: [contact.email],
-      cc: contact.cc || [],
-      bcc: contact.bcc || [],
+      to: recipients.to,
+      cc: recipients.cc,
+      bcc: recipients.bcc,
       subject,
       body: body.replace(/\n/g, '<br/>'),
       isHtml: true,
@@ -1032,10 +1081,12 @@ Thanks & regards`;
       event_type: 'reminder_sent',
       actor_id: profile?.id || null,
       actor_name: profile?.full_name || profile?.username || null,
-      description: `Reminder sent to ${contact.name} (${contact.email}) for ${groupItems.length} pending item${groupItems.length !== 1 ? 's' : ''}: ${groupItems.map(i => i.product_name).join(', ')}`,
+      description: `Reminder sent to ${activeGroup} (${recipients.to.join(', ')}) for ${groupItems.length} pending item${groupItems.length !== 1 ? 's' : ''}: ${groupItems.map(i => i.product_name).join(', ')}`,
       metadata: {
         source_type: activeGroup,
-        to: contact.email,
+        to: recipients.to,
+        cc: recipients.cc,
+        bcc: recipients.bcc,
         item_count: groupItems.length,
         pending_items: groupItems.map(i => i.id),
         sender_mode: result.senderMode,
@@ -1045,7 +1096,7 @@ Thanks & regards`;
 
     await supabase.from('price_requests').update({
       last_activity_at: new Date().toISOString(),
-      last_activity_note: `Pending reminder sent for ${groupItems.length} item(s) to ${contact.name}`,
+      last_activity_note: `Pending reminder sent for ${groupItems.length} item(s) to ${activeGroup}`,
       updated_at: new Date().toISOString(),
     }).eq('id', pr.id);
 
@@ -1107,8 +1158,8 @@ Thanks & regards`;
           )}
           {activeGroup && (
             <p className="mt-1 text-[10px] text-gray-500">
-              To: {SOURCING_CONTACTS[activeGroup].name} &lt;{SOURCING_CONTACTS[activeGroup].email}&gt;
-              {(SOURCING_CONTACTS[activeGroup].cc?.length ?? 0) > 0 && ` · CC: ${SOURCING_CONTACTS[activeGroup].cc?.join(', ')}`}
+              To: {activeGroup} &lt;{routeRecipients[activeGroup].to.join(', ')}&gt;
+              {routeRecipients[activeGroup].cc.length > 0 && ` · CC: ${routeRecipients[activeGroup].cc.join(', ')}`}
             </p>
           )}
           {sendError && <div className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{sendError}</div>}
@@ -1120,7 +1171,7 @@ Thanks & regards`;
           <div className={`mt-2 text-[11px] rounded px-2.5 py-1.5 border ${hasGmail ? 'bg-green-50 border-green-200 text-green-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
             {hasGmail === null ? 'Checking sender…' : hasGmail ? 'Sending from your connected Gmail.' : 'Using company fallback sender (no Gmail connected for your account).'}
           </div>
-          <p className="mt-1 text-[10px] text-gray-400">"Log Reminder" only writes a timeline entry. "Send Reminder" delivers the email to {activeGroup ? SOURCING_CONTACTS[activeGroup].name : 'the sourcing contact'}.</p>
+          <p className="mt-1 text-[10px] text-gray-400">"Log Reminder" only writes a timeline entry. "Send Reminder" delivers the email to the configured {activeGroup || 'sourcing'} recipients.</p>
         </div>
 
         <div className="px-5 py-3 border-t border-gray-200 flex items-center justify-between">

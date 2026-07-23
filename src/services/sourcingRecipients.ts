@@ -1,11 +1,7 @@
 import { supabase } from '../lib/supabase';
-import { SOURCING_CONTACTS } from '../config/sourcingConfig';
 
 /**
- * Sourcing recipient defaults. The DB row in sourcing_email_recipients is the
- * source of truth for admin/manager users. Sales never reads/writes this
- * table (gated by RLS). If the table is empty / unreachable, we fall back to
- * the hard-coded values in sourcingConfig.ts so the UI never breaks.
+ * Sourcing recipients are managed in sourcing_email_recipients.
  */
 
 export type SourcingRoute = 'india' | 'china' | 'local';
@@ -23,38 +19,20 @@ export function isValidEmail(value: string): boolean {
   return EMAIL_RE.test(value.trim());
 }
 
-function fallbackFor(route: SourcingRoute): RouteRecipients {
-  if (route === 'india' || route === 'china') {
-    const c = SOURCING_CONTACTS[route];
-    return { route, to: [c.email], cc: c.cc || [], bcc: c.bcc || [] };
-  }
-  return { route, to: [], cc: [], bcc: [] };
+export function recipientConfigurationError(route: SourcingRoute): string {
+  const routeLabel = route.charAt(0).toUpperCase() + route.slice(1);
+  return `${routeLabel} sourcing recipients are not configured. Ask an admin or manager to configure them in Sourcing Outbox.`;
 }
 
-export async function loadRouteRecipients(route: SourcingRoute): Promise<RouteRecipients> {
-  try {
-    const { data, error } = await supabase
-      .from('sourcing_email_recipients')
-      .select('route,to_emails,cc_emails,bcc_emails')
-      .eq('route', route)
-      .maybeSingle();
-    if (error || !data) return fallbackFor(route);
-    return {
-      route,
-      to: (data.to_emails || []).filter(isValidEmail),
-      cc: (data.cc_emails || []).filter(isValidEmail),
-      bcc: (data.bcc_emails || []).filter(isValidEmail),
-    };
-  } catch {
-    return fallbackFor(route);
-  }
+function emptyRecipients(route: SourcingRoute): RouteRecipients {
+  return { route, to: [], cc: [], bcc: [] };
 }
 
 export async function loadAllRouteRecipients(): Promise<Record<SourcingRoute, RouteRecipients>> {
   const blank: Record<SourcingRoute, RouteRecipients> = {
-    india: fallbackFor('india'),
-    china: fallbackFor('china'),
-    local: fallbackFor('local'),
+    india: emptyRecipients('india'),
+    china: emptyRecipients('china'),
+    local: emptyRecipients('local'),
   };
   try {
     const { data, error } = await supabase

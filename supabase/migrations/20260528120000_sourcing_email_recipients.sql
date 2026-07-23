@@ -56,11 +56,10 @@ CREATE TRIGGER trg_sourcing_recipients_updated_at
   BEFORE UPDATE ON sourcing_email_recipients
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Seed defaults if rows missing. The matching values used to live in
--- src/config/sourcingConfig.ts; keeping them in sync.
+-- Create empty route rows. Admin/manager configures recipients in the UI.
 INSERT INTO sourcing_email_recipients (route, to_emails, cc_emails, bcc_emails)
 VALUES
-  ('india', ARRAY['sonal@anzen.co.id'],    '{}', '{}'),
-  ('china', ARRAY['import@anzen.co.id'],   '{}', '{}'),
+  ('india', '{}',                          '{}', '{}'),
+  ('china', '{}',                          '{}', '{}'),
   ('local', '{}',                          '{}', '{}')
 ON CONFLICT (route) DO NOTHING;

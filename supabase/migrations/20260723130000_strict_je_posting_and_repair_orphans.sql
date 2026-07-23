@@ -13,8 +13,8 @@
       amount 4,684,685, approved, fixed_asset_account_id=NULL). Root cause:
       the current live trigger falls through to the standard-expense path,
       which calls get_expense_account_id('fixed_asset'). On avira that returns
-      NULL, and the trigger silently returned NEW. Chart-of-accounts DOES
-      contain code 1200 'Fixed Assets', but the old branch never looked at it.
+      NULL, and the trigger silently returned NEW. This row requires an
+      explicit posting (leaf) Fixed Asset GL account selected by the user.
 
     - 2 petty_cash_transactions rows (b29b0b9f-… and 09e7032c-…,
       expense_category='delivery_sales', amount 10,000 each, approved
@@ -27,7 +27,8 @@
 
     1. Replace public.auto_post_expense_accounting():
          - Keep the exact posting logic from mig 20260722160000 (PIB branch,
-           dedicated fixed_asset branch with 1200 fallback + PPN Masukan,
+           dedicated fixed_asset branch requiring fixed_asset_account_id
+           + PPN Masukan,
            standard-expense branch, salary/staff always-regen policy,
            approval_status in change-detection).
          - Remove the outer EXCEPTION WHEN OTHERS handler — real errors
@@ -47,14 +48,12 @@
            but they were being swallowed. Removing the outer handler makes
            them visible.
 
-    3. Repair the 3 affected rows AS PART OF the migration, using only the
-       triggers' own fallback logic — no manually-patched account IDs.
-         - finance_expenses e2695a1e-…: touch updated_at. The dedicated
-           fixed_asset branch (installed by step 1 above) falls back to
-           CoA code 1200 for the debit and to 1111 (fallback for
-           bank_transfer with a bank_account whose coa_id may be NULL).
-           The trigger DELETEs any existing JE for this row (there is
-           none) and inserts a balanced 2-line JE.
+    3. Repair the 2 petty-cash rows AS PART OF the migration, using only the
+       trigger's own posting logic — no manually-patched account IDs.
+         - finance_expenses e2695a1e-… is not repaired automatically because
+           fixed_asset_account_id is NULL. The migration prints a notice
+           instructing the operator to select a valid posting (leaf) Fixed
+           Asset GL account in Expense Manager.
          - petty_cash_transactions b29b0b9f-… and 09e7032c-…: un-approve
            then re-approve. The approval-transition trigger fires with
            the strict function installed in step 2 and creates one JE
@@ -230,10 +229,7 @@ AS $$
     IF NEW.expense_category = 'fixed_asset' THEN
       v_expense_account_id := NEW.fixed_asset_account_id;
       IF v_expense_account_id IS NULL THEN
-        SELECT id INTO v_expense_account_id FROM chart_of_accounts WHERE code = '1200' LIMIT 1;
-      END IF;
-      IF v_expense_account_id IS NULL THEN
-        RAISE EXCEPTION 'Cannot post fixed asset expense %: no fixed_asset_account_id on the row and chart_of_accounts is missing code 1200 (Fixed Assets). Set fixed_asset_account_id in Expense Manager or add code 1200.', NEW.id;
+        RAISE EXCEPTION 'Cannot post fixed asset expense %: fixed_asset_account_id is required. Select a valid posting (leaf) Fixed Asset GL account in Expense Manager; header accounts and automatic fallbacks are not allowed.', NEW.id;
       END IF;
 
       v_description := COALESCE(NEW.description, 'Fixed Asset Purchase');
@@ -482,23 +478,44 @@ $$;
 
 
 -- ────────────────────────────────────────────────────────────────────────────
--- 3. Repair the 3 affected rows using only the triggers' own fallback logic
---    (no manually-patched account IDs). Runs inside this migration's
---    transaction — if any repair fails the whole migration rolls back and
---    the schema stays at its prior state.
+-- 3. Repair the 2 petty-cash rows using only the trigger's own posting logic
+--    (no manually-patched account IDs). The fixed-asset expense is explicitly
+--    skipped until the user selects a valid posting (leaf) GL account.
 -- ────────────────────────────────────────────────────────────────────────────
 
--- 3a. Fixed asset expense: touch updated_at so the AFTER-UPDATE trigger fires
---     with the strict fixed_asset branch above. Fallback resolves the DR to
---     CoA code 1200 (Fixed Assets).
-UPDATE public.finance_expenses
-   SET updated_at = now()
- WHERE id = 'e2695a1e-dff2-4246-81da-95a1760af228'::uuid
-   AND NOT EXISTS (
-     SELECT 1 FROM journal_entries je
-     WHERE je.source_module = 'expenses'
-       AND je.reference_number = 'EXP-' || 'e2695a1e-dff2-4246-81da-95a1760af228'
-   );
+-- 3a. Fixed asset expense: do not guess or auto-select an account.
+--     Print a clear operator message and continue to the petty-cash repairs.
+DO $repair_expense$
+DECLARE
+  v_id                     uuid := 'e2695a1e-dff2-4246-81da-95a1760af228'::uuid;
+  v_fixed_asset_account_id uuid;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM journal_entries
+    WHERE source_module = 'expenses'
+      AND reference_number = 'EXP-' || v_id::text
+  ) THEN
+    RAISE NOTICE 'EXP/26-26/085 already has a Journal Entry; no repair action was taken.';
+    RETURN;
+  END IF;
+
+  SELECT fixed_asset_account_id
+    INTO v_fixed_asset_account_id
+    FROM public.finance_expenses
+   WHERE id = v_id;
+
+  IF NOT FOUND THEN
+    RAISE NOTICE 'EXP/26-26/085 was not found; no repair action was taken.';
+    RETURN;
+  END IF;
+
+  IF v_fixed_asset_account_id IS NULL THEN
+    RAISE NOTICE 'EXP/26-26/085 was skipped: fixed_asset_account_id is NULL. Select a valid posting (leaf) Fixed Asset GL account in Expense Manager and save the expense to regenerate the Journal Entry through the existing AFTER UPDATE trigger.';
+  ELSE
+    RAISE NOTICE 'EXP/26-26/085 was not repaired automatically. Its Fixed Asset GL account is now set; save the expense in Expense Manager to regenerate the Journal Entry through the existing AFTER UPDATE trigger.';
+  END IF;
+END
+$repair_expense$;
 
 -- 3b. Two petty-cash rows: cycle approval_status through pending_approval and
 --     back to approved so trigger_post_petty_cash_on_approval fires with the

@@ -20,11 +20,10 @@ import {
   X,
 } from 'lucide-react';
 import { showToast } from '../components/ToastNotification';
-import { SOURCING_CONTACTS } from '../config/sourcingConfig';
 import { sendPricingWorkflowEmail, userHasConnectedGmail } from '../services/pricingEmail';
 import { TableColumn, useColumnPreferences } from '../hooks/useColumnPreferences';
 import {
-  loadAllRouteRecipients, saveRouteRecipients, type RouteRecipients, type SourcingRoute,
+  loadAllRouteRecipients, recipientConfigurationError, saveRouteRecipients, type RouteRecipients, type SourcingRoute,
 } from '../services/sourcingRecipients';
 import { RecipientChips } from '../components/crm/RecipientChips';
 import { aiImproveEmail, extractProtectedTokens } from '../services/aiEmailAssistant';
@@ -351,11 +350,10 @@ export function SourcingOutbox() {
     sending: false,
   });
 
-  // Per-route editable recipients used by the preview modal. Loaded from
-  // sourcing_email_recipients on mount; falls back to sourcingConfig defaults.
+  // Per-route editable recipients used by the preview modal.
   const [routeRecipients, setRouteRecipients] = useState<Record<SourcingRoute, RouteRecipients>>({
-    india: { route: 'india', to: [SOURCING_CONTACTS.india.email], cc: SOURCING_CONTACTS.india.cc || [], bcc: SOURCING_CONTACTS.india.bcc || [] },
-    china: { route: 'china', to: [SOURCING_CONTACTS.china.email], cc: SOURCING_CONTACTS.china.cc || [], bcc: SOURCING_CONTACTS.china.bcc || [] },
+    india: { route: 'india', to: [], cc: [], bcc: [] },
+    china: { route: 'china', to: [], cc: [], bcc: [] },
     local: { route: 'local', to: [], cc: [], bcc: [] },
   });
   const [savingDefaults, setSavingDefaults] = useState<SourcingRoute | null>(null);
@@ -364,6 +362,14 @@ export function SourcingOutbox() {
     (async () => {
       const all = await loadAllRouteRecipients();
       setRouteRecipients(all);
+      const missingRoutes = (['india', 'china'] as const).filter(route => all[route].to.length === 0);
+      if (missingRoutes.length > 0) {
+        showToast({
+          type: 'error',
+          title: 'Sourcing recipients not configured',
+          message: missingRoutes.map(recipientConfigurationError).join(' '),
+        });
+      }
     })();
   }, []);
 
@@ -968,8 +974,7 @@ export function SourcingOutbox() {
   };
 
   const buildEmailBody = (rows: Inquiry[], route: 'india' | 'china') => {
-    const contact = SOURCING_CONTACTS[route];
-    const sections: string[] = [`Hi ${contact.name},`];
+    const sections: string[] = [`Hi ${route === 'india' ? 'India' : 'China'} Team,`];
 
     const newRows = rows.filter(row => row.source_status === 'not_sent');
     const reminderRows = rows.filter(row => row.source_status !== 'not_sent' && row.document_status !== 'pending');
@@ -1013,7 +1018,6 @@ export function SourcingOutbox() {
     if (!recips || recips.to.length === 0) {
       return { ok: false, error: `No recipient email set for ${route}. Edit recipients in the preview before sending.`, route };
     }
-    const contact = SOURCING_CONTACTS[route];
     const hasNew = rows.some(row => row.source_status === 'not_sent');
     const subject = hasNew
       ? `Sourcing Request - ${rows.length} item${rows.length !== 1 ? 's' : ''}`
