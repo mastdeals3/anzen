@@ -335,6 +335,7 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
               const { data: pcs } = await supabase
                 .from('petty_cash_transactions')
                 .select('id, transaction_number')
+                .is('fund_transfer_id', null)
                 .in('id', refIds);
               const pcMap = Object.fromEntries((pcs || []).map((x: any) => [x.id, x.transaction_number]));
               return Object.fromEntries(

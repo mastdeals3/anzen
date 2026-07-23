@@ -424,6 +424,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         const { data: pettyCash } = await supabase
           .from('petty_cash_transactions')
           .select('id, description, amount, transaction_date, transaction_type')
+          .is('fund_transfer_id', null)
           .in('id', pettyCashIds);
         pettyCash?.forEach(p => pettyCashMap.set(p.id, p));
         logMissing('petty_cash_transactions', pettyCashIds, pettyCash as any);
@@ -1939,6 +1940,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             .from('petty_cash_transactions')
             .select('id')
             .eq('id', refId)
+            .is('fund_transfer_id', null)
             .maybeSingle();
           if (!pc) continue;
         }

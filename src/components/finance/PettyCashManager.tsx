@@ -633,6 +633,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           petty_cash_documents (*)
         `)
         .eq('id', initialViewTransactionId)
+        .is('fund_transfer_id', null)
         .maybeSingle();
 
       if (!error && data) {

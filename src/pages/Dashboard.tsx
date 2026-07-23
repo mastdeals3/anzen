@@ -113,6 +113,7 @@ export function Dashboard() {
         supabase
           .from('petty_cash_transactions')
           .select('id', { count: 'exact', head: true })
+          .is('fund_transfer_id', null)
           .eq('approval_status', 'pending_approval'),
         supabase
           .from('sales_invoices')

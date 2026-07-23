@@ -70,6 +70,7 @@ export function ApprovalNotifications() {
         supabase
           .from('petty_cash_transactions')
           .select('id, transaction_number, transaction_date, amount, description')
+          .is('fund_transfer_id', null)
           .eq('approval_status', 'pending_approval')
           .order('created_at', { ascending: false })
           .limit(5),
