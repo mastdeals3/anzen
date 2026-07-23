@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye, Undo2 } from 'lucide-react';
+import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye, Undo2, Landmark } from 'lucide-react';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
@@ -57,6 +57,20 @@ interface FundTransferManagerProps {
   canManage: boolean;
   initialViewTransferId?: string | null;
   onInitialViewHandled?: () => void;
+  onOpenBankReconciliation?: (bankAccountId: string, bankStatementLineId: string) => void;
+}
+
+interface BankReconciliationConflict {
+  kind: 'bank_reconciliation_conflict';
+  bank_statement_line_id: string;
+  bank_account_id: string;
+  transaction_date: string;
+  amount: number;
+  currency: string;
+  document_type: string;
+  document_number: string;
+  journal_entry_id: string | null;
+  journal_entry_number: string;
 }
 
 // Helper function to format date as dd/mm/yy
@@ -72,6 +86,7 @@ export function FundTransferManager({
   canManage,
   initialViewTransferId,
   onInitialViewHandled,
+  onOpenBankReconciliation,
 }: FundTransferManagerProps) {
   const [transfers, setTransfers] = useState<FundTransfer[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
@@ -84,6 +99,7 @@ export function FundTransferManager({
   const [undoingTransferId, setUndoingTransferId] = useState<string | null>(null);
   const [undoReverseTarget, setUndoReverseTarget] = useState<FundTransfer | null>(null);
   const [undoReverseReason, setUndoReverseReason] = useState('');
+  const [reconciliationConflict, setReconciliationConflict] = useState<BankReconciliationConflict | null>(null);
   const [formData, setFormData] = useState({
     transfer_date: new Date().toISOString().split('T')[0],
     from_amount: 0,
@@ -532,6 +548,21 @@ export function FundTransferManager({
       });
     } catch (error: any) {
       console.error('Error undoing fund transfer reversal:', error.message);
+      try {
+        const details = JSON.parse(error.details || '');
+        if (
+          details?.kind === 'bank_reconciliation_conflict'
+          && details.bank_account_id
+          && details.bank_statement_line_id
+        ) {
+          setUndoReverseTarget(null);
+          setUndoReverseReason('');
+          setReconciliationConflict(details as BankReconciliationConflict);
+          return;
+        }
+      } catch {
+        // Non-structured database errors continue through the existing toast path.
+      }
       showToast({
         type: 'error',
         title: 'Undo Reverse Blocked',
@@ -928,6 +959,70 @@ export function FundTransferManager({
                 placeholder="Reason for restoring this Contra Voucher"
               />
             </label>
+          </div>
+        </FinanceModal>
+      )}
+
+      {reconciliationConflict && (
+        <FinanceModal
+          isOpen
+          onClose={() => setReconciliationConflict(null)}
+          title="Bank Reconciliation Conflict"
+          size="sm"
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setReconciliationConflict(null)}
+                className={F_BTN_SECONDARY}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenBankReconciliation?.(
+                    reconciliationConflict.bank_account_id,
+                    reconciliationConflict.bank_statement_line_id,
+                  );
+                  setReconciliationConflict(null);
+                }}
+                className={F_BTN_PRIMARY}
+              >
+                <Landmark className="w-3.5 h-3.5" />
+                Open Bank Reconciliation
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm">
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+              Undo Reverse remains blocked because the original bank statement line is linked to another transaction.
+            </p>
+            <dl className="grid grid-cols-[140px_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
+              <dt className="text-gray-500">Bank Statement Date</dt>
+              <dd className="font-medium text-gray-900">
+                {new Date(`${reconciliationConflict.transaction_date}T00:00:00`).toLocaleDateString('id-ID')}
+              </dd>
+              <dt className="text-gray-500">Amount</dt>
+              <dd className="font-medium text-gray-900">
+                {new Intl.NumberFormat('id-ID', {
+                  style: 'currency',
+                  currency: reconciliationConflict.currency || 'IDR',
+                  minimumFractionDigits: 2,
+                }).format(Number(reconciliationConflict.amount) || 0)}
+              </dd>
+              <dt className="text-gray-500">Current Document Type</dt>
+              <dd className="font-medium text-gray-900">{reconciliationConflict.document_type}</dd>
+              <dt className="text-gray-500">Current Document Number</dt>
+              <dd className="font-mono font-medium text-gray-900 break-all">
+                {reconciliationConflict.document_number}
+              </dd>
+              <dt className="text-gray-500">Current Journal Entry</dt>
+              <dd className="font-mono font-medium text-gray-900 break-all">
+                {reconciliationConflict.journal_entry_number}
+              </dd>
+            </dl>
           </div>
         </FinanceModal>
       )}

@@ -30,6 +30,13 @@ DECLARE
   v_period_status       text;
   v_bank_link           record;
   v_bank_line           public.bank_statement_lines%ROWTYPE;
+  v_conflict_doc_type   text;
+  v_conflict_doc_number text;
+  v_conflict_je_id      uuid;
+  v_conflict_je_number  text;
+  v_conflict_je_ref     text;
+  v_linked_doc_je_id    uuid;
+  v_conflict_source     text;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
@@ -284,9 +291,119 @@ BEGIN
          v_bank_line.matched_entry_id IS NOT NULL
          AND v_bank_line.matched_entry_id NOT IN (v_original_je.id, v_reversal_je.id)
        ) THEN
+      v_conflict_doc_type := NULL;
+      v_conflict_doc_number := NULL;
+      v_conflict_je_id := v_bank_line.matched_entry_id;
+      v_conflict_je_number := NULL;
+      v_conflict_je_ref := NULL;
+      v_linked_doc_je_id := NULL;
+      v_conflict_source := NULL;
+
+      IF v_bank_line.matched_expense_id IS NOT NULL THEN
+        v_conflict_doc_type := 'Expense';
+        SELECT voucher_number
+          INTO v_conflict_doc_number
+          FROM public.finance_expenses
+         WHERE id = v_bank_line.matched_expense_id;
+
+        IF v_conflict_je_id IS NULL THEN
+          SELECT id
+            INTO v_conflict_je_id
+            FROM public.journal_entries
+           WHERE source_module = 'expenses'
+             AND reference_id = v_bank_line.matched_expense_id
+           ORDER BY created_at DESC
+           LIMIT 1;
+        END IF;
+      ELSIF v_bank_line.matched_receipt_id IS NOT NULL THEN
+        v_conflict_doc_type := 'Receipt Voucher';
+        SELECT voucher_number, journal_entry_id
+          INTO v_conflict_doc_number, v_linked_doc_je_id
+          FROM public.receipt_vouchers
+         WHERE id = v_bank_line.matched_receipt_id;
+        v_conflict_je_id := COALESCE(v_conflict_je_id, v_linked_doc_je_id);
+      ELSIF v_bank_line.matched_fund_transfer_id IS NOT NULL THEN
+        v_conflict_doc_type := 'Contra Voucher';
+        SELECT transfer_number, journal_entry_id
+          INTO v_conflict_doc_number, v_linked_doc_je_id
+          FROM public.fund_transfers
+         WHERE id = v_bank_line.matched_fund_transfer_id;
+        v_conflict_je_id := COALESCE(v_conflict_je_id, v_linked_doc_je_id);
+      ELSIF v_bank_line.matched_petty_cash_id IS NOT NULL THEN
+        v_conflict_doc_type := 'Petty Cash Transaction';
+        SELECT transaction_number
+          INTO v_conflict_doc_number
+          FROM public.petty_cash_transactions
+         WHERE id = v_bank_line.matched_petty_cash_id;
+
+        IF v_conflict_je_id IS NULL THEN
+          SELECT id
+            INTO v_conflict_je_id
+            FROM public.journal_entries
+           WHERE source_module = 'petty_cash'
+             AND reference_id = v_bank_line.matched_petty_cash_id
+           ORDER BY created_at DESC
+           LIMIT 1;
+        END IF;
+      ELSIF v_bank_line.matched_tax_payment_id IS NOT NULL THEN
+        v_conflict_doc_type := 'Tax Payment';
+        SELECT COALESCE(ntpn, billing_code, government_reference, id::text),
+               journal_entry_id
+          INTO v_conflict_doc_number, v_linked_doc_je_id
+          FROM public.tax_payments
+         WHERE id = v_bank_line.matched_tax_payment_id;
+        v_conflict_je_id := COALESCE(v_conflict_je_id, v_linked_doc_je_id);
+      END IF;
+
+      IF v_conflict_je_id IS NOT NULL THEN
+        SELECT entry_number, source_module, reference_number
+          INTO v_conflict_je_number, v_conflict_source, v_conflict_je_ref
+          FROM public.journal_entries
+         WHERE id = v_conflict_je_id;
+        v_conflict_doc_number := COALESCE(v_conflict_doc_number, v_conflict_je_ref);
+
+        IF v_conflict_doc_type IS NULL THEN
+          v_conflict_doc_type := CASE v_conflict_source
+            WHEN 'payment' THEN 'Payment Voucher'
+            WHEN 'payment_vouchers' THEN 'Payment Voucher'
+            WHEN 'receipt' THEN 'Receipt Voucher'
+            WHEN 'receipt_vouchers' THEN 'Receipt Voucher'
+            WHEN 'fund_transfers' THEN 'Contra Voucher'
+            WHEN 'petty_cash' THEN 'Petty Cash Transaction'
+            WHEN 'expenses' THEN 'Expense'
+            WHEN 'tax_payment' THEN 'Tax Payment'
+            WHEN 'tax_payments' THEN 'Tax Payment'
+            ELSE 'Journal Entry'
+          END;
+        END IF;
+      END IF;
+
       RAISE EXCEPTION
         'Cannot undo reversal: the % bank statement line is now linked to another transaction',
-        v_bank_link.link_side USING ERRCODE = 'integrity_constraint_violation';
+        v_bank_link.link_side
+        USING
+          ERRCODE = 'integrity_constraint_violation',
+          DETAIL = jsonb_build_object(
+            'kind', 'bank_reconciliation_conflict',
+            'bank_statement_line_id', v_bank_line.id,
+            'bank_account_id', v_bank_line.bank_account_id,
+            'transaction_date', v_bank_line.transaction_date,
+            'amount', COALESCE(
+              NULLIF(v_bank_line.debit_amount, 0),
+              NULLIF(v_bank_line.credit_amount, 0),
+              0
+            ),
+            'currency', COALESCE(
+              (SELECT currency
+                 FROM public.bank_accounts
+                WHERE id = v_bank_line.bank_account_id),
+              'IDR'
+            ),
+            'document_type', COALESCE(v_conflict_doc_type, 'Linked Transaction'),
+            'document_number', COALESCE(v_conflict_doc_number, 'Unavailable'),
+            'journal_entry_id', v_conflict_je_id,
+            'journal_entry_number', COALESCE(v_conflict_je_number, 'Unavailable')
+          )::text;
     END IF;
   END LOOP;
 
