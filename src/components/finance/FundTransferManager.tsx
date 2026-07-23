@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye } from 'lucide-react';
+import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye, Undo2 } from 'lucide-react';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
@@ -9,6 +9,7 @@ import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
+import { notifyFinanceReconciliationRefresh } from './bankTransactionLinking';
 
 interface FundTransfer {
   id: string;
@@ -80,6 +81,9 @@ export function FundTransferManager({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransfer, setEditingTransfer] = useState<FundTransfer | null>(null);
   const [viewOnly, setViewOnly] = useState(false);
+  const [undoingTransferId, setUndoingTransferId] = useState<string | null>(null);
+  const [undoReverseTarget, setUndoReverseTarget] = useState<FundTransfer | null>(null);
+  const [undoReverseReason, setUndoReverseReason] = useState('');
   const [formData, setFormData] = useState({
     transfer_date: new Date().toISOString().split('T')[0],
     from_amount: 0,
@@ -497,6 +501,47 @@ export function FundTransferManager({
     }
   };
 
+  const openUndoReverse = (transfer: FundTransfer) => {
+    if (transfer.status !== 'reversed') return;
+    setUndoReverseTarget(transfer);
+    setUndoReverseReason('');
+  };
+
+  const handleUndoReverse = async () => {
+    const transfer = undoReverseTarget;
+    if (!transfer) return;
+
+    setUndoingTransferId(transfer.id);
+    try {
+      const { error } = await supabase.rpc('undo_reverse_fund_transfer', {
+        p_id: transfer.id,
+        p_reason: undoReverseReason.trim() || null,
+      });
+      if (error) throw error;
+
+      notifyFinanceReconciliationRefresh();
+      setUndoReverseTarget(null);
+      setUndoReverseReason('');
+      setModalOpen(false);
+      resetForm();
+      await loadData();
+      showToast({
+        type: 'success',
+        title: 'Reversal Undone',
+        message: `${transfer.transfer_number} has been restored to Posted.`,
+      });
+    } catch (error: any) {
+      console.error('Error undoing fund transfer reversal:', error.message);
+      showToast({
+        type: 'error',
+        title: 'Undo Reverse Blocked',
+        message: error.message || 'The Contra reversal could not be undone safely.',
+      });
+    } finally {
+      setUndoingTransferId(null);
+    }
+  };
+
   const getAccountTypeLabel = (type: string) => {
     switch (type) {
       case 'petty_cash': return 'Petty Cash';
@@ -617,6 +662,16 @@ export function FundTransferManager({
                       <Eye className="w-3.5 h-3.5" />
                     </button>
                   )}
+                  {t.status === 'reversed' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openUndoReverse(t); }}
+                      disabled={undoingTransferId === t.id}
+                      className="p-1 text-gray-400 hover:text-green-700 hover:bg-green-50 rounded disabled:opacity-50"
+                      title="Undo Reverse"
+                    >
+                      <Undo2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   {t.status !== 'posted' && (
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete permanently">
                       <Trash2 className="w-3.5 h-3.5" />
@@ -637,6 +692,17 @@ export function FundTransferManager({
           size="md"
           footer={
             <>
+              {viewOnly && editingTransfer?.status === 'reversed' && canManage && (
+                <button
+                  type="button"
+                  onClick={() => openUndoReverse(editingTransfer)}
+                  disabled={undoingTransferId === editingTransfer.id}
+                  className="inline-flex items-center gap-1 h-7 px-2 border border-green-300 text-green-700 bg-green-50 rounded text-xs font-semibold hover:bg-green-100 disabled:opacity-50"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  Undo Reverse
+                </button>
+              )}
               <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className={F_BTN_SECONDARY}>
                 {viewOnly ? 'Close' : 'Cancel'}
               </button>
@@ -804,6 +870,65 @@ export function FundTransferManager({
           </fieldset>
 
           </form>
+        </FinanceModal>
+      )}
+
+      {undoReverseTarget && (
+        <FinanceModal
+          isOpen
+          onClose={() => {
+            if (undoingTransferId) return;
+            setUndoReverseTarget(null);
+            setUndoReverseReason('');
+          }}
+          title="Undo Contra Reversal"
+          size="sm"
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setUndoReverseTarget(null);
+                  setUndoReverseReason('');
+                }}
+                disabled={Boolean(undoingTransferId)}
+                className={F_BTN_SECONDARY}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUndoReverse}
+                disabled={Boolean(undoingTransferId)}
+                className={F_BTN_PRIMARY}
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+                {undoingTransferId ? 'Restoring...' : 'Undo Reverse'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm">
+            <p className="text-gray-700">
+              Restore <span className="font-mono font-semibold">{undoReverseTarget.transfer_number}</span> to Posted?
+              The original journal will become active and the preserved reversing journal will be marked inactive.
+            </p>
+            <p className="text-xs text-amber-700">
+              The operation will be blocked if accounting periods, journal integrity, or bank reconciliation dependencies are no longer safe.
+            </p>
+            <label className="block">
+              <span className="block mb-1 text-xs font-medium text-gray-700">Reason (optional)</span>
+              <textarea
+                value={undoReverseReason}
+                onChange={(event) => setUndoReverseReason(event.target.value)}
+                rows={3}
+                maxLength={500}
+                disabled={Boolean(undoingTransferId)}
+                className={`${SAP_INPUT} h-auto py-2 resize-none`}
+                placeholder="Reason for restoring this Contra Voucher"
+              />
+            </label>
+          </div>
         </FinanceModal>
       )}
     </>
