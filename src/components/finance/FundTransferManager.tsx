@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye, Undo2, Landmark } from 'lucide-react';
+import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye, Undo2, Landmark, AlertTriangle } from 'lucide-react';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
@@ -29,6 +29,7 @@ interface FundTransfer {
   to_bank_account_id: string | null;
   from_bank_statement_line_id: string | null;
   to_bank_statement_line_id: string | null;
+  journal_entry_id: string | null;
   description: string | null;
   status: string;
   posted_at: string | null;
@@ -52,6 +53,16 @@ interface BankStatementLine {
   credit_amount: number | null;
   reconciliation_status: string | null;
 }
+
+interface BankStatementOwnership {
+  id: string;
+  matched_fund_transfer_id: string | null;
+  matched_entry_id: string | null;
+  reconciliation_status: string | null;
+}
+
+type ReconciliationFilter = 'all' | 'fully_linked' | 'partially_linked' | 'unlinked';
+type ReconciliationState = Exclude<ReconciliationFilter, 'all'> | 'not_applicable';
 
 interface FundTransferManagerProps {
   canManage: boolean;
@@ -92,10 +103,13 @@ export function FundTransferManager({
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [fromBankStatements, setFromBankStatements] = useState<BankStatementLine[]>([]);
   const [toBankStatements, setToBankStatements] = useState<BankStatementLine[]>([]);
+  const [bankStatementOwnership, setBankStatementOwnership] = useState<Record<string, BankStatementOwnership>>({});
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransfer, setEditingTransfer] = useState<FundTransfer | null>(null);
   const [viewOnly, setViewOnly] = useState(false);
+  const [reconciliationFilter, setReconciliationFilter] = useState<ReconciliationFilter>('all');
+  const [deletingTransferId, setDeletingTransferId] = useState<string | null>(null);
   const [undoingTransferId, setUndoingTransferId] = useState<string | null>(null);
   const [undoReverseTarget, setUndoReverseTarget] = useState<FundTransfer | null>(null);
   const [undoReverseReason, setUndoReverseReason] = useState('');
@@ -145,12 +159,21 @@ export function FundTransferManager({
     if (refs.to && affectedAccount === refs.to) {
       loadBankStatements(refs.to, 'to', refs.editingToLine);
     }
+    void loadData();
   };
 
   useSupabaseRealtimeChannel({
     channelName: 'bank_lines_fund_transfer',
     table: 'bank_statement_lines',
     onEvent: patchBankLineFundTransfer,
+  });
+
+  useSupabaseRealtimeChannel({
+    channelName: 'fund_transfers_list',
+    table: 'fund_transfers',
+    onEvent: () => {
+      void loadData();
+    },
   });
 
   const loadData = async () => {
@@ -161,7 +184,7 @@ export function FundTransferManager({
         supabase
           .from('vw_fund_transfers_detailed')
           // perf: projected columns (was select('*'))
-          .select('id, transfer_number, transfer_date, amount, from_amount, to_amount, exchange_rate, from_account_type, to_account_type, from_account_name, to_account_name, from_currency, to_currency, from_bank_account_id, to_bank_account_id, from_bank_statement_line_id, to_bank_statement_line_id, description, status, posted_at, created_at, created_by_name')
+          .select('id, transfer_number, transfer_date, amount, from_amount, to_amount, exchange_rate, from_account_type, to_account_type, from_account_name, to_account_name, from_currency, to_currency, from_bank_account_id, to_bank_account_id, from_bank_statement_line_id, to_bank_statement_line_id, journal_entry_id, description, status, posted_at, created_at, created_by_name')
           .order('transfer_date', { ascending: false })
           .order('created_at', { ascending: false })
           .limit(100),
@@ -176,7 +199,24 @@ export function FundTransferManager({
       if (transfersRes.error) throw transfersRes.error;
       if (banksRes.error) throw banksRes.error;
 
-      setTransfers(transfersRes.data || []);
+      const loadedTransfers = (transfersRes.data || []) as FundTransfer[];
+      const transferIds = loadedTransfers.map((transfer) => transfer.id);
+
+      let ownershipById: Record<string, BankStatementOwnership> = {};
+      if (transferIds.length > 0) {
+        const { data: ownershipRows, error: ownershipError } = await supabase
+          .from('bank_statement_lines')
+          .select('id, matched_fund_transfer_id, matched_entry_id, reconciliation_status')
+          .in('matched_fund_transfer_id', transferIds);
+
+        if (ownershipError) throw ownershipError;
+        ownershipById = Object.fromEntries(
+          ((ownershipRows || []) as BankStatementOwnership[]).map((line) => [line.id, line]),
+        );
+      }
+
+      setTransfers(loadedTransfers);
+      setBankStatementOwnership(ownershipById);
       setBankAccounts(banksRes.data || []);
     } catch (error: any) {
       console.error('Error loading fund transfers:', error.message);
@@ -443,7 +483,7 @@ export function FundTransferManager({
       if (!transfer) {
         const { data, error } = await supabase
           .from('vw_fund_transfers_detailed')
-          .select('id, transfer_number, transfer_date, amount, from_amount, to_amount, exchange_rate, from_account_type, to_account_type, from_account_name, to_account_name, from_currency, to_currency, from_bank_account_id, to_bank_account_id, from_bank_statement_line_id, to_bank_statement_line_id, description, status, posted_at, created_at, created_by_name')
+          .select('id, transfer_number, transfer_date, amount, from_amount, to_amount, exchange_rate, from_account_type, to_account_type, from_account_name, to_account_name, from_currency, to_currency, from_bank_account_id, to_bank_account_id, from_bank_statement_line_id, to_bank_statement_line_id, journal_entry_id, description, status, posted_at, created_at, created_by_name')
           .eq('id', initialViewTransferId)
           .maybeSingle();
         if (error) {
@@ -475,18 +515,25 @@ export function FundTransferManager({
     });
     if (!confirmed) return;
 
+    setDeletingTransferId(transferId);
     try {
       const { error } = await supabase.rpc('delete_fund_transfer', { p_id: transferId });
       if (error) throw error;
+      notifyFinanceReconciliationRefresh();
       showToast({ type: 'success', title: 'Success', message: 'Fund transfer deleted successfully!' });
-      loadData();
+      await loadData();
     } catch (error: any) {
       console.error('Error deleting fund transfer:', error.message);
+      const reason = [error.message, error.details, error.hint]
+        .filter((value, index, values) => value && values.indexOf(value) === index)
+        .join(' ');
       showToast({
         type: 'error',
-        title: 'Error',
-        message: 'Failed to delete fund transfer: ' + error.message,
+        title: 'Delete Blocked',
+        message: reason || 'The fund transfer could not be deleted safely.',
       });
+    } finally {
+      setDeletingTransferId(null);
     }
   };
 
@@ -619,6 +666,59 @@ export function FundTransferManager({
   const fmtAmount = (ccy: string, amt: number) =>
     `${ccy === 'USD' ? '$' : 'Rp'} ${amt.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  const isBankSideLinked = (transfer: FundTransfer, side: 'from' | 'to'): boolean | null => {
+    if (transfer[`${side}_account_type`] !== 'bank') return null;
+
+    const statementLineId = transfer[`${side}_bank_statement_line_id`];
+    if (!statementLineId) return false;
+
+    const ownership = bankStatementOwnership[statementLineId];
+    if (!ownership) return false;
+
+    const journalMatches = transfer.journal_entry_id
+      ? ownership.matched_entry_id === transfer.journal_entry_id
+      : ownership.matched_entry_id === null;
+
+    return ownership.matched_fund_transfer_id === transfer.id
+      && journalMatches
+      && ownership.reconciliation_status === 'matched';
+  };
+
+  const getReconciliationState = (transfer: FundTransfer): ReconciliationState => {
+    const bankSides = [
+      isBankSideLinked(transfer, 'from'),
+      isBankSideLinked(transfer, 'to'),
+    ].filter((status): status is boolean => status !== null);
+
+    if (bankSides.length === 0) return 'not_applicable';
+    if (bankSides.every(Boolean)) return 'fully_linked';
+    if (bankSides.some(Boolean)) return 'partially_linked';
+    return 'unlinked';
+  };
+
+  const filteredTransfers = transfers.filter((transfer) => (
+    reconciliationFilter === 'all'
+    || getReconciliationState(transfer) === reconciliationFilter
+  ));
+
+  const renderAccountType = (transfer: FundTransfer, side: 'from' | 'to') => {
+    const accountType = transfer[`${side}_account_type`];
+    const linked = isBankSideLinked(transfer, side);
+
+    if (accountType !== 'bank') {
+      return <div className="text-[10px] text-gray-500">{getAccountTypeLabel(accountType)}</div>;
+    }
+
+    return (
+      <div className="text-[10px] text-gray-500">
+        Bank Account ·{' '}
+        <span className={linked ? 'font-normal text-gray-600' : 'font-bold text-red-600'}>
+          {linked ? 'Linked' : 'Unlinked'}
+        </span>
+      </div>
+    );
+  };
+
   return (
     <>
       <FinancePage
@@ -633,27 +733,57 @@ export function FundTransferManager({
             New Transfer
           </button>
         )}
+        toolbar={(
+          <div className="inline-flex items-center rounded border border-gray-200 bg-gray-50 p-0.5">
+            {([
+              ['all', 'All'],
+              ['fully_linked', 'Fully Linked'],
+              ['partially_linked', 'Partially Linked'],
+              ['unlinked', 'Unlinked'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setReconciliationFilter(value)}
+                className={`h-6 px-2 rounded text-[11px] font-medium transition-colors ${
+                  reconciliationFilter === value
+                    ? 'bg-white text-gray-900 border border-gray-200 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       >
         <FinanceTable
-          rows={transfers}
+          rows={filteredTransfers}
           rowKey={(t) => t.id}
           onRowClick={(transfer) => handleView(transfer)}
           loading={loading}
-          empty="No fund transfers found"
+          empty={reconciliationFilter === 'all' ? 'No fund transfers found' : 'No fund transfers match this reconciliation filter'}
           columns={[
             { header: 'Date',       cell: (t) => formatDateDDMMYY(t.transfer_date) },
-            { header: 'Transfer #', cell: (t) => <span className="font-mono">{t.transfer_number}</span> },
+            { header: 'Transfer #', cell: (t) => (
+              <span className="inline-flex items-center gap-1 font-mono">
+                {['partially_linked', 'unlinked'].includes(getReconciliationState(t)) && (
+                  <AlertTriangle className="w-3 h-3 text-amber-600" aria-label="Bank reconciliation incomplete" />
+                )}
+                {t.transfer_number}
+              </span>
+            ) },
             { header: 'From',       cell: (t) => (
               <div>
                 <div className="font-medium">{t.from_account_name}</div>
-                <div className="text-[10px] text-gray-500">{getAccountTypeLabel(t.from_account_type)}</div>
+                {renderAccountType(t, 'from')}
               </div>
             ) },
             { header: '→', align: 'center', cell: () => <ArrowRightLeft className="w-3 h-3 text-blue-600 inline" /> },
             { header: 'To',         cell: (t) => (
               <div>
                 <div className="font-medium">{t.to_account_name}</div>
-                <div className="text-[10px] text-gray-500">{getAccountTypeLabel(t.to_account_type)}</div>
+                {renderAccountType(t, 'to')}
               </div>
             ) },
             { header: 'Description', cell: (t) => t.description || '-' },
@@ -704,7 +834,12 @@ export function FundTransferManager({
                     </button>
                   )}
                   {t.status !== 'posted' && (
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete permanently">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                      disabled={deletingTransferId === t.id}
+                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                      title="Delete permanently"
+                    >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
