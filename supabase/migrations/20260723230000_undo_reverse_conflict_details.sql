@@ -215,47 +215,159 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION public.undo_reverse_fund_transfer(uuid, text)
-  RENAME TO undo_reverse_fund_transfer_core;
-
-CREATE OR REPLACE FUNCTION public.undo_reverse_fund_transfer(
-  p_id uuid,
-  p_reason text DEFAULT NULL
-)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+DO $migration$
 DECLARE
-  v_message  text;
-  v_conflict jsonb;
+  v_core_oid        oid;
+  v_endpoint_oid    oid;
+  v_wrapper_oid     oid;
+  v_core_owner      oid;
+  v_core_owner_name text;
+  v_grantee         oid;
+  v_grantee_name    text;
+  v_grantable       boolean;
 BEGIN
-  BEGIN
-    RETURN public.undo_reverse_fund_transfer_core(p_id, p_reason);
-  EXCEPTION WHEN integrity_constraint_violation THEN
-    GET STACKED DIAGNOSTICS v_message = MESSAGE_TEXT;
+  v_core_oid := to_regprocedure(
+    'public.undo_reverse_fund_transfer_core(uuid,text)'
+  );
+  v_endpoint_oid := to_regprocedure(
+    'public.undo_reverse_fund_transfer(uuid,text)'
+  );
 
-    IF v_message LIKE
-       'Cannot undo reversal: the % bank statement line is now linked to another transaction' THEN
-      v_conflict := public.describe_undo_reverse_bank_conflict(p_id);
-      IF v_conflict IS NOT NULL THEN
-        RAISE EXCEPTION '%', v_message
-          USING
-            ERRCODE = 'integrity_constraint_violation',
-            DETAIL = v_conflict::text;
+  IF v_core_oid IS NOT NULL AND v_endpoint_oid IS NOT NULL THEN
+    -- Already migrated. Preserve both implementations and their current ACLs.
+    RAISE NOTICE
+      'Undo Reverse wrapper and core already exist; leaving both unchanged';
+    RETURN;
+  ELSIF v_core_oid IS NULL AND v_endpoint_oid IS NOT NULL THEN
+    -- First execution: renaming preserves the original function OID and ACL.
+    EXECUTE
+      'ALTER FUNCTION public.undo_reverse_fund_transfer(uuid, text) ' ||
+      'RENAME TO undo_reverse_fund_transfer_core';
+    v_core_oid := to_regprocedure(
+      'public.undo_reverse_fund_transfer_core(uuid,text)'
+    );
+  ELSIF v_core_oid IS NULL AND v_endpoint_oid IS NULL THEN
+    -- A database without either prerequisite should remain untouched. A later
+    -- run can complete after the base Undo Reverse migration is installed.
+    RAISE NOTICE
+      'Undo Reverse function and core are both absent; wrapper creation skipped';
+    RETURN;
+  END IF;
+
+  -- At this point the core exists and the public endpoint does not. Create the
+  -- wrapper without replacing any existing implementation.
+  EXECUTE $wrapper$
+    CREATE FUNCTION public.undo_reverse_fund_transfer(
+      p_id uuid,
+      p_reason text DEFAULT NULL
+    )
+    RETURNS uuid
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public
+    AS $undo_wrapper$
+    DECLARE
+      v_message  text;
+      v_conflict jsonb;
+    BEGIN
+      BEGIN
+        RETURN public.undo_reverse_fund_transfer_core(p_id, p_reason);
+      EXCEPTION WHEN integrity_constraint_violation THEN
+        GET STACKED DIAGNOSTICS v_message = MESSAGE_TEXT;
+
+        IF v_message LIKE
+           'Cannot undo reversal: the % bank statement line is now linked to another transaction' THEN
+          v_conflict := public.describe_undo_reverse_bank_conflict(p_id);
+          IF v_conflict IS NOT NULL THEN
+            RAISE EXCEPTION '%', v_message
+              USING
+                ERRCODE = 'integrity_constraint_violation',
+                DETAIL = v_conflict::text;
+          END IF;
+        END IF;
+
+        RAISE;
+      END;
+    END;
+    $undo_wrapper$
+  $wrapper$;
+
+  v_wrapper_oid := to_regprocedure(
+    'public.undo_reverse_fund_transfer(uuid,text)'
+  );
+
+  -- Match the original function owner and effective EXECUTE ACL, including
+  -- grant options. The renamed core itself retains its original OID and ACL.
+  SELECT proowner
+    INTO v_core_owner
+    FROM pg_proc
+   WHERE oid = v_core_oid;
+
+  v_core_owner_name := pg_get_userbyid(v_core_owner);
+  IF v_core_owner_name IS NOT NULL THEN
+    EXECUTE format(
+      'ALTER FUNCTION public.undo_reverse_fund_transfer(uuid, text) OWNER TO %I',
+      v_core_owner_name
+    );
+  END IF;
+
+  -- Remove privileges introduced by CREATE FUNCTION or custom default
+  -- privileges before copying the core's access exactly.
+  FOR v_grantee IN
+    SELECT DISTINCT acl.grantee
+      FROM pg_proc proc
+      CROSS JOIN LATERAL aclexplode(
+        COALESCE(proc.proacl, acldefault('f', proc.proowner))
+      ) acl
+     WHERE proc.oid = v_wrapper_oid
+  LOOP
+    IF v_grantee = 0 THEN
+      EXECUTE
+        'REVOKE ALL ON FUNCTION ' ||
+        'public.undo_reverse_fund_transfer(uuid, text) FROM PUBLIC';
+    ELSE
+      v_grantee_name := pg_get_userbyid(v_grantee);
+      IF v_grantee_name IS NOT NULL THEN
+        EXECUTE format(
+          'REVOKE ALL ON FUNCTION ' ||
+          'public.undo_reverse_fund_transfer(uuid, text) FROM %I',
+          v_grantee_name
+        );
       END IF;
     END IF;
+  END LOOP;
 
-    RAISE;
-  END;
+  FOR v_grantee, v_grantable IN
+    SELECT acl.grantee, bool_or(acl.is_grantable)
+      FROM pg_proc proc
+      CROSS JOIN LATERAL aclexplode(
+        COALESCE(proc.proacl, acldefault('f', proc.proowner))
+      ) acl
+     WHERE proc.oid = v_core_oid
+       AND acl.privilege_type = 'EXECUTE'
+     GROUP BY acl.grantee
+  LOOP
+    IF v_grantee = 0 THEN
+      EXECUTE
+        'GRANT EXECUTE ON FUNCTION ' ||
+        'public.undo_reverse_fund_transfer(uuid, text) TO PUBLIC' ||
+        CASE WHEN v_grantable THEN ' WITH GRANT OPTION' ELSE '' END;
+    ELSE
+      v_grantee_name := pg_get_userbyid(v_grantee);
+      IF v_grantee_name IS NOT NULL THEN
+        EXECUTE format(
+          'GRANT EXECUTE ON FUNCTION ' ||
+          'public.undo_reverse_fund_transfer(uuid, text) TO %I%s',
+          v_grantee_name,
+          CASE WHEN v_grantable THEN ' WITH GRANT OPTION' ELSE '' END
+        );
+      END IF;
+    END IF;
+  END LOOP;
 END;
-$$;
+$migration$;
 
-REVOKE ALL ON FUNCTION public.undo_reverse_fund_transfer_core(uuid, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.describe_undo_reverse_bank_conflict(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.prevent_multiple_bank_line_document_owners() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.undo_reverse_fund_transfer(uuid, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.undo_reverse_fund_transfer(uuid, text) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
