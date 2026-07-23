@@ -5,7 +5,7 @@ import { showConfirm } from '../ConfirmDialog';
 import { Modal } from '../Modal';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
-import { SapRow, SapField, SAP_INPUT } from './SapLayout';
+import { SapField, SAP_INPUT } from './SapLayout';
 import { SearchableSelect } from '../SearchableSelect';
 import { FileUpload } from '../FileUpload';
 import { showToast } from '../ToastNotification';
@@ -756,131 +756,140 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
           </>
         }
       >
-        <form id="purchase-invoice-form" onSubmit={handleSubmit} className="flex flex-col gap-1.5">
-          {/* Header — SAP B1 layout */}
-          <SapRow>
-            <SapField label="Supplier" required span={8}
-              right={selectedSupplier?.npwp ? <span className="text-[9px] text-gray-500">NPWP: {selectedSupplier.npwp}</span> : null}>
+        <form id="purchase-invoice-form" onSubmit={handleSubmit} className="flex flex-col gap-2">
+          {/* Supplier needs the working width; currency is intentionally compact. */}
+          <div className="grid grid-cols-[minmax(0,7fr)_minmax(110px,3fr)] gap-2">
+            <div>
+              <label className="mb-0.5 flex items-center justify-between text-xs font-medium text-gray-700">
+                <span>Supplier <span className="text-red-500">*</span></span>
+                {selectedSupplier?.npwp && <span className="text-[9px] text-gray-500">NPWP: {selectedSupplier.npwp}</span>}
+              </label>
               <SearchableSelect
                 value={formData.supplier_id}
                 onChange={(val) => setFormData({ ...formData, supplier_id: val })}
                 options={suppliers.map(s => ({ value: s.id, label: `${s.company_name}${s.pkp_status ? ' (PKP)' : ''}` }))}
                 placeholder="Select Supplier"
               />
-            </SapField>
-            <SapField label="Currency" required span={4}>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-0.5">
+                Currency <span className="text-red-500">*</span>
+              </label>
               <select value={formData.currency}
                 onChange={(e) => setFormData({ ...formData, currency: e.target.value, exchange_rate: e.target.value === 'IDR' ? 1 : formData.exchange_rate })}
                 className={SAP_INPUT}>
                 <option value="IDR">IDR</option>
                 <option value="USD">USD</option>
               </select>
-            </SapField>
-          </SapRow>
-
-          <SapRow>
-            <SapField label="Invoice #" required span={4}>
-              <input type="text" value={formData.invoice_number}
-                onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
-                required placeholder="INV-001" className={SAP_INPUT} />
-            </SapField>
-            <SapField label="Inv Date" required span={4}>
-              <input type="date" value={formData.invoice_date}
-                onChange={(e) => setFormData({ ...formData, invoice_date: e.target.value })}
-                required className={SAP_INPUT} />
-            </SapField>
-            <SapField label="Due Date" span={4}>
-              <input type="date" value={formData.due_date}
-                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                className={SAP_INPUT} />
-            </SapField>
-          </SapRow>
-
-          {formData.currency === 'USD' && (
-            <SapRow>
-              <SapField label="Rate (USD)" required span={4}>
-                <input type="number" value={formData.exchange_rate}
-                  onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 1 })}
-                  min="1" step="0.01" required placeholder="15750"
-                  className={SAP_INPUT + ' !text-right !font-mono'} />
-              </SapField>
-            </SapRow>
-          )}
-
-          {selectedSupplier?.pkp_status && (
-            <SapRow>
-              <SapField label="Faktur Pajak" span={12}>
-                <input type="text" value={formData.faktur_pajak_number}
-                  onChange={(e) => setFormData({ ...formData, faktur_pajak_number: e.target.value })}
-                  placeholder="010.000-00.00000000" className={SAP_INPUT + ' !font-mono'} />
-              </SapField>
-            </SapRow>
-          )}
-
-          <SapRow>
-            <SapField label="Notes" span={12}>
-              <input type="text" value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className={SAP_INPUT} placeholder="Supplier invoice notes..." />
-            </SapField>
-          </SapRow>
-
-          {/* Attachments — kept as-is, but wrapped tight */}
-          <div>
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-              Attachments
             </div>
-            <FileUpload
-              onUpload={handleFileUpload}
-              accept=".pdf,.jpg,.jpeg,.png"
-              multiple
-              disabled={uploading}
-            />
-            {formData.document_urls.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {formData.document_urls.map((url, index) => (
-                  <span key={index} className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded px-2 py-0.5 text-[11px] text-gray-600">
-                    {url.split('/').pop()}
-                    <button type="button" onClick={() => handleRemoveDocument(index)} className="text-red-600 hover:text-red-800">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)] gap-3 items-start">
+            <div className="grid grid-cols-12 gap-2">
+              <SapField label="Invoice #" required span={4}>
+                <input type="text" value={formData.invoice_number}
+                  onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
+                  required placeholder="INV-001" className={SAP_INPUT} />
+              </SapField>
+              <SapField label="Inv Date" required span={4}>
+                <input type="date" value={formData.invoice_date}
+                  onChange={(e) => setFormData({ ...formData, invoice_date: e.target.value })}
+                  required className={SAP_INPUT} />
+              </SapField>
+              <SapField label="Due Date" span={4}>
+                <input type="date" value={formData.due_date}
+                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                  className={SAP_INPUT} />
+              </SapField>
+
+              {formData.currency === 'USD' && (
+                <SapField label="Rate (USD)" required span={4}>
+                  <input type="number" value={formData.exchange_rate}
+                    onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 1 })}
+                    min="1" step="0.01" required placeholder="15750"
+                    className={SAP_INPUT + ' !text-right !font-mono'} />
+                </SapField>
+              )}
+
+              {selectedSupplier?.pkp_status && (
+                <SapField label="Faktur Pajak" span={formData.currency === 'USD' ? 8 : 12}>
+                  <input type="text" value={formData.faktur_pajak_number}
+                    onChange={(e) => setFormData({ ...formData, faktur_pajak_number: e.target.value })}
+                    placeholder="010.000-00.00000000" className={SAP_INPUT + ' !font-mono'} />
+                </SapField>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-0.5">Notes</label>
+                <input type="text" value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className={SAP_INPUT} placeholder="Supplier invoice notes..." />
               </div>
-            )}
+              <div>
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-xs font-medium text-gray-700">Attachments</span>
+                  {formData.document_urls.length > 0 && (
+                    <span className="text-[10px] text-gray-400">{formData.document_urls.length} file(s)</span>
+                  )}
+                </div>
+                <FileUpload
+                  compact
+                  disabled={uploading}
+                  onUpload={handleFileUpload}
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  multiple
+                />
+                {formData.document_urls.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {formData.document_urls.map((url, index) => (
+                      <span key={index} className="inline-flex max-w-full items-center gap-1 bg-green-50 border border-green-200 rounded px-1.5 py-0.5 text-[10px] text-green-700">
+                        <FileText className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{url.split('/').pop()}</span>
+                        <button type="button" onClick={() => handleRemoveDocument(index)} className="p-0.5 text-red-600 hover:bg-red-50 rounded shrink-0" title="Remove attachment">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Line Items Section */}
-          <div className="border-t pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-gray-900">Line Items</h3>
+          <div className="border-t pt-2">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wide">Line Items</h3>
               <button
                 type="button"
                 onClick={handleAddLine}
-                className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                className="inline-flex items-center gap-1 h-7 px-2 text-xs font-semibold bg-blue-600 text-white rounded hover:bg-blue-700"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 Add Line
               </button>
             </div>
 
-            <div className="space-y-4 max-h-96 overflow-y-auto">
+            <div className="space-y-2 max-h-[46vh] overflow-y-auto pr-1">
               {lineItems.map((item, index) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-4 space-y-2">
-                  <div className="flex items-start justify-between">
-                    <span className="text-sm font-medium text-gray-700">Line {index + 1}</span>
+                <div key={index} className="border border-gray-200 rounded p-2 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Line {index + 1}</span>
                     {lineItems.length > 1 && (
                       <button
                         type="button"
                         onClick={() => handleRemoveLine(index)}
-                        className="text-red-600 hover:text-red-800"
+                        className="p-0.5 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                        title="Remove line"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-3 gap-2">
                     <div>
                       <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         Type *
@@ -888,7 +897,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       <select
                         value={item.item_type}
                         onChange={(e) => handleLineChange(index, 'item_type', e.target.value)}
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                       >
                         <option value="inventory">Inventory (Stock)</option>
                         <option value="fixed_asset">Fixed Asset</option>
@@ -909,7 +918,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                         <select
                           value={item.product_id || ''}
                           onChange={(e) => handleLineChange(index, 'product_id', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                         >
                           <option value="">Select Product</option>
                           {products.map((product) => (
@@ -927,7 +936,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                         <select
                           value={item.expense_account_id || ''}
                           onChange={(e) => handleLineChange(index, 'expense_account_id', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                         >
                           <option value="">Select Account</option>
                           {accounts.filter(a => a.account_type === 'Expense' || a.account_type === 'expense' || a.account_type === 'Cost of Goods Sold' || a.account_type === 'cost_of_goods_sold').map((account) => (
@@ -945,7 +954,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                         <select
                           value={item.asset_account_id || ''}
                           onChange={(e) => handleLineChange(index, 'asset_account_id', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                         >
                           <option value="">Select Account</option>
                           {accounts.filter(a => a.account_type === 'Asset' || a.account_type === 'asset').map((account) => (
@@ -963,7 +972,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                         <select
                           value={item.expense_account_id || ''}
                           onChange={(e) => handleLineChange(index, 'expense_account_id', e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                         >
                           <option value="">Capitalize to Inventory (Default)</option>
                           {accounts.filter(a => a.account_type === 'Expense' || a.account_type === 'expense' || a.account_type === 'Cost of Goods Sold' || a.account_type === 'cost_of_goods_sold').map((account) => (
@@ -985,11 +994,11 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       value={item.description}
                       onChange={(e) => handleLineChange(index, 'description', e.target.value)}
                       placeholder="Item description"
-                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                     />
                   </div>
 
-                  <div className="grid grid-cols-5 gap-3">
+                  <div className="grid grid-cols-4 gap-2">
                     <div>
                       <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         Qty *
@@ -1000,7 +1009,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                         onChange={(e) => handleLineChange(index, 'quantity', parseFloat(e.target.value) || 0)}
                         min="0"
                         step="0.01"
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                       />
                     </div>
                     <div>
@@ -1012,7 +1021,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                         value={item.unit}
                         onChange={(e) => handleLineChange(index, 'unit', e.target.value)}
                         placeholder="pcs"
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                       />
                     </div>
                     <div>
@@ -1029,7 +1038,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                           handleLineChange(index, 'unit_price', Number.isFinite(val) ? val : 0);
                         }}
                         placeholder="0.00"
-                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                       />
                     </div>
                     <div>
@@ -1040,7 +1049,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                         type="text"
                         value={item.line_total.toLocaleString()}
                         readOnly
-                        className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded bg-gray-50 font-medium"
+                        className="w-full px-2 py-1 text-xs border border-gray-200 rounded bg-gray-50 font-medium text-right"
                       />
                     </div>
                   </div>
@@ -1049,12 +1058,12 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
             </div>
 
             {/* Invoice-level Tax Footer */}
-            <div className="mt-6 border-t pt-4 space-y-2">
-              <div className="flex justify-between text-sm">
+            <div className="mt-3 border-t pt-2 ml-auto w-full max-w-sm space-y-1">
+              <div className="flex justify-between text-xs">
                 <span className="text-gray-600">Subtotal:</span>
                 <span className="font-medium">{formData.currency} {totals.subtotal.toLocaleString()}</span>
               </div>
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <span className="text-gray-600">PPN:</span>
                   <select
@@ -1068,7 +1077,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                 </div>
                 <span className="font-medium">{formData.currency} {totals.ppnAmount.toLocaleString()}</span>
               </div>
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-600">Bea Meterai:</span>
                 <input
                   type="number"
@@ -1077,15 +1086,15 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                   value={stampDutyAmount === 0 ? '' : stampDutyAmount}
                   onChange={(e) => setStampDutyAmount(parseFloat(e.target.value) || 0)}
                   placeholder="0"
-                  className="w-32 text-right px-2 py-0.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                  className="w-28 text-right px-2 py-0.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                 />
               </div>
-              <div className="flex justify-between text-lg font-bold border-t pt-2">
+              <div className="flex justify-between text-sm font-bold border-t pt-1.5">
                 <span>Total:</span>
                 <span className="text-blue-600">{formData.currency} {totals.total.toLocaleString()}</span>
               </div>
               {formData.currency === 'USD' && formData.exchange_rate > 1 && (
-                <div className="flex justify-between text-sm text-gray-500">
+                <div className="flex justify-between text-xs text-gray-500">
                   <span>Equivalent (IDR):</span>
                   <span>IDR {(totals.total * formData.exchange_rate).toLocaleString()}</span>
                 </div>

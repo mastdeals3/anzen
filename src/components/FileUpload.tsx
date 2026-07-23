@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, X, File, FileText, Image as ImageIcon, AlertCircle, Clipboard } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -17,7 +17,11 @@ interface FileUploadProps {
   batchId?: string;
   existingFiles?: UploadedFile[];
   onFilesChange?: (files: UploadedFile[]) => void;
+  onUpload?: (files: File[]) => void | Promise<void>;
   disabled?: boolean;
+  accept?: string;
+  multiple?: boolean;
+  compact?: boolean;
 }
 
 const ALLOWED_FILE_TYPES = [
@@ -41,7 +45,16 @@ const DOCUMENT_TYPES = [
   { value: 'other', label: 'Other' },
 ];
 
-export function FileUpload({ batchId, existingFiles = [], onFilesChange, disabled = false }: FileUploadProps) {
+export function FileUpload({
+  batchId,
+  existingFiles = [],
+  onFilesChange,
+  onUpload,
+  disabled = false,
+  accept = '.pdf,.jpg,.jpeg,.png,.xlsx,.xls,.docx,.doc',
+  multiple = true,
+  compact = false,
+}: FileUploadProps) {
   const [files, setFiles] = useState<UploadedFile[]>(existingFiles);
   const [isDragging, setIsDragging] = useState(false);
   const [showPasteHint, setShowPasteHint] = useState(false);
@@ -52,6 +65,51 @@ export function FileUpload({ batchId, existingFiles = [], onFilesChange, disable
     setFiles(newFiles);
     onFilesChange?.(newFiles);
   };
+
+  const handleMouseEnter = () => {
+    if (!disabled) {
+      setShowPasteHint(true);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setShowPasteHint(false);
+  };
+
+  const handleFileSelect = useCallback((selectedFiles: FileList | null) => {
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
+    const newFiles: UploadedFile[] = [];
+
+    Array.from(selectedFiles).forEach((file) => {
+      if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+        alert(`File ${file.name} is not a supported format. Please upload PDF, JPG, PNG, XLSX, or DOCX files.`);
+        return;
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`File ${file.name} exceeds the 10MB size limit.`);
+        return;
+      }
+
+      newFiles.push({
+        file,
+        file_name: file.name,
+        file_type: 'other',
+        file_size: file.size,
+        uploading: false,
+      });
+    });
+
+    if (onUpload) {
+      void onUpload(newFiles.flatMap((item) => item.file ? [item.file] : []));
+      return;
+    }
+
+    const nextFiles = [...files, ...newFiles];
+    setFiles(nextFiles);
+    onFilesChange?.(nextFiles);
+  }, [files, onFilesChange, onUpload]);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -88,45 +146,7 @@ export function FileUpload({ batchId, existingFiles = [], onFilesChange, disable
 
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [disabled, files]);
-
-  const handleMouseEnter = () => {
-    if (!disabled) {
-      setShowPasteHint(true);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setShowPasteHint(false);
-  };
-
-  const handleFileSelect = (selectedFiles: FileList | null) => {
-    if (!selectedFiles || selectedFiles.length === 0) return;
-
-    const newFiles: UploadedFile[] = [];
-
-    Array.from(selectedFiles).forEach((file) => {
-      if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-        alert(`File ${file.name} is not a supported format. Please upload PDF, JPG, PNG, XLSX, or DOCX files.`);
-        return;
-      }
-
-      if (file.size > MAX_FILE_SIZE) {
-        alert(`File ${file.name} exceeds the 10MB size limit.`);
-        return;
-      }
-
-      newFiles.push({
-        file,
-        file_name: file.name,
-        file_type: 'other',
-        file_size: file.size,
-        uploading: false,
-      });
-    });
-
-    updateFiles([...files, ...newFiles]);
-  };
+  }, [disabled, handleFileSelect]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -199,6 +219,51 @@ export function FileUpload({ batchId, existingFiles = [], onFilesChange, disable
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
+  const compactFormatHint = /doc|xls/i.test(accept)
+    ? 'PDF, images, Office files · max 10MB'
+    : 'PDF, JPG, PNG · max 10MB';
+
+  if (compact) {
+    return (
+      <div
+        ref={dropZoneRef}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onClick={() => !disabled && fileInputRef.current?.click()}
+        className={`min-h-12 border border-dashed rounded px-3 py-2 flex items-center gap-2 transition-colors ${
+          isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-gray-400 hover:bg-white'
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+      >
+        <Upload className={`w-4 h-4 shrink-0 ${isDragging ? 'text-blue-600' : 'text-gray-400'}`} />
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-gray-700">
+            <span className="font-medium text-blue-600">{disabled ? 'Uploading...' : 'Upload files'}</span>
+            <span className="text-gray-400"> or drag and drop</span>
+          </div>
+          <div className="text-[10px] text-gray-400">{compactFormatHint}</div>
+        </div>
+        <div className={`shrink-0 flex items-center gap-1 text-[10px] ${showPasteHint ? 'text-green-600' : 'text-gray-400'}`}>
+          <Clipboard className="w-3 h-3" />
+          Ctrl+V
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple={multiple}
+          accept={accept}
+          onChange={(event) => {
+            handleFileSelect(event.target.files);
+            event.target.value = '';
+          }}
+          className="hidden"
+          disabled={disabled}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -234,8 +299,8 @@ export function FileUpload({ batchId, existingFiles = [], onFilesChange, disable
         <input
           ref={fileInputRef}
           type="file"
-          multiple
-          accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.docx,.doc"
+          multiple={multiple}
+          accept={accept}
           onChange={(e) => handleFileSelect(e.target.files)}
           className="hidden"
           disabled={disabled}
