@@ -1885,10 +1885,19 @@ export function BankReconciliationEnhanced({
         alert(`Receipt Voucher ${voucherNum} created${allocCount > 0 ? ` and allocated to ${allocCount} invoice(s)` : ''}`);
       } else {
         const rpcReceiptType = NON_CUSTOMER_RECEIPT_RPC_TYPES[type];
+        console.log('[BankRecon] handleRecordReceipt non-customer path', {
+          type,
+          rpcReceiptType,
+          lineId: line.id,
+        });
         if (!rpcReceiptType) {
           throw new Error(`Unsupported non-customer receipt type: ${type}`);
         }
 
+        console.log('[BankRecon] Calling record_non_customer_bank_receipt', {
+          p_bank_statement_line_id: line.id,
+          p_receipt_type: rpcReceiptType,
+        });
         const { data, error } = await supabase.rpc('record_non_customer_bank_receipt', {
           p_bank_statement_line_id: line.id,
           p_receipt_type: rpcReceiptType,
@@ -1897,6 +1906,7 @@ export function BankReconciliationEnhanced({
         if (error) throw error;
 
         const result = data as { entry_number?: string; reused?: boolean } | null;
+        console.log('[BankRecon] record_non_customer_bank_receipt succeeded', result);
         alert(
           result?.reused
             ? `Journal Entry ${result.entry_number || ''} linked successfully`
@@ -2054,9 +2064,78 @@ export function BankReconciliationEnhanced({
   };
 
   const handleLinkJournalEntry = async (line: StatementLine, journalId: string) => {
+    console.log('[BankRecon] handleLinkJournalEntry invoked', { lineId: line.id, journalId });
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+
+      // Fetch the JE to determine its source_module and whether it is a
+      // non-customer receipt type that must go through record_non_customer_bank_receipt.
+      const { data: je } = await supabase
+        .from('journal_entries')
+        .select('id, source_module, reference_id, reference_number, description, entry_number')
+        .eq('id', journalId)
+        .maybeSingle();
+
+      if (!je) throw new Error('Journal entry not found');
+
+      // If this JE was already created by bank_reconciliation (source_module =
+      // 'bank_reconciliation'), it is a non-customer receipt JE. The DB
+      // constraint (error 23514) blocks direct matched_entry_id writes for
+      // these — we must route through record_non_customer_bank_receipt so the
+      // RPC performs the link inside SECURITY DEFINER with the proper checks.
+      //
+      // For JEs from other supported modules (expenses, receipt, fund_transfers,
+      // petty_cash, payment), the direct update is still permitted because
+      // those have their own typed FK columns.
+      const isBankReconJE = je.source_module === 'bank_reconciliation';
+
+      if (isBankReconJE) {
+        // Infer the receipt type from the JE description/reference_number.
+        // The RPC's mapping table uses these keys: capital, loan, bank_interest,
+        // other_income, misc_income, refund.
+        const desc = (je.description || '').toLowerCase();
+        let rpcReceiptType = 'other_income'; // fallback
+        if (desc.includes('capital')) rpcReceiptType = 'capital';
+        else if (desc.includes('loan') || desc.includes('director') || desc.includes('owner')) rpcReceiptType = 'loan';
+        else if (desc.includes('bank interest') || desc.includes('interest')) rpcReceiptType = 'bank_interest';
+        else if (desc.includes('misc')) rpcReceiptType = 'misc_income';
+        else if (desc.includes('refund')) rpcReceiptType = 'refund';
+
+        console.log('[BankRecon] Routing through record_non_customer_bank_receipt', {
+          receiptType: rpcReceiptType,
+          jeSourceModule: je.source_module,
+          jeDescription: je.description,
+        });
+
+        const { data, error } = await supabase.rpc('record_non_customer_bank_receipt', {
+          p_bank_statement_line_id: line.id,
+          p_receipt_type: rpcReceiptType,
+          p_description: je.description || line.description,
+        });
+
+        if (error) {
+          console.error('[BankRecon] record_non_customer_bank_receipt failed', error);
+          throw error;
+        }
+
+        const result = data as { entry_number?: string; reused?: boolean } | null;
+        console.log('[BankRecon] record_non_customer_bank_receipt succeeded', result);
+
+        setRecordModal(false);
+        setRecordingLine(null);
+        setLinkJournalEntry(false);
+        setAvailableJournals([]);
+        loadStatementLines();
+        alert(
+          result?.reused
+            ? `Journal Entry ${result.entry_number || ''} linked successfully`
+            : `Journal Entry ${result?.entry_number || ''} created and linked successfully`,
+        );
+        return;
+      }
+
+      console.log('[BankRecon] Using legacy direct-link path for source_module:', je.source_module);
 
       // Best-effort: also populate the typed FK so display can resolve directly
       // without needing to re-hop through journal_entries.
@@ -2068,21 +2147,16 @@ export function BankReconciliationEnhanced({
         manually_unlinked: false,
       };
       try {
-        const { data: je } = await supabase
-          .from('journal_entries')
-          .select('source_module, reference_id, reference_number')
-          .eq('id', journalId)
-          .maybeSingle();
-        if (je?.source_module === 'expenses' && je.reference_number) {
+        if (je.source_module === 'expenses' && je.reference_number) {
           updateData.matched_expense_id = je.reference_number.replace('EXP-', '');
-        } else if (je?.source_module === 'receipt') {
+        } else if (je.source_module === 'receipt') {
           const { data: rv } = await supabase
             .from('receipt_vouchers')
             .select('id').eq('journal_entry_id', journalId).maybeSingle();
           if (rv?.id) updateData.matched_receipt_id = rv.id;
-        } else if (je?.source_module === 'fund_transfers' && je.reference_id) {
+        } else if (je.source_module === 'fund_transfers' && je.reference_id) {
           updateData.matched_fund_transfer_id = je.reference_id;
-        } else if (je?.source_module === 'petty_cash' && je.reference_id) {
+        } else if (je.source_module === 'petty_cash' && je.reference_id) {
           updateData.matched_petty_cash_id = je.reference_id;
         }
       } catch { /* best-effort typed FK enrichment */ }
@@ -2101,7 +2175,7 @@ export function BankReconciliationEnhanced({
       loadStatementLines();
       alert('Successfully linked to journal entry');
     } catch (error: any) {
-      console.error('Error linking journal:', error);
+      console.error('[BankRecon] Error linking journal:', error);
       alert('Error: ' + error.message);
     }
   };
