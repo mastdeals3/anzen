@@ -174,8 +174,10 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
       // Get opening balance (all transactions before start date)
       const { data: openingData, error: openingError } = await supabase
         .from('journal_entry_lines')
-        .select('debit, credit, journal_entries!inner(entry_date)')
+        .select('debit, credit, journal_entries!inner(entry_date, is_posted, is_reversed)')
         .eq('account_id', selectedAccount.id)
+        .eq('journal_entries.is_posted', true)
+        .eq('journal_entries.is_reversed', false)
         .lt('journal_entries.entry_date', dateRange.startDate);
 
       if (openingError) throw openingError;
@@ -201,10 +203,14 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
             entry_number,
             entry_date,
             source_module,
-            reference_number
+            reference_number,
+            is_posted,
+            is_reversed
           )
         `)
         .eq('account_id', selectedAccount.id)
+        .eq('journal_entries.is_posted', true)
+        .eq('journal_entries.is_reversed', false)
         .gte('journal_entries.entry_date', dateRange.startDate)
         .lte('journal_entries.entry_date', dateRange.endDate)
         .order('line_number');

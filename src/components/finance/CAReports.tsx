@@ -144,6 +144,8 @@ export function CAReports() {
     const { data: entries } = await supabase
       .from('journal_entries')
       .select('id, entry_date, entry_number, source_module')
+      .eq('is_posted', true)
+      .eq('is_reversed', false)
       .gte('entry_date', dateRange.from)
       .lte('entry_date', dateRange.to)
       .order('entry_date', { ascending: true });
@@ -207,6 +209,8 @@ export function CAReports() {
     const { data: entries } = await supabase
       .from('journal_entries')
       .select('id, entry_date, entry_number, source_module, reference_number')
+      .eq('is_posted', true)
+      .eq('is_reversed', false)
       .gte('entry_date', dateRange.from)
       .lte('entry_date', dateRange.to)
       .order('entry_date', { ascending: true });
@@ -473,6 +477,8 @@ export function CAReports() {
     const { data: entries } = await supabase
       .from('journal_entries')
       .select('id, entry_date, entry_number, source_module')
+      .eq('is_posted', true)
+      .eq('is_reversed', false)
       .gte('entry_date', dateRange.from)
       .lte('entry_date', dateRange.to);
 
@@ -517,6 +523,8 @@ export function CAReports() {
     const { data: entries } = await supabase
       .from('journal_entries')
       .select('id')
+      .eq('is_posted', true)
+      .eq('is_reversed', false)
       .gte('entry_date', dateRange.from)
       .lte('entry_date', dateRange.to);
 

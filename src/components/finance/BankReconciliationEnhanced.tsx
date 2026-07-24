@@ -115,6 +115,16 @@ interface BankReconciliationEnhancedProps {
   onInitialFocusHandled?: () => void;
 }
 
+const NON_CUSTOMER_RECEIPT_RPC_TYPES: Record<string, string> = {
+  capital: 'capital',
+  loan: 'loan',
+  loan_director_owner: 'loan',
+  bank_interest: 'bank_interest',
+  other_income: 'other_income',
+  misc_income: 'misc_income',
+  refund: 'refund',
+};
+
 export function BankReconciliationEnhanced({
   canManage,
   initialBankAccountId,
@@ -1874,9 +1884,14 @@ export function BankReconciliationEnhanced({
         const allocCount = Object.values(receiptAllocations).filter(a => a > 0).length;
         alert(`Receipt Voucher ${voucherNum} created${allocCount > 0 ? ` and allocated to ${allocCount} invoice(s)` : ''}`);
       } else {
+        const rpcReceiptType = NON_CUSTOMER_RECEIPT_RPC_TYPES[type];
+        if (!rpcReceiptType) {
+          throw new Error(`Unsupported non-customer receipt type: ${type}`);
+        }
+
         const { data, error } = await supabase.rpc('record_non_customer_bank_receipt', {
           p_bank_statement_line_id: line.id,
-          p_receipt_type: type,
+          p_receipt_type: rpcReceiptType,
           p_description: description || line.description,
         });
         if (error) throw error;
@@ -3692,6 +3707,7 @@ export function BankReconciliationEnhanced({
                         <option value="customer_payment">Customer Payment</option>
                         <option value="capital">Capital Injection</option>
                         <option value="loan">Loan Received</option>
+                        <option value="loan_director_owner">Loan from Director/Owner</option>
                         <option value="bank_interest">Bank Interest</option>
                         <option value="other_income">Other Income</option>
                         <option value="misc_income">Miscellaneous Income</option>
