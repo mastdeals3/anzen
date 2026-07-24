@@ -2091,20 +2091,74 @@ export function BankReconciliationEnhanced({
       const isBankReconJE = je.source_module === 'bank_reconciliation';
 
       if (isBankReconJE) {
-        // Infer the receipt type from the JE description/reference_number.
-        // The RPC's mapping table uses these keys: capital, loan, bank_interest,
-        // other_income, misc_income, refund.
-        const desc = (je.description || '').toLowerCase();
-        let rpcReceiptType = 'other_income'; // fallback
-        if (desc.includes('capital')) rpcReceiptType = 'capital';
-        else if (desc.includes('loan') || desc.includes('director') || desc.includes('owner')) rpcReceiptType = 'loan';
-        else if (desc.includes('bank interest') || desc.includes('interest')) rpcReceiptType = 'bank_interest';
-        else if (desc.includes('misc')) rpcReceiptType = 'misc_income';
-        else if (desc.includes('refund')) rpcReceiptType = 'refund';
+        // Determine the receipt type using structured metadata first, then
+        // fall back to description-based inference.
+        //
+        // Primary signal: the counter-account code on the JE's credit line.
+        // The RPC's mapping table uses these account codes:
+        //   3100 -> capital, 2210 -> loan, 4920 -> bank_interest,
+        //   4900 -> other_income / refund, 4910 -> misc_income
+        //
+        // Fallback: infer from the JE description when the account code
+        // cannot be resolved (e.g. legacy JEs with missing lines).
+        const ACCOUNT_CODE_TO_RECEIPT_TYPE: Record<string, string> = {
+          '3100': 'capital',
+          '2210': 'loan',
+          '4920': 'bank_interest',
+          '4900': 'other_income',
+          '4910': 'misc_income',
+        };
+
+        let rpcReceiptType: string | null = null;
+        let structuredSource = 'none';
+
+        // 1. Try the credit-side counter-account code (structured).
+        try {
+          const { data: creditLines } = await supabase
+            .from('journal_entry_lines')
+            .select('account_id, debit, credit')
+            .eq('journal_entry_id', journalId)
+            .gt('credit', 0);
+
+          if (creditLines && creditLines.length > 0) {
+            const creditAccountIds = creditLines.map((l: any) => l.account_id);
+            const { data: accounts } = await supabase
+              .from('chart_of_accounts')
+              .select('id, code')
+              .in('id', creditAccountIds);
+
+            if (accounts && accounts.length > 0) {
+              for (const acc of accounts) {
+                const mapped = ACCOUNT_CODE_TO_RECEIPT_TYPE[acc.code];
+                if (mapped) {
+                  rpcReceiptType = mapped;
+                  structuredSource = `account_code:${acc.code}`;
+                  break;
+                }
+              }
+            }
+          }
+        } catch (accErr) {
+          console.warn('[BankRecon] Could not resolve counter-account code', accErr);
+        }
+
+        // 2. Fallback: infer from the JE description.
+        if (!rpcReceiptType) {
+          const desc = (je.description || '').toLowerCase();
+          if (desc.includes('capital')) rpcReceiptType = 'capital';
+          else if (desc.includes('loan') || desc.includes('director') || desc.includes('owner')) rpcReceiptType = 'loan';
+          else if (desc.includes('bank interest') || desc.includes('interest')) rpcReceiptType = 'bank_interest';
+          else if (desc.includes('misc')) rpcReceiptType = 'misc_income';
+          else if (desc.includes('refund')) rpcReceiptType = 'refund';
+          else rpcReceiptType = 'other_income';
+          structuredSource = 'description_fallback';
+        }
 
         console.log('[BankRecon] Routing through record_non_customer_bank_receipt', {
           receiptType: rpcReceiptType,
+          structuredSource,
           jeSourceModule: je.source_module,
+          jeReferenceNumber: je.reference_number,
           jeDescription: je.description,
         });
 
