@@ -9,7 +9,10 @@ import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChann
 import { getFinancialYear } from '../../utils/dateFormat';
 import { moduleExpenseCategories } from './expenseCategories';
 import { calculateExpenseTotals } from '../../utils/taxCalculations';
-import { FINANCE_RECONCILIATION_REFRESH_EVENT } from './bankTransactionLinking';
+import {
+  FINANCE_RECONCILIATION_REFRESH_EVENT,
+  notifyFinanceReconciliationRefresh,
+} from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
 
 interface OutstandingBill {
@@ -155,10 +158,13 @@ export function BankReconciliationEnhanced({
   const [deletePreview, setDeletePreview] = useState<any>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [customers, setCustomers] = useState<Array<{ id: string; company_name: string }>>([]);
+  const [receiptType, setReceiptType] = useState('');
   const [receiptCustomerId, setReceiptCustomerId] = useState('');
   const [receiptInvoices, setReceiptInvoices] = useState<any[]>([]);
   const [receiptAllocations, setReceiptAllocations] = useState<{[invoiceId: string]: number}>({});
   const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const [recordingReceipt, setRecordingReceipt] = useState(false);
+  const recordingReceiptRef = useRef(false);
   const [existingReceipts, setExistingReceipts] = useState<any[]>([]);
   const [linkExistingReceipt, setLinkExistingReceipt] = useState(false);
   const [linkJournalEntry, setLinkJournalEntry] = useState(false);
@@ -1609,6 +1615,10 @@ export function BankReconciliationEnhanced({
 
   const openRecordModal = (line: StatementLine) => {
     setRecordingLine(line);
+    setReceiptType('');
+    setReceiptCustomerId('');
+    setReceiptInvoices([]);
+    setReceiptAllocations({});
     setRecordModal(true);
   };
 
@@ -1789,6 +1799,9 @@ export function BankReconciliationEnhanced({
   };
 
   const handleRecordReceipt = async (line: StatementLine, type: string, customerId: string, description: string) => {
+    if (recordingReceiptRef.current) return;
+    recordingReceiptRef.current = true;
+    setRecordingReceipt(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -1819,32 +1832,37 @@ export function BankReconciliationEnhanced({
 
         for (const [invoiceId, amount] of Object.entries(receiptAllocations)) {
           if (amount <= 0) continue;
-          await supabase.from('voucher_allocations').insert({
+          const { error: allocationError } = await supabase.from('voucher_allocations').insert({
             voucher_type: 'receipt',
             receipt_voucher_id: receipt.id,
             sales_invoice_id: invoiceId,
             allocated_amount: amount,
           });
+          if (allocationError) throw allocationError;
         }
 
-        // Read back the JE the receipt-voucher post trigger just created.
-        // Best-effort: if the trigger hasn't run yet we still have the typed FK.
-        let matchedEntryId: string | null = null;
-        try {
-          const { data: rv } = await supabase
-            .from('receipt_vouchers')
-            .select('journal_entry_id')
-            .eq('id', receipt.id)
-            .maybeSingle();
-          matchedEntryId = rv?.journal_entry_id ?? null;
-        } catch { /* soft */ }
+        const { error: postError } = await supabase.rpc('post_receipt_voucher', {
+          p_rv_id: receipt.id,
+          p_posted_by: user.id,
+        });
+        if (postError) throw postError;
+
+        const { data: postedReceipt, error: postedReceiptError } = await supabase
+          .from('receipt_vouchers')
+          .select('journal_entry_id')
+          .eq('id', receipt.id)
+          .single();
+        if (postedReceiptError) throw postedReceiptError;
+        if (!postedReceipt.journal_entry_id) {
+          throw new Error('Receipt Voucher posting did not create a Journal Entry');
+        }
 
         const { error: updateError } = await supabase
           .from('bank_statement_lines')
           .update({
             reconciliation_status: 'recorded',
             matched_receipt_id: receipt.id,
-            matched_entry_id: matchedEntryId,
+            matched_entry_id: postedReceipt.journal_entry_id,
             matched_at: new Date().toISOString(),
             matched_by: user.id,
             manually_unlinked: false,
@@ -1856,24 +1874,36 @@ export function BankReconciliationEnhanced({
         const allocCount = Object.values(receiptAllocations).filter(a => a > 0).length;
         alert(`Receipt Voucher ${voucherNum} created${allocCount > 0 ? ` and allocated to ${allocCount} invoice(s)` : ''}`);
       } else {
-        // "Other" receipt path used to write status='recorded' with only a
-        // freeform note and no FK — producing orphaned "Recorded" rows that
-        // display as "⚠️ No link found". A row cannot be recorded without a
-        // real document link (canonical rule: matched_entry_id + typed FK).
-        alert('❌ Cannot record: please create a customer receipt voucher so a journal entry exists to link to.');
-        return;
+        const { data, error } = await supabase.rpc('record_non_customer_bank_receipt', {
+          p_bank_statement_line_id: line.id,
+          p_receipt_type: type,
+          p_description: description || line.description,
+        });
+        if (error) throw error;
+
+        const result = data as { entry_number?: string; reused?: boolean } | null;
+        alert(
+          result?.reused
+            ? `Journal Entry ${result.entry_number || ''} linked successfully`
+            : `Journal Entry ${result?.entry_number || ''} created and linked successfully`,
+        );
       }
 
       setRecordModal(false);
       setRecordingLine(null);
+      setReceiptType('');
       setReceiptCustomerId('');
       setReceiptInvoices([]);
       setReceiptAllocations({});
       setLinkExistingReceipt(false);
-      loadStatementLines();
+      await loadStatementLines();
+      notifyFinanceReconciliationRefresh();
     } catch (error: any) {
       console.error('Error recording receipt:', error);
       alert('Error: ' + error.message);
+    } finally {
+      recordingReceiptRef.current = false;
+      setRecordingReceipt(false);
     }
   };
 
@@ -3110,6 +3140,12 @@ export function BankReconciliationEnhanced({
           setLinkSettleBills(false);
           setBillAllocations([]);
           setOutstandingBills([]);
+          setReceiptType('');
+          setReceiptCustomerId('');
+          setReceiptInvoices([]);
+          setReceiptAllocations({});
+          recordingReceiptRef.current = false;
+          setRecordingReceipt(false);
         }}
         title="Record Transaction"
       >
@@ -3640,9 +3676,11 @@ export function BankReconciliationEnhanced({
                       <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
                       <select
                         name="type"
+                        value={receiptType}
                         required
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                         onChange={(e) => {
+                          setReceiptType(e.target.value);
                           if (e.target.value !== 'customer_payment') {
                             setReceiptCustomerId('');
                             setReceiptInvoices([]);
@@ -3653,29 +3691,34 @@ export function BankReconciliationEnhanced({
                         <option value="">Select type...</option>
                         <option value="customer_payment">Customer Payment</option>
                         <option value="capital">Capital Injection</option>
+                        <option value="loan">Loan Received</option>
+                        <option value="bank_interest">Bank Interest</option>
                         <option value="other_income">Other Income</option>
-                        <option value="loan">Loan/Financing</option>
+                        <option value="misc_income">Miscellaneous Income</option>
+                        <option value="refund">Refund / Cash Return</option>
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
-                      <SearchableSelect
-                        value={receiptCustomerId}
-                        onChange={(val) => {
-                          setReceiptCustomerId(val);
-                          setReceiptAllocations({});
-                          if (val) {
-                            loadCustomerInvoices(val);
-                          } else {
-                            setReceiptInvoices([]);
-                          }
-                        }}
-                        options={customers.map(c => ({ value: c.id, label: c.company_name }))}
-                        placeholder="Select customer..."
-                      />
-                    </div>
+                    {receiptType === 'customer_payment' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
+                        <SearchableSelect
+                          value={receiptCustomerId}
+                          onChange={(val) => {
+                            setReceiptCustomerId(val);
+                            setReceiptAllocations({});
+                            if (val) {
+                              loadCustomerInvoices(val);
+                            } else {
+                              setReceiptInvoices([]);
+                            }
+                          }}
+                          options={customers.map(c => ({ value: c.id, label: c.company_name }))}
+                          placeholder="Select customer..."
+                        />
+                      </div>
+                    )}
 
-                    {receiptCustomerId && receiptInvoices.length > 0 && (
+                    {receiptType === 'customer_payment' && receiptCustomerId && receiptInvoices.length > 0 && (
                       <div className="border rounded-lg p-2">
                         <p className="text-xs font-medium text-gray-600 mb-2">Allocate to Invoices (optional)</p>
                         <div className="max-h-40 overflow-y-auto space-y-1">
@@ -3729,7 +3772,7 @@ export function BankReconciliationEnhanced({
                         </div>
                       </div>
                     )}
-                    {receiptCustomerId && loadingInvoices && (
+                    {receiptType === 'customer_payment' && receiptCustomerId && loadingInvoices && (
                       <div className="text-xs text-gray-500 text-center py-2">Loading invoices...</div>
                     )}
 
@@ -3745,9 +3788,10 @@ export function BankReconciliationEnhanced({
                     </div>
                     <button
                       type="submit"
-                      className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                      disabled={recordingReceipt}
+                      className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                     >
-                      Record Receipt
+                      {recordingReceipt ? 'Recording...' : 'Record Receipt'}
                     </button>
                   </form>
                 )}
