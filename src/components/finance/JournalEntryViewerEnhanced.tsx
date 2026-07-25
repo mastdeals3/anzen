@@ -126,7 +126,7 @@ export function JournalEntryViewerEnhanced({
   const sourceLabel = (sourceModule: string | null | undefined) => {
     if (!sourceModule) return t.finance.journalManual;
     const key = sourceModuleKey[sourceModule];
-    return key ? t(`finance.${key}`) : sourceModule.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+    return key ? t(`finance.${key}`) : sourceModule.replace(/_/g, ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase());
   };
 
   useEffect(() => {
@@ -140,22 +140,45 @@ export function JournalEntryViewerEnhanced({
       // The unified register reads the journal table directly so every source
       // module (including bank reconciliation and tax) shares one visibility
       // contract. Draft/reversed rows are opt-in through the status filter.
-      let query = supabase
-        .from('journal_entries')
-        .select('id, entry_number, entry_date, source_module, reference_id, reference_number, description, total_debit, total_credit, is_posted, is_reversed, posted_at, transaction_currency, functional_currency, exchange_rate, amounts_are_functional')
-        .order('entry_date', { ascending: false })
-        .order('entry_number', { ascending: false });
-      if (statusFilter === 'posted') query = query.eq('is_posted', true).or('is_reversed.eq.false,is_reversed.is.null');
-      if (statusFilter === 'draft') query = query.eq('is_posted', false).or('is_reversed.eq.false,is_reversed.is.null');
-      if (statusFilter === 'reversed') query = query.eq('is_reversed', true);
-      const { data: entries, error } = await query;
-      if (error) throw error;
+      const entryPageSize = 500;
+      const entries: JournalEntry[] = [];
+      for (let from = 0; ; from += entryPageSize) {
+        let query = supabase
+          .from('journal_entries')
+          .select('id, entry_number, entry_date, source_module, reference_id, reference_number, description, total_debit, total_credit, is_posted, is_reversed, posted_at, transaction_currency, functional_currency, exchange_rate, amounts_are_functional')
+          .order('entry_date', { ascending: false })
+          .order('entry_number', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, from + entryPageSize - 1);
+        if (statusFilter === 'posted') query = query.eq('is_posted', true).or('is_reversed.eq.false,is_reversed.is.null');
+        if (statusFilter === 'draft') query = query.eq('is_posted', false).or('is_reversed.eq.false,is_reversed.is.null');
+        if (statusFilter === 'reversed') query = query.eq('is_reversed', true);
+        const { data: entryPage, error } = await query;
+        if (error) throw error;
+        entries.push(...(entryPage || []));
+        if (!entryPage || entryPage.length < entryPageSize) break;
+      }
 
-      const entryIds = (entries || []).map(e => e.id);
-      const { data: lines, error: linesError } = entryIds.length
-        ? await supabase.from('journal_entry_lines').select('journal_entry_id, debit, credit, transaction_debit, transaction_credit, chart_of_accounts(code, name)').in('journal_entry_id', entryIds).order('line_number')
-        : { data: [], error: null };
-      if (linesError) throw linesError;
+      const entryIds = entries.map(e => e.id);
+      // PostgREST encodes `.in(...)` values in the request URL. Loading every
+      // journal ID in one request eventually exceeds the URL limit and makes
+      // the master register fail with HTTP 400. Batching also keeps each line
+      // result below the API's per-request row cap.
+      const lineBatchSize = 100;
+      const lineBatches: string[][] = [];
+      for (let index = 0; index < entryIds.length; index += lineBatchSize) {
+        lineBatches.push(entryIds.slice(index, index + lineBatchSize));
+      }
+      const lineResults = await Promise.all(lineBatches.map(batch =>
+        supabase
+          .from('journal_entry_lines')
+          .select('journal_entry_id, debit, credit, transaction_debit, transaction_credit, chart_of_accounts(code, name)')
+          .in('journal_entry_id', batch)
+          .order('line_number')
+      ));
+      const failedLineBatch = lineResults.find(result => result.error);
+      if (failedLineBatch?.error) throw failedLineBatch.error;
+      const lines = lineResults.flatMap(result => result.data || []);
       const linesByEntry = new Map<string, Array<{ debit: number; credit: number; transaction_debit: number; transaction_credit: number; chart_of_accounts?: { code: string; name: string } | null }>>();
       (lines || []).forEach((line: any) => {
         const list = linesByEntry.get(line.journal_entry_id) || [];
@@ -164,7 +187,7 @@ export function JournalEntryViewerEnhanced({
           chart_of_accounts: line.chart_of_accounts });
         linesByEntry.set(line.journal_entry_id, list);
       });
-      setVoucherEntries((entries || []).map(entry => {
+      setVoucherEntries(entries.map(entry => {
         const entryLines = linesByEntry.get(entry.id) || [];
         const debitLine = entryLines.find(line => line.debit > 0);
         const creditLine = entryLines.find(line => line.credit > 0);

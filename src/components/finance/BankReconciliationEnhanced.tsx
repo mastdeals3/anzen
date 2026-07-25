@@ -136,6 +136,7 @@ interface BankReconciliationEnhancedProps {
   onInitialFocusHandled?: () => void;
   onRecordContra?: (line: { bankAccountId: string; statementLineId: string; date: string; amount: number; description: string; direction: 'from' | 'to' }) => void;
   onRecordPayment?: (line: { bankAccountId: string; statementLineId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string }) => void;
+  onOpenJournal?: (journalEntryId: string) => void;
 }
 
 const NON_CUSTOMER_JOURNAL_TYPES = new Set([
@@ -152,6 +153,7 @@ export function BankReconciliationEnhanced({
   onInitialFocusHandled,
   onRecordContra,
   onRecordPayment,
+  onOpenJournal,
 }: BankReconciliationEnhancedProps) {
   const { t } = useLanguage();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
@@ -2872,7 +2874,14 @@ export function BankReconciliationEnhanced({
                             {/* Only show JE fallback chip if no typed FK produced a chip above */}
                             {!line.matchedExpense && !line.matchedReceipt && !line.matchedPayment && !line.matchedFundTransfer && !line.matchedPettyCash && !line.matchedTaxPayment && line.matchedEntryRecord && (
                               <span className="text-xs text-gray-600">
-                                → Journal: {line.matchedEntryRecord.entry_number}
+                                → Journal:{' '}
+                                <button
+                                  type="button"
+                                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                                  onClick={() => onOpenJournal?.(line.matchedEntryRecord!.id)}
+                                >
+                                  {line.matchedEntryRecord.entry_number}
+                                </button>
                               </span>
                             )}
                             {/*

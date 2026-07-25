@@ -18,9 +18,12 @@ per-file diffs live in `git log`.
   functional currency metadata to their existing document models and journals.
 - Corrected native Capital Contribution posting, which referenced the
   nonexistent `bank_accounts.coa_id_idr`; it now uses the canonical `coa_id`.
-- Journal Register now returns every active posted journal in the selected
-  accounting date range, removes the hidden 100-line truncation, and opens the
-  shared journal detail popup from the Journal Number.
+- Journal Register now returns every active posted journal across all accounting
+  dates and source modules. Its journal-line lookup is batched to avoid the
+  PostgREST URL-length HTTP 400 and per-request row cap, and Journal Numbers in
+  both the register and Bank Reconciliation open the shared journal detail popup.
+- Manual Journal remains a separate user-entry workspace and continues to list
+  only journals whose source module is `manual`.
 - Deterministically created three missing Capital Contribution source documents
   for legacy two-line Owner Capital bank journals. No journal amount or line was
   modified. JE2607-0048 was not guessed into a Loan document and is explicitly

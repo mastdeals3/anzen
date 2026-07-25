@@ -175,8 +175,16 @@ Journal Register reads `journal_entries` directly. It includes active posted
 entries across all accounting dates (the CA Journal Register export remains
 date-filtered) and does not filter
 `source_module='bank_reconciliation'`. Journal numbers open the common journal
-popup. Source navigation reuses existing Expense, Receipt, Payment, Contra,
-Petty Cash, and Bank Reconciliation viewers.
+popup, including journal numbers displayed in Bank Reconciliation. Header rows
+are loaded once and journal lines are fetched in bounded batches so a growing
+register cannot exceed PostgREST URL or row limits. Source navigation reuses
+existing Expense, Receipt, Payment, Contra, Petty Cash, and Bank Reconciliation
+viewers.
+
+Manual Journal is intentionally distinct from Journal Register. Its workspace
+query is restricted to `source_module='manual'`; generated journals from source
+documents never belong in that list. Journal Register is the all-source master
+accounting register.
 
 Historical repair is metadata-only. The 2026-07-26 consolidation created native
 Capital Contribution source rows only where a two-line posted bank receipt had

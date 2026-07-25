@@ -387,6 +387,7 @@ function FinanceContent() {
               setPaymentReconPrefill(prefill);
               setActiveTab('payment');
             }}
+            onOpenJournal={handleOpenJournal}
           />
         );
       case 'trial_balance':
