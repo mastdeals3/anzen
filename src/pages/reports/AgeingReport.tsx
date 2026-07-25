@@ -72,24 +72,41 @@ export function AgeingReport() {
       setLoading(true);
 
       const { data: invoices, error } = await supabase
-        .rpc('get_customer_ar_open_items', { p_as_of_date: asOfDate });
+        .from('sales_invoices')
+        .select('*, customers(company_name, email, phone)')
+        .in('payment_status', ['pending', 'partial'])
+        .order('due_date');
 
       if (error) throw error;
 
-      const invoicesWithBalances = ((invoices || []) as any[]).map((inv) => ({
-        id: inv.id,
-        customer_id: inv.customer_id,
-        customer_name: inv.customer_name || 'Unknown',
-        customer_email: inv.customer_email || '',
-        customer_phone: inv.customer_phone || '',
-        invoice_number: inv.invoice_number,
-        invoice_date: inv.invoice_date,
-        due_date: inv.due_date,
-        total_amount: Number(inv.total_amount || 0),
-        paid_amount: Number(inv.paid_amount || 0) + Number(inv.credit_note_amount || 0),
-        balance: Number(inv.balance_amount || 0),
-        days_overdue: Number(inv.days_overdue || 0),
-      }));
+      const invoicesWithBalances = await Promise.all(
+        (invoices || []).map(async (inv) => {
+          const { data: paidData } = await supabase
+            .rpc('get_invoice_paid_amount', { p_invoice_id: inv.id });
+
+          const paidAmount = paidData || 0;
+          const balance = inv.total_amount - paidAmount;
+
+          const dueDate = new Date(inv.due_date);
+          const today = new Date(asOfDate);
+          const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+          return {
+            id: inv.id,
+            customer_id: inv.customer_id,
+            customer_name: inv.customers?.company_name || 'Unknown',
+            customer_email: inv.customers?.email || '',
+            customer_phone: inv.customers?.phone || '',
+            invoice_number: inv.invoice_number,
+            invoice_date: inv.invoice_date,
+            due_date: inv.due_date,
+            total_amount: inv.total_amount,
+            paid_amount: paidAmount,
+            balance,
+            days_overdue: daysOverdue
+          };
+        })
+      );
 
       const customerMap = new Map<string, CustomerAgeing>();
 

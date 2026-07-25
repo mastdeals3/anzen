@@ -17,16 +17,6 @@ interface SalesInvoice {
   payment_status: 'pending' | 'partial' | 'paid';
   customers: { company_name: string } | null;
   paid_amount?: number;
-  credit_note_amount?: number;
-  balance_amount?: number;
-}
-
-interface ControlReconciliation {
-  control_code: string;
-  gl_balance: number;
-  subledger_balance: number;
-  difference: number;
-  status: 'reconciled' | 'difference';
 }
 
 interface ReceiptVoucher {
@@ -55,7 +45,6 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
   const [invoices, setInvoices] = useState<SalesInvoice[]>([]);
   const [payments, setPayments] = useState<ReceiptVoucher[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-  const [arReconciliation, setArReconciliation] = useState<ControlReconciliation | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -75,7 +64,12 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
   const loadData = useCallback(async () => {
     try {
       const [invoicesRes, paymentsRes, banksRes] = await Promise.all([
-        supabase.rpc('get_customer_ar_open_items', { p_as_of_date: new Date().toISOString().slice(0, 10) }),
+        supabase
+          .from('sales_invoices')
+          // perf: projected columns (was select('*'))
+          .select('id, invoice_number, customer_id, invoice_date, due_date, total_amount, payment_status, customers(company_name)')
+          .in('payment_status', ['pending', 'partial'])
+          .order('due_date', { ascending: true }),
         supabase
           .from('receipt_vouchers')
           // perf: projected columns (was select('*'))
@@ -114,27 +108,8 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
         throw banksRes.error;
       }
 
-      // The open-items RPC is the canonical A/R source: it includes only
-      // active invoice/receipt journals and nets approved credit notes.
-      const openInvoices = ((invoicesRes.data || []) as any[]).map((inv) => {
-        const balance = Number(inv.balance_amount || 0);
-        const total = Number(inv.total_amount || 0);
-        const paid = Number(inv.paid_amount || 0);
-        return {
-          id: inv.id,
-          invoice_number: inv.invoice_number,
-          customer_id: inv.customer_id,
-          invoice_date: inv.invoice_date,
-          due_date: inv.due_date,
-          total_amount: total,
-          paid_amount: paid,
-          credit_note_amount: Number(inv.credit_note_amount || 0),
-          balance_amount: balance,
-          payment_status: balance <= 0.01 ? 'paid' : (paid > 0 || Number(inv.credit_note_amount || 0) > 0 ? 'partial' : 'pending'),
-          customers: { company_name: inv.customer_name },
-        } as SalesInvoice;
-      });
-      const invoiceIds = openInvoices.map((inv) => inv.id);
+      // Bulk fetch allocations for both invoices and vouchers, then aggregate client-side.
+      const invoiceIds = (invoicesRes.data || []).map((inv) => inv.id);
       const voucherIds = (paymentsRes.data || []).map((v) => v.id);
 
       const paidByInvoice = new Map<string, number>();
@@ -175,11 +150,10 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
         }
       }
 
-      const invoicesWithPaidAmount = openInvoices.map((invoice) => ({
+      const invoicesWithPaidAmount = (invoicesRes.data || []).map((invoice) => ({
         ...invoice,
-        // Keep the active-journal payment amount from the RPC. The allocation
-        // query is retained only as a compatibility fallback for old rows.
-        paid_amount: invoice.paid_amount ?? paidByInvoice.get(invoice.id) ?? 0,
+        paid_amount: paidByInvoice.get(invoice.id) || 0,
+        customers: invoice.customers || null,
       }));
 
       const paymentsWithAllocations = (paymentsRes.data || []).map((voucher) => ({
@@ -192,10 +166,6 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       setInvoices(invoicesWithPaidAmount);
       setPayments(paymentsWithAllocations);
       setBankAccounts(banksRes.data || []);
-      const { data: reconciliations } = await supabase.rpc('get_control_account_reconciliation', {
-        p_as_of_date: new Date().toISOString().slice(0, 10),
-      });
-      setArReconciliation(((reconciliations || []) as ControlReconciliation[]).find(r => r.control_code === '1120') || null);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -248,7 +218,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
 
   const handleRecordPayment = async (invoice: SalesInvoice) => {
     setSelectedInvoice(invoice);
-    const remainingAmount = invoice.balance_amount ?? (invoice.total_amount - (invoice.paid_amount || 0) - (invoice.credit_note_amount || 0));
+    const remainingAmount = invoice.total_amount - (invoice.paid_amount || 0);
     setFormData({
       ...formData,
       payment_number: `PAY-${Date.now()}`,
@@ -258,7 +228,11 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
     // Load all unpaid invoices for this customer
     try {
       const { data: custInvoices, error } = await supabase
-        .rpc('get_customer_ar_open_items', { p_as_of_date: new Date().toISOString().slice(0, 10) });
+        .from('sales_invoices')
+        .select('*')
+        .eq('customer_id', invoice.customer_id)
+        .in('payment_status', ['pending', 'partial'])
+        .order('invoice_date', { ascending: true });
 
       if (error) {
         console.error('Error loading customer invoices:', error);
@@ -266,21 +240,33 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       }
 
       // Calculate paid_amount for each invoice
-      const invoicesWithPaidAmount = ((custInvoices || []) as any[])
-        .filter(inv => inv.customer_id === invoice.customer_id)
-        .map(inv => ({
-          id: inv.id,
-          invoice_number: inv.invoice_number,
-          customer_id: inv.customer_id,
-          invoice_date: inv.invoice_date,
-          due_date: inv.due_date,
-          total_amount: Number(inv.total_amount || 0),
-          paid_amount: Number(inv.paid_amount || 0),
-          credit_note_amount: Number(inv.credit_note_amount || 0),
-          balance_amount: Number(inv.balance_amount || 0),
-          payment_status: 'partial' as const,
-          customers: { company_name: inv.customer_name },
-        }));
+      const invoicesWithPaidAmount = await Promise.all((custInvoices || []).map(async (inv) => {
+        try {
+          const { data: allocations, error: allocError } = await supabase
+            .from('voucher_allocations')
+            .select('allocated_amount')
+            .eq('sales_invoice_id', inv.id)
+            .eq('voucher_type', 'receipt');
+
+          if (allocError) {
+            console.error('Error loading allocations for invoice:', inv.id, allocError);
+          }
+
+          const paid_amount = allocations?.reduce((sum, alloc) => sum + (Number(alloc.allocated_amount) || 0), 0) || 0;
+          return {
+            ...inv,
+            paid_amount,
+            customers: inv.customers || null
+          };
+        } catch (err) {
+          console.error('Error processing invoice:', inv.id, err);
+          return {
+            ...inv,
+            paid_amount: 0,
+            customers: inv.customers || null
+          };
+        }
+      }));
 
       setCustomerInvoices(invoicesWithPaidAmount);
 
@@ -383,7 +369,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
     today.setHours(0, 0, 0, 0);
 
     return invoices.map((inv) => {
-      const balance = inv.balance_amount ?? (inv.total_amount - (inv.paid_amount || 0) - (inv.credit_note_amount || 0));
+      const balance = inv.total_amount - (inv.paid_amount || 0);
       const due = new Date(inv.due_date);
       due.setHours(0, 0, 0, 0);
       const daysOverdue = Math.max(0, Math.floor((today.getTime() - due.getTime()) / 86400000));
@@ -467,7 +453,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       label: 'Balance',
       render: (_val: any, inv: SalesInvoice) => (
         <span className="font-semibold text-red-600">
-          Rp {(inv.balance_amount ?? (inv.total_amount - (inv.paid_amount || 0) - (inv.credit_note_amount || 0))).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          Rp {(inv.total_amount - (inv.paid_amount || 0)).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       )
     },
@@ -582,13 +568,6 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
           <span className="text-sm">Refresh</span>
         </button>
       </div>
-
-      {arReconciliation && (
-        <div className={`rounded border px-3 py-2 text-xs ${arReconciliation.status === 'reconciled' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
-          A/R control 1120: GL Rp {Number(arReconciliation.gl_balance).toLocaleString('id-ID')} · Open items Rp {Number(arReconciliation.subledger_balance).toLocaleString('id-ID')}
-          {arReconciliation.status === 'reconciled' ? ' · Reconciled' : ` · Difference Rp ${Math.abs(Number(arReconciliation.difference)).toLocaleString('id-ID')}`}
-        </div>
-      )}
 
       {/* Help Banner */}
       {view === 'invoices' && invoices.length > 0 && (
@@ -860,7 +839,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
               <p className="text-sm text-gray-600">Select invoices and enter amount to allocate to each</p>
 
               {customerInvoices.map((invoice) => {
-                const balance = invoice.balance_amount ?? (invoice.total_amount - (invoice.paid_amount || 0) - (invoice.credit_note_amount || 0));
+                const balance = invoice.total_amount - (invoice.paid_amount || 0);
                 const isSelected = selectedAllocations[invoice.id] !== undefined;
                 const allocatedAmount = selectedAllocations[invoice.id] || 0;
 

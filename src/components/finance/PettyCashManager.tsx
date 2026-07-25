@@ -1231,13 +1231,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
               onClick={() => onNavigateToFundTransfer?.()}
               className="inline-flex items-center gap-1 h-7 px-2 border border-blue-300 text-blue-700 bg-blue-50 rounded text-xs font-semibold hover:bg-blue-100"
             >
-              <ArrowDownCircle className="w-3 h-3" /> Top Up Petty Cash
+              <ArrowDownCircle className="w-3 h-3" /> Fund Petty Cash
             </button>
             <button
               onClick={openAddModal}
               className="inline-flex items-center gap-1 h-7 px-2 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700"
             >
-              <Plus className="w-3 h-3" /> Record Cash Expense
+              <Plus className="w-3 h-3" /> New
             </button>
           </div>
         )}

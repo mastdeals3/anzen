@@ -862,7 +862,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
             className="inline-flex items-center gap-1 h-7 px-2 bg-red-600 text-white rounded text-xs font-semibold hover:bg-red-700"
           >
             <ArrowUpCircle className="w-3 h-3" />
-            Pay Bill
+            New Payment
           </button>
         )}
         toolbar={

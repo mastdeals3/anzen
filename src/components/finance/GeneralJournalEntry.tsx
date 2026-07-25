@@ -99,14 +99,6 @@ const TEMPLATES: Template[] = [
     ],
   },
   {
-    name: 'Owner Contribution',
-    description: 'Capital injected by owner into the business bank account',
-    lines: [
-      { accountCode: '111101', side: 'debit', label: 'Bank BCA - IDR' },
-      { accountCode: '3100', side: 'credit', label: 'Owner Capital' },
-    ],
-  },
-  {
     name: 'Staff Advance',
     description: 'Advance given to staff',
     lines: [
@@ -498,8 +490,8 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
       {/* Shared title strip — matches every other Finance page */}
       <div className="flex items-center justify-between h-8 px-2 bg-white border border-gray-200 rounded">
         <div className="flex items-baseline gap-2 min-w-0">
-          <h1 className="text-xs font-bold text-gray-900 truncate">Manual Journal Entries</h1>
-          <span className="text-[10px] text-gray-400 truncate">Manual adjustments · use guided templates for loans and owner funding</span>
+          <h1 className="text-xs font-bold text-gray-900 truncate">Journal Voucher</h1>
+          <span className="text-[10px] text-gray-400 truncate">Manual double-entry journal posting</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <div className="relative" ref={templateRef}>
@@ -508,7 +500,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
               className="inline-flex items-center gap-1 h-7 px-2 text-xs bg-white hover:bg-gray-50 text-gray-700 rounded border border-gray-300"
             >
               <FileText className="w-3 h-3" />
-              Guided entries
+              Templates
               <ChevronDown className="w-3 h-3" />
             </button>
             {templateOpen && (

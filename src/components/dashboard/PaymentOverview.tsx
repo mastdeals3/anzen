@@ -88,8 +88,8 @@ export function PaymentOverview() {
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Invoice Payment Status</h3>
-          <p className="text-sm text-gray-500 mt-0.5">Operational invoice KPI · last 3 months</p>
+          <h3 className="text-base font-semibold text-gray-900">Payment Status</h3>
+          <p className="text-sm text-gray-500 mt-0.5">Last 3 months invoices</p>
         </div>
         <div className="bg-emerald-50 p-2 rounded-lg">
           <Wallet className="w-5 h-5 text-emerald-600" />

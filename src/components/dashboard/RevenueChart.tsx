@@ -91,12 +91,12 @@ export function RevenueChart() {
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">Invoice Revenue Trend</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Operational invoice KPI · last 6 months</p>
+          <h3 className="text-sm font-semibold text-gray-900">Revenue Trend</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Last 6 months</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-xs text-gray-500">Invoice Total</p>
+            <p className="text-xs text-gray-500">Total Revenue</p>
             <p className="text-sm font-bold text-gray-900">Rp {formatValue(totalRevenue)}</p>
           </div>
           <div className="text-right">
