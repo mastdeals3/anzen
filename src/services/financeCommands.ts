@@ -62,6 +62,41 @@ export interface JournalLineCommand {
   credit: number;
 }
 
+export interface FinanceLoanPayload {
+  loan_date: string;
+  counterparty_name: string;
+  counterparty_type: 'bank' | 'person' | 'staff' | 'company';
+  principal_amount: number;
+  bank_account_id: string;
+  liability_kind: 'bank' | 'director_owner';
+  transaction_currency: FinanceCurrency;
+  exchange_rate: number;
+  description?: string | null;
+  created_by?: string;
+}
+
+export interface FinanceLoanRepaymentPayload {
+  loan_id: string;
+  transaction_date: string;
+  principal_amount: number;
+  interest_amount: number;
+  bank_account_id: string;
+  transaction_currency: FinanceCurrency;
+  exchange_rate: number;
+  description?: string | null;
+  created_by?: string;
+}
+
+export interface CapitalContributionPayload {
+  voucher_date: string;
+  bank_account_id: string;
+  amount: number;
+  transaction_currency: FinanceCurrency;
+  exchange_rate: number;
+  description?: string | null;
+  created_by?: string;
+}
+
 async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.rpc(name, args);
   if (error) throw error;
@@ -106,6 +141,44 @@ export const saveFinanceJournal = (
   p_entry_date: entryDate,
   p_description: description,
   p_lines: lines,
+  p_transaction_currency: transactionCurrency,
+  p_exchange_rate: exchangeRate,
+});
+
+export const saveFinanceLoan = (payload: FinanceLoanPayload, bankStatementLineId?: string | null) =>
+  rpc<{ id: string; loan_number: string; journal_entry_id: string }>('save_finance_loan', {
+    p_payload: payload,
+    p_bank_statement_line_id: bankStatementLineId || null,
+  });
+
+export const saveFinanceLoanRepayment = (
+  payload: FinanceLoanRepaymentPayload,
+  bankStatementLineId?: string | null,
+) => rpc<{ id: string; transaction_number: string; journal_entry_id: string }>('save_finance_loan_repayment', {
+  p_payload: payload,
+  p_bank_statement_line_id: bankStatementLineId || null,
+});
+
+export const saveCapitalContribution = (
+  payload: CapitalContributionPayload,
+  bankStatementLineId?: string | null,
+) => rpc<{ id: string; voucher_number: string; journal_entry_id: string }>('save_finance_capital_contribution', {
+  p_payload: payload,
+  p_bank_statement_line_id: bankStatementLineId || null,
+});
+
+export const saveBankLinkedFinanceJournal = (
+  bankStatementLineId: string,
+  description: string,
+  counterAccountCode: string,
+  bankSide: 'debit' | 'credit',
+  transactionCurrency: FinanceCurrency,
+  exchangeRate: number,
+) => rpc<{ document_id: string; journal_entry_id: string }>('save_bank_linked_finance_journal', {
+  p_bank_line_id: bankStatementLineId,
+  p_description: description,
+  p_counter_account_code: counterAccountCode,
+  p_bank_side: bankSide,
   p_transaction_currency: transactionCurrency,
   p_exchange_rate: exchangeRate,
 });

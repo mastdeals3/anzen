@@ -6,6 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import type { TFunction } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { ChevronDown, ChevronRight, Menu, X, Loader } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 const PurchaseInvoiceManager = lazy(() => import('../components/finance/PurchaseInvoiceManager').then(m => ({ default: m.PurchaseInvoiceManager })));
 const ReceiptVoucherManager = lazy(() => import('../components/finance/ReceiptVoucherManager').then(m => ({ default: m.ReceiptVoucherManager })));
@@ -166,6 +167,9 @@ function FinanceContent() {
   const [payInvoice, setPayInvoice] = useState<{ id: string; invoice_number: string; supplier_id: string; balance_amount: number } | null>(null);
   const [payExpenseBill, setPayExpenseBill] = useState<{ id: string; supplier_id: string | null; staff_id?: string | null; balance_amount: number } | null>(null);
   const [focusExpenseId, setFocusExpenseId] = useState<string | null>(null);
+  const [focusReceiptId, setFocusReceiptId] = useState<string | null>(null);
+  const [focusPaymentId, setFocusPaymentId] = useState<string | null>(null);
+  const [focusJournalId, setFocusJournalId] = useState<string | null>(null);
   const [focusPettyCashId, setFocusPettyCashId] = useState<string | null>(null);
   const [focusFundTransferId, setFocusFundTransferId] = useState<string | null>(null);
   const [focusBankAccountId, setFocusBankAccountId] = useState<string | null>(null);
@@ -174,7 +178,7 @@ function FinanceContent() {
     bankAccountId: string; statementLineId: string; date: string; amount: number; description: string; direction: 'from' | 'to';
   } | null>(null);
   const [paymentReconPrefill, setPaymentReconPrefill] = useState<{
-    bankAccountId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string;
+    bankAccountId: string; statementLineId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string;
   } | null>(null);
   const handleOpenBankReconciliation = useCallback((bankAccountId: string, bankStatementLineId: string) => {
     setFocusBankAccountId(bankAccountId);
@@ -202,6 +206,33 @@ function FinanceContent() {
     setEditJournalEntryId(entryId);
     setActiveTab('journal');
   };
+
+  const handleOpenJournal = useCallback((entryId: string) => {
+    setFocusJournalId(entryId);
+    setActiveTab('journal_register');
+  }, [setActiveTab]);
+
+  const handleOpenJournalSource = useCallback(async (sourceModule: string, referenceId: string) => {
+    if (sourceModule === 'expense' || sourceModule === 'expenses') {
+      setFocusExpenseId(referenceId);
+      setActiveTab('expenses');
+    } else if (sourceModule === 'receipt') {
+      setFocusReceiptId(referenceId);
+      setActiveTab('receipt');
+    } else if (sourceModule === 'payment') {
+      setFocusPaymentId(referenceId);
+      setActiveTab('payment');
+    } else if (sourceModule === 'petty_cash') {
+      setFocusPettyCashId(referenceId);
+      setActiveTab('petty_cash');
+    } else if (sourceModule === 'fund_transfer' || sourceModule === 'fund_transfers') {
+      setFocusFundTransferId(referenceId);
+      setActiveTab('contra');
+    } else if (sourceModule === 'bank_reconciliation') {
+      const { data } = await supabase.from('bank_statement_lines').select('bank_account_id').eq('id', referenceId).maybeSingle();
+      if (data?.bank_account_id) handleOpenBankReconciliation(data.bank_account_id, referenceId);
+    }
+  }, [handleOpenBankReconciliation, setActiveTab]);
 
   const financeMenu = useMemo(() => {
     if (!t || !t.finance) return [];
@@ -290,9 +321,9 @@ function FinanceContent() {
       case 'purchase':
         return <PurchaseInvoiceManager canManage={canManage} onPayInvoice={handlePayInvoice} />;
       case 'receipt':
-        return <ReceiptVoucherManager canManage={canManage} />;
+        return <ReceiptVoucherManager canManage={canManage} initialViewVoucherId={focusReceiptId} onInitialViewHandled={() => setFocusReceiptId(null)} />;
       case 'payment':
-        return <PaymentVoucherManager canManage={canManage} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} prefillExpenseBill={payExpenseBill} onPrefillExpenseBillConsumed={() => setPayExpenseBill(null)} onViewInvoice={() => setActiveTab('purchase')} prefillFromBankReconciliation={paymentReconPrefill} onBankReconciliationPrefillConsumed={() => setPaymentReconPrefill(null)} />;
+        return <PaymentVoucherManager canManage={canManage} initialViewVoucherId={focusPaymentId} onInitialViewHandled={() => setFocusPaymentId(null)} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} prefillExpenseBill={payExpenseBill} onPrefillExpenseBillConsumed={() => setPayExpenseBill(null)} onViewInvoice={() => setActiveTab('purchase')} prefillFromBankReconciliation={paymentReconPrefill} onBankReconciliationPrefillConsumed={() => setPaymentReconPrefill(null)} />;
       case 'journal':
         return <GeneralJournalEntry
           canManage={canManage}
@@ -335,7 +366,8 @@ function FinanceContent() {
       case 'ledger':
         return <AccountLedger initialCode={ledgerDrillCode ?? undefined} onCodeConsumed={() => setLedgerDrillCode(null)} />;
       case 'journal_register':
-        return <JournalEntryViewer canManage={canManage} onEditEntry={handleEditJournalEntry} />;
+        return <JournalEntryViewer canManage={canManage} onEditEntry={handleEditJournalEntry}
+          initialViewEntryId={focusJournalId} onInitialViewHandled={() => setFocusJournalId(null)} onOpenSource={handleOpenJournalSource} />;
       case 'bank_ledger':
         return <BankLedger />;
       case 'party_ledger':
@@ -372,7 +404,7 @@ function FinanceContent() {
       case 'tax':
         return <TaxComplianceCentre />;
       case 'ca_reports':
-        return <CAReports />;
+        return <CAReports onOpenJournal={handleOpenJournal} />;
       case 'integrity_monitor':
         return <IntegrityMonitor />;
       case 'coa':

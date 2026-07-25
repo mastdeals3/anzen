@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { CheckCircle, XCircle, Clock, Eye, AlertCircle, Filter } from 'lucide-react';
 import { Modal } from '../components/Modal';
+import { formatCurrency, resolveTransactionCurrency } from '../utils/currency';
 
 interface ApprovalWorkflow {
   id: string;
@@ -24,6 +25,15 @@ interface ApprovalWorkflow {
     full_name: string;
   };
 }
+
+const getApprovalCurrency = (approval: ApprovalWorkflow): string =>
+  resolveTransactionCurrency({
+    transaction_currency: approval.metadata?.transaction_currency,
+    currency_code: approval.metadata?.currency_code,
+    payment_currency: approval.metadata?.payment_currency,
+    bank_account_currency: approval.metadata?.bank_account_currency,
+    currency: approval.metadata?.currency,
+  });
 
 interface TransactionDetails {
   id: string;
@@ -359,7 +369,7 @@ export default function Approvals() {
                     <div className="text-xs text-gray-500">{approval.requested_by_profile.email}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
-                    ${approval.amount?.toFixed(2) || '0.00'}
+                    {formatCurrency(approval.amount, getApprovalCurrency(approval))}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     {approval.quantity || '-'}
@@ -426,7 +436,7 @@ export default function Approvals() {
                   {t('amount') || 'Amount'}
                 </label>
                 <p className="text-sm font-semibold text-gray-900">
-                  ${selectedApproval.amount?.toFixed(2) || '0.00'}
+                  {formatCurrency(selectedApproval.amount, getApprovalCurrency(selectedApproval))}
                 </p>
               </div>
 

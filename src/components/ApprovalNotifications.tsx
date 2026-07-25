@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { X, FileText, Truck, DollarSign, Wallet } from 'lucide-react';
-import { formatCurrency } from '../utils/currency';
+import { formatCurrency, resolveTransactionCurrency } from '../utils/currency';
 import { useSupabaseRealtimeChannel } from '../hooks/useSupabaseRealtimeChannel';
 
 interface PendingApproval {
@@ -62,7 +62,11 @@ export function ApprovalNotifications() {
 
         supabase
           .from('finance_expenses')
-          .select('id, voucher_number, expense_date, amount, description')
+          .select(`
+            id, voucher_number, expense_date, amount, description,
+            transaction_currency, currency_code, payment_currency,
+            bank_account_currency, bank_accounts(currency)
+          `)
           .eq('approval_status', 'pending_approval')
           .order('created_at', { ascending: false })
           .limit(5),
@@ -91,13 +95,13 @@ export function ApprovalNotifications() {
       expRes.data?.forEach(e => approvals.push({
         id: e.id, type: 'expense', number: e.voucher_number || '—',
         description: e.description || 'Expense',
-        amount: e.amount, date: e.expense_date,
+        amount: e.amount, currency: resolveTransactionCurrency(e), date: e.expense_date,
       }));
 
       pcRes.data?.forEach(pc => approvals.push({
         id: pc.id, type: 'petty_cash', number: pc.transaction_number,
         description: pc.description || 'Petty Cash',
-        amount: pc.amount, date: pc.transaction_date,
+        amount: pc.amount, currency: resolveTransactionCurrency(undefined), date: pc.transaction_date,
       }));
 
       setPendingApprovals(approvals);
@@ -240,7 +244,7 @@ export function ApprovalNotifications() {
                   <p className="text-sm text-gray-700 mt-1 truncate">{item.description}</p>
                   {item.amount !== undefined && (
                     <p className="text-xs font-medium text-blue-600 mt-1">
-                      {formatCurrency(item.amount, item.currency || 'IDR')}
+                      {formatCurrency(item.amount, item.currency)}
                     </p>
                   )}
                 </div>

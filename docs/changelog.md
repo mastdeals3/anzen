@@ -3,6 +3,46 @@
 Reverse-chronological summary of major project milestones. Detailed
 per-file diffs live in `git log`.
 
+## 2026-07-26 — Finance stabilization and source-document consolidation
+
+- Bank Reconciliation Loan, Loan Repayment, and Capital Injection actions now
+  call shared Finance commands backed by the existing `loans`,
+  `loan_transactions`, and `capital_contributions` source tables.
+- Owner Withdrawal and non-customer journal receipts now use an atomic shared
+  bridge over the existing Manual Journal command and guarded bank-link command;
+  the Bank Reconciliation component no longer constructs journal lines itself.
+- Removed the superseded `record_non_customer_bank_receipt` RPC, which contained
+  its own account mapping, journal creation, and numbering implementation.
+- Replaced the legacy loan/capital journal-number implementations with the
+  canonical advisory-lock journal generator and added complete transaction /
+  functional currency metadata to their existing document models and journals.
+- Corrected native Capital Contribution posting, which referenced the
+  nonexistent `bank_accounts.coa_id_idr`; it now uses the canonical `coa_id`.
+- Journal Register now returns every active posted journal in the selected
+  accounting date range, removes the hidden 100-line truncation, and opens the
+  shared journal detail popup from the Journal Number.
+- Deterministically created three missing Capital Contribution source documents
+  for legacy two-line Owner Capital bank journals. No journal amount or line was
+  modified. JE2607-0048 was not guessed into a Loan document and is explicitly
+  listed for manual review.
+- Generated `docs/finance_exception_report.csv` with 463 business-readable
+  exception rows (424 distinct records requiring review).
+
+## 2026-07-26 — Finance notification currency display
+
+- Pending Expense approval cards now read repaired transaction-currency
+  metadata and display the document amount through the shared
+  `formatCurrency` utility; USD expenses no longer fall back to `Rp`.
+- Added a shared transaction-currency resolver with Finance metadata
+  precedence (`transaction_currency`, `currency_code`, payment/bank
+  metadata, then related bank currency) and reused it in Expense Manager.
+- Approval workflow amounts now use the shared formatter instead of a
+  literal dollar prefix. Petty Cash remains IDR because its native document
+  model stores functional IDR amounts and no transaction-currency field.
+- The notification audit confirmed that Receipt, Payment, Contra, and Journal
+  do not currently emit amount cards; the bell dropdown renders stored text
+  and performs no independent Finance currency formatting.
+
 ## 2026-07-13 — Tax Compliance accounting engine (Phase 3)
 - **delete_tax_payment(id)** — SECURITY DEFINER, self-verifying. Same
   integrity pattern as `delete_purchase_invoice`. Reverses the JE,

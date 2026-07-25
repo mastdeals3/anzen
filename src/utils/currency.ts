@@ -12,6 +12,37 @@ export interface CurrencyFormatOptions {
 export const normalizeCurrency = (currency: string | null | undefined): string =>
   (currency || 'IDR').trim().toUpperCase() || 'IDR';
 
+export interface TransactionCurrencyMetadata {
+  transaction_currency?: string | null;
+  currency_code?: string | null;
+  payment_currency?: string | null;
+  bank_account_currency?: string | null;
+  currency?: string | null;
+  bank_accounts?: { currency?: string | null } | Array<{ currency?: string | null }> | null;
+}
+
+/**
+ * Resolves a document's display currency using the same precedence as the
+ * Finance repair/reporting paths. Functional currency is intentionally not a
+ * fallback: it describes the ledger amount, not the source document amount.
+ */
+export const resolveTransactionCurrency = (
+  document: TransactionCurrencyMetadata | null | undefined,
+): string => {
+  const bankAccount = Array.isArray(document?.bank_accounts)
+    ? document.bank_accounts[0]
+    : document?.bank_accounts;
+
+  return normalizeCurrency(
+    document?.transaction_currency
+      ?? document?.currency_code
+      ?? document?.payment_currency
+      ?? document?.bank_account_currency
+      ?? document?.currency
+      ?? bankAccount?.currency,
+  );
+};
+
 export const formatCurrency = (
   amount: number | string | null | undefined,
   currency: string | null | undefined = 'IDR',

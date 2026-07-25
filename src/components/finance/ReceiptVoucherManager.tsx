@@ -77,9 +77,11 @@ interface ReceiptVoucher {
 
 interface ReceiptVoucherManagerProps {
   canManage: boolean;
+  initialViewVoucherId?: string | null;
+  onInitialViewHandled?: () => void;
 }
 
-export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps) {
+export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onInitialViewHandled }: ReceiptVoucherManagerProps) {
   const { t } = useLanguage();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
@@ -488,6 +490,13 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     setVoucherAllocations(allocs || []);
     setViewModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!initialViewVoucherId || loading) return;
+    const voucher = vouchers.find(item => item.id === initialViewVoucherId);
+    if (voucher) void handleView(voucher);
+    onInitialViewHandled?.();
+  }, [initialViewVoucherId, loading, vouchers, onInitialViewHandled]);
 
   const handleEdit = async (voucher: ReceiptVoucher) => {
     if (voucher.is_posted) {

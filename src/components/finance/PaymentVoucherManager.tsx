@@ -12,7 +12,7 @@ import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { formatCurrency } from '../../utils/currency';
-import { savePaymentVoucher } from '../../services/financeCommands';
+import { linkBankStatementLine, savePaymentVoucher } from '../../services/financeCommands';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
 import {
   type BankTransactionLine,
@@ -104,13 +104,15 @@ interface PrefillExpenseBill {
 
 interface PaymentVoucherManagerProps {
   canManage: boolean;
+  initialViewVoucherId?: string | null;
+  onInitialViewHandled?: () => void;
   prefillInvoice?: PrefillInvoice | null;
   onPrefillConsumed?: () => void;
   prefillExpenseBill?: PrefillExpenseBill | null;
   onPrefillExpenseBillConsumed?: () => void;
   onViewInvoice?: (invoiceId: string) => void;
   prefillFromBankReconciliation?: {
-    bankAccountId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string;
+    bankAccountId: string; statementLineId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string;
   } | null;
   onBankReconciliationPrefillConsumed?: () => void;
 }
@@ -155,7 +157,7 @@ function fmt(amount: number, currency: string) {
 }
 
 
-export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice, prefillFromBankReconciliation, onBankReconciliationPrefillConsumed }: PaymentVoucherManagerProps) {
+export function PaymentVoucherManager({ canManage, initialViewVoucherId, onInitialViewHandled, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice, prefillFromBankReconciliation, onBankReconciliationPrefillConsumed }: PaymentVoucherManagerProps) {
   const { t } = useLanguage();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
@@ -178,6 +180,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   const [selectedBank, setSelectedBank] = useState<BankAccount | null>(null);
   const [editingVoucher, setEditingVoucher] = useState<PaymentVoucher | null>(null);
   const [viewingVoucher, setViewingVoucher] = useState<PaymentVoucher | null>(null);
+  const [bankReconStatementLineId, setBankReconStatementLineId] = useState<string | null>(null);
   const [viewAllocations, setViewAllocations] = useState<Array<{ invoice_id: string; invoice_number: string; invoice_date: string; allocated_amount: number; allocated_currency: string; is_expense_bill?: boolean; expense_id?: string }>>([]);
 
   const [formData, setFormData] = useState({
@@ -239,6 +242,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
   useEffect(() => {
     if (!prefillFromBankReconciliation || loading) return;
     setEditingVoucher(null);
+    setBankReconStatementLineId(prefillFromBankReconciliation.statementLineId);
     setAllocations([]);
     setExpenseBillAllocations([]);
     setFormData(prev => ({
@@ -526,6 +530,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     setPendingInvoices([]);
     setSelectedBank(null);
     setEditingVoucher(null);
+    setBankReconStatementLineId(null);
   };
 
   const handlePostVoucher = async (v: PaymentVoucher) => {
@@ -697,6 +702,13 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     );
   };
 
+  useEffect(() => {
+    if (!initialViewVoucherId || loading) return;
+    const voucher = vouchers.find(item => item.id === initialViewVoucherId);
+    if (voucher) void handleView(voucher);
+    onInitialViewHandled?.();
+  }, [initialViewVoucherId, loading, vouchers, onInitialViewHandled]);
+
   const handleDelete = async (v: PaymentVoucher) => {
     if (v.is_posted) {
       alert('This payment voucher has been posted to the GL. Cancel posting first to delete it.');
@@ -812,7 +824,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         bank_charge: formData.bank_charge || 0,
       };
 
-      await savePaymentVoucher(editingVoucher?.id || null, {
+      const savedVoucher = await savePaymentVoucher(editingVoucher?.id || null, {
         ...payload,
         payment_currency: payload.payment_currency as 'IDR' | 'USD',
         created_by: user.id,
@@ -830,6 +842,17 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
             currency: 'IDR',
           })),
         ]);
+
+      if (bankReconStatementLineId && !editingVoucher) {
+        const { error: postError } = await supabase.rpc('post_payment_voucher', {
+          p_pv_id: savedVoucher.id,
+          p_posted_by: user.id,
+        });
+        if (postError) throw postError;
+        await linkBankStatementLine(bankReconStatementLineId, 'payment', savedVoucher.id);
+        setBankReconStatementLineId(null);
+        notifyFinanceReconciliationRefresh();
+      }
 
       setModalOpen(false);
       resetForm();

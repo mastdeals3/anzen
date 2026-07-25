@@ -103,9 +103,10 @@ PPh period for the Tax Compliance views.
 
 ## 7. Contra Flow
 
-Bank-to-bank or cash-to-bank transfers, posted as a manual JE by
-`GeneralJournalEntry.tsx` or via `contras`-style flows. Debits and
-credits both hit CoA bank/cash rows.
+`FundTransferManager.tsx` calls `create_fund_transfer_with_posting`; the
+`fund_transfers` row owns exactly one posted journal. Bank Reconciliation opens
+the same manager with a statement-line prefill. It does not post a separate
+Contra journal.
 
 ## 8. Petty Cash Flow
 
@@ -125,7 +126,9 @@ Replenishment vouchers: Dr Petty Cash / Cr Bank.
   see migration 20260208180627).
 - `source_module` field disambiguates the module. Current values:
   `'sales_invoice'`, `'purchase_invoice'`, `'payment'`, `'receipt'`,
-  `'petty_cash'`, `'expense'`, `'contra'`, `'manual'`, `'tax_payment'`.
+  `'petty_cash'`, `'expenses'`, `'fund_transfers'`, `'loans'`,
+  `'loan_transactions'`, `'capital_contribution'`, `'manual'`, and
+  `'tax_payment'`.
 - `is_posted` — currently always true. `is_reversed` + `reversed_by_id`
   are used for correction entries.
 
@@ -145,6 +148,42 @@ Replenishment vouchers: Dr Petty Cash / Cr Bank.
 - Component: `BankReconciliationEnhanced.tsx`.
 - Tax Payments integrate here via the auto-reconcile trigger described
   in [finance_rules.md](finance_rules.md) rule 4.
+- It is an entry/link surface only. Accounting document creation is delegated
+  to `financeCommands.ts`; journal creation remains inside each native posting
+  RPC/trigger.
+
+| Record action | Native Finance command / poster | Bank Reconciliation path |
+|---|---|---|
+| Expense | `save_finance_expense` / Expense poster | Same command, then `link_bank_statement_line` |
+| Customer Receipt | `save_receipt_voucher_with_allocations` + `post_receipt_voucher` | Same commands, then shared link |
+| Payment / bill settlement | `save_payment_voucher_command` + `post_payment_voucher` | Same commands or native Payment prefill, then shared link |
+| Contra | `create_fund_transfer_with_posting` | Opens `FundTransferManager` with reconciliation prefill |
+| Loan | `save_finance_loan` / `auto_post_loan_journal` | Same command with the bank line ID |
+| Loan Repayment | `save_finance_loan_repayment` / `auto_post_loan_transaction_journal` | Same command with the bank line ID |
+| Capital Injection | `save_finance_capital_contribution` / `post_capital_contribution_journal` | Same command with the bank line ID |
+| Owner Withdrawal | Manual Journal document via `save_finance_journal` | Atomic `save_bank_linked_finance_journal`, which delegates to the same journal and link commands |
+| Manual Journal / other income | `save_finance_journal` | Atomic `save_bank_linked_finance_journal`, which delegates to the same journal and link commands |
+| Link Existing | `link_bank_statement_line` | Same guarded link command; no journal is created |
+
+Loan and capital documents store transaction currency, functional currency
+(`IDR`), exchange rate, bank-account currency, source journal ID, and optional
+bank statement line ID. Their journal line `debit`/`credit` values are
+functional IDR; `transaction_debit`/`transaction_credit` preserve source
+currency values.
+
+Journal Register reads `journal_entries` directly. It includes active posted
+entries across all accounting dates (the CA Journal Register export remains
+date-filtered) and does not filter
+`source_module='bank_reconciliation'`. Journal numbers open the common journal
+popup. Source navigation reuses existing Expense, Receipt, Payment, Contra,
+Petty Cash, and Bank Reconciliation viewers.
+
+Historical repair is metadata-only. The 2026-07-26 consolidation created native
+Capital Contribution source rows only where a two-line posted bank receipt had
+Owner Capital (`3100`) as its sole counter-entry. It preserved the original
+journal and amounts. Legacy loan journals are not converted without certain
+counterparty and loan terms; they appear in
+`finance_exception_report.csv` instead.
 
 ## 12. Approval Workflow
 
@@ -155,11 +194,23 @@ Replenishment vouchers: Dr Petty Cash / Cr Bank.
   `material_return`, `tax_payment_approval`, `tax_period_close`, and
   more.
 - UI: `ApprovalNotifications.tsx`.
+- Finance amounts in approval cards are formatted with the shared
+  `formatCurrency` utility. Document transaction currency is resolved from
+  `transaction_currency`, `currency_code`, payment/bank currency metadata,
+  and finally the related bank account. Functional currency is not used to
+  label a source-document amount.
+- Finance approval cards currently exist for Expense and Petty Cash only.
+  Receipt, Payment, Contra, and Journal do not emit amount cards. Petty Cash
+  amounts are IDR by design because the petty-cash document model has no
+  transaction-currency field.
 
 ## 13. Currency Handling
 
-- Document-level: `purchase_invoices.currency` + `.exchange_rate`.
-- JE posted in IDR.
+- Source documents retain transaction currency and exchange rate; journals post
+  functional IDR and preserve transaction amounts on their lines.
+- UI amounts use the shared `formatCurrency` and
+  `resolveTransactionCurrency` helpers. They must not infer a transaction
+  currency from the functional journal amount.
 - FX gain/loss → 7300.
 
 ## 14. Tax Posting

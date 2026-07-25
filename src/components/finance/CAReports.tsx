@@ -23,7 +23,11 @@ interface DateRange {
   to: string;
 }
 
-export function CAReports() {
+interface CAReportsProps {
+  onOpenJournal?: (journalEntryId: string) => void;
+}
+
+export function CAReports({ onOpenJournal }: CAReportsProps) {
   const { profile } = useAuth();
   const { dateRange: contextDateRange } = useFinance();
   const [selectedReport, setSelectedReport] = useState<ReportType>('inventory_movement');
@@ -434,6 +438,8 @@ export function CAReports() {
     const { data: entries } = await supabase
       .from('journal_entries')
       .select('id, entry_date, entry_number, source_module, description')
+      .eq('is_posted', true)
+      .or('is_reversed.eq.false,is_reversed.is.null')
       .gte('entry_date', dateRange.from)
       .lte('entry_date', dateRange.to)
       .order('entry_date', { ascending: true })
@@ -459,6 +465,7 @@ export function CAReports() {
       const entry = entries.find(e => e.id === line.journal_entry_id);
       const account = accountMap.get(line.account_id);
       return {
+        journal_entry_id: entry?.id,
         entry_date: entry?.entry_date,
         entry_number: entry?.entry_number,
         voucher_type: entry?.source_module,
@@ -1057,10 +1064,15 @@ export function CAReports() {
                     <td className="px-1.5 py-1 text-slate-600">{row.narration}</td>
                   </tr>
                 ))}
-                {selectedReport === 'journal_register' && reportData.slice(0, 100).map((row: any, idx: number) => (
+                {selectedReport === 'journal_register' && reportData.map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
                     <td className="px-1.5 py-1 text-slate-900">{row.entry_date}</td>
-                    <td className="px-1.5 py-1 text-slate-900">{row.entry_number}</td>
+                    <td className="px-1.5 py-1 text-slate-900">
+                      <button type="button" onClick={() => row.journal_entry_id && onOpenJournal?.(row.journal_entry_id)}
+                        className="font-mono text-blue-700 hover:underline">
+                        {row.entry_number}
+                      </button>
+                    </td>
                     <td className="px-1.5 py-1 text-slate-600">{row.voucher_type}</td>
                     <td className="px-1.5 py-1 text-slate-900 font-mono">{row.account_code}</td>
                     <td className="px-1.5 py-1 text-slate-900">{row.account_name}</td>

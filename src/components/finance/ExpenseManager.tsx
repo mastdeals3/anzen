@@ -90,7 +90,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
-import { formatCurrency, normalizeCurrency } from '../../utils/currency';
+import { formatCurrency, normalizeCurrency, resolveTransactionCurrency } from '../../utils/currency';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 import {
   DOCUMENT_TYPE_GROUPS,
@@ -179,12 +179,11 @@ interface FinanceExpense {
 }
 
 const getExpenseCurrency = (expense: FinanceExpense): string =>
-  normalizeCurrency(
-    expense.transaction_currency
-      ?? expense.currency_code
-      ?? expense.bank_accounts?.currency
-      ?? expense.bank_statement_lines?.[0]?.bank_accounts?.currency,
-  );
+  resolveTransactionCurrency({
+    ...expense,
+    bank_accounts: expense.bank_accounts
+      ?? expense.bank_statement_lines?.[0]?.bank_accounts,
+  });
 
 interface Supplier {
   id: string;
