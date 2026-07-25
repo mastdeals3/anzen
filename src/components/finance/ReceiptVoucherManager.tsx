@@ -697,7 +697,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
             onClick={() => { resetForm(); setModalOpen(true); }}
             className="inline-flex items-center gap-1 h-7 px-2 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700"
           >
-            <ArrowDownCircle className="w-3 h-3" /> New Receipt
+            <ArrowDownCircle className="w-3 h-3" /> Receive Payment
           </button>
         )}
       </div>
@@ -815,7 +815,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       <FinanceModal
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); resetForm(); }}
-        title={editMode ? "Edit Receipt Voucher" : "New Receipt Voucher"}
+        title={editMode ? "Edit Customer Payment" : "Receive Customer Payment"}
         size="lg"
         footer={
           <>

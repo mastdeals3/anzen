@@ -63,11 +63,11 @@ const getFinanceMenu = (t: Record<string, Record<string, string>>): MenuGroup[] 
     label: t.finance.vouchers,
     collapsible: true,
     items: [
-      { id: 'purchase', label: t.finance.purchase, shortcut: 'F9' },
-      { id: 'receipt', label: t.finance.receipt, shortcut: 'F6' },
-      { id: 'payment', label: t.finance.payment, shortcut: 'F5' },
-      { id: 'journal', label: t.finance.journal, shortcut: 'F7' },
-      { id: 'contra', label: t.finance.contra, shortcut: 'F4' },
+      { id: 'purchase', label: 'Supplier Bills', shortcut: 'F9' },
+      { id: 'receipt', label: 'Receive Payment', shortcut: 'F6' },
+      { id: 'payment', label: 'Pay Bills', shortcut: 'F5' },
+      { id: 'journal', label: 'Manual Journal Entries', shortcut: 'F7' },
+      { id: 'contra', label: 'Transfer Money', shortcut: 'F4' },
       { id: 'expenses', label: t.finance.expenses, shortcut: 'F8' },
       { id: 'petty_cash', label: t.finance.pettyCash },
     ]

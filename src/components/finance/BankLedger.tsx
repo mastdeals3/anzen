@@ -8,6 +8,7 @@ import { formatCurrency } from '../../utils/currency';
 
 interface BankAccount {
   id: string;
+  coa_id: string | null;
   bank_name: string;
   account_number: string;
   currency: string;
@@ -42,6 +43,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
   const [expenseDocuments, setExpenseDocuments] = useState<string[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [openingBalance, setOpeningBalance] = useState(0);
+  const [glClosingBalance, setGlClosingBalance] = useState<number | null>(null);
   const [showOpeningBalanceModal, setShowOpeningBalanceModal] = useState(false);
   const [openingBalanceForm, setOpeningBalanceForm] = useState({
     balance: 0,
@@ -101,7 +103,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
     const { data } = await supabase
       .from('bank_accounts')
       // perf: projected columns (was select('*'))
-      .select('id, bank_name, account_number, currency, opening_balance, opening_balance_date')
+      .select('id, coa_id, bank_name, account_number, currency, opening_balance, opening_balance_date')
       .order('bank_name');
     if (data) setBanks(data);
   };
@@ -135,6 +137,21 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
       }
 
       setOpeningBalance(effectiveOpeningBalance);
+
+      // The bank book remains statement-native. Show the active GL balance
+      // beside it so a statement/import gap is visible rather than hidden.
+      if (selectedBankData?.coa_id) {
+        const { data: glLines } = await supabase
+          .from('journal_entry_lines')
+          .select('debit, credit, journal_entries!inner(entry_date, is_posted, is_reversed)')
+          .eq('account_id', selectedBankData.coa_id)
+          .eq('journal_entries.is_posted', true)
+          .eq('journal_entries.is_reversed', false)
+          .lte('journal_entries.entry_date', globalDateRange.endDate);
+        setGlClosingBalance((glLines || []).reduce((sum: number, line: any) => sum + Number(line.debit || 0) - Number(line.credit || 0), 0));
+      } else {
+        setGlClosingBalance(null);
+      }
 
       const entries: any[] = [];
 
@@ -314,6 +331,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
   const totalDebit = ledgerEntries.reduce((sum, e) => sum + e.debit, 0);
   const totalCredit = ledgerEntries.reduce((sum, e) => sum + e.credit, 0);
   const closingBalance = openingBalance + totalCredit - totalDebit;
+  const glDifference = glClosingBalance === null ? null : glClosingBalance - closingBalance;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -384,6 +402,13 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
                 Update
               </button>
             </div>
+          </div>
+        )}
+
+        {selectedBankData && glClosingBalance !== null && (
+          <div className={`mb-4 rounded-lg border p-3 text-xs ${Math.abs(glDifference || 0) <= 0.01 ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+            Active GL balance: <strong>{formatAmount(glClosingBalance, selectedBankData.currency)}</strong> · Statement closing: <strong>{formatAmount(closingBalance, selectedBankData.currency)}</strong>
+            {Math.abs(glDifference || 0) <= 0.01 ? ' · Reconciled' : ` · Difference ${formatAmount(Math.abs(glDifference || 0), selectedBankData.currency)}`}
           </div>
         )}
       </div>

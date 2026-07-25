@@ -12,11 +12,13 @@ interface JournalEntry {
   entry_number: string;
   entry_date: string;
   source_module: string | null;
+  reference_id?: string | null;
   reference_number: string | null;
   description: string | null;
   total_debit: number;
   total_credit: number;
   is_posted: boolean;
+  is_reversed?: boolean;
   posted_at: string;
 }
 
@@ -46,6 +48,9 @@ interface VoucherJournalEntry {
   narration: string;
   reference_number: string | null;
   source_module: string | null;
+  reference_id?: string | null;
+  is_posted: boolean;
+  is_reversed: boolean;
   line_count: number;
   is_multi_line: boolean;
 }
@@ -63,8 +68,27 @@ const sourceModuleLabels: Record<string, string> = {
   payment: 'Payment Voucher',
   petty_cash: 'Petty Cash',
   fund_transfer: 'Fund Transfer',
+  fund_transfers: 'Fund Transfer',
+  bank_reconciliation: 'Bank Reconciliation',
+  tax_payment: 'Tax Payment',
+  expense: 'Expense',
+  expenses: 'Expense',
   manual: 'Manual Entry',
 };
+
+const sourceFilters = [
+  { value: 'all', label: 'All' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'expense', label: 'Expense' },
+  { value: 'receipt', label: 'Receipt' },
+  { value: 'payment', label: 'Payment' },
+  { value: 'fund_transfer', label: 'Fund Transfer' },
+  { value: 'bank_reconciliation', label: 'Bank Reconciliation' },
+  { value: 'petty_cash', label: 'Petty Cash' },
+  { value: 'sales', label: 'Sales' },
+  { value: 'purchase', label: 'Purchase' },
+  { value: 'tax_payment', label: 'Tax' },
+];
 
 export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEntryViewerEnhancedProps) {
   const { dateRange } = useFinance();
@@ -75,28 +99,64 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
   const [entryLines, setEntryLines] = useState<JournalEntryLine[]>([]);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [filterModule, setFilterModule] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'posted' | 'all' | 'draft' | 'reversed'>('posted');
 
   useEffect(() => {
     loadVoucherJournal();
-  }, [dateRange, filterModule]);
+  }, [dateRange, statusFilter]);
 
   const loadVoucherJournal = async () => {
     try {
       setLoading(true);
+      // The unified register reads the journal table directly so every source
+      // module (including bank reconciliation and tax) shares one visibility
+      // contract. Draft/reversed rows are opt-in through the status filter.
       let query = supabase
-        .from('journal_voucher_view')
-        .select('*')
-        .gte('date', dateRange.startDate)
-        .lte('date', dateRange.endDate);
-
-      if (filterModule !== 'all') {
-        query = query.eq('source_module', filterModule);
-      }
-
-      const { data, error } = await query;
-
+        .from('journal_entries')
+        .select('id, entry_number, entry_date, source_module, reference_id, reference_number, description, total_debit, total_credit, is_posted, is_reversed, posted_at')
+        .gte('entry_date', dateRange.startDate)
+        .lte('entry_date', dateRange.endDate)
+        .order('entry_date', { ascending: false })
+        .order('entry_number', { ascending: false });
+      if (statusFilter === 'posted') query = query.eq('is_posted', true).eq('is_reversed', false);
+      if (statusFilter === 'draft') query = query.eq('is_posted', false).eq('is_reversed', false);
+      if (statusFilter === 'reversed') query = query.eq('is_reversed', true);
+      const { data: entries, error } = await query;
       if (error) throw error;
-      setVoucherEntries(data || []);
+
+      const entryIds = (entries || []).map(e => e.id);
+      const { data: lines, error: linesError } = entryIds.length
+        ? await supabase.from('journal_entry_lines').select('journal_entry_id, debit, credit, chart_of_accounts(code, name)').in('journal_entry_id', entryIds).order('line_number')
+        : { data: [], error: null };
+      if (linesError) throw linesError;
+      const linesByEntry = new Map<string, Array<{ debit: number; credit: number; chart_of_accounts?: { code: string; name: string } | null }>>();
+      (lines || []).forEach((line: any) => {
+        const list = linesByEntry.get(line.journal_entry_id) || [];
+        list.push({ debit: Number(line.debit || 0), credit: Number(line.credit || 0), chart_of_accounts: line.chart_of_accounts });
+        linesByEntry.set(line.journal_entry_id, list);
+      });
+      setVoucherEntries((entries || []).map(entry => {
+        const entryLines = linesByEntry.get(entry.id) || [];
+        const debitLine = entryLines.find(line => line.debit > 0);
+        const creditLine = entryLines.find(line => line.credit > 0);
+        return {
+          journal_entry_id: entry.id,
+          date: entry.entry_date,
+          voucher_no: entry.entry_number,
+          voucher_type: sourceModuleLabels[entry.source_module || ''] || entry.source_module || 'Manual Entry',
+          debit_account: debitLine?.chart_of_accounts ? `${debitLine.chart_of_accounts.code} - ${debitLine.chart_of_accounts.name}` : '',
+          credit_account: creditLine?.chart_of_accounts ? `${creditLine.chart_of_accounts.code} - ${creditLine.chart_of_accounts.name}` : '',
+          amount: Number(entry.total_debit || 0),
+          narration: entry.description || '',
+          reference_number: entry.reference_number,
+          source_module: entry.source_module,
+          reference_id: entry.reference_id,
+          is_posted: Boolean(entry.is_posted),
+          is_reversed: Boolean(entry.is_reversed),
+          line_count: entryLines.length,
+          is_multi_line: entryLines.length > 2,
+        };
+      }));
     } catch (error) {
       console.error('Error loading voucher journal:', error);
     } finally {
@@ -184,13 +244,21 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
     }
   };
 
-  const filteredVouchers = voucherEntries.filter(v =>
-    v.voucher_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (v.debit_account && v.debit_account.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (v.credit_account && v.credit_account.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (v.narration && v.narration.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (v.reference_number && v.reference_number.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredVouchers = voucherEntries.filter(v => {
+    const source = v.source_module || '';
+    const moduleMatch = filterModule === 'all'
+      || (filterModule === 'expense' && (source === 'expense' || source === 'expenses'))
+      || (filterModule === 'fund_transfer' && (source === 'fund_transfer' || source === 'fund_transfers'))
+      || (filterModule === 'sales' && source.startsWith('sales_invoice'))
+      || (filterModule === 'purchase' && source === 'purchase_invoice')
+      || source === filterModule;
+    if (!moduleMatch) return false;
+    if (!normalizedSearch) return true;
+    return [v.voucher_no, v.reference_number, v.reference_id, v.source_module, v.voucher_type,
+      v.date, v.narration, v.debit_account, v.credit_account]
+      .some(value => String(value || '').toLowerCase().includes(normalizedSearch));
+  });
 
   const totals = {
     debit: filteredVouchers.reduce((sum, v) => sum + v.amount, 0),
@@ -209,7 +277,7 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Search voucher, accounts, narration..."
+            placeholder="Search journal number, source document, module, date..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg"
@@ -221,17 +289,24 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
           onChange={(e) => setFilterModule(e.target.value)}
           className="px-1.5 py-1 border border-gray-300 rounded-lg"
         >
-          <option value="all">All Sources</option>
-          <option value="sales_invoice">Sales Invoices</option>
-          <option value="sales_invoice_cogs">COGS</option>
-          <option value="purchase_invoice">Purchase Invoices</option>
-          <option value="receipt">Receipts</option>
-          <option value="payment">Payments</option>
-          <option value="expenses">Expenses</option>
-          <option value="petty_cash">Petty Cash</option>
-          <option value="fund_transfers">Fund Transfers</option>
-          <option value="manual">Manual</option>
+          {sourceFilters.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
         </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+          className="px-1.5 py-1 border border-gray-300 rounded-lg"
+          aria-label="Journal status filter"
+        >
+          <option value="posted">Posted & active</option>
+          <option value="all">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="reversed">Reversed</option>
+        </select>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 bg-slate-50 border border-slate-200 rounded px-2 py-1.5">
+        <span>Journal Register · {statusFilter === 'posted' ? 'posted and active entries' : `${statusFilter} status view`}</span>
+        <span>Global date filter: {dateRange.startDate} → {dateRange.endDate}</span>
       </div>
 
       {/* Journal Voucher View (Tally Style) - One row per voucher */}
@@ -242,6 +317,8 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
               <tr>
                 <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Date</th>
                 <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Type</th>
+                <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Journal No.</th>
+                <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Source Document</th>
                 <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Debit Account</th>
                 <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Credit Account</th>
                 <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-r">Amount</th>
@@ -261,6 +338,10 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
                     <span className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
                       {voucher.voucher_type}
                     </span>
+                  </td>
+                  <td className="px-1.5 py-1 whitespace-nowrap border-r font-mono text-xs text-blue-700">{voucher.voucher_no}</td>
+                  <td className="px-1.5 py-1 border-r text-xs text-gray-600">
+                    {voucher.reference_number || voucher.reference_id || '-'}
                   </td>
                   <td className="px-1.5 py-1 border-r">
                     <div className="text-xs text-gray-900 max-w-xs truncate">
@@ -315,15 +396,15 @@ export function JournalEntryViewerEnhanced({ canManage, onEditEntry }: JournalEn
               ))}
               {filteredVouchers.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
-                    No journal entries found
+                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                    No journals found for the selected filters and global date range ({dateRange.startDate} → {dateRange.endDate}).
                   </td>
                 </tr>
               )}
             </tbody>
             <tfoot className="bg-gray-50 font-bold">
               <tr>
-                <td colSpan={4} className="px-1.5 py-1 text-right">Total:</td>
+                <td colSpan={6} className="px-1.5 py-1 text-right">Total:</td>
                 <td className="px-1.5 py-1 text-right text-gray-900 border-r">
                   {formatCurrency(totals.debit, 'IDR')}
                 </td>

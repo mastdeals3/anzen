@@ -68,6 +68,14 @@ interface OutstandingExpenseBill {
   days_overdue: number;
 }
 
+interface ControlReconciliation {
+  control_code: string;
+  gl_balance: number;
+  subledger_balance: number;
+  difference: number;
+  status: 'reconciled' | 'difference';
+}
+
 interface PayablesManagerProps {
   canManage: boolean;
 }
@@ -81,6 +89,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
   const [payments, setPayments] = useState<VendorPayment[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [outstandingExpenseBills, setOutstandingExpenseBills] = useState<OutstandingExpenseBill[]>([]);
+  const [apReconciliation, setApReconciliation] = useState<ControlReconciliation | null>(null);
   const [loading, setLoading] = useState(true);
   const [billModalOpen, setBillModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -114,6 +123,10 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
   const loadData = async () => {
     setLoading(true);
     await Promise.all([loadBills(), loadPayments(), loadBankAccounts(), loadOutstandingExpenseBills()]);
+    const { data } = await supabase.rpc('get_control_account_reconciliation', {
+      p_as_of_date: new Date().toISOString().slice(0, 10),
+    });
+    setApReconciliation(((data || []) as ControlReconciliation[]).find(r => r.control_code === '2110') || null);
     setLoading(false);
   };
 
@@ -584,6 +597,12 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
 
   return (
     <div className="space-y-2">
+      {apReconciliation && (
+        <div className={`rounded border px-3 py-2 text-xs ${apReconciliation.status === 'reconciled' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+          A/P control 2110: GL Rp {Number(apReconciliation.gl_balance).toLocaleString('id-ID')} · Open bills Rp {Number(apReconciliation.subledger_balance).toLocaleString('id-ID')}
+          {apReconciliation.status === 'reconciled' ? ' · Reconciled' : ` · Difference Rp ${Math.abs(Number(apReconciliation.difference)).toLocaleString('id-ID')}`}
+        </div>
+      )}
       {/* Compact KPI strip — one row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
         <div className="bg-gradient-to-br from-red-500 to-red-600 rounded px-2 py-1.5 text-white">

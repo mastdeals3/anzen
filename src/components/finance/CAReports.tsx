@@ -46,7 +46,6 @@ export function CAReports() {
     { id: 'sales_register' as const, name: 'Sales Register', icon: TrendingUp, description: 'All sales invoices' },
     { id: 'purchase_register' as const, name: 'Purchase Register', icon: FileText, description: 'All purchase invoices' },
     { id: 'inventory_movement' as const, name: 'Inventory Movement', icon: Package, description: 'Stock Opening + In + Out + Closing', highlight: true },
-    { id: 'journal_register' as const, name: 'Journal Register', icon: FileText, description: 'All journal entries' },
     { id: 'general_ledger' as const, name: 'General Ledger', icon: FileText, description: 'All account ledgers combined' },
     { id: 'trial_balance' as const, name: 'Trial Balance', icon: FileText, description: 'Debit/Credit summary' },
     { id: 'fixed_assets' as const, name: 'Fixed Asset Register', icon: Building2, description: 'Assets with depreciation' }

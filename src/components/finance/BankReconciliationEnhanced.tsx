@@ -3192,11 +3192,11 @@ export function BankReconciliationEnhanced({
                           </>
                         );
                       })()}
-                      {line.status === 'suggested' && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                          <AlertCircle className="w-3 h-3" /> Review
-                        </span>
-                      )}
+      {line.status === 'suggested' && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+          <AlertCircle className="w-3 h-3" /> Suggested match — review
+        </span>
+      )}
                       {line.status === 'unmatched' && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
                           <XCircle className="w-3 h-3" /> Unrecorded
@@ -3211,7 +3211,8 @@ export function BankReconciliationEnhanced({
                           <button
                             onClick={() => confirmMatch(line.id)}
                             className="p-1 text-green-600 hover:bg-green-50 rounded"
-                            title="Confirm Match"
+                            title="Accept suggested match"
+                            aria-label="Accept suggested match"
                           >
                             <CheckCircle2 className="w-4 h-4" />
                           </button>
@@ -3833,9 +3834,9 @@ export function BankReconciliationEnhanced({
                       >
                         <option value="">Select type...</option>
                         <option value="customer_payment">Customer Payment</option>
-                        <option value="capital">Capital Injection</option>
-                        <option value="loan">Loan Received</option>
-                        <option value="loan_director_owner">Loan from Director/Owner</option>
+                        <option value="capital">Owner Contribution (Capital Injection)</option>
+                        <option value="loan">Guided Loan Receipt</option>
+                        <option value="loan_director_owner">Guided Director / Owner Loan</option>
                         <option value="bank_interest">Bank Interest</option>
                         <option value="other_income">Other Income</option>
                         <option value="misc_income">Miscellaneous Income</option>

@@ -136,7 +136,12 @@ export function Dashboard() {
         b => b.expiry_date && new Date(b.expiry_date) <= thirtyDaysFromNow && new Date(b.expiry_date) >= new Date()
       ).length || 0;
 
-      const totalRevenue = invoicesResult.data?.reduce((sum, inv) => sum + (Number(inv.total_amount) || 0), 0) || 0;
+      const { data: financeSummary, error: financeSummaryError } = await supabase.rpc('get_finance_dashboard_summary', {
+        p_start_date: startOfMonth.toISOString().split('T')[0],
+        p_end_date: endOfMonth.toISOString().split('T')[0],
+      });
+      if (financeSummaryError) throw financeSummaryError;
+      const finance = (financeSummary || [])[0] || { revenue: 0, net_income: 0 };
 
       // Fetch all overdue balances in one query instead of N+1 individual calls
       const { data: overdueBalances } = await supabase.rpc('get_overdue_balances');
@@ -145,21 +150,15 @@ export function Dashboard() {
       );
       const deliveryAlertSummary = summarizeDeliveryAlerts(deliveryAlerts);
 
-      // Fetch real COGS from batch landed costs for accurate gross profit
-      const { data: cogsData } = await supabase.rpc('get_cogs_for_period', {
-        p_start: startOfMonth.toISOString().split('T')[0],
-        p_end: endOfMonth.toISOString().split('T')[0],
-      });
-      const totalCOGS = Number(cogsData) || 0;
-
       setStats({
         totalProducts: productsResult.count || 0,
         lowStockItems: lowStockCount,
         nearExpiryBatches: nearExpiryCount,
         totalCustomers: customersResult.count || 0,
         salesThisMonth: invoicesResult.data?.length || 0,
-        revenueThisMonth: totalRevenue,
-        profitThisMonth: Math.max(0, totalRevenue - totalCOGS),
+        // Financial widgets use active posted, non-reversed journal lines.
+        revenueThisMonth: Number(finance.revenue || 0),
+        profitThisMonth: Number(finance.net_income || 0),
         pendingFollowUps: activitiesResult.count || 0,
         pendingSalesOrders: pendingSalesOrdersResult.count || 0,
         pendingDeliveryChallans: pendingDCResult.count || 0,

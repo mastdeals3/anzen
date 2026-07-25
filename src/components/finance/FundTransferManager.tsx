@@ -716,7 +716,7 @@ export function FundTransferManager({
             className="inline-flex items-center gap-1 h-7 px-2 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700"
           >
             <Plus className="w-3 h-3" />
-            New Transfer
+            Transfer Money
           </button>
         )}
         toolbar={(
@@ -840,7 +840,7 @@ export function FundTransferManager({
         <FinanceModal
           isOpen={modalOpen}
           onClose={() => { setModalOpen(false); resetForm(); }}
-          title={viewOnly ? "View Fund Transfer" : editingTransfer ? "Edit Fund Transfer" : "New Fund Transfer"}
+          title={viewOnly ? "View Transfer" : editingTransfer ? "Edit Transfer" : "Transfer Money"}
           size="md"
           footer={
             <>

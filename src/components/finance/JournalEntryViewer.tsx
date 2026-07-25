@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Search, FileText, Filter } from 'lucide-react';
 import { Modal } from '../Modal';
 import { useFinance } from '../../contexts/FinanceContext';
+import { JournalEntryViewerEnhanced } from './JournalEntryViewerEnhanced';
 
 interface JournalEntry {
   id: string;
@@ -45,7 +46,9 @@ const sourceModuleLabels: Record<string, string> = {
   manual: 'Manual Entry',
 };
 
-export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
+// Retained for backwards-compatible imports only. The enhanced register is
+// the single journal visibility surface used by Finance navigation.
+function LegacyJournalEntryViewer({ canManage }: JournalEntryViewerProps) {
   const { dateRange: globalDateRange } = useFinance();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -294,4 +297,8 @@ export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
       </Modal>
     </div>
   );
+}
+
+export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
+  return <JournalEntryViewerEnhanced canManage={canManage} />;
 }
