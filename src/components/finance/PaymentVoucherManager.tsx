@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { Search, ArrowUpCircle, Pencil, Trash2, Eye, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
@@ -9,9 +10,9 @@ import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
-import { getFinancialYear } from '../../utils/dateFormat';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { formatCurrency } from '../../utils/currency';
+import { savePaymentVoucher } from '../../services/financeCommands';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
 import {
   type BankTransactionLine,
@@ -108,6 +109,10 @@ interface PaymentVoucherManagerProps {
   prefillExpenseBill?: PrefillExpenseBill | null;
   onPrefillExpenseBillConsumed?: () => void;
   onViewInvoice?: (invoiceId: string) => void;
+  prefillFromBankReconciliation?: {
+    bankAccountId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string;
+  } | null;
+  onBankReconciliationPrefillConsumed?: () => void;
 }
 
 interface PaymentAllocationRow {
@@ -150,7 +155,8 @@ function fmt(amount: number, currency: string) {
 }
 
 
-export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice }: PaymentVoucherManagerProps) {
+export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice, prefillFromBankReconciliation, onBankReconciliationPrefillConsumed }: PaymentVoucherManagerProps) {
+  const { t } = useLanguage();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const [cancelPostingTarget, setCancelPostingTarget] = useState<PaymentVoucher | null>(null);
@@ -229,6 +235,27 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
       onPrefillExpenseBillConsumed?.();
     }
   }, [prefillExpenseBill, loading]);
+
+  useEffect(() => {
+    if (!prefillFromBankReconciliation || loading) return;
+    setEditingVoucher(null);
+    setAllocations([]);
+    setExpenseBillAllocations([]);
+    setFormData(prev => ({
+      ...prev,
+      voucher_date: prefillFromBankReconciliation.date,
+      bank_account_id: prefillFromBankReconciliation.bankAccountId,
+      reference_number: prefillFromBankReconciliation.reference,
+      amount: prefillFromBankReconciliation.amount,
+      description: prefillFromBankReconciliation.description,
+      payment_method: 'bank_transfer',
+      payment_currency: prefillFromBankReconciliation.currency,
+      exchange_rate: prefillFromBankReconciliation.currency === 'IDR' ? 1 : 0,
+    }));
+    setSelectedBank(bankAccounts.find(bank => bank.id === prefillFromBankReconciliation.bankAccountId) || null);
+    setModalOpen(true);
+    onBankReconciliationPrefillConsumed?.();
+  }, [prefillFromBankReconciliation, loading, bankAccounts]);
 
   useEffect(() => {
     // In edit mode handleEdit manages invoice loading — skip this effect entirely
@@ -314,7 +341,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
           .from('voucher_allocations')
           .select('payment_voucher_id, allocated_currency, purchase_invoices(id, invoice_number)')
           .in('payment_voucher_id', voucherIds);
-        for (const a of (allocs || []) as PaymentAllocationRow[]) {
+        for (const a of (allocs || []) as unknown as PaymentAllocationRow[]) {
           if (!a.payment_voucher_id) continue;
           if (!allocCcyMap[a.payment_voucher_id]) {
             allocCcyMap[a.payment_voucher_id] = a.allocated_currency || '';
@@ -441,18 +468,6 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     });
   };
 
-  /** Format: PV/YY-YY/NNN  e.g. PV/25-26/001 */
-  const generateVoucherNumber = async (dateStr: string) => {
-    const date = new Date(dateStr);
-    const fy = getFinancialYear(date);
-    const prefix = `PV/${fy}/`;
-    const { count } = await supabase
-      .from('payment_vouchers')
-      .select('*', { count: 'exact', head: true })
-      .like('voucher_number', `${prefix}%`);
-    return `${prefix}${String((count || 0) + 1).padStart(3, '0')}`;
-  };
-
   const handleAllocationChange = (invoice: PurchaseInvoice, amount: number) => {
     setAllocations(prev => {
       const existing = prev.find(a => a.invoiceId === invoice.id);
@@ -487,7 +502,6 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
     : netInvoiceAmount + bankCharge;
   const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
   const totalExpenseBillAllocated = expenseBillAllocations.reduce((sum, a) => sum + a.amount, 0);
-  const totalAllAllocated = totalAllocated + totalExpenseBillAllocated;
 
   const resetForm = () => {
     setFormData({
@@ -798,28 +812,11 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
         bank_charge: formData.bank_charge || 0,
       };
 
-      const voucherNumber = editingVoucher ? editingVoucher.voucher_number : await generateVoucherNumber(formData.voucher_date);
-      const { error: saveError } = await supabase.rpc('save_payment_voucher_with_allocations', {
-        p_voucher_id: editingVoucher?.id || null,
-        p_voucher_number: voucherNumber,
-        p_voucher_date: payload.voucher_date,
-        p_supplier_id: payload.supplier_id,
-        // Only sent for staff payees — keeps supplier vouchers working on a
-        // live DB that has not yet applied the staff-accounting migration.
-        ...(payload.staff_id ? { p_staff_id: payload.staff_id } : {}),
-        p_payment_method: payload.payment_method,
-        p_bank_account_id: payload.bank_account_id,
-        p_reference_number: payload.reference_number,
-        p_amount: payload.amount,
-        p_pph_amount: payload.pph_amount,
-        p_pph_code_id: payload.pph_code_id,
-        p_description: payload.description,
-        p_payment_currency: payload.payment_currency,
-        p_exchange_rate: payload.exchange_rate,
-        p_bank_amount: payload.bank_amount,
-        p_bank_charge: payload.bank_charge,
-        p_created_by: user.id,
-        p_allocations: [
+      await savePaymentVoucher(editingVoucher?.id || null, {
+        ...payload,
+        payment_currency: payload.payment_currency as 'IDR' | 'USD',
+        created_by: user.id,
+      }, [
           // Purchase invoice allocations
           ...allocations.map(alloc => ({
             invoice_id: alloc.invoiceId,
@@ -832,9 +829,7 @@ export function PaymentVoucherManager({ canManage, prefillInvoice, onPrefillCons
             amount: alloc.amount,
             currency: 'IDR',
           })),
-        ],
-      });
-      if (saveError) throw saveError;
+        ]);
 
       setModalOpen(false);
       resetForm();

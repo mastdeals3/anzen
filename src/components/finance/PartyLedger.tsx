@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { type CompanySnapshot, FALLBACK_COMPANY } from '../../types/company';
 import { CompanyLogo } from '../CompanyLogo';
@@ -115,6 +115,12 @@ export default function PartyLedger() {
   // beginning of time (used to compute the opening balance before the period).
   const fetchEntries = async (fromDate: string | null, toDate: string): Promise<LedgerEntry[]> => {
     const entries: LedgerEntry[] = [];
+    const toFunctionalIDR = (amount: number, currency?: string | null, rate?: number | null) =>
+      currency === 'USD' ? (rate && rate > 0 ? amount * rate : 0) : amount;
+    const currencyDetail = (amount: number, currency?: string | null, rate?: number | null) =>
+      currency === 'USD'
+        ? ` (${formatCurrency(amount, 'USD')}${rate && rate > 0 ? ` @ ${formatCurrency(rate, 'IDR')}/USD` : ' — exchange rate missing'})`
+        : '';
     const dateRange = <T,>(q: T, col: string): T => {
       let qq = (q as any).lte(col, toDate);
       if (fromDate) qq = qq.gte(col, fromDate);
@@ -148,20 +154,22 @@ export default function PartyLedger() {
       const { data: receipts } = await dateRange(
         supabase
           .from('receipt_vouchers')
-          .select('id, voucher_date, voucher_number, amount, description')
-          .eq('customer_id', selectedParty),
+          .select('id, voucher_date, voucher_number, amount, description, transaction_currency, currency_code, exchange_rate')
+          .eq('customer_id', selectedParty)
+          .eq('is_posted', true),
         'voucher_date',
       ).order('voucher_date');
 
       if (receipts) {
         receipts.forEach(rec => {
+          const currency = rec.transaction_currency || rec.currency_code || 'IDR';
           entries.push({
             id: rec.id,
             entry_date: rec.voucher_date,
-            particulars: rec.description || 'Receipt',
+            particulars: `${rec.description || 'Receipt'}${currencyDetail(rec.amount, currency, rec.exchange_rate)}`,
             reference: rec.voucher_number,
             debit: 0,
-            credit: rec.amount,
+            credit: toFunctionalIDR(rec.amount, currency, rec.exchange_rate),
             running_balance: 0,
             type: 'receipt',
           });
@@ -195,20 +203,21 @@ export default function PartyLedger() {
       const { data: invoices } = await dateRange(
         supabase
           .from('purchase_invoices')
-          .select('id, invoice_date, invoice_number, total_amount, payment_status')
+          .select('id, invoice_date, invoice_number, total_amount, status, currency, exchange_rate')
           .eq('supplier_id', selectedParty),
         'invoice_date',
       ).order('invoice_date');
 
       if (invoices) {
         invoices.forEach(inv => {
+          const functionalAmount = toFunctionalIDR(inv.total_amount, inv.currency, inv.exchange_rate);
           entries.push({
             id: inv.id,
             entry_date: inv.invoice_date,
-            particulars: `Purchase Invoice - ${inv.payment_status || 'Unpaid'}`,
+            particulars: `Purchase Invoice - ${inv.status || 'Unpaid'}${currencyDetail(inv.total_amount, inv.currency, inv.exchange_rate)}`,
             reference: inv.invoice_number,
             debit: 0,
-            credit: inv.total_amount,
+            credit: functionalAmount,
             running_balance: 0,
             type: 'invoice',
           });
@@ -222,7 +231,7 @@ export default function PartyLedger() {
       const { data: expenseBills } = await dateRange(
         supabase
           .from('finance_expenses')
-          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount')
+          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount, transaction_currency, currency_code, exchange_rate')
           .eq('supplier_id', selectedParty)
           .is('payment_method', null)
           .eq('approval_status', 'approved'),
@@ -232,13 +241,14 @@ export default function PartyLedger() {
       if (expenseBills) {
         expenseBills.forEach(bill => {
           const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
+          const currency = bill.transaction_currency || bill.currency_code || 'IDR';
           entries.push({
             id: bill.id,
             entry_date: bill.expense_date,
-            particulars: `Expense Bill - ${(bill.expense_category || '').replace(/_/g, ' ')}${outstanding <= 0.01 ? ' (Paid)' : ''}`,
+            particulars: `Expense Bill - ${(bill.expense_category || '').replace(/_/g, ' ')}${outstanding <= 0.01 ? ' (Paid)' : ''}${currencyDetail(bill.amount, currency, bill.exchange_rate)}`,
             reference: bill.invoice_number || bill.voucher_number || '',
             debit: 0,
-            credit: bill.amount,
+            credit: toFunctionalIDR(bill.amount, currency, bill.exchange_rate),
             running_balance: 0,
             type: 'invoice',
           });
@@ -248,19 +258,21 @@ export default function PartyLedger() {
       const { data: payments } = await dateRange(
         supabase
           .from('payment_vouchers')
-          .select('id, voucher_date, voucher_number, amount, description')
-          .eq('supplier_id', selectedParty),
+          .select('id, voucher_date, voucher_number, amount, description, transaction_currency, payment_currency, currency_code, exchange_rate')
+          .eq('supplier_id', selectedParty)
+          .eq('is_posted', true),
         'voucher_date',
       ).order('voucher_date');
 
       if (payments) {
         payments.forEach(pay => {
+          const currency = pay.transaction_currency || pay.payment_currency || pay.currency_code || 'IDR';
           entries.push({
             id: pay.id,
             entry_date: pay.voucher_date,
-            particulars: pay.description || 'Payment',
+            particulars: `${pay.description || 'Payment'}${currencyDetail(pay.amount, currency, pay.exchange_rate)}`,
             reference: pay.voucher_number,
-            debit: pay.amount,
+            debit: toFunctionalIDR(pay.amount, currency, pay.exchange_rate),
             credit: 0,
             running_balance: 0,
             type: 'payment',
@@ -277,7 +289,7 @@ export default function PartyLedger() {
       const { data: bills } = await dateRange(
         supabase
           .from('finance_expenses')
-          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount')
+          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount, transaction_currency, currency_code, exchange_rate')
           .eq('staff_id', selectedParty)
           .neq('expense_category', 'staff_advance')
           .is('payment_method', null)
@@ -288,13 +300,14 @@ export default function PartyLedger() {
       if (bills) {
         bills.forEach(bill => {
           const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
+          const currency = bill.transaction_currency || bill.currency_code || 'IDR';
           entries.push({
             id: bill.id,
             entry_date: bill.expense_date,
-            particulars: `${(bill.expense_category || '').replace(/_/g, ' ')} Bill${outstanding <= 0.01 ? ' (Paid)' : ''}`,
+            particulars: `${(bill.expense_category || '').replace(/_/g, ' ')} Bill${outstanding <= 0.01 ? ' (Paid)' : ''}${currencyDetail(bill.amount, currency, bill.exchange_rate)}`,
             reference: bill.invoice_number || bill.voucher_number || '',
             debit: 0,
-            credit: bill.amount,
+            credit: toFunctionalIDR(bill.amount, currency, bill.exchange_rate),
             running_balance: 0,
             type: 'invoice',
           });
@@ -304,7 +317,7 @@ export default function PartyLedger() {
       const { data: advances } = await dateRange(
         supabase
           .from('finance_expenses')
-          .select('id, expense_date, invoice_number, voucher_number, amount')
+          .select('id, expense_date, invoice_number, voucher_number, amount, transaction_currency, currency_code, exchange_rate')
           .eq('staff_id', selectedParty)
           .eq('expense_category', 'staff_advance')
           .not('payment_method', 'is', null)
@@ -314,12 +327,13 @@ export default function PartyLedger() {
 
       if (advances) {
         advances.forEach(adv => {
+          const currency = adv.transaction_currency || adv.currency_code || 'IDR';
           entries.push({
             id: adv.id,
             entry_date: adv.expense_date,
-            particulars: 'Staff Advance Given',
+            particulars: `Staff Advance Given${currencyDetail(adv.amount, currency, adv.exchange_rate)}`,
             reference: adv.invoice_number || adv.voucher_number || '',
-            debit: adv.amount,
+            debit: toFunctionalIDR(adv.amount, currency, adv.exchange_rate),
             credit: 0,
             running_balance: 0,
             type: 'payment',
@@ -330,23 +344,26 @@ export default function PartyLedger() {
       const { data: vouchers } = await dateRange(
         supabase
           .from('payment_vouchers')
-          .select('id, voucher_date, voucher_number, amount, description, payment_method')
-          .eq('staff_id', selectedParty),
+          .select('id, voucher_date, voucher_number, amount, description, payment_method, transaction_currency, payment_currency, currency_code, exchange_rate')
+          .eq('staff_id', selectedParty)
+          .eq('is_posted', true),
         'voucher_date',
       ).order('voucher_date');
 
       if (vouchers) {
         vouchers.forEach(pv => {
           const isAdjustment = pv.payment_method === 'advance_adjustment';
+          const currency = pv.transaction_currency || pv.payment_currency || pv.currency_code || 'IDR';
+          const functionalAmount = toFunctionalIDR(pv.amount, currency, pv.exchange_rate);
           entries.push({
             id: pv.id,
             entry_date: pv.voucher_date,
             particulars: isAdjustment
-              ? 'Advance Adjusted Against Salary'
-              : (pv.description || 'Payment to Staff'),
+              ? `Advance Adjusted Against Salary${currencyDetail(pv.amount, currency, pv.exchange_rate)}`
+              : `${pv.description || 'Payment to Staff'}${currencyDetail(pv.amount, currency, pv.exchange_rate)}`,
             reference: pv.voucher_number,
-            debit: pv.amount,
-            credit: isAdjustment ? pv.amount : 0,
+            debit: functionalAmount,
+            credit: isAdjustment ? functionalAmount : 0,
             running_balance: 0,
             type: 'payment',
           });

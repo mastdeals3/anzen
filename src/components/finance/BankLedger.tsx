@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { BookOpen, Download, RefreshCw } from 'lucide-react';
 import { Modal } from '../Modal';
@@ -8,6 +8,7 @@ import { formatCurrency } from '../../utils/currency';
 
 interface BankAccount {
   id: string;
+  coa_id: string | null;
   bank_name: string;
   account_number: string;
   currency: string;
@@ -39,9 +40,10 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
   const [loading, setLoading] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
-  const [expenseDocuments, setExpenseDocuments] = useState<string[]>([]);
-  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [, setExpenseDocuments] = useState<string[]>([]);
+  const [, setLoadingDocs] = useState(false);
   const [openingBalance, setOpeningBalance] = useState(0);
+  const [glClosingBalance, setGlClosingBalance] = useState<number | null>(null);
   const [showOpeningBalanceModal, setShowOpeningBalanceModal] = useState(false);
   const [openingBalanceForm, setOpeningBalanceForm] = useState({
     balance: 0,
@@ -101,7 +103,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
     const { data } = await supabase
       .from('bank_accounts')
       // perf: projected columns (was select('*'))
-      .select('id, bank_name, account_number, currency, opening_balance, opening_balance_date')
+      .select('id, coa_id, bank_name, account_number, currency, opening_balance, opening_balance_date')
       .order('bank_name');
     if (data) setBanks(data);
   };
@@ -136,6 +138,26 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
 
       setOpeningBalance(effectiveOpeningBalance);
 
+      // The bank book remains statement-native. Show the active GL balance
+      // beside it so a statement/import gap is visible rather than hidden.
+      if (selectedBankData?.coa_id) {
+        const { data: glLines } = await supabase
+          .from('journal_entry_lines')
+          .select('debit, credit, transaction_debit, transaction_credit, journal_entries!inner(entry_date, is_posted, is_reversed)')
+          .eq('account_id', selectedBankData.coa_id)
+          .eq('journal_entries.is_posted', true)
+          .eq('journal_entries.is_reversed', false)
+          .lte('journal_entries.entry_date', globalDateRange.endDate);
+        setGlClosingBalance((glLines || []).reduce((sum: number, line: any) => {
+          const useTransaction = selectedBankData.currency === 'USD';
+          const debit = useTransaction ? Number(line.transaction_debit ?? line.debit ?? 0) : Number(line.debit || 0);
+          const credit = useTransaction ? Number(line.transaction_credit ?? line.credit ?? 0) : Number(line.credit || 0);
+          return sum + debit - credit;
+        }, 0));
+      } else {
+        setGlClosingBalance(null);
+      }
+
       const entries: any[] = [];
 
       // Calculate next day for inclusive end date filtering
@@ -146,7 +168,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
       // Get bank statement lines (source of truth for Bank Ledger)
       const { data: bankLines } = await supabase
         .from('bank_statement_lines')
-        .select('id, transaction_date, description, reference, debit_amount, credit_amount, matched_expense_id, matched_receipt_id, matched_entry_id, notes')
+        .select('id, transaction_date, description, reference, debit_amount, credit_amount, matched_expense_id, matched_receipt_id, matched_payment_id, matched_entry_id, notes')
         .eq('bank_account_id', selectedBank)
         .gte('transaction_date', globalDateRange.startDate)
         .lt('transaction_date', endDateStr)
@@ -168,8 +190,9 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
             type: 'bank',
             matched_expense_id: line.matched_expense_id || null,
             matched_receipt_id: line.matched_receipt_id || null,
+            matched_payment_id: line.matched_payment_id || null,
             matched_entry_id: line.matched_entry_id || null,
-            linkedId: line.matched_expense_id || line.matched_receipt_id || line.matched_entry_id,
+            linkedId: line.matched_expense_id || line.matched_receipt_id || line.matched_payment_id || line.matched_entry_id,
             notes: line.notes
           });
         });
@@ -180,15 +203,20 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
       // what the Expenses / Receipt / Journal pages display.
       const expenseIds = Array.from(new Set(entries.map(e => e.matched_expense_id).filter(Boolean)));
       const receiptIds = Array.from(new Set(entries.map(e => e.matched_receipt_id).filter(Boolean)));
+      const paymentIds = Array.from(new Set(entries.map(e => e.matched_payment_id).filter(Boolean)));
       const entryIds = Array.from(new Set(entries.map(e => e.matched_entry_id).filter(Boolean)));
 
-      const [expMap, recMap, entMap] = await Promise.all([
+      const [expMap, recMap, payMap, entMap] = await Promise.all([
         expenseIds.length
           ? supabase.from('finance_expenses').select('id, voucher_number').in('id', expenseIds)
               .then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.voucher_number])))
           : Promise.resolve({} as Record<string, string>),
         receiptIds.length
           ? supabase.from('receipt_vouchers').select('id, voucher_number').in('id', receiptIds)
+              .then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.voucher_number])))
+          : Promise.resolve({} as Record<string, string>),
+        paymentIds.length
+          ? supabase.from('payment_vouchers').select('id, voucher_number').in('id', paymentIds)
               .then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.voucher_number])))
           : Promise.resolve({} as Record<string, string>),
         entryIds.length
@@ -201,6 +229,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
         const resolved =
           (e.matched_expense_id && expMap[e.matched_expense_id]) ||
           (e.matched_receipt_id && recMap[e.matched_receipt_id]) ||
+          (e.matched_payment_id && payMap[e.matched_payment_id]) ||
           (e.matched_entry_id && entMap[e.matched_entry_id]);
         if (resolved) e.canonical_reference = resolved;
       });
@@ -314,6 +343,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
   const totalDebit = ledgerEntries.reduce((sum, e) => sum + e.debit, 0);
   const totalCredit = ledgerEntries.reduce((sum, e) => sum + e.credit, 0);
   const closingBalance = openingBalance + totalCredit - totalDebit;
+  const glDifference = glClosingBalance === null ? null : glClosingBalance - closingBalance;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -384,6 +414,13 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
                 Update
               </button>
             </div>
+          </div>
+        )}
+
+        {selectedBankData && glClosingBalance !== null && (
+          <div className={`mb-4 rounded-lg border p-3 text-xs ${Math.abs(glDifference || 0) <= 0.01 ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+            Active GL balance: <strong>{formatAmount(glClosingBalance, selectedBankData.currency)}</strong> · Statement closing: <strong>{formatAmount(closingBalance, selectedBankData.currency)}</strong>
+            {Math.abs(glDifference || 0) <= 0.01 ? ' · Reconciled' : ` · Difference ${formatAmount(Math.abs(glDifference || 0), selectedBankData.currency)}`}
           </div>
         )}
       </div>

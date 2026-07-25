@@ -1,0 +1,128 @@
+import { supabase } from '../lib/supabase';
+
+export type FinanceCurrency = 'IDR' | 'USD';
+
+export interface FinanceExpensePayload {
+  expense_date: string;
+  expense_category: string;
+  amount: number;
+  description?: string | null;
+  transaction_currency: FinanceCurrency;
+  functional_currency?: 'IDR';
+  exchange_rate: number;
+  payment_method?: string | null;
+  bank_account_id?: string | null;
+  payment_reference?: string | null;
+  approval_status?: string;
+  created_by?: string;
+  [key: string]: unknown;
+}
+
+export interface ReceiptPayload {
+  voucher_date: string;
+  customer_id: string;
+  payment_method: string;
+  bank_account_id?: string | null;
+  reference_number?: string | null;
+  amount: number;
+  description?: string | null;
+  transaction_currency: FinanceCurrency;
+  exchange_rate: number;
+  created_by?: string;
+}
+
+export interface ReceiptAllocation {
+  sales_invoice_id?: string | null;
+  sales_order_id?: string | null;
+  amount: number;
+}
+
+export interface PaymentPayload {
+  voucher_date: string;
+  supplier_id?: string | null;
+  staff_id?: string | null;
+  payment_method: string;
+  bank_account_id?: string | null;
+  reference_number?: string | null;
+  amount: number;
+  pph_amount?: number;
+  pph_code_id?: string | null;
+  description?: string | null;
+  payment_currency: FinanceCurrency;
+  exchange_rate: number;
+  bank_amount?: number | null;
+  bank_charge?: number;
+  created_by?: string;
+}
+
+export interface JournalLineCommand {
+  account_id: string;
+  description?: string | null;
+  debit: number;
+  credit: number;
+}
+
+async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.rpc(name, args);
+  if (error) throw error;
+  return data as T;
+}
+
+export const saveFinanceExpense = (expenseId: string | null, payload: FinanceExpensePayload) =>
+  rpc<string>('save_finance_expense', { p_expense_id: expenseId, p_payload: payload });
+
+export const approveFinanceExpense = (expenseId: string, approvedBy?: string | null) =>
+  rpc<string>('approve_finance_expense', { p_expense_id: expenseId, p_approved_by: approvedBy || null });
+
+export const saveReceiptVoucher = (
+  receiptId: string | null,
+  payload: ReceiptPayload,
+  allocations: ReceiptAllocation[],
+) => rpc<string>('save_receipt_voucher_with_allocations', {
+  p_receipt_id: receiptId,
+  p_payload: payload,
+  p_allocations: allocations,
+});
+
+export const savePaymentVoucher = (
+  voucherId: string | null,
+  payload: PaymentPayload,
+  allocations: Record<string, unknown>[],
+) => rpc<{ id: string; voucher_number: string }>('save_payment_voucher_command', {
+  p_voucher_id: voucherId,
+  p_payload: payload,
+  p_allocations: allocations,
+});
+
+export const saveFinanceJournal = (
+  entryId: string | null,
+  entryDate: string,
+  description: string | null,
+  lines: JournalLineCommand[],
+  transactionCurrency: FinanceCurrency,
+  exchangeRate: number,
+) => rpc<string>('save_finance_journal', {
+  p_entry_id: entryId,
+  p_entry_date: entryDate,
+  p_description: description,
+  p_lines: lines,
+  p_transaction_currency: transactionCurrency,
+  p_exchange_rate: exchangeRate,
+});
+
+export const linkBankStatementLine = (
+  bankLineId: string,
+  documentType: 'expense' | 'receipt' | 'payment' | 'fund_transfer' | 'petty_cash' | 'tax_payment' | 'journal',
+  documentId: string,
+  paymentKind: 'supplier' | 'pph23' = 'supplier',
+) => rpc<{ document_id: string; journal_entry_id: string }>('link_bank_statement_line', {
+  p_bank_line_id: bankLineId,
+  p_document_type: documentType,
+  p_document_id: documentId,
+  p_payment_kind: paymentKind,
+});
+
+export const unlinkBankStatementLine = (bankLineId: string) =>
+  rpc<{ success: boolean; bank_line_id: string }>('unmatch_bank_line', {
+    p_bank_line_id: bankLineId,
+  });

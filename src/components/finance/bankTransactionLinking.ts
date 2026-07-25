@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { linkBankStatementLine, unlinkBankStatementLine } from '../../services/financeCommands';
 
 export const FINANCE_RECONCILIATION_REFRESH_EVENT = 'finance:reconciliation-refresh';
 
@@ -13,6 +14,7 @@ export interface BankTransactionLine {
   matched_expense_id?: string | null;
   matched_entry_id?: string | null;
   matched_receipt_id?: string | null;
+  matched_payment_id?: string | null;
   matched_petty_cash_id?: string | null;
   matched_fund_transfer_id?: string | null;
   matched_tax_payment_id?: string | null;
@@ -57,6 +59,7 @@ function isAvailableTransaction(
     line.matched_expense_id ||
     line.matched_entry_id ||
     line.matched_receipt_id ||
+    line.matched_payment_id ||
     line.matched_petty_cash_id ||
     line.matched_fund_transfer_id ||
     line.matched_tax_payment_id
@@ -82,6 +85,7 @@ export async function loadUnmatchedDebitBankTransactions({
       matched_expense_id,
       matched_entry_id,
       matched_receipt_id,
+      matched_payment_id,
       matched_petty_cash_id,
       matched_fund_transfer_id,
       matched_tax_payment_id,
@@ -109,46 +113,20 @@ export async function linkBankTransaction({
     throw new Error('A bank transaction must be linked to an expense or journal entry.');
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-
-  const { error } = await supabase
-    .from('bank_statement_lines')
-    .update({
-      matched_expense_id: matchedExpenseId || null,
-      matched_entry_id: matchedJournalEntryId || null,
-      reconciliation_status: 'matched',
-      payment_kind: paymentKind,
-      matched_at: new Date().toISOString(),
-      matched_by: user.id,
-      manually_unlinked: false,
-      notes: note || null,
-    })
-    .eq('id', bankStatementLineId);
-
-  if (error) throw error;
+  await linkBankStatementLine(
+    bankStatementLineId,
+    matchedExpenseId ? 'expense' : 'journal',
+    (matchedExpenseId || matchedJournalEntryId) as string,
+    paymentKind,
+  );
+  if (note) {
+    const { error } = await supabase.from('bank_statement_lines').update({ notes: note }).eq('id', bankStatementLineId);
+    if (error) throw error;
+  }
 }
 
 export async function unlinkBankTransaction(bankStatementLineId: string): Promise<void> {
-  const { error } = await supabase
-    .from('bank_statement_lines')
-    .update({
-      matched_expense_id: null,
-      matched_receipt_id: null,
-      matched_fund_transfer_id: null,
-      matched_entry_id: null,
-      matched_petty_cash_id: null,
-      matched_tax_payment_id: null,
-      reconciliation_status: 'unmatched',
-      matched_at: null,
-      matched_by: null,
-      notes: null,
-      manually_unlinked: true,
-      payment_kind: 'supplier',
-    })
-    .eq('id', bankStatementLineId);
-
-  if (error) throw error;
+  await unlinkBankStatementLine(bankStatementLineId);
 }
 
 export function notifyFinanceReconciliationRefresh(): void {

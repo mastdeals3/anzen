@@ -5,8 +5,8 @@ import * as XLSX from 'xlsx';
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
 import { useFinance } from '../../contexts/FinanceContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
-import { getFinancialYear } from '../../utils/dateFormat';
 import { moduleExpenseCategories } from './expenseCategories';
 import { calculateExpenseTotals } from '../../utils/taxCalculations';
 import {
@@ -14,6 +14,15 @@ import {
   notifyFinanceReconciliationRefresh,
 } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
+import {
+  approveFinanceExpense,
+  linkBankStatementLine,
+  saveFinanceExpense,
+  saveFinanceJournal,
+  savePaymentVoucher,
+  saveReceiptVoucher,
+  unlinkBankStatementLine,
+} from '../../services/financeCommands';
 
 interface OutstandingBill {
   id: string;
@@ -54,6 +63,7 @@ interface StatementLine {
   matchedEntry?: string;
   matchedExpenseId?: string;
   matchedReceiptId?: string;
+  matchedPaymentId?: string;
   matchedFundTransferId?: string;
   matchedPettyCashId?: string;
   matchedExpense?: {
@@ -70,6 +80,14 @@ interface StatementLine {
     payment_date: string;
     payment_number: string;
     customer_name?: string;
+  } | null;
+  matchedPayment?: {
+    id: string;
+    amount: number;
+    voucher_date: string;
+    voucher_number: string;
+    supplier_name?: string;
+    staff_name?: string;
   } | null;
   matchedFundTransfer?: {
     id: string;
@@ -113,24 +131,29 @@ interface BankReconciliationEnhancedProps {
   initialBankAccountId?: string | null;
   initialStatementLineId?: string | null;
   onInitialFocusHandled?: () => void;
+  onRecordContra?: (line: { bankAccountId: string; statementLineId: string; date: string; amount: number; description: string; direction: 'from' | 'to' }) => void;
+  onRecordPayment?: (line: { bankAccountId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string }) => void;
 }
 
-const NON_CUSTOMER_RECEIPT_RPC_TYPES: Record<string, string> = {
-  capital: 'capital',
-  loan: 'loan',
-  loan_director_owner: 'loan',
-  bank_interest: 'bank_interest',
-  other_income: 'other_income',
-  misc_income: 'misc_income',
-  refund: 'refund',
-};
+const NON_CUSTOMER_JOURNAL_TYPES = new Set([
+  'capital',
+  'loan',
+  'loan_director_owner',
+  'bank_interest',
+  'other_income',
+  'misc_income',
+  'refund',
+]);
 
 export function BankReconciliationEnhanced({
   canManage,
   initialBankAccountId,
   initialStatementLineId,
   onInitialFocusHandled,
+  onRecordContra,
+  onRecordPayment,
 }: BankReconciliationEnhancedProps) {
+  const { t } = useLanguage();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selectedBank, setSelectedBank] = useState<string>(() => {
     try { return localStorage.getItem('bank_recon_selected_bank') || ''; } catch { return ''; }
@@ -174,6 +197,7 @@ export function BankReconciliationEnhanced({
   const [receiptAllocations, setReceiptAllocations] = useState<{[invoiceId: string]: number}>({});
   const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [recordingReceipt, setRecordingReceipt] = useState(false);
+  const [recordExchangeRate, setRecordExchangeRate] = useState(1);
   const recordingReceiptRef = useRef(false);
   const [existingReceipts, setExistingReceipts] = useState<any[]>([]);
   const [linkExistingReceipt, setLinkExistingReceipt] = useState(false);
@@ -377,7 +401,7 @@ export function BankReconciliationEnhanced({
       const { data: rangeData, error } = await supabase
         .from('bank_statement_lines')
         // perf: projected columns (was select('*'))
-        .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
+        .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_payment_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
         .eq('bank_account_id', selectedBank)
         .gte('transaction_date', dateRange.start)
         .lt('transaction_date', endDateStr)
@@ -393,7 +417,7 @@ export function BankReconciliationEnhanced({
       ) {
         const { data: focusedLine, error: focusedLineError } = await supabase
           .from('bank_statement_lines')
-          .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
+          .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_payment_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
           .eq('id', initialStatementLineId)
           .eq('bank_account_id', selectedBank)
           .maybeSingle();
@@ -408,6 +432,7 @@ export function BankReconciliationEnhanced({
       // (matched_entry_id) resolved for display fallback.
       const expenseIds = data.map(r => r.matched_expense_id).filter(Boolean);
       const receiptIds = data.map(r => r.matched_receipt_id).filter(Boolean);
+      const paymentIds = data.map(r => r.matched_payment_id).filter(Boolean);
       const fundTransferIds = data.map(r => r.matched_fund_transfer_id).filter(Boolean);
       const pettyCashIds = data.map(r => r.matched_petty_cash_id).filter(Boolean);
       const entryIds = data.map(r => r.matched_entry_id).filter(Boolean);
@@ -428,6 +453,24 @@ export function BankReconciliationEnhanced({
           // eslint-disable-next-line no-console
           console.warn('[BRE-DIAG] finance_expenses missing:', { requested: expenseIds, returned: [...returnedIds], missing });
         }
+      }
+
+      const paymentMap = new Map();
+      if (paymentIds.length > 0) {
+        const { data: payments } = await supabase
+          .from('payment_vouchers')
+          .select('id, amount, voucher_date, voucher_number, supplier_id, staff_id, suppliers(company_name), finance_staff_master(full_name)')
+          .in('id', paymentIds);
+        payments?.forEach(payment => {
+          paymentMap.set(payment.id, {
+            id: payment.id,
+            amount: payment.amount,
+            voucher_date: payment.voucher_date,
+            voucher_number: payment.voucher_number,
+            supplier_name: (payment.suppliers as any)?.company_name,
+            staff_name: (payment.finance_staff_master as any)?.full_name,
+          });
+        });
       }
 
       // Batch load all receipts with customers
@@ -535,10 +578,12 @@ export function BankReconciliationEnhanced({
           matchedEntry: row.matched_entry_id,
           matchedExpenseId: row.matched_expense_id,
           matchedReceiptId: row.matched_receipt_id,
+          matchedPaymentId: row.matched_payment_id,
           matchedFundTransferId: row.matched_fund_transfer_id,
           matchedPettyCashId: row.matched_petty_cash_id,
           matchedExpense: row.matched_expense_id ? expenseMap.get(row.matched_expense_id) : null,
           matchedReceipt: row.matched_receipt_id ? receiptMap.get(row.matched_receipt_id) : null,
+          matchedPayment: row.matched_payment_id ? paymentMap.get(row.matched_payment_id) : null,
           matchedFundTransfer: row.matched_fund_transfer_id ? fundTransferMap.get(row.matched_fund_transfer_id) : null,
           matchedPettyCash: row.matched_petty_cash_id ? pettyCashMap.get(row.matched_petty_cash_id) : null,
           matchedTaxPaymentId: row.matched_tax_payment_id,
@@ -557,6 +602,7 @@ export function BankReconciliationEnhanced({
         const unresolved = lines.filter(l =>
           (l.matchedExpenseId && !l.matchedExpense) ||
           (l.matchedReceiptId && !l.matchedReceipt) ||
+          (l.matchedPaymentId && !l.matchedPayment) ||
           (l.matchedFundTransferId && !l.matchedFundTransfer) ||
           (l.matchedPettyCashId && !l.matchedPettyCash) ||
           (l.matchedEntry && !l.matchedEntryRecord)
@@ -1144,7 +1190,6 @@ export function BankReconciliationEnhanced({
     };
 
     let year = providedYear || new Date().getFullYear();
-    let _month = new Date().getMonth() + 1;
 
     for (let i = 0; i < Math.min(10, rows.length); i++) {
       const row = rows[i];
@@ -1162,7 +1207,6 @@ export function BankReconciliationEnhanced({
           const endYear = parseInt(periodeMatch[6]);
 
           year = startYear;
-          _month = startMonth;
 
           metadata.startDate = `${startYear}-${String(startMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`;
           metadata.endDate = `${endYear}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
@@ -1500,59 +1544,29 @@ export function BankReconciliationEnhanced({
 
   const confirmMatch = async (lineId: string) => {
     try {
-      // A suggested row was populated by auto_match_smart with one typed FK.
-      // Enforce the invariant: refuse to confirm a "suggested" row that carries
-      // no typed FK, and back-fill matched_entry_id from the suggested doc so
-      // both canonical + typed links land in the same transition.
+      // Confirm through the canonical link command so suggestions receive the
+      // same posting, bank-account, direction, and amount validation as every
+      // manual Link Existing action.
       const { data: bsl } = await supabase
         .from('bank_statement_lines')
-        .select('id, matched_expense_id, matched_receipt_id, matched_petty_cash_id, matched_fund_transfer_id, matched_tax_payment_id, matched_entry_id')
+        .select('id, matched_expense_id, matched_receipt_id, matched_payment_id, matched_petty_cash_id, matched_fund_transfer_id, matched_tax_payment_id, matched_entry_id')
         .eq('id', lineId)
         .maybeSingle();
 
       if (!bsl) throw new Error('Row not found');
 
-      const hasFk = !!(bsl.matched_expense_id || bsl.matched_receipt_id || bsl.matched_petty_cash_id || bsl.matched_fund_transfer_id || bsl.matched_tax_payment_id || bsl.matched_entry_id);
-      if (!hasFk) {
+      if (!(bsl.matched_expense_id || bsl.matched_receipt_id || bsl.matched_payment_id || bsl.matched_petty_cash_id || bsl.matched_fund_transfer_id || bsl.matched_tax_payment_id || bsl.matched_entry_id)) {
         alert('❌ Cannot confirm: no suggested link found on this row.');
         return;
       }
 
-      let entryId: string | null = bsl.matched_entry_id ?? null;
-      if (!entryId) {
-        if (bsl.matched_expense_id) {
-          const { data: je } = await supabase.from('journal_entries')
-            .select('id').eq('source_module', 'expenses')
-            .eq('reference_number', `EXP-${bsl.matched_expense_id}`).maybeSingle();
-          entryId = je?.id ?? null;
-        } else if (bsl.matched_receipt_id) {
-          const { data: rv } = await supabase.from('receipt_vouchers')
-            .select('journal_entry_id').eq('id', bsl.matched_receipt_id).maybeSingle();
-          entryId = rv?.journal_entry_id ?? null;
-        } else if (bsl.matched_fund_transfer_id) {
-          const { data: ft } = await supabase.from('fund_transfers')
-            .select('journal_entry_id').eq('id', bsl.matched_fund_transfer_id).maybeSingle();
-          entryId = ft?.journal_entry_id ?? null;
-        } else if (bsl.matched_petty_cash_id) {
-          const { data: je } = await supabase.from('journal_entries')
-            .select('id').eq('source_module', 'petty_cash')
-            .eq('reference_id', bsl.matched_petty_cash_id).maybeSingle();
-          entryId = je?.id ?? null;
-        } else if (bsl.matched_tax_payment_id) {
-          const { data: tp } = await supabase.from('tax_payments')
-            .select('journal_entry_id').eq('id', bsl.matched_tax_payment_id).maybeSingle();
-          entryId = tp?.journal_entry_id ?? null;
-        }
-      }
-
-      await supabase
-        .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'matched',
-          manually_unlinked: false,
-          matched_entry_id: entryId,
-        })
-        .eq('id', lineId);
+      if (bsl.matched_expense_id) await linkBankStatementLine(lineId, 'expense', bsl.matched_expense_id);
+      else if (bsl.matched_receipt_id) await linkBankStatementLine(lineId, 'receipt', bsl.matched_receipt_id);
+      else if (bsl.matched_payment_id) await linkBankStatementLine(lineId, 'payment', bsl.matched_payment_id);
+      else if (bsl.matched_fund_transfer_id) await linkBankStatementLine(lineId, 'fund_transfer', bsl.matched_fund_transfer_id);
+      else if (bsl.matched_petty_cash_id) await linkBankStatementLine(lineId, 'petty_cash', bsl.matched_petty_cash_id);
+      else if (bsl.matched_tax_payment_id) await linkBankStatementLine(lineId, 'tax_payment', bsl.matched_tax_payment_id);
+      else if (bsl.matched_entry_id) await linkBankStatementLine(lineId, 'journal', bsl.matched_entry_id);
 
       // Update in local state
       setStatementLines(prev => prev.map(line =>
@@ -1566,18 +1580,9 @@ export function BankReconciliationEnhanced({
 
   const rejectMatch = async (lineId: string) => {
     try {
-      await supabase
-        .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'unmatched',
-          matched_entry_id: null
-        })
-        .eq('id', lineId);
+      await unlinkBankStatementLine(lineId);
 
-      // Update in local state
-      setStatementLines(prev => prev.map(line =>
-        line.id === lineId ? { ...line, status: 'unmatched', matchedEntry: undefined, matched_entry_id: undefined } : line
-      ));
+      await loadStatementLines();
     } catch (err) {
       console.error('Error rejecting match:', err);
     }
@@ -1629,6 +1634,7 @@ export function BankReconciliationEnhanced({
     setReceiptCustomerId('');
     setReceiptInvoices([]);
     setReceiptAllocations({});
+    setRecordExchangeRate(line.currency === 'USD' ? 0 : 1);
     setRecordModal(true);
   };
 
@@ -1636,51 +1642,25 @@ export function BankReconciliationEnhanced({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+      if (line.currency === 'USD' && recordExchangeRate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
 
-      // Record as expense
-      const { data: expense, error: expenseError } = await supabase
-        .from('finance_expenses')
-        .insert({
-          expense_category: category,
-          amount: line.debit,
-          expense_date: line.date,
-          description: description || line.description,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (expenseError) throw expenseError;
-
-      // Resolve the JE that the finance_expenses auto-post trigger just created
-      // (finance_expenses has no journal_entry_id column; JEs link via
-      // source_module='expenses' + reference_number='EXP-<id>'). Best-effort:
-      // if the trigger hasn't landed the JE yet, we fall back to the typed FK.
-      let matchedEntryId: string | null = null;
-      try {
-        const { data: je } = await supabase
-          .from('journal_entries')
-          .select('id')
-          .eq('source_module', 'expenses')
-          .eq('reference_number', `EXP-${expense.id}`)
-          .maybeSingle();
-        matchedEntryId = je?.id ?? null;
-      } catch { /* soft */ }
-
-      const { error: updateError } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'recorded',
-          matched_expense_id: expense.id,
-          matched_entry_id: matchedEntryId,
-          matched_at: new Date().toISOString(),
-          matched_by: user.id,
-        })
-        .eq('id', line.id)
-        .select()
-        .single();
-
-      if (updateError) throw updateError;
+      const expenseId = await saveFinanceExpense(null, {
+        expense_category: category,
+        expense_type: 'admin',
+        amount: line.debit,
+        expense_date: line.date,
+        description: description || line.description,
+        payment_method: 'bank_transfer',
+        bank_account_id: selectedBank,
+        payment_reference: line.reference || null,
+        transaction_currency: line.currency as 'IDR' | 'USD',
+        functional_currency: 'IDR',
+        exchange_rate: line.currency === 'IDR' ? 1 : recordExchangeRate,
+        approval_status: 'pending_approval',
+        created_by: user.id,
+      });
+      await approveFinanceExpense(expenseId, user.id);
+      await linkBankStatementLine(line.id, 'expense', expenseId);
 
       setRecordModal(false);
       setRecordingLine(null);
@@ -1723,40 +1703,7 @@ export function BankReconciliationEnhanced({
         }
       } catch { /* soft guard only */ }
 
-      // Resolve the expense's journal entry (via source_module + reference_number,
-      // since finance_expenses has no journal_entry_id column). Abort if missing —
-      // the expense should already be auto-posted; a missing JE indicates the
-      // expense is not yet posted and this link would be an orphan.
-      const { data: je } = await supabase
-        .from('journal_entries')
-        .select('id')
-        .eq('source_module', 'expenses')
-        .eq('reference_number', `EXP-${expenseId}`)
-        .maybeSingle();
-      if (!je?.id) {
-        alert('❌ Expense not yet posted (no journal entry). Please post the expense first, then link.');
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'matched',
-          matched_expense_id: expenseId,
-          matched_entry_id: je.id,
-          matched_at: new Date().toISOString(),
-          matched_by: user.id,
-          manually_unlinked: false,
-          payment_kind: linkPaymentKind,
-        })
-        .eq('id', line.id)
-        .select()
-        .single();
-
-      if (updateError) throw updateError;
-
-      // Recompute expense supplier/pph paid state.
-      await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: expenseId });
+      await linkBankStatementLine(line.id, 'expense', expenseId, linkPaymentKind);
 
       setRecordModal(false);
       setRecordingLine(null);
@@ -1787,18 +1734,13 @@ export function BankReconciliationEnhanced({
     }
   };
 
-  const loadExistingReceipts = async (line: StatementLine) => {
+  const loadExistingReceipts = async () => {
     try {
-      const { data } = await supabase
-        .from('receipt_vouchers')
-        .select('id, voucher_number, voucher_date, amount, customers(company_name)')
-        .is('journal_entry_id', null)
-        .order('voucher_date', { ascending: false })
-        .limit(50);
-
       const { data: allReceipts } = await supabase
         .from('receipt_vouchers')
         .select('id, voucher_number, voucher_date, amount, customers(company_name)')
+        .eq('is_posted', true)
+        .not('journal_entry_id', 'is', null)
         .order('voucher_date', { ascending: false })
         .limit(100);
 
@@ -1818,100 +1760,55 @@ export function BankReconciliationEnhanced({
 
       if (type === 'customer_payment') {
         if (!customerId) throw new Error('Please select a customer');
+        if (line.currency === 'USD' && recordExchangeRate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
 
-        const { data: voucherNum, error: voucherError } = await supabase.rpc('generate_voucher_number', { p_prefix: 'RV' });
-        if (voucherError) throw voucherError;
-
-        const { data: receipt, error: receiptError } = await supabase
-          .from('receipt_vouchers')
-          .insert({
-            voucher_number: voucherNum,
-            voucher_date: line.date,
-            customer_id: customerId,
-            payment_method: 'bank_transfer',
-            bank_account_id: selectedBank,
-            reference_number: line.reference,
-            amount: line.credit,
-            description: description || line.description,
-            created_by: user.id,
-          })
-          .select()
-          .single();
-
-        if (receiptError) throw receiptError;
-
-        for (const [invoiceId, amount] of Object.entries(receiptAllocations)) {
-          if (amount <= 0) continue;
-          const { error: allocationError } = await supabase.from('voucher_allocations').insert({
-            voucher_type: 'receipt',
-            receipt_voucher_id: receipt.id,
-            sales_invoice_id: invoiceId,
-            allocated_amount: amount,
-          });
-          if (allocationError) throw allocationError;
-        }
+        const receiptId = await saveReceiptVoucher(null, {
+          voucher_date: line.date,
+          customer_id: customerId,
+          payment_method: 'bank_transfer',
+          bank_account_id: selectedBank,
+          reference_number: line.reference || null,
+          amount: line.credit,
+          description: description || line.description,
+          transaction_currency: line.currency as 'IDR' | 'USD',
+          exchange_rate: line.currency === 'IDR' ? 1 : recordExchangeRate,
+          created_by: user.id,
+        }, Object.entries(receiptAllocations)
+          .filter(([, amount]) => amount > 0)
+          .map(([invoiceId, amount]) => ({ sales_invoice_id: invoiceId, amount })));
 
         const { error: postError } = await supabase.rpc('post_receipt_voucher', {
-          p_rv_id: receipt.id,
+          p_rv_id: receiptId,
           p_posted_by: user.id,
         });
         if (postError) throw postError;
-
-        const { data: postedReceipt, error: postedReceiptError } = await supabase
-          .from('receipt_vouchers')
-          .select('journal_entry_id')
-          .eq('id', receipt.id)
-          .single();
-        if (postedReceiptError) throw postedReceiptError;
-        if (!postedReceipt.journal_entry_id) {
-          throw new Error('Receipt Voucher posting did not create a Journal Entry');
-        }
-
-        const { error: updateError } = await supabase
-          .from('bank_statement_lines')
-          .update({
-            reconciliation_status: 'recorded',
-            matched_receipt_id: receipt.id,
-            matched_entry_id: postedReceipt.journal_entry_id,
-            matched_at: new Date().toISOString(),
-            matched_by: user.id,
-            manually_unlinked: false,
-          })
-          .eq('id', line.id);
-
-        if (updateError) throw updateError;
+        await linkBankStatementLine(line.id, 'receipt', receiptId);
 
         const allocCount = Object.values(receiptAllocations).filter(a => a > 0).length;
-        alert(`Receipt Voucher ${voucherNum} created${allocCount > 0 ? ` and allocated to ${allocCount} invoice(s)` : ''}`);
+        const { data: receipt } = await supabase.from('receipt_vouchers').select('voucher_number').eq('id', receiptId).single();
+        alert(`Receipt Voucher ${receipt?.voucher_number || ''} created${allocCount > 0 ? ` and allocated to ${allocCount} invoice(s)` : ''}`);
       } else {
-        const rpcReceiptType = NON_CUSTOMER_RECEIPT_RPC_TYPES[type];
-        console.log('[BankRecon] handleRecordReceipt non-customer path', {
-          type,
-          rpcReceiptType,
-          lineId: line.id,
-        });
-        if (!rpcReceiptType) {
+        if (!NON_CUSTOMER_JOURNAL_TYPES.has(type)) {
           throw new Error(`Unsupported non-customer receipt type: ${type}`);
         }
-
-        console.log('[BankRecon] Calling record_non_customer_bank_receipt', {
-          p_bank_statement_line_id: line.id,
-          p_receipt_type: rpcReceiptType,
-        });
-        const { data, error } = await supabase.rpc('record_non_customer_bank_receipt', {
-          p_bank_statement_line_id: line.id,
-          p_receipt_type: rpcReceiptType,
-          p_description: description || line.description,
-        });
-        if (error) throw error;
-
-        const result = data as { entry_number?: string; reused?: boolean } | null;
-        console.log('[BankRecon] record_non_customer_bank_receipt succeeded', result);
-        alert(
-          result?.reused
-            ? `Journal Entry ${result.entry_number || ''} linked successfully`
-            : `Journal Entry ${result?.entry_number || ''} created and linked successfully`,
-        );
+        if (line.currency === 'USD' && recordExchangeRate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
+        const counterCode = type === 'capital' ? '3100'
+          : type === 'loan_director_owner' ? '2220'
+          : type === 'loan' ? '2210'
+          : type === 'bank_interest' ? '4920'
+          : type === 'misc_income' ? '4910' : '4900';
+        const [{ data: bank }, { data: counter }] = await Promise.all([
+          supabase.from('bank_accounts').select('coa_id').eq('id', selectedBank).single(),
+          supabase.from('chart_of_accounts').select('id').eq('code', counterCode).eq('is_active', true).eq('is_header', false).single(),
+        ]);
+        if (!bank?.coa_id || !counter?.id) throw new Error(`Required posting account ${counterCode} is not configured`);
+        const journalId = await saveFinanceJournal(null, line.date, description || line.description, [
+          { account_id: bank.coa_id, description: description || line.description, debit: line.credit, credit: 0 },
+          { account_id: counter.id, description: description || line.description, debit: 0, credit: line.credit },
+        ], line.currency as 'IDR' | 'USD', line.currency === 'IDR' ? 1 : recordExchangeRate);
+        await linkBankStatementLine(line.id, 'journal', journalId);
+        const { data: journal } = await supabase.from('journal_entries').select('entry_number').eq('id', journalId).single();
+        alert(`Journal Entry ${journal?.entry_number || ''} created and linked successfully`);
       }
 
       setRecordModal(false);
@@ -1937,26 +1834,7 @@ export function BankReconciliationEnhanced({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Resolve the RV's journal entry so both FKs are persisted.
-      const { data: rv } = await supabase
-        .from('receipt_vouchers')
-        .select('journal_entry_id')
-        .eq('id', receiptId)
-        .maybeSingle();
-
-      const { error } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'recorded',
-          matched_receipt_id: receiptId,
-          matched_entry_id: rv?.journal_entry_id ?? null,
-          matched_at: new Date().toISOString(),
-          matched_by: user.id,
-          manually_unlinked: false,
-        })
-        .eq('id', line.id);
-
-      if (error) throw error;
+      await linkBankStatementLine(line.id, 'receipt', receiptId);
 
       setRecordModal(false);
       setRecordingLine(null);
@@ -2064,163 +1942,8 @@ export function BankReconciliationEnhanced({
   };
 
   const handleLinkJournalEntry = async (line: StatementLine, journalId: string) => {
-    console.log('[BankRecon] handleLinkJournalEntry invoked', { lineId: line.id, journalId });
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // Fetch the JE to determine its source_module and whether it is a
-      // non-customer receipt type that must go through record_non_customer_bank_receipt.
-      const { data: je } = await supabase
-        .from('journal_entries')
-        .select('id, source_module, reference_id, reference_number, description, entry_number')
-        .eq('id', journalId)
-        .maybeSingle();
-
-      if (!je) throw new Error('Journal entry not found');
-
-      // If this JE was already created by bank_reconciliation (source_module =
-      // 'bank_reconciliation'), it is a non-customer receipt JE. The DB
-      // constraint (error 23514) blocks direct matched_entry_id writes for
-      // these — we must route through record_non_customer_bank_receipt so the
-      // RPC performs the link inside SECURITY DEFINER with the proper checks.
-      //
-      // For JEs from other supported modules (expenses, receipt, fund_transfers,
-      // petty_cash, payment), the direct update is still permitted because
-      // those have their own typed FK columns.
-      const isBankReconJE = je.source_module === 'bank_reconciliation';
-
-      if (isBankReconJE) {
-        // Determine the receipt type using structured metadata first, then
-        // fall back to description-based inference.
-        //
-        // Primary signal: the counter-account code on the JE's credit line.
-        // The RPC's mapping table uses these account codes:
-        //   3100 -> capital, 2210 -> loan, 4920 -> bank_interest,
-        //   4900 -> other_income / refund, 4910 -> misc_income
-        //
-        // Fallback: infer from the JE description when the account code
-        // cannot be resolved (e.g. legacy JEs with missing lines).
-        const ACCOUNT_CODE_TO_RECEIPT_TYPE: Record<string, string> = {
-          '3100': 'capital',
-          '2210': 'loan',
-          '4920': 'bank_interest',
-          '4900': 'other_income',
-          '4910': 'misc_income',
-        };
-
-        let rpcReceiptType: string | null = null;
-        let structuredSource = 'none';
-
-        // 1. Try the credit-side counter-account code (structured).
-        try {
-          const { data: creditLines } = await supabase
-            .from('journal_entry_lines')
-            .select('account_id, debit, credit')
-            .eq('journal_entry_id', journalId)
-            .gt('credit', 0);
-
-          if (creditLines && creditLines.length > 0) {
-            const creditAccountIds = creditLines.map((l: any) => l.account_id);
-            const { data: accounts } = await supabase
-              .from('chart_of_accounts')
-              .select('id, code')
-              .in('id', creditAccountIds);
-
-            if (accounts && accounts.length > 0) {
-              for (const acc of accounts) {
-                const mapped = ACCOUNT_CODE_TO_RECEIPT_TYPE[acc.code];
-                if (mapped) {
-                  rpcReceiptType = mapped;
-                  structuredSource = `account_code:${acc.code}`;
-                  break;
-                }
-              }
-            }
-          }
-        } catch (accErr) {
-          console.warn('[BankRecon] Could not resolve counter-account code', accErr);
-        }
-
-        // 2. Fallback: infer from the JE description.
-        if (!rpcReceiptType) {
-          const desc = (je.description || '').toLowerCase();
-          if (desc.includes('capital')) rpcReceiptType = 'capital';
-          else if (desc.includes('loan') || desc.includes('director') || desc.includes('owner')) rpcReceiptType = 'loan';
-          else if (desc.includes('bank interest') || desc.includes('interest')) rpcReceiptType = 'bank_interest';
-          else if (desc.includes('misc')) rpcReceiptType = 'misc_income';
-          else if (desc.includes('refund')) rpcReceiptType = 'refund';
-          else rpcReceiptType = 'other_income';
-          structuredSource = 'description_fallback';
-        }
-
-        console.log('[BankRecon] Routing through record_non_customer_bank_receipt', {
-          receiptType: rpcReceiptType,
-          structuredSource,
-          jeSourceModule: je.source_module,
-          jeReferenceNumber: je.reference_number,
-          jeDescription: je.description,
-        });
-
-        const { data, error } = await supabase.rpc('record_non_customer_bank_receipt', {
-          p_bank_statement_line_id: line.id,
-          p_receipt_type: rpcReceiptType,
-          p_description: je.description || line.description,
-        });
-
-        if (error) {
-          console.error('[BankRecon] record_non_customer_bank_receipt failed', error);
-          throw error;
-        }
-
-        const result = data as { entry_number?: string; reused?: boolean } | null;
-        console.log('[BankRecon] record_non_customer_bank_receipt succeeded', result);
-
-        setRecordModal(false);
-        setRecordingLine(null);
-        setLinkJournalEntry(false);
-        setAvailableJournals([]);
-        loadStatementLines();
-        alert(
-          result?.reused
-            ? `Journal Entry ${result.entry_number || ''} linked successfully`
-            : `Journal Entry ${result?.entry_number || ''} created and linked successfully`,
-        );
-        return;
-      }
-
-      console.log('[BankRecon] Using legacy direct-link path for source_module:', je.source_module);
-
-      // Best-effort: also populate the typed FK so display can resolve directly
-      // without needing to re-hop through journal_entries.
-      const updateData: any = {
-        reconciliation_status: 'matched',
-        matched_entry_id: journalId,
-        matched_at: new Date().toISOString(),
-        matched_by: user.id,
-        manually_unlinked: false,
-      };
-      try {
-        if (je.source_module === 'expenses' && je.reference_number) {
-          updateData.matched_expense_id = je.reference_number.replace('EXP-', '');
-        } else if (je.source_module === 'receipt') {
-          const { data: rv } = await supabase
-            .from('receipt_vouchers')
-            .select('id').eq('journal_entry_id', journalId).maybeSingle();
-          if (rv?.id) updateData.matched_receipt_id = rv.id;
-        } else if (je.source_module === 'fund_transfers' && je.reference_id) {
-          updateData.matched_fund_transfer_id = je.reference_id;
-        } else if (je.source_module === 'petty_cash' && je.reference_id) {
-          updateData.matched_petty_cash_id = je.reference_id;
-        }
-      } catch { /* best-effort typed FK enrichment */ }
-
-      const { error } = await supabase
-        .from('bank_statement_lines')
-        .update(updateData)
-        .eq('id', line.id);
-
-      if (error) throw error;
+      await linkBankStatementLine(line.id, 'journal', journalId);
 
       setRecordModal(false);
       setRecordingLine(null);
@@ -2313,35 +2036,7 @@ export function BankReconciliationEnhanced({
 
   const handleLinkSupplierPayment = async (line: StatementLine, paymentVoucherId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { data: pv } = await supabase
-        .from('payment_vouchers')
-        .select('journal_entry_id')
-        .eq('id', paymentVoucherId)
-        .maybeSingle();
-
-      if (!pv?.journal_entry_id) {
-        alert('❌ Payment voucher not yet posted (no journal entry). Please post the voucher first, then link.');
-        return;
-      }
-
-      const updateData: any = {
-        reconciliation_status: 'matched',
-        matched_entry_id: pv.journal_entry_id,
-        matched_at: new Date().toISOString(),
-        matched_by: user.id,
-        manually_unlinked: false,
-        notes: `Linked to supplier payment ${paymentVoucherId}`,
-      };
-
-      const { error } = await supabase
-        .from('bank_statement_lines')
-        .update(updateData)
-        .eq('id', line.id);
-
-      if (error) throw error;
+      await linkBankStatementLine(line.id, 'payment', paymentVoucherId);
 
       setRecordModal(false);
       setRecordingLine(null);
@@ -2437,39 +2132,27 @@ export function BankReconciliationEnhanced({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+      if (line.currency === 'USD' && recordExchangeRate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
 
-      // Same numbering convention as PaymentVoucherManager.generateVoucherNumber
-      const fy = getFinancialYear(new Date(line.date));
-      const prefix = `PV/${fy}/`;
-      const { count } = await supabase
-        .from('payment_vouchers')
-        .select('*', { count: 'exact', head: true })
-        .like('voucher_number', `${prefix}%`);
-      const voucherNumber = `${prefix}${String((count || 0) + 1).padStart(3, '0')}`;
-
-      const { data: voucherId, error: saveError } = await supabase.rpc('save_payment_voucher_with_allocations', {
-        p_voucher_id: null,
-        p_voucher_number: voucherNumber,
-        p_voucher_date: line.date,
-        p_supplier_id: payeeSupplierId,
-        // Only sent for staff bills — keeps supplier settlement working on a
-        // live DB that has not yet applied the staff-accounting migration.
-        ...(payeeStaffId ? { p_staff_id: payeeStaffId } : {}),
-        p_payment_method: 'bank_transfer',
-        p_bank_account_id: selectedBank || null,
-        p_reference_number: line.reference || null,
-        p_amount: total,
-        p_pph_amount: 0,
-        p_pph_code_id: null,
-        p_description: `Bank settlement: ${line.description}`.slice(0, 500),
-        p_payment_currency: 'IDR',
-        p_exchange_rate: 1,
-        p_bank_amount: null,
-        p_bank_charge: 0,
-        p_created_by: user.id,
-        p_allocations: allocs.map(a => ({ finance_expense_id: a.expenseId, amount: a.amount, currency: 'IDR' })),
-      });
-      if (saveError) throw saveError;
+      const savedVoucher = await savePaymentVoucher(null, {
+        voucher_date: line.date,
+        supplier_id: payeeSupplierId,
+        staff_id: payeeStaffId,
+        payment_method: 'bank_transfer',
+        bank_account_id: selectedBank || null,
+        reference_number: line.reference || null,
+        amount: total,
+        pph_amount: 0,
+        pph_code_id: null,
+        description: `Bank settlement: ${line.description}`.slice(0, 500),
+        payment_currency: line.currency as 'IDR' | 'USD',
+        exchange_rate: line.currency === 'IDR' ? 1 : recordExchangeRate,
+        bank_amount: total,
+        bank_charge: 0,
+        created_by: user.id,
+      }, allocs.map(a => ({ finance_expense_id: a.expenseId, amount: a.amount, currency: line.currency })));
+      const voucherId = savedVoucher.id;
+      const voucherNumber = savedVoucher.voucher_number;
 
       const { error: postError } = await supabase.rpc('post_payment_voucher', {
         p_pv_id: voucherId,
@@ -2483,28 +2166,7 @@ export function BankReconciliationEnhanced({
         return;
       }
 
-      const { data: pv } = await supabase
-        .from('payment_vouchers')
-        .select('journal_entry_id')
-        .eq('id', voucherId)
-        .maybeSingle();
-      if (!pv?.journal_entry_id) {
-        alert(`⚠️ Voucher ${voucherNumber} posted but its journal entry was not found. Link this bank line via "Supplier Payment".`);
-        return;
-      }
-
-      const { error: linkError } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'matched',
-          matched_entry_id: pv.journal_entry_id,
-          matched_at: new Date().toISOString(),
-          matched_by: user.id,
-          manually_unlinked: false,
-          notes: `Settled ${allocs.length} expense bill(s) via ${voucherNumber}`,
-        })
-        .eq('id', line.id);
-      if (linkError) throw linkError;
+      await linkBankStatementLine(line.id, 'payment', voucherId);
 
       setRecordModal(false);
       setRecordingLine(null);
@@ -2566,28 +2228,11 @@ export function BankReconciliationEnhanced({
 
   const handleLinkToTaxPayment = async (line: StatementLine, tp: any) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
       if (!tp.journal_entry_id) {
         alert('❌ Tax payment has no journal entry. Please ensure the payment was recorded via Record Tax Payment.');
         return;
       }
-
-      const { error } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'matched',
-          matched_tax_payment_id: tp.id,
-          matched_entry_id: tp.journal_entry_id,
-          matched_at: new Date().toISOString(),
-          matched_by: user.id,
-          manually_unlinked: false,
-          notes: `Linked to tax payment: ${tp.tax_type} ${tp.payment_date}`,
-        })
-        .eq('id', line.id);
-
-      if (error) throw error;
+      await linkBankStatementLine(line.id, 'tax_payment', tp.id);
 
       setRecordModal(false);
       setRecordingLine(null);
@@ -2698,8 +2343,8 @@ export function BankReconciliationEnhanced({
   };
 
   // Reset a row that shows Recorded/Matched but resolves to no linked document.
-  // Reuses the same clear-all-FKs pattern as handleUnlinkTransaction, but keyed
-  // to the given line so it works directly from the row action bar.
+  // Uses the canonical unmatch command so every typed FK and dependent Expense
+  // settlement state is cleared consistently.
   const resetOrphanToUnmatched = async (line: StatementLine) => {
     const ok = window.confirm(
       'This row shows Recorded/Matched but no linked document was found.\n\n' +
@@ -2707,22 +2352,7 @@ export function BankReconciliationEnhanced({
     );
     if (!ok) return;
     try {
-      const { error } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          matched_expense_id: null,
-          matched_receipt_id: null,
-          matched_fund_transfer_id: null,
-          matched_entry_id: null,
-          matched_petty_cash_id: null,
-          reconciliation_status: 'unmatched',
-          matched_at: null,
-          matched_by: null,
-          notes: null,
-          manually_unlinked: true,
-        })
-        .eq('id', line.id);
-      if (error) throw error;
+      await unlinkBankStatementLine(line.id);
       await loadStatementLines();
       alert('✅ Row reset to Unmatched');
     } catch (err: any) {
@@ -2741,47 +2371,27 @@ export function BankReconciliationEnhanced({
 
     if (!confirmUnlink) return;
 
-    // Capture the previously-matched expense id (if any) so we can recompute
-    // its supplier/pph paid totals AFTER the row is cleared.
-    const previouslyMatchedExpenseId = editingLine.matchedExpenseId || null;
-
     try {
-      const { error } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          matched_expense_id: null,
-          matched_receipt_id: null,
-          matched_fund_transfer_id: null,
-          matched_entry_id: null,
-          matched_petty_cash_id: null,
-          reconciliation_status: 'unmatched',
-          matched_at: null,
-          matched_by: null,
-          notes: null,
-          manually_unlinked: true,
-          payment_kind: 'supplier',
-        })
-        .eq('id', editingLine.id);
-
-      if (error) throw error;
-
-      if (previouslyMatchedExpenseId) {
-        await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: previouslyMatchedExpenseId });
-      }
+      await unlinkBankStatementLine(editingLine.id);
 
       // Update in local state
       setStatementLines(prev => prev.map(line =>
         line.id === editingLine.id ? {
           ...line,
           status: 'unmatched',
+          matchedEntry: undefined,
           matchedExpenseId: undefined,
           matchedReceiptId: undefined,
+          matchedPaymentId: undefined,
           matchedFundTransferId: undefined,
           matchedPettyCashId: undefined,
+          matchedTaxPaymentId: undefined,
           matchedExpense: null,
           matchedReceipt: null,
+          matchedPayment: null,
           matchedFundTransfer: null,
           matchedPettyCash: null,
+          matchedTaxPayment: null,
           matchedEntryRecord: null,
           notes: undefined
         } : line
@@ -3057,6 +2667,7 @@ export function BankReconciliationEnhanced({
                         const hasAnyFk = !!(
                           line.matchedExpenseId ||
                           line.matchedReceiptId ||
+                          line.matchedPaymentId ||
                           line.matchedFundTransferId ||
                           line.matchedPettyCashId ||
                           line.matchedTaxPaymentId ||
@@ -3065,6 +2676,7 @@ export function BankReconciliationEnhanced({
                         const hasResolvedLink = !!(
                           line.matchedExpense ||
                           line.matchedReceipt ||
+                          line.matchedPayment ||
                           line.matchedFundTransfer ||
                           line.matchedPettyCash ||
                           line.matchedTaxPayment ||
@@ -3088,6 +2700,7 @@ export function BankReconciliationEnhanced({
                                   matched_entry_id: line.matchedEntry,
                                   matched_expense_id: line.matchedExpenseId,
                                   matched_receipt_id: line.matchedReceiptId,
+                                  matched_payment_id: line.matchedPaymentId,
                                   matched_fund_transfer_id: line.matchedFundTransferId,
                                   matched_petty_cash_id: line.matchedPettyCashId,
                                   matched_tax_payment_id: line.matchedTaxPaymentId,
@@ -3095,6 +2708,7 @@ export function BankReconciliationEnhanced({
                                 resolved: {
                                   matchedExpense: line.matchedExpense,
                                   matchedReceipt: line.matchedReceipt,
+                                  matchedPayment: line.matchedPayment,
                                   matchedFundTransfer: line.matchedFundTransfer,
                                   matchedPettyCash: line.matchedPettyCash,
                                   matchedTaxPayment: line.matchedTaxPayment,
@@ -3120,6 +2734,11 @@ export function BankReconciliationEnhanced({
                                 → Receipt: {line.matchedReceipt.customer_name || 'Customer'}
                               </span>
                             )}
+                            {line.matchedPayment && (
+                              <span className="text-xs text-gray-600">
+                                → Payment: {line.matchedPayment.voucher_number}
+                              </span>
+                            )}
                             {line.matchedFundTransfer && (
                               <span className="text-xs text-gray-600">
                                 → Fund Transfer: {line.matchedFundTransfer.from_account_type} → {line.matchedFundTransfer.to_account_type}
@@ -3136,7 +2755,7 @@ export function BankReconciliationEnhanced({
                               </span>
                             )}
                             {/* Only show JE fallback chip if no typed FK produced a chip above */}
-                            {!line.matchedExpense && !line.matchedReceipt && !line.matchedFundTransfer && !line.matchedPettyCash && !line.matchedTaxPayment && line.matchedEntryRecord && (
+                            {!line.matchedExpense && !line.matchedReceipt && !line.matchedPayment && !line.matchedFundTransfer && !line.matchedPettyCash && !line.matchedTaxPayment && line.matchedEntryRecord && (
                               <span className="text-xs text-gray-600">
                                 → Journal: {line.matchedEntryRecord.entry_number}
                               </span>
@@ -3171,6 +2790,7 @@ export function BankReconciliationEnhanced({
                                   line.matchedFundTransferId  ? 'fund_transfer:' + line.matchedFundTransferId :
                                   line.matchedExpenseId       ? 'expense:'       + line.matchedExpenseId :
                                   line.matchedReceiptId       ? 'receipt:'       + line.matchedReceiptId :
+                                  line.matchedPaymentId       ? 'payment:'       + line.matchedPaymentId :
                                   line.matchedPettyCashId     ? 'petty_cash:'    + line.matchedPettyCashId :
                                   line.matchedTaxPaymentId    ? 'tax_payment:'   + line.matchedTaxPaymentId :
                                   line.matchedEntry           ? 'journal:'       + line.matchedEntry : 'unknown'
@@ -3183,6 +2803,7 @@ export function BankReconciliationEnhanced({
                                   line.matchedFundTransferId ? 'Fund Transfer' :
                                   line.matchedExpenseId      ? 'Expense' :
                                   line.matchedReceiptId      ? 'Receipt' :
+                                  line.matchedPaymentId      ? 'Payment' :
                                   line.matchedPettyCashId    ? 'Petty Cash' :
                                   line.matchedTaxPaymentId   ? 'Tax Payment' :
                                   line.matchedEntry          ? 'Journal' : 'document'
@@ -3212,6 +2833,7 @@ export function BankReconciliationEnhanced({
                             onClick={() => confirmMatch(line.id)}
                             className="p-1 text-green-600 hover:bg-green-50 rounded"
                             title="Confirm Match"
+                            aria-label={t.finance.bankAcceptSuggestedMatch}
                           >
                             <CheckCircle2 className="w-4 h-4" />
                           </button>
@@ -3321,6 +2943,29 @@ export function BankReconciliationEnhanced({
               )}
             </div>
 
+            {recordingLine.currency === 'USD' && (
+              <div className="grid grid-cols-2 gap-3 p-3 border border-blue-200 bg-blue-50 rounded-lg">
+                <label className="text-sm font-medium text-gray-700">
+                  USD to IDR Exchange Rate *
+                  <input
+                    type="number"
+                    min="1.000001"
+                    step="0.000001"
+                    value={recordExchangeRate || ''}
+                    onChange={(e) => setRecordExchangeRate(parseFloat(e.target.value) || 0)}
+                    className="mt-1 w-full px-3 py-2 border rounded-lg bg-white text-right font-mono"
+                    required
+                  />
+                </label>
+                <div className="text-sm text-gray-700">
+                  Functional Amount (IDR)
+                  <div className="mt-1 px-3 py-2 border rounded-lg bg-gray-50 text-right font-mono font-semibold">
+                    {formatCurrency((recordingLine.debit || recordingLine.credit) * recordExchangeRate, 'IDR')}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {recordingLine.debit > 0 && (
               <div>
                 <div className="grid grid-cols-3 gap-2 mb-3">
@@ -3361,6 +3006,34 @@ export function BankReconciliationEnhanced({
                     className={`py-2 px-3 rounded-lg text-sm font-medium ${linkToSupplierPayment ? 'bg-orange-600 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}
                   >
                     Supplier Payment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRecordContra?.({
+                      bankAccountId: selectedBank,
+                      statementLineId: recordingLine.id,
+                      date: recordingLine.date,
+                      amount: recordingLine.debit,
+                      description: recordingLine.description,
+                      direction: 'from',
+                    })}
+                    className="py-2 px-3 rounded-lg text-sm font-medium bg-cyan-50 text-cyan-700 border border-cyan-200"
+                  >
+                    Record Contra
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRecordPayment?.({
+                      bankAccountId: selectedBank,
+                      date: recordingLine.date,
+                      amount: recordingLine.debit,
+                      currency: recordingLine.currency as 'IDR' | 'USD',
+                      reference: recordingLine.reference,
+                      description: recordingLine.description,
+                    })}
+                    className="py-2 px-3 rounded-lg text-sm font-medium bg-rose-50 text-rose-700 border border-rose-200"
+                  >
+                    Record Payment
                   </button>
                   <button
                     onClick={() => {
@@ -3726,10 +3399,24 @@ export function BankReconciliationEnhanced({
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
+                      onClick={() => onRecordContra?.({
+                        bankAccountId: selectedBank,
+                        statementLineId: recordingLine.id,
+                        date: recordingLine.date,
+                        amount: recordingLine.credit,
+                        description: recordingLine.description,
+                        direction: 'to',
+                      })}
+                      className="text-xs text-cyan-700 hover:underline"
+                    >
+                      Record Contra
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         setLinkExistingReceipt(!linkExistingReceipt);
                         setLinkJournalEntry(false);
-                        if (!linkExistingReceipt) loadExistingReceipts(recordingLine);
+                        if (!linkExistingReceipt) loadExistingReceipts();
                       }}
                       className="text-xs text-blue-600 hover:underline"
                     >
@@ -4232,7 +3919,7 @@ export function BankReconciliationEnhanced({
               </div>
             </div>
 
-            {(editingLine.matchedExpense || editingLine.matchedReceipt || editingLine.matchedFundTransfer) && (
+            {(editingLine.matchedExpense || editingLine.matchedReceipt || editingLine.matchedPayment || editingLine.matchedFundTransfer) && (
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -4316,6 +4003,33 @@ export function BankReconciliationEnhanced({
                       <span className="font-medium text-gray-900">
                         {new Date(editingLine.matchedReceipt.payment_date).toLocaleDateString('id-ID')}
                       </span>
+                    </div>
+                  </div>
+                )}
+
+                {editingLine.matchedPayment && (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Type:</span>
+                      <span className="font-medium text-gray-900">Payment</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Voucher:</span>
+                      <span className="font-medium text-gray-900 font-mono">{editingLine.matchedPayment.voucher_number}</span>
+                    </div>
+                    {(editingLine.matchedPayment.supplier_name || editingLine.matchedPayment.staff_name) && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Payee:</span>
+                        <span className="font-medium text-gray-900">{editingLine.matchedPayment.supplier_name || editingLine.matchedPayment.staff_name}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Amount:</span>
+                      <span className="font-medium text-gray-900">{formatCurrency(editingLine.matchedPayment.amount, editingLine.currency)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Date:</span>
+                      <span className="font-medium text-gray-900">{new Date(editingLine.matchedPayment.voucher_date).toLocaleDateString('id-ID')}</span>
                     </div>
                   </div>
                 )}

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import type { TFunction } from '../contexts/LanguageContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { ChevronDown, ChevronRight, Menu, X, Loader } from 'lucide-react';
 
@@ -19,7 +20,6 @@ const BankLedger = lazy(() => import('../components/finance/BankLedger'));
 const FinancialReports = lazy(() => import('../components/finance/FinancialReports').then(m => ({ default: m.FinancialReports })));
 const ReceivablesManager = lazy(() => import('../components/finance/ReceivablesManager').then(m => ({ default: m.ReceivablesManager })));
 const PayablesManager = lazy(() => import('../components/finance/PayablesManager').then(m => ({ default: m.PayablesManager })));
-const OutstandingSummary = lazy(() => import('../components/finance/OutstandingSummary'));
 const AgeingReport = lazy(() => import('./reports/AgeingReport').then(m => ({ default: m.AgeingReport })));
 const BankReconciliation = lazy(() => import('../components/finance/BankReconciliationEnhanced').then(m => ({ default: m.BankReconciliationEnhanced })));
 const ChartOfAccountsManager = lazy(() => import('../components/finance/ChartOfAccountsManager').then(m => ({ default: m.ChartOfAccountsManager })));
@@ -58,7 +58,7 @@ interface MenuGroup {
   collapsible?: boolean;
 }
 
-const getFinanceMenu = (t: Record<string, Record<string, string>>): MenuGroup[] => [
+const getFinanceMenu = (t: TFunction): MenuGroup[] => [
   {
     label: t.finance.vouchers,
     collapsible: true,
@@ -170,6 +170,12 @@ function FinanceContent() {
   const [focusFundTransferId, setFocusFundTransferId] = useState<string | null>(null);
   const [focusBankAccountId, setFocusBankAccountId] = useState<string | null>(null);
   const [focusBankStatementLineId, setFocusBankStatementLineId] = useState<string | null>(null);
+  const [contraPrefill, setContraPrefill] = useState<{
+    bankAccountId: string; statementLineId: string; date: string; amount: number; description: string; direction: 'from' | 'to';
+  } | null>(null);
+  const [paymentReconPrefill, setPaymentReconPrefill] = useState<{
+    bankAccountId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string;
+  } | null>(null);
   const handleOpenBankReconciliation = useCallback((bankAccountId: string, bankStatementLineId: string) => {
     setFocusBankAccountId(bankAccountId);
     setFocusBankStatementLineId(bankStatementLineId);
@@ -286,7 +292,7 @@ function FinanceContent() {
       case 'receipt':
         return <ReceiptVoucherManager canManage={canManage} />;
       case 'payment':
-        return <PaymentVoucherManager canManage={canManage} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} prefillExpenseBill={payExpenseBill} onPrefillExpenseBillConsumed={() => setPayExpenseBill(null)} onViewInvoice={() => setActiveTab('purchase')} />;
+        return <PaymentVoucherManager canManage={canManage} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} prefillExpenseBill={payExpenseBill} onPrefillExpenseBillConsumed={() => setPayExpenseBill(null)} onViewInvoice={() => setActiveTab('purchase')} prefillFromBankReconciliation={paymentReconPrefill} onBankReconciliationPrefillConsumed={() => setPaymentReconPrefill(null)} />;
       case 'journal':
         return <GeneralJournalEntry
           canManage={canManage}
@@ -301,6 +307,8 @@ function FinanceContent() {
             initialViewTransferId={focusFundTransferId}
             onInitialViewHandled={() => setFocusFundTransferId(null)}
             onOpenBankReconciliation={handleOpenBankReconciliation}
+            prefillFromBankReconciliation={contraPrefill}
+            onPrefillConsumed={() => setContraPrefill(null)}
           />
         );
       case 'expenses':
@@ -339,6 +347,14 @@ function FinanceContent() {
             initialBankAccountId={focusBankAccountId}
             initialStatementLineId={focusBankStatementLineId}
             onInitialFocusHandled={handleBankReconciliationFocusHandled}
+            onRecordContra={(prefill) => {
+              setContraPrefill(prefill);
+              setActiveTab('contra');
+            }}
+            onRecordPayment={(prefill) => {
+              setPaymentReconPrefill(prefill);
+              setActiveTab('payment');
+            }}
           />
         );
       case 'trial_balance':

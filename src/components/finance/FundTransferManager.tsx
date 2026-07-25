@@ -9,6 +9,7 @@ import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { notifyFinanceReconciliationRefresh } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
 
@@ -63,6 +64,15 @@ interface FundTransferManagerProps {
   initialViewTransferId?: string | null;
   onInitialViewHandled?: () => void;
   onOpenBankReconciliation?: (bankAccountId: string, bankStatementLineId: string) => void;
+  prefillFromBankReconciliation?: {
+    bankAccountId: string;
+    statementLineId: string;
+    date: string;
+    amount: number;
+    description: string;
+    direction: 'from' | 'to';
+  } | null;
+  onPrefillConsumed?: () => void;
 }
 
 interface BankReconciliationConflict {
@@ -92,7 +102,10 @@ export function FundTransferManager({
   initialViewTransferId,
   onInitialViewHandled,
   onOpenBankReconciliation,
+  prefillFromBankReconciliation,
+  onPrefillConsumed,
 }: FundTransferManagerProps) {
+  const { t } = useLanguage();
   const [transfers, setTransfers] = useState<FundTransfer[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [fromBankStatements, setFromBankStatements] = useState<BankStatementLine[]>([]);
@@ -124,6 +137,31 @@ export function FundTransferManager({
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!prefillFromBankReconciliation) return;
+    resetForm();
+    const isFrom = prefillFromBankReconciliation.direction === 'from';
+    setFormData(prev => ({
+      ...prev,
+      transfer_date: prefillFromBankReconciliation.date,
+      from_amount: prefillFromBankReconciliation.amount,
+      to_amount: prefillFromBankReconciliation.amount,
+      ...(isFrom ? {
+        from_account_type: 'bank' as const,
+        from_bank_account_id: prefillFromBankReconciliation.bankAccountId,
+        from_bank_statement_line_id: prefillFromBankReconciliation.statementLineId,
+      } : {
+        to_account_type: 'bank' as const,
+        to_bank_account_id: prefillFromBankReconciliation.bankAccountId,
+        to_bank_statement_line_id: prefillFromBankReconciliation.statementLineId,
+      }),
+      description: prefillFromBankReconciliation.description,
+    }));
+    void loadBankStatements(prefillFromBankReconciliation.bankAccountId, isFrom ? 'from' : 'to', prefillFromBankReconciliation.statementLineId);
+    setModalOpen(true);
+    onPrefillConsumed?.();
+  }, [prefillFromBankReconciliation, onPrefillConsumed]);
 
   // Read from/to account IDs and editingTransfer via ref so the realtime channel
   // stays stable-deps ([]) and does not resubscribe on every account change.
@@ -291,7 +329,9 @@ export function FundTransferManager({
     const toCurrency = getToCurrency();
 
     if (formData.from_amount > 0 && formData.to_amount > 0 && fromCurrency !== toCurrency) {
-      return formData.to_amount / formData.from_amount;
+      return fromCurrency === 'USD'
+        ? formData.to_amount / formData.from_amount
+        : formData.from_amount / formData.to_amount;
     }
     return null;
   };

@@ -131,7 +131,7 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
 
         const { data: bankLines } = await supabase
           .from('bank_statement_lines')
-          .select('id, transaction_date, description, reference, debit_amount, credit_amount, matched_expense_id, matched_receipt_id, matched_entry_id')
+          .select('id, transaction_date, description, reference, debit_amount, credit_amount, matched_expense_id, matched_receipt_id, matched_payment_id, matched_entry_id')
           .eq('bank_account_id', bankAccountData.id)
           .gte('transaction_date', dateRange.startDate)
           .lt('transaction_date', endDateStr)
@@ -158,6 +158,7 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
             // raw fields used downstream to resolve the canonical voucher number
             _matched_expense_id: line.matched_expense_id || null,
             _matched_receipt_id: line.matched_receipt_id || null,
+            _matched_payment_id: line.matched_payment_id || null,
             _matched_entry_id: line.matched_entry_id || null,
           } as any;
         });
@@ -283,15 +284,20 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
   const resolveBankLineCanonicalNumbers = async (rows: any[]): Promise<AccountLedger[]> => {
     const expenseIds = Array.from(new Set(rows.map(r => r._matched_expense_id).filter(Boolean)));
     const receiptIds = Array.from(new Set(rows.map(r => r._matched_receipt_id).filter(Boolean)));
+    const paymentIds = Array.from(new Set(rows.map(r => r._matched_payment_id).filter(Boolean)));
     const entryIds = Array.from(new Set(rows.map(r => r._matched_entry_id).filter(Boolean)));
 
-    const [expMap, recMap, entMap] = await Promise.all([
+    const [expMap, recMap, payMap, entMap] = await Promise.all([
       expenseIds.length
         ? supabase.from('finance_expenses').select('id, voucher_number').in('id', expenseIds)
             .then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.voucher_number])))
         : Promise.resolve({} as Record<string, string>),
       receiptIds.length
         ? supabase.from('receipt_vouchers').select('id, voucher_number').in('id', receiptIds)
+            .then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.voucher_number])))
+        : Promise.resolve({} as Record<string, string>),
+      paymentIds.length
+        ? supabase.from('payment_vouchers').select('id, voucher_number').in('id', paymentIds)
             .then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.voucher_number])))
         : Promise.resolve({} as Record<string, string>),
       entryIds.length
@@ -304,9 +310,10 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
       const canonical =
         (r._matched_expense_id && expMap[r._matched_expense_id]) ||
         (r._matched_receipt_id && recMap[r._matched_receipt_id]) ||
+        (r._matched_payment_id && payMap[r._matched_payment_id]) ||
         (r._matched_entry_id && entMap[r._matched_entry_id]) ||
         r.canonical_number;
-      const { _matched_expense_id, _matched_receipt_id, _matched_entry_id, ...rest } = r;
+      const { _matched_expense_id, _matched_receipt_id, _matched_payment_id, _matched_entry_id, ...rest } = r;
       return { ...rest, canonical_number: canonical } as AccountLedger;
     });
   };

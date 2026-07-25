@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Plus, Eye, Search, ArrowDownCircle, Check, CreditCard as Edit2, Trash2, X, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { Eye, Search, ArrowDownCircle, CreditCard as Edit2, Trash2, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinanceModal } from './FinanceModal';
@@ -15,6 +16,7 @@ import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { type CompanySnapshot } from '../../types/company';
 import { waitForImages } from '../../utils/companyLogoUrl';
 import { formatCurrency } from '../../utils/currency';
+import { saveReceiptVoucher } from '../../services/financeCommands';
 
 interface Customer {
   id: string;
@@ -64,6 +66,8 @@ interface ReceiptVoucher {
   description: string | null;
   is_posted: boolean;
   journal_entry_id: string | null;
+  transaction_currency?: 'IDR' | 'USD' | null;
+  exchange_rate?: number | null;
   created_at: string;
   customers?: { company_name: string };
   bank_accounts?: { account_name: string; bank_name: string; alias?: string; currency: string };
@@ -75,10 +79,8 @@ interface ReceiptVoucherManagerProps {
   canManage: boolean;
 }
 
-const allocationKey = (allocation: { targetId: string; targetType: 'invoice' | 'salesorder' }) =>
-  `${allocation.targetType}:${allocation.targetId}`;
-
 export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps) {
+  const { t } = useLanguage();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const printRef = useRef<HTMLDivElement>(null);
@@ -107,6 +109,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     bank_account_id: '',
     reference_number: '',
     amount: 0,
+    exchange_rate: 1,
     description: '',
   });
 
@@ -166,9 +169,11 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           if (allocations && allocations.length > 0) {
             const displays = allocations.map(alloc => {
               if (alloc.sales_invoice_id && alloc.sales_invoices) {
-                return `${alloc.sales_invoices.invoice_number} (Invoice)`;
+                const invoice = Array.isArray(alloc.sales_invoices) ? alloc.sales_invoices[0] : alloc.sales_invoices;
+                return `${invoice?.invoice_number} (Invoice)`;
               } else if (alloc.sales_order_id && alloc.sales_orders) {
-                return `${alloc.sales_orders.so_number} (Advance)`;
+                const order = Array.isArray(alloc.sales_orders) ? alloc.sales_orders[0] : alloc.sales_orders;
+                return `${order?.so_number} (Advance)`;
               }
               return null;
             }).filter(Boolean);
@@ -213,7 +218,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         });
 
       // Filter for unpaid/partially paid invoices
-      const invoices = (allInvoicesData || []).filter(inv => inv.balance_amount > 0);
+      const invoices = (allInvoicesData || []).filter((inv: SalesInvoice) => inv.balance_amount > 0);
 
       // Load sales orders (any active status - exclude cancelled/closed)
       const { data: salesOrders } = await supabase
@@ -245,7 +250,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                 exclude_voucher_uuid: voucherId || null
               });
 
-            additionalInvoices = (allInvsData || []).filter(inv =>
+            additionalInvoices = (allInvsData || []).filter((inv: SalesInvoice) =>
               invoiceIds.includes(inv.id)
             );
           }
@@ -288,12 +293,6 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     } catch (error) {
       console.error('Error loading allocation targets:', error);
     }
-  };
-
-  const generateVoucherNumber = async () => {
-    const { data, error } = await supabase.rpc('generate_voucher_number', { p_prefix: 'RV' });
-    if (error) throw error;
-    return data as string;
   };
 
   const handleAllocationChange = (targetId: string, targetType: 'invoice' | 'salesorder', amount: number) => {
@@ -371,130 +370,33 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      let voucher;
+      if (editMode && selectedVoucher?.is_posted) {
+        showToast({ type: 'error', title: 'Posted', message: 'Cannot edit a posted receipt voucher. Cancel posting first.' });
+        return;
+      }
 
-      if (editMode && selectedVoucher) {
-        if (selectedVoucher.is_posted) {
-          showToast({ type: 'error', title: 'Posted', message: 'Cannot edit a posted receipt voucher. Cancel posting first.' });
-          return;
-        }
-        // UPDATE existing voucher
-        const { data: updatedVoucher, error } = await supabase
-          .from('receipt_vouchers')
-          .update({
-            voucher_date: formData.voucher_date,
-            payment_method: formData.payment_method,
-            bank_account_id: formData.bank_account_id || null,
-            reference_number: formData.reference_number || null,
-            amount: formData.amount,
-            description: formData.description || null,
-          })
-          .eq('id', selectedVoucher.id)
-          .select()
-          .single();
-
-        if (error) throw error;
-        voucher = updatedVoucher;
-
-        const { data: existingRows, error: existingError } = await supabase
-          .from('voucher_allocations')
-          .select('id, sales_invoice_id, sales_order_id, allocated_amount')
-          .eq('receipt_voucher_id', selectedVoucher.id);
-
-        if (existingError) throw existingError;
-
-        const existingByKey = new Map((existingRows || []).map(row => [
-          allocationKey({
-            targetId: row.sales_invoice_id || row.sales_order_id,
-            targetType: row.sales_invoice_id ? 'invoice' : 'salesorder',
-          }),
-          row,
-        ]));
-        const nextByKey = new Map(allocations.map(alloc => [allocationKey(alloc), alloc]));
-
-        const rowsToDelete = (existingRows || []).filter(row => {
-          const key = allocationKey({
-            targetId: row.sales_invoice_id || row.sales_order_id,
-            targetType: row.sales_invoice_id ? 'invoice' : 'salesorder',
-          });
-          return !nextByKey.has(key);
-        });
-
-        if (rowsToDelete.length > 0) {
-          const { error: deleteError } = await supabase
-            .from('voucher_allocations')
-            .delete()
-            .in('id', rowsToDelete.map(row => row.id));
-
-          if (deleteError) throw deleteError;
-        }
-
-        for (const alloc of allocations) {
-          const key = allocationKey(alloc);
-          const existing = existingByKey.get(key);
-
-          if (existing) {
-            if (Number(existing.allocated_amount) !== alloc.amount) {
-              const { error: updateAllocationError } = await supabase
-                .from('voucher_allocations')
-                .update({ allocated_amount: alloc.amount })
-                .eq('id', existing.id);
-
-              if (updateAllocationError) throw updateAllocationError;
-            }
-          } else {
-            const { error: insertAllocationError } = await supabase
-              .from('voucher_allocations')
-              .insert({
-                voucher_type: 'receipt',
-                receipt_voucher_id: selectedVoucher.id,
-                sales_invoice_id: alloc.targetType === 'invoice' ? alloc.targetId : null,
-                sales_order_id: alloc.targetType === 'salesorder' ? alloc.targetId : null,
-                allocated_amount: alloc.amount,
-              });
-
-            if (insertAllocationError) throw insertAllocationError;
-          }
-        }
-      } else {
-        // CREATE new voucher
-        const voucherNumber = await generateVoucherNumber();
-
-        const { data: newVoucher, error } = await supabase
-          .from('receipt_vouchers')
-          .insert([{
-            voucher_number: voucherNumber,
-            voucher_date: formData.voucher_date,
-            customer_id: formData.customer_id,
-            payment_method: formData.payment_method,
-            bank_account_id: formData.bank_account_id || null,
-            reference_number: formData.reference_number || null,
-            amount: formData.amount,
-            description: formData.description || null,
-            created_by: user.id,
-          }])
-          .select()
-          .single();
-
-        if (error) throw error;
-        voucher = newVoucher;
-
-        const allocationRows = allocations.map(alloc => ({
-          voucher_type: 'receipt',
-          receipt_voucher_id: voucher.id,
+      const currency = (bankAccounts.find(bank => bank.id === formData.bank_account_id)?.currency || 'IDR') as 'IDR' | 'USD';
+      if (currency === 'USD' && formData.exchange_rate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
+      await saveReceiptVoucher(
+        editMode && selectedVoucher ? selectedVoucher.id : null,
+        {
+          voucher_date: formData.voucher_date,
+          customer_id: formData.customer_id,
+          payment_method: formData.payment_method,
+          bank_account_id: formData.bank_account_id || null,
+          reference_number: formData.reference_number || null,
+          amount: formData.amount,
+          description: formData.description || null,
+          transaction_currency: currency,
+          exchange_rate: currency === 'IDR' ? 1 : formData.exchange_rate,
+          created_by: user.id,
+        },
+        allocations.map(alloc => ({
           sales_invoice_id: alloc.targetType === 'invoice' ? alloc.targetId : null,
           sales_order_id: alloc.targetType === 'salesorder' ? alloc.targetId : null,
-          allocated_amount: alloc.amount,
-        }));
-
-        if (allocationRows.length > 0) {
-          const { error: allocationError } = await supabase
-            .from('voucher_allocations')
-            .insert(allocationRows);
-
-          if (allocationError) throw allocationError;
-        }
-      }
+          amount: alloc.amount,
+        })),
+      );
 
       setModalOpen(false);
       resetForm();
@@ -513,6 +415,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       bank_account_id: '',
       reference_number: '',
       amount: 0,
+      exchange_rate: 1,
       description: '',
     });
     setAllocations([]);
@@ -602,6 +505,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       bank_account_id: voucher.bank_account_id || '',
       reference_number: voucher.reference_number || '',
       amount: voucher.amount,
+      exchange_rate: voucher.exchange_rate || 1,
       description: voucher.description || '',
     });
 
@@ -862,6 +766,20 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
             </SapField>
           </SapRow>
 
+          {formCurrency === 'USD' && (
+            <SapRow>
+              <SapField label="USD to IDR Exchange Rate" required span={4}>
+                <input type="number" required min="1.000001" step="0.000001" value={formData.exchange_rate}
+                  onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 0 })}
+                  className={SAP_INPUT + ' !text-right !font-mono'} />
+              </SapField>
+              <SapField label="Functional Amount (IDR)" span={4}>
+                <input readOnly value={(formData.amount * formData.exchange_rate).toLocaleString('id-ID')}
+                  className={SAP_INPUT + ' !text-right !font-mono !bg-gray-50'} />
+              </SapField>
+            </SapRow>
+          )}
+
           <SapRow>
             <SapField label={`Amount (${formCurrency})`} required span={formData.payment_method === 'cash' ? 12 : 4}>
               <input type="number" required min="0" step="0.01" value={formData.amount}
@@ -935,7 +853,6 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                       const docDate = target.type === 'invoice'
                         ? (target as SalesInvoice & { type: 'invoice' }).invoice_date
                         : (target as SalesOrder & { type: 'salesorder' }).so_date;
-                      const receiptAmount = allocations.find(a => a.targetId === target.id)?.amount || 0;
                       const preview = getInvoiceAllocationPreview(target);
                       const roundingAdjustment = preview.roundingAdjustment;
 

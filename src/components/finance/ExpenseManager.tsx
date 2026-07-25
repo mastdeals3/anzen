@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clock, Clipboard, ClipboardCheck, Lock, RotateCcw, UserPlus, AlertCircle, Banknote, Link2 } from 'lucide-react';
+import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clipboard, ClipboardCheck, Lock, RotateCcw, UserPlus, AlertCircle, Banknote, Link2 } from 'lucide-react';
 import { Modal } from '../Modal';
 import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinanceModal } from './FinanceModal';
-import { FormSection, F_LABEL, F_INPUT, F_INPUT_MONEY, F_SELECT, F_TEXTAREA, F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
+import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { getCategoryFieldRules } from './categoryFieldRules';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { moduleExpenseCategories, sortExpenseCategories } from './expenseCategories';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
+import { approveFinanceExpense, saveFinanceExpense } from '../../services/financeCommands';
 import {
   linkBankTransaction,
   notifyFinanceReconciliationRefresh,
@@ -87,13 +88,11 @@ function BrokerPpnRateSelector({ rate, isCustom, onChange }: {
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { getFinancialYear } from '../../utils/dateFormat';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { formatCurrency, normalizeCurrency } from '../../utils/currency';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 import {
-  DOCUMENT_TYPES,
   DOCUMENT_TYPE_GROUPS,
   DOCUMENT_TYPE_TAX_CONFIG,
   SUPPLIER_TYPES,
@@ -103,7 +102,6 @@ import {
   calculateExpenseTotals,
   computeBrokerLinePpn,
   getDueDateFromTerms,
-  getSingleCategoryForDocType,
   EXPENSE_CATEGORY_LABELS,
 } from '../../utils/taxCalculations';
 
@@ -122,6 +120,12 @@ interface FinanceExpense {
   bank_account_id: string | null;
   payment_reference: string | null;
   voucher_number: string | null;
+  currency_code?: string | null;
+  transaction_currency?: string | null;
+  functional_currency?: string | null;
+  exchange_rate?: number | null;
+  bank_account_currency?: string | null;
+  payment_currency?: string | null;
   approval_status: 'pending_approval' | 'approved' | 'rejected';
   approved_by: string | null;
   approved_at: string | null;
@@ -176,7 +180,9 @@ interface FinanceExpense {
 
 const getExpenseCurrency = (expense: FinanceExpense): string =>
   normalizeCurrency(
-    expense.bank_accounts?.currency
+    expense.transaction_currency
+      ?? expense.currency_code
+      ?? expense.bank_accounts?.currency
       ?? expense.bank_statement_lines?.[0]?.bank_accounts?.currency,
   );
 
@@ -260,7 +266,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [cancelPostingReason, setCancelPostingReason] = useState('');
   const [cancelPostingLoading, setCancelPostingLoading] = useState(false);
   const [expenses, setExpenses] = useState<FinanceExpense[]>([]);
-  const [batches, setBatches] = useState<Batch[]>([]);
+  const [, setBatches] = useState<Batch[]>([]);
   const [containers, setContainers] = useState<ImportContainer[]>([]);
   const [challans, setChallans] = useState<DeliveryChallan[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
@@ -306,7 +312,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [quickAddSupplierType, setQuickAddSupplierType] = useState('General');
   const [quickAddSupplierPKP, setQuickAddSupplierPKP] = useState(false);
   const [quickAddSupplierTerms, setQuickAddSupplierTerms] = useState(30);
-  const [quickAddOpenMaster, setQuickAddOpenMaster] = useState(false);
   // Attachments collapse
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   // Health Check panel
@@ -323,6 +328,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [formData, setFormData] = useState({
     expense_category: 'other',
     amount: 0,
+    transaction_currency: 'IDR' as 'IDR' | 'USD',
+    exchange_rate: 1,
     expense_date: new Date().toISOString().split('T')[0],
     description: '',
     batch_id: '',
@@ -651,7 +658,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       setExpenses(expensesRes.data || []);
       setBatches(batchesRes.data || []);
       setContainers(containersRes.data || []);
-      setChallans(challansRes.data || []);
+      setChallans((challansRes.data || []).map(challan => ({
+        ...challan,
+        customers: Array.isArray(challan.customers) ? challan.customers[0] || null : challan.customers,
+      })));
       setBankAccounts(banksRes.data || []);
 
       // Build set of reconciled expense IDs
@@ -880,6 +890,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           if (!composedDescription.startsWith(tag)) composedDescription = `${tag} ${composedDescription}`.trim();
         }
       }
+      const selectedExpenseBank = bankAccounts.find(bank => bank.id === formData.bank_account_id);
+      const transactionCurrency = normalizeCurrency(
+        formData.payment_method !== null ? selectedExpenseBank?.currency : formData.transaction_currency,
+      ) as 'IDR' | 'USD';
+      const exchangeRate = transactionCurrency === 'IDR' ? 1 : formData.exchange_rate;
+      if (transactionCurrency === 'USD' && exchangeRate <= 1) {
+        alert('Enter a valid USD-to-IDR exchange rate.');
+        return;
+      }
       const expenseData = {
         expense_category: formData.expense_category,
         expense_type: category?.type || 'admin',
@@ -926,58 +945,24 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         fixed_asset_account_id: isFixedAsset ? (formData.fixed_asset_account_id || null) : null,
         // Task 5: bank charges only for Utility category; all others forced 0
         bank_charges_amount:    formData.expense_category === 'utilities' ? (formData.bank_charges_amount || 0) : 0,
+        currency_code: transactionCurrency,
+        transaction_currency: transactionCurrency,
+        functional_currency: 'IDR' as const,
+        exchange_rate: exchangeRate,
+        bank_account_currency: selectedExpenseBank?.currency || transactionCurrency,
+        payment_currency: transactionCurrency,
       };
 
       console.log('=== EXPENSE DATA TO SAVE ===');
       console.log('document_urls:', expenseData.document_urls);
       console.log('Full expense data:', expenseData);
 
-      // Columns added by recent finance-stabilization migrations. If a DB has
-      // not applied one of those migrations yet, PostgREST returns PGRST204
-      // "Could not find the 'X' column ... in the schema cache" (or Postgres
-      // returns "column \"X\" does not exist"). Previously we stripped ALL of
-      // these columns collectively on any missing-column error — which silently
-      // dropped columns that ARE present in the DB (e.g. bank_charges_amount,
-      // which was added long ago in 20260706120300), causing user-entered
-      // values to disappear on save. We now parse the offending column name
-      // out of the error and strip ONLY that column, retrying in a loop.
-      const OPTIONAL_NEW_COLUMNS: readonly string[] = [
-        'ppn_manual_override', 'bank_charges_amount',
-        'ppn_calc_mode', 'dpp_amount', 'ppn_rate',
-        'staff_id',
-      ];
-      const extractMissingColumn = (err: any): string | null => {
-        if (!err || typeof err.message !== 'string') return null;
-        const m1 = err.message.match(/Could not find the '([^']+)' column/);
-        if (m1 && OPTIONAL_NEW_COLUMNS.includes(m1[1])) return m1[1];
-        const m2 = err.message.match(/column "([^"]+)" does not exist/);
-        if (m2 && OPTIONAL_NEW_COLUMNS.includes(m2[1])) return m2[1];
-        return null;
-      };
-
       if (editingExpense) {
         // Regular update - bank expenses only (cash expenses go to Petty Cash Manager)
         console.log('=== UPDATING EXPENSE ===');
         console.log('Expense ID:', editingExpense.id);
 
-        let updateErr: any = null;
-        let updatePayload: any = { ...expenseData };
-        for (let attempt = 0; attempt <= OPTIONAL_NEW_COLUMNS.length; attempt++) {
-          const { error } = await supabase
-            .from('finance_expenses')
-            .update(updatePayload)
-            .eq('id', editingExpense.id);
-          if (!error) { updateErr = null; break; }
-          const missingCol = extractMissingColumn(error);
-          if (!missingCol || !(missingCol in updatePayload)) { updateErr = error; break; }
-          console.warn(`Retrying update without missing column '${missingCol}' (DB migration not applied)`);
-          delete updatePayload[missingCol];
-        }
-
-        if (updateErr) {
-          console.error('Update error:', updateErr);
-          throw updateErr;
-        }
+        await saveFinanceExpense(editingExpense.id, expenseData);
 
         console.log('Update successful! Fetching updated data...');
 
@@ -1019,6 +1004,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
         // Link to bank transaction if selected
         if (selectedBankTransactionId) {
+          await approveFinanceExpense(editingExpense.id, profile?.id);
           let linkFailed = false;
           try {
             await linkBankTransaction({
@@ -1078,20 +1064,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
         console.log('=== CREATING NEW EXPENSE ===');
 
-        // Generate voucher number: EXP/YY-YY/NNN
-        const fy = getFinancialYear(new Date());
-        const fyPrefix = `EXP/${fy}/`;
-        const { data: fyNums } = await supabase
-          .from('finance_expenses')
-          .select('voucher_number')
-          .like('voucher_number', `${fyPrefix}%`);
-        const maxSeq = (fyNums || []).reduce((max, r) => {
-          const n = parseInt(r.voucher_number?.split('/')[2] || '0', 10);
-          return isNaN(n) ? max : Math.max(max, n);
-        }, 0);
-        const voucherNumber = `${fyPrefix}${String(maxSeq + 1).padStart(3, '0')}`;
-
-        const insertPayload = { ...expenseData, created_by: user.id, voucher_number: voucherNumber };
+        const newExpenseId = await saveFinanceExpense(null, { ...expenseData, created_by: user.id });
         const selectClause = `
             *,
             batches (batch_number),
@@ -1109,26 +1082,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             )
           `;
 
-        let newExpense: any = null;
-        let insertErr: any = null;
-        let workingInsertPayload: any = { ...insertPayload };
-        for (let attempt = 0; attempt <= OPTIONAL_NEW_COLUMNS.length; attempt++) {
-          const { data, error } = await supabase
-            .from('finance_expenses')
-            .insert([workingInsertPayload])
-            .select(selectClause)
-            .single();
-          if (!error) { newExpense = data; insertErr = null; break; }
-          const missingCol = extractMissingColumn(error);
-          if (!missingCol || !(missingCol in workingInsertPayload)) { insertErr = error; break; }
-          console.warn(`Retrying insert without missing column '${missingCol}' (DB migration not applied)`);
-          delete workingInsertPayload[missingCol];
-        }
-
-        if (insertErr) {
-          console.error('Insert error:', insertErr);
-          throw insertErr;
-        }
+        const { data: newExpense, error: insertErr } = await supabase
+          .from('finance_expenses').select(selectClause).eq('id', newExpenseId).single();
+        if (insertErr) throw insertErr;
 
         console.log('=== NEW EXPENSE CREATED ===');
         console.log('document_urls from DB:', newExpense?.document_urls);
@@ -1139,6 +1095,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
         // Link to bank transaction if selected
         if (selectedBankTransactionId && newExpense) {
+          await approveFinanceExpense(newExpense.id, profile?.id);
           let linkFailed = false;
           try {
             await linkBankTransaction({
@@ -1268,6 +1225,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     setFormData({
       expense_category: expense.expense_category,
       amount: expense.amount,
+      transaction_currency: normalizeCurrency(expense.transaction_currency ?? expense.currency_code) as 'IDR' | 'USD',
+      exchange_rate: expense.exchange_rate ?? 1,
       expense_date: expense.expense_date,
       description: cleanedDesc,
       batch_id: expense.batch_id || '',
@@ -1372,11 +1331,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
     setApprovalLoading(id);
     try {
-      const { error } = await supabase
-        .from('finance_expenses')
-        .update({ approval_status: 'approved', approved_by: profile?.id, approved_at: new Date().toISOString() })
-        .eq('id', id);
-      if (error) throw error;
+      await approveFinanceExpense(id, profile?.id);
       setExpenses(prev => prev.map(e => e.id === id ? { ...e, approval_status: 'approved', approved_by: profile?.id ?? null, approved_at: new Date().toISOString() } : e));
     } catch (err: any) {
       alert('Failed to approve: ' + err.message);
@@ -1504,6 +1459,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     setFormData({
       expense_category: 'other',
       amount: 0,
+      transaction_currency: 'IDR',
+      exchange_rate: 1,
       expense_date: new Date().toISOString().split('T')[0],
       description: '',
       batch_id: '',
@@ -1625,7 +1582,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         { key: 'broker_no_container', label: 'Broker invoices not linked to container', count: r5.count ?? 0, severity: 'warning' },
         { key: 'supplier_no_defaults', label: 'Active suppliers without expense defaults', count: r6.count ?? 0, severity: 'info' },
         { key: 'all_outstanding', label: 'Total outstanding expense bills', count: (r7.data ?? []).length, severity: 'info' },
-      ].filter(i => i.count > 0);
+      ].filter(i => i.count > 0) as HealthIssue[];
       setHealthIssues(issues);
     } catch (err) {
       console.error('Health check failed:', err);
@@ -1879,7 +1836,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   };
 
   const expenseFormCurrency = normalizeCurrency(
-    bankAccounts.find((bank) => bank.id === formData.bank_account_id)?.currency,
+    bankAccounts.find((bank) => bank.id === formData.bank_account_id)?.currency ?? formData.transaction_currency,
   );
 
   const formatDate = (dateString: string) => {
@@ -2133,11 +2090,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                 // Fix: Check reconciliation from actual bank_statement_lines relationship
                 const isReconciled = expense.bank_statement_lines && expense.bank_statement_lines.length > 0;
-
-                // Get bank info from reconciled statement line
-                const reconciledBankInfo = isReconciled
-                  ? expense.bank_statement_lines?.[0]?.bank_accounts
-                  : null;
 
                 return (
                   <tr key={expense.id} className="hover:bg-blue-50/50 transition-colors">
@@ -3149,13 +3101,47 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Bank Account <span className="text-red-500">*</span></label>
                     <select value={formData.bank_account_id}
                       onChange={(e) => {
-                        setFormData({ ...formData, bank_account_id: e.target.value });
+                        const bank = bankAccounts.find(item => item.id === e.target.value);
+                        const currency = normalizeCurrency(bank?.currency) as 'IDR' | 'USD';
+                        setFormData({ ...formData, bank_account_id: e.target.value, transaction_currency: currency,
+                          exchange_rate: currency === 'IDR' ? 1 : formData.exchange_rate });
                         setSelectedBankTransactionId('');
                       }}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" required={formData.payment_method !== null}>
                       <option value="">Select account</option>
                       {bankAccounts.map(bank => <option key={bank.id} value={bank.id}>{bank.bank_name} — {bank.alias || bank.account_number}</option>)}
                     </select>
+                  </div>
+                )}
+
+                {formData.payment_method === null && (
+                  <div>
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Transaction Currency <span className="text-red-500">*</span></label>
+                    <select value={formData.transaction_currency}
+                      onChange={(e) => setFormData({ ...formData,
+                        transaction_currency: e.target.value as 'IDR' | 'USD',
+                        exchange_rate: e.target.value === 'IDR' ? 1 : formData.exchange_rate })}
+                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs">
+                      <option value="IDR">IDR</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  </div>
+                )}
+
+                {expenseFormCurrency === 'USD' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">USD to IDR Rate <span className="text-red-500">*</span></label>
+                      <input type="number" min="1.000001" step="0.000001" required value={formData.exchange_rate || ''}
+                        onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs text-right font-mono" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Functional IDR</label>
+                      <div className="w-full px-2.5 py-1.5 border border-gray-200 bg-gray-50 rounded text-xs text-right font-mono">
+                        {formatCurrency(formData.amount * formData.exchange_rate, 'IDR')}
+                      </div>
+                    </div>
                   </div>
                 )}
 

@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useFinance } from '../../contexts/FinanceContext';
-import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { saveFinanceJournal } from '../../services/financeCommands';
 import {
   Plus, Trash2, Search, Eye, BookOpen, FileText,
   ChevronDown, X, Loader2, Save, RotateCcw
@@ -9,7 +10,7 @@ import {
 import { showToast } from '../ToastNotification';
 import { Modal } from '../Modal';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
-import { parseIndonesianNumber, formatNumber } from '../../utils/currency';
+import { parseIndonesianNumber } from '../../utils/currency';
 
 interface Account {
   id: string;
@@ -99,6 +100,14 @@ const TEMPLATES: Template[] = [
     ],
   },
   {
+    name: 'Owner Contribution',
+    description: 'Capital injected by owner into the business bank account',
+    lines: [
+      { accountCode: '111101', side: 'debit', label: 'Bank BCA - IDR' },
+      { accountCode: '3100', side: 'credit', label: 'Owner Capital' },
+    ],
+  },
+  {
     name: 'Staff Advance',
     description: 'Advance given to staff',
     lines: [
@@ -146,7 +155,7 @@ function createEmptyLine(): JournalLine {
 
 export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEditEntryId, onEditComplete }: GeneralJournalEntryProps) {
   const { dateRange, triggerRefresh, refreshTrigger } = useFinance();
-  const { profile } = useAuth();
+  const { t } = useLanguage();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -304,88 +313,34 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
     setSaving(true);
 
     try {
-      if (editingEntryId) {
-        const { error: updateErr } = await supabase
-          .from('journal_entries')
-          .update({
-            entry_date: entryDate,
-            description: narration || null,
-            total_debit: totalDebit,
-            total_credit: totalCredit,
-          })
-          .eq('id', editingEntryId)
-          .eq('source_module', 'manual');
-
-        if (updateErr) throw updateErr;
-
-        const { error: delErr } = await supabase
-          .from('journal_entry_lines')
-          .delete()
-          .eq('journal_entry_id', editingEntryId);
-        if (delErr) throw delErr;
-
-        const lineRows = lines
+      const entryId = await saveFinanceJournal(
+        editingEntryId,
+        entryDate,
+        narration || null,
+        lines
           .filter(l => l.account_id && (l.debit > 0 || l.credit > 0))
-          .map((l, idx) => ({
-            journal_entry_id: editingEntryId,
-            line_number: idx + 1,
+          .map(l => ({
             account_id: l.account_id,
             description: l.description || null,
             debit: l.debit || 0,
             credit: l.credit || 0,
-          }));
+          })),
+        'IDR',
+        1,
+      );
 
-        const { error: linesErr } = await supabase
-          .from('journal_entry_lines')
-          .insert(lineRows);
-        if (linesErr) throw linesErr;
-
-        showToast({ type: 'success', title: 'Journal Updated', message: 'Entry updated successfully' });
-        resetForm();
-        triggerRefresh();
-      } else {
-        const { data: entryNum, error: numErr } = await supabase.rpc('generate_journal_entry_number');
-        if (numErr) throw numErr;
-
-        const { data: entry, error: entryErr } = await supabase
-          .from('journal_entries')
-          .insert({
-            entry_number: entryNum,
-            entry_date: entryDate,
-            description: narration || null,
-            source_module: 'manual',
-            total_debit: totalDebit,
-            total_credit: totalCredit,
-            is_posted: true,
-            posted_by: profile?.id,
-            created_by: profile?.id,
-          })
-          .select('id')
-          .single();
-
-        if (entryErr) throw entryErr;
-
-        const lineRows = lines
-          .filter(l => l.account_id && (l.debit > 0 || l.credit > 0))
-          .map((l, idx) => ({
-            journal_entry_id: entry.id,
-            line_number: idx + 1,
-            account_id: l.account_id,
-            description: l.description || null,
-            debit: l.debit || 0,
-            credit: l.credit || 0,
-          }));
-
-        const { error: linesErr } = await supabase
-          .from('journal_entry_lines')
-          .insert(lineRows);
-
-        if (linesErr) throw linesErr;
-
-        showToast({ type: 'success', title: 'Journal Posted', message: `Entry ${entryNum} posted successfully` });
-        resetForm();
-        triggerRefresh();
-      }
+      const { data: savedEntry } = await supabase
+        .from('journal_entries')
+        .select('entry_number')
+        .eq('id', entryId)
+        .single();
+      showToast({
+        type: 'success',
+        title: editingEntryId ? 'Journal Updated' : 'Journal Posted',
+        message: editingEntryId ? 'Entry updated successfully' : `Entry ${savedEntry?.entry_number || ''} posted successfully`,
+      });
+      resetForm();
+      triggerRefresh();
     } catch (err: any) {
       showToast({ type: 'error', title: 'Posting Failed', message: err.message || 'Could not post journal entry' });
     } finally {
@@ -534,7 +489,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
               <SapField label="Narration" span={8}>
                 <input type="text" value={narration}
                   onChange={e => setNarration(e.target.value)}
-                  placeholder="e.g. Loan received from Bank BCA"
+                  placeholder={t.finance.journalNarrationPlaceholder}
                   className={SAP_INPUT} />
               </SapField>
             </SapRow>
@@ -722,7 +677,7 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
       {/* Existing entries list */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div className="px-2 py-1.5 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-700">Manual Journal Entries</h3>
+          <h3 className="text-sm font-semibold text-gray-700">{t.finance.journalEntry}</h3>
         </div>
         {loading ? (
           <div className="flex items-center justify-center py-12">
