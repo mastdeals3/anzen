@@ -29,13 +29,13 @@ const sourceMarkers = [
   "case 'integrity_monitor':",
   "case 'exception_correction':",
   '<IntegrityMonitor />',
-  '<FinanceExceptionCorrectionDashboard canManage={canManage} onOpenDocument={handleOpenExceptionDocument} />',
+  '<FinanceExceptionCorrectionDashboard canManage={canManage} />',
 ];
 for (const marker of sourceMarkers) {
   if (!financeSource.includes(marker)) throw new Error(`Missing Finance navigation marker: ${marker}`);
 }
 
-const dashboardMarkers = ['Open original', 'Open in new tab', 'From Bank', 'To Bank', 'bank_alias', 'onOpenDocument'];
+const dashboardMarkers = ['Save repair', 'Chart of Accounts', 'From Bank', 'To Bank', 'bank_alias', 'save_finance_exception_corrections_v2'];
 for (const marker of dashboardMarkers) {
   if (!dashboardSource.includes(marker)) throw new Error(`Missing Exception Correction control: ${marker}`);
 }
@@ -49,7 +49,7 @@ const builtJavaScript = readdirSync(assetDir)
   .filter(file => file.endsWith('.js'))
   .map(file => readFileSync(join(assetDir, file), 'utf8'))
   .join('\n');
-for (const marker of ['Exception Correction', 'Integrity Monitor', 'exception-correction', 'Open original', 'Open in new tab', 'From Bank', 'To Bank']) {
+for (const marker of ['Exception Correction', 'Integrity Monitor', 'exception-correction', 'Save repair', 'Chart of Accounts', 'From Bank', 'To Bank']) {
   if (!builtJavaScript.includes(marker)) throw new Error(`Production build is missing: ${marker}`);
 }
 

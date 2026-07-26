@@ -272,14 +272,6 @@ function FinanceContent() {
     }
   }, [handleOpenBankReconciliation, setActiveTab]);
 
-  const handleOpenExceptionDocument = useCallback((row: { document_type: string; document_id: string; journal_entry_id?: string | null }) => {
-    if (row.document_type === 'journal' && row.journal_entry_id) {
-      handleOpenJournal(row.journal_entry_id);
-      return;
-    }
-    void handleOpenJournalSource(row.document_type, row.document_id);
-  }, [handleOpenJournal, handleOpenJournalSource]);
-
   const financeMenu = useMemo(() => {
     if (!t || !t.finance) return [];
     return getFinanceMenu(t);
@@ -455,7 +447,7 @@ function FinanceContent() {
       case 'integrity_monitor':
         return <IntegrityMonitor />;
       case 'exception_correction':
-        return <FinanceExceptionCorrectionDashboard canManage={canManage} onOpenDocument={handleOpenExceptionDocument} />;
+        return <FinanceExceptionCorrectionDashboard canManage={canManage} />;
       case 'coa':
         return <ChartOfAccountsManager canManage={canManage} />;
       case 'suppliers':
