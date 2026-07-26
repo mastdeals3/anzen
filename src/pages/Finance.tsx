@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useMemo, lazy, Suspense } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -47,6 +47,20 @@ const FINANCE_TABS: readonly FinanceTab[] = [
   'coa', 'customers', 'suppliers', 'products', 'banks', 'staff_master', 'utility_master',
 ];
 const DEFAULT_FINANCE_TAB: FinanceTab = 'purchase';
+
+const FINANCE_ROUTE_BY_TAB: Record<FinanceTab, string> = {
+  purchase: 'purchase', receipt: 'receipt', payment: 'payment', journal: 'journal', contra: 'fund-transfer',
+  expenses: 'expenses', petty_cash: 'petty-cash', ledger: 'ledger', journal_register: 'journal-register',
+  bank_ledger: 'bank-ledger', party_ledger: 'party-ledger', bank_recon: 'bank-reconciliation',
+  trial_balance: 'trial-balance', pnl: 'profit-and-loss', balance_sheet: 'balance-sheet', receivables: 'receivables',
+  payables: 'payables', ageing: 'ageing', tax: 'tax', ca_reports: 'ca-reports', integrity_monitor: 'integrity-monitor',
+  exception_correction: 'exception-correction', coa: 'chart-of-accounts', customers: 'customers', suppliers: 'suppliers',
+  products: 'products', banks: 'banks', staff_master: 'staff-master', utility_master: 'utility-master',
+};
+
+const FINANCE_TAB_BY_ROUTE = Object.fromEntries(
+  Object.entries(FINANCE_ROUTE_BY_TAB).map(([tab, route]) => [route, tab as FinanceTab]),
+) as Record<string, FinanceTab>;
 
 interface MenuItem {
   id: FinanceTab;
@@ -120,17 +134,18 @@ function FinanceContent() {
   const { navigationData, clearNavigationData } = useNavigation();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   // Active Finance sub-page is derived from the URL so browser refresh and
   // back/forward restore the exact tab the user was on.
   const activeTab: FinanceTab = useMemo(() => {
     const segment = location.pathname.split('/')[2];
-    return (segment && (FINANCE_TABS as readonly string[]).includes(segment))
-      ? (segment as FinanceTab)
-      : DEFAULT_FINANCE_TAB;
+    if (!segment) return DEFAULT_FINANCE_TAB;
+    return FINANCE_TAB_BY_ROUTE[segment]
+      ?? ((FINANCE_TABS as readonly string[]).includes(segment) ? segment as FinanceTab : DEFAULT_FINANCE_TAB);
   }, [location.pathname]);
   const setActiveTab = useCallback((tab: FinanceTab) => {
-    navigate(`/finance/${tab}`);
-  }, [navigate]);
+    navigate(`/finance/${FINANCE_ROUTE_BY_TAB[tab]}${location.search}`);
+  }, [navigate, location.search]);
   // Persist Finance sidebar state so the user's choice survives page navigation.
   const SIDEBAR_KEY = 'anzen.finance.sidebarCollapsed';
   const GROUPS_KEY  = 'anzen.finance.collapsedGroups';
@@ -193,6 +208,27 @@ function FinanceContent() {
   }, []);
   const [ledgerDrillCode, setLedgerDrillCode] = useState<string | null>(null);
   const canManage = profile?.role === 'admin' || profile?.role === 'accounts';
+
+  // Deep links are intentionally URL-driven so refresh, right-click, middle
+  // click and Cmd/Ctrl-click all restore the same Finance record in a new tab.
+  useEffect(() => {
+    const documentId = searchParams.get('document');
+    const journalId = searchParams.get('journal');
+    const bankId = searchParams.get('bank');
+    const bankLineId = searchParams.get('bankLine');
+    const accountCode = searchParams.get('account');
+    if (activeTab === 'expenses') setFocusExpenseId(documentId);
+    if (activeTab === 'receipt') setFocusReceiptId(documentId);
+    if (activeTab === 'payment') setFocusPaymentId(documentId);
+    if (activeTab === 'petty_cash') setFocusPettyCashId(documentId);
+    if (activeTab === 'contra') setFocusFundTransferId(documentId);
+    if (activeTab === 'journal_register') setFocusJournalId(journalId);
+    if (activeTab === 'bank_recon') {
+      setFocusBankAccountId(bankId);
+      setFocusBankStatementLineId(bankLineId);
+    }
+    if (activeTab === 'ledger') setLedgerDrillCode(accountCode);
+  }, [activeTab, searchParams]);
 
   const handlePayInvoice = (invoice: { id: string; invoice_number: string; supplier_id: string; balance_amount: number }) => {
     setPayInvoice(invoice);
@@ -479,12 +515,10 @@ function FinanceContent() {
                     {!isCollapsed && (
                       <div>
                         {group.items.map((item) => (
-                          <button
+                          <Link
                             key={item.id}
-                            onClick={() => {
-                              setActiveTab(item.id);
-                              if (window.innerWidth < 768) setSidebarCollapsed(true);
-                            }}
+                            to={`/finance/${FINANCE_ROUTE_BY_TAB[item.id]}${location.search}`}
+                            onClick={() => { if (window.innerWidth < 768) setSidebarCollapsed(true); }}
                             className={`relative w-full text-left px-2 py-1.5 text-xs font-medium transition-colors flex items-center ${
                               activeTab === item.id
                                 ? 'bg-blue-50 text-blue-600'
@@ -500,7 +534,7 @@ function FinanceContent() {
                                 <span className="text-[10px] text-gray-400 ml-1 shrink-0">{item.shortcut}</span>
                               )}
                             </div>
-                          </button>
+                          </Link>
                         ))}
                       </div>
                     )}
