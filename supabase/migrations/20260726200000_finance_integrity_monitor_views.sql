@@ -5,21 +5,24 @@
 CREATE OR REPLACE VIEW public.unbalanced_journal_entries
 WITH (security_invoker = true) AS
 SELECT
-  u.journal_entry_id,
-  u.source_module,
-  u.reference_id,
-  u.reference_number,
-  u.debit_sum,
-  u.credit_sum,
-  u.imbalance,
+  je.id AS journal_entry_id,
+  je.source_module,
+  je.reference_id,
+  je.reference_number,
+  COALESCE(SUM(jel.debit), 0) AS debit_sum,
+  COALESCE(SUM(jel.credit), 0) AS credit_sum,
+  COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS imbalance,
   je.entry_number,
   je.entry_date,
   je.description,
   je.is_posted,
   je.is_reversed
-FROM public.vw_unbalanced_journals u
-JOIN public.journal_entries je ON je.id = u.journal_entry_id
-WHERE je.is_posted = true AND COALESCE(je.is_reversed, false) = false;
+FROM public.journal_entries je
+LEFT JOIN public.journal_entry_lines jel ON jel.journal_entry_id = je.id
+WHERE je.is_posted = true AND COALESCE(je.is_reversed, false) = false
+GROUP BY je.id, je.source_module, je.reference_id, je.reference_number,
+  je.entry_number, je.entry_date, je.description, je.is_posted, je.is_reversed
+HAVING COALESCE(SUM(jel.debit), 0) <> COALESCE(SUM(jel.credit), 0);
 
 CREATE OR REPLACE VIEW public.duplicate_postings
 WITH (security_invoker = true) AS
