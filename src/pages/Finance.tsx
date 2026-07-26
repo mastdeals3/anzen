@@ -32,17 +32,18 @@ const TaxComplianceCentre = lazy(() => import('../components/finance/TaxComplian
 const CAReports = lazy(() => import('../components/finance/CAReports').then(m => ({ default: m.CAReports })));
 const GeneralJournalEntry = lazy(() => import('../components/finance/GeneralJournalEntry').then(m => ({ default: m.GeneralJournalEntry })));
 const IntegrityMonitor = lazy(() => import('../components/finance/IntegrityMonitor').then(m => ({ default: m.IntegrityMonitor })));
+const FinanceExceptionCorrectionDashboard = lazy(() => import('../components/finance/FinanceExceptionCorrectionDashboard').then(m => ({ default: m.FinanceExceptionCorrectionDashboard })));
 
 type FinanceTab =
   | 'purchase' | 'receipt' | 'payment' | 'journal' | 'contra' | 'expenses' | 'petty_cash'
   | 'ledger' | 'journal_register' | 'bank_ledger' | 'party_ledger' | 'bank_recon'
-  | 'trial_balance' | 'pnl' | 'balance_sheet' | 'receivables' | 'payables' | 'ageing' | 'tax' | 'ca_reports' | 'integrity_monitor'
+  | 'trial_balance' | 'pnl' | 'balance_sheet' | 'receivables' | 'payables' | 'ageing' | 'tax' | 'ca_reports' | 'integrity_monitor' | 'exception_correction'
   | 'coa' | 'customers' | 'suppliers' | 'products' | 'banks' | 'staff_master' | 'utility_master';
 
 const FINANCE_TABS: readonly FinanceTab[] = [
   'purchase', 'receipt', 'payment', 'journal', 'contra', 'expenses', 'petty_cash',
   'ledger', 'journal_register', 'bank_ledger', 'party_ledger', 'bank_recon',
-  'trial_balance', 'pnl', 'balance_sheet', 'receivables', 'payables', 'ageing', 'tax', 'ca_reports', 'integrity_monitor',
+  'trial_balance', 'pnl', 'balance_sheet', 'receivables', 'payables', 'ageing', 'tax', 'ca_reports', 'integrity_monitor', 'exception_correction',
   'coa', 'customers', 'suppliers', 'products', 'banks', 'staff_master', 'utility_master',
 ];
 const DEFAULT_FINANCE_TAB: FinanceTab = 'purchase';
@@ -97,6 +98,7 @@ const getFinanceMenu = (t: TFunction): MenuGroup[] => [
       { id: 'ageing', label: t.finance.ageing },
       { id: 'tax', label: t.finance.taxCompliance ?? t.finance.taxReports },
       { id: 'integrity_monitor', label: 'Integrity Monitor' },
+      { id: 'exception_correction', label: 'Exception Correction' },
     ]
   },
   {
@@ -408,6 +410,8 @@ function FinanceContent() {
         return <CAReports onOpenJournal={handleOpenJournal} />;
       case 'integrity_monitor':
         return <IntegrityMonitor />;
+      case 'exception_correction':
+        return <FinanceExceptionCorrectionDashboard canManage={canManage} />;
       case 'coa':
         return <ChartOfAccountsManager canManage={canManage} />;
       case 'suppliers':
