@@ -3135,12 +3135,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 0 })}
                         className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs text-right font-mono" />
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Functional IDR</label>
-                      <div className="w-full px-2.5 py-1.5 border border-gray-200 bg-gray-50 rounded text-xs text-right font-mono">
-                        {formatCurrency(formData.amount * formData.exchange_rate, 'IDR')}
-                      </div>
-                    </div>
                   </div>
                 )}
 
