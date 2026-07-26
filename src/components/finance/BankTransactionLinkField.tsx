@@ -19,11 +19,14 @@ interface BankTransactionLinkFieldProps {
   canUnlink?: boolean;
   onSelect: (transaction: BankTransactionLine) => void | Promise<void>;
   onUnlink?: () => void | Promise<void>;
+  direction?: 'debit' | 'credit' | 'both';
+  candidateFilter?: (line: BankTransactionLine) => boolean;
+  autoSelectSingle?: boolean;
 }
 
 function formatAmount(line: BankTransactionLine) {
   const currency = line.bank_accounts?.currency || 'IDR';
-  const amount = Number(line.debit_amount || 0);
+  const amount = Number(line.debit_amount || line.credit_amount || 0);
   return formatCurrency(amount, currency);
 }
 
@@ -44,6 +47,9 @@ export function BankTransactionLinkField({
   canUnlink = false,
   onSelect,
   onUnlink,
+  direction = 'debit',
+  candidateFilter,
+  autoSelectSingle = false,
 }: BankTransactionLinkFieldProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [transactions, setTransactions] = useState<BankTransactionLine[]>([]);
@@ -53,9 +59,10 @@ export function BankTransactionLinkField({
 
   const filteredTransactions = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
-    if (!query) return transactions;
+    const candidates = candidateFilter ? transactions.filter(candidateFilter) : transactions;
+    if (!query) return candidates;
 
-    return transactions.filter((line) => [
+    return candidates.filter((line) => [
       line.transaction_date,
       line.description,
       line.reference,
@@ -69,13 +76,16 @@ export function BankTransactionLinkField({
     setDialogOpen(true);
     setLoading(true);
     try {
-      const rows = await loadUnmatchedDebitBankTransactions({
-        bankAccountId,
+        const rows = await loadUnmatchedDebitBankTransactions({
+          bankAccountId,
+          direction,
         currentExpenseId,
         currentJournalEntryId,
         currentPettyCashId,
       });
+      const candidates = candidateFilter ? rows.filter(candidateFilter) : rows;
       setTransactions(rows);
+      if (autoSelectSingle && candidates.length === 1) await handleSelect(candidates[0]);
     } catch (error) {
       console.error('Error loading unmatched bank transactions:', error);
       alert('Failed to load unmatched bank transactions.');
@@ -146,7 +156,7 @@ export function BankTransactionLinkField({
       >
         <span className="flex items-center gap-1.5 truncate">
           <Link2 className="w-3 h-3 shrink-0" />
-          {selectedTransactionId ? 'Bank transaction selected' : 'Choose unmatched debit transaction'}
+          {selectedTransactionId ? 'Bank transaction selected' : 'Choose unmatched bank transaction'}
         </span>
         <Search className="w-3 h-3 shrink-0" />
       </button>
@@ -180,6 +190,8 @@ export function BankTransactionLinkField({
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Date</th>
                     <th className="px-3 py-2 text-right font-semibold text-gray-600">Amount</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Currency</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Direction</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Narration</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Reference</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Bank</th>
@@ -187,9 +199,9 @@ export function BankTransactionLinkField({
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">Loading transactions...</td></tr>
+                    <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">Loading transactions...</td></tr>
                   ) : filteredTransactions.length === 0 ? (
-                    <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">No unmatched debit transactions found</td></tr>
+                    <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">No matching bank transactions found</td></tr>
                   ) : filteredTransactions.map((line) => (
                     <tr
                       key={line.id}
@@ -198,6 +210,8 @@ export function BankTransactionLinkField({
                     >
                       <td className="px-3 py-2 whitespace-nowrap">{new Date(line.transaction_date).toLocaleDateString('id-ID')}</td>
                       <td className="px-3 py-2 text-right font-mono font-semibold text-red-700 whitespace-nowrap">{formatAmount(line)}</td>
+                      <td className="px-3 py-2">{line.bank_accounts?.currency || '—'}</td>
+                      <td className="px-3 py-2">{line.debit_amount > 0 ? 'Money out' : 'Money in'}</td>
                       <td className="px-3 py-2 text-gray-700 min-w-[220px]">{line.description || '—'}</td>
                       <td className="px-3 py-2 text-gray-600 font-mono">{line.reference || '—'}</td>
                       <td className="px-3 py-2 text-gray-700 whitespace-nowrap">

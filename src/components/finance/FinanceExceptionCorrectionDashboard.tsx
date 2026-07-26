@@ -2,6 +2,8 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, RefreshCw, Search, SlidersHorizontal, Save } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { BankTransactionLinkField } from './BankTransactionLinkField';
+import type { BankTransactionLine } from './bankTransactionLinking';
 
 interface ExceptionRow {
   row_id: string;
@@ -59,6 +61,8 @@ const problemMatches = (row: ExceptionRow, terms: string[]) => {
   const text = `${row.reason || ''} ${row.problem} ${row.why_not_automatic} ${row.recommended_action}`.toLowerCase();
   return terms.some(term => text.includes(term));
 };
+const transactionDirection = (row: ExceptionRow): 'debit' | 'credit' | 'both' =>
+  row.document_type === 'receipt' ? 'credit' : row.document_type === 'expense' || row.document_type === 'payment' ? 'debit' : 'both';
 
 export function FinanceExceptionCorrectionDashboard({ canManage }: {
   canManage: boolean;
@@ -198,7 +202,21 @@ export function FinanceExceptionCorrectionDashboard({ canManage }: {
           {['expense','payment'].includes(row.document_type) && needsPayment && <label className="text-xs">Payment Method<input value={edit.payment_type || ''} onChange={event => updateEdit(row,'payment_type',event.target.value)} placeholder={row.current_payment_type || 'Select payment method'} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage} /></label>}
           {['expense','payment'].includes(row.document_type) && needsTax && <label className="text-xs">Tax Category<select value={edit.tax_code_id || ''} onChange={event => updateEdit(row,'tax_code_id',event.target.value)} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage}><option value="">No change</option>{taxCodes.map(item => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>}
           {['expense','receipt','payment'].includes(row.document_type) && needsReference && <label className="text-xs">Reference<input value={edit.reference || ''} onChange={event => updateEdit(row,'reference',event.target.value)} placeholder={row.current_reference || 'No change'} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage} /></label>}
-          {row.document_type === 'bank_reconciliation' && <label className="text-xs">Linked Bank Transaction<input value={edit.bank_statement_line_id || ''} onChange={event => updateEdit(row,'bank_statement_line_id',event.target.value)} placeholder={row.bank_statement_line_id || 'Enter linked transaction'} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage} /></label>}
+          {row.document_type === 'bank_reconciliation' && row.current_bank_account_id && <div className="sm:col-span-2 lg:col-span-3"><BankTransactionLinkField
+            bankAccountId={row.current_bank_account_id}
+            selectedTransactionId={edit.bank_statement_line_id || row.bank_statement_line_id || ''}
+            direction={transactionDirection(row)}
+            autoSelectSingle
+            candidateFilter={(line: BankTransactionLine) => {
+              const lineAmount = Number(line.debit_amount || line.credit_amount || 0);
+              const amountMatches = row.amount == null || Math.abs(lineAmount - Number(row.amount)) < 0.01;
+              const currencyMatches = !row.currency || !line.bank_accounts?.currency || row.currency === line.bank_accounts.currency;
+              const dateMatches = !row.date || Math.abs(new Date(line.transaction_date).getTime() - new Date(row.date).getTime()) <= 8 * 24 * 60 * 60 * 1000;
+              return amountMatches && currencyMatches && dateMatches;
+            }}
+            onSelect={async (line) => updateEdit(row, 'bank_statement_line_id', line.id)}
+            disabled={!canManage}
+          /></div>}
           {row.document_type === 'journal' && <label className="text-xs">Document Classification<input value={edit.document_classification || ''} onChange={event => updateEdit(row,'document_classification',event.target.value)} placeholder="No change" className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage} /></label>}
           {['loan','capital_contribution'].includes(row.document_type) && <label className="text-xs">Finance Classification<input value={edit.finance_classification || ''} onChange={event => updateEdit(row,'finance_classification',event.target.value)} placeholder={row.current_finance_classification || 'No change'} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage} /></label>}
           {['sales_invoice','purchase_invoice'].includes(row.document_type) && <label className="text-xs">Faktur Pajak Number<input value={edit.faktur_pajak_number || ''} onChange={event => updateEdit(row,'faktur_pajak_number',event.target.value)} placeholder={row.current_faktur_pajak_number || 'No change'} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage} /></label>}

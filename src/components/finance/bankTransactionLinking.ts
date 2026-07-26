@@ -29,6 +29,7 @@ export interface BankTransactionLine {
 
 interface LoadUnmatchedDebitOptions {
   bankAccountId: string;
+  direction?: 'debit' | 'credit' | 'both';
   currentExpenseId?: string | null;
   currentJournalEntryId?: string | null;
   currentPettyCashId?: string | null;
@@ -68,11 +69,12 @@ function isAvailableTransaction(
 
 export async function loadUnmatchedDebitBankTransactions({
   bankAccountId,
+  direction = 'debit',
   currentExpenseId,
   currentJournalEntryId,
   currentPettyCashId,
 }: LoadUnmatchedDebitOptions): Promise<BankTransactionLine[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('bank_statement_lines')
     .select(`
       id,
@@ -91,9 +93,11 @@ export async function loadUnmatchedDebitBankTransactions({
       matched_tax_payment_id,
       bank_accounts(bank_name, account_name, account_number, alias, currency)
     `)
-    .eq('bank_account_id', bankAccountId)
-    .gt('debit_amount', 0)
-    .order('transaction_date', { ascending: false });
+    .eq('bank_account_id', bankAccountId);
+  if (direction === 'debit') query = query.gt('debit_amount', 0);
+  else if (direction === 'credit') query = query.gt('credit_amount', 0);
+  else query = query.or('debit_amount.gt.0,credit_amount.gt.0');
+  const { data, error } = await query.order('transaction_date', { ascending: false });
 
   if (error) throw error;
 
