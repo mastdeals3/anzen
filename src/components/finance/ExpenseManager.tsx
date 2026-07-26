@@ -911,7 +911,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         bank_account_id: formData.payment_method && formData.payment_method !== 'outstanding' ? (formData.bank_account_id || null) : null,
         payment_reference: formData.payment_reference || null,
         paid_by: formData.payment_method === null || formData.payment_method === 'outstanding' ? null : 'bank',
-        document_urls: allDocumentUrls.length > 0 ? allDocumentUrls : null,
+        // save_finance_expense expects document_urls to always be a JSON array;
+        // null causes jsonb_array_elements_text to fail in the RPC.
+        document_urls: allDocumentUrls,
         // Main invoice supplier. NEVER derived from broker_items[i].supplier_id
         // — broker line suppliers are used ONLY for tax invoice / PPN register.
         supplier_id: formData.supplier_id || null,
