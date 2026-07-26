@@ -23,27 +23,48 @@ BEGIN
   PERFORM set_config('finance.integrity_trigger_was_enabled', trigger_enabled::text, true);
 END $$;
 
-CREATE OR REPLACE VIEW public.unbalanced_journal_entries
-WITH (security_invoker = true) AS
-SELECT
-  je.id AS journal_entry_id,
-  je.source_module,
-  je.reference_id,
-  je.reference_number,
-  COALESCE(SUM(jel.debit), 0) AS debit_sum,
-  COALESCE(SUM(jel.credit), 0) AS credit_sum,
-  COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS imbalance,
-  je.entry_number,
-  je.entry_date,
-  je.description,
-  je.is_posted,
-  je.is_reversed
-FROM public.journal_entries je
-LEFT JOIN public.journal_entry_lines jel ON jel.journal_entry_id = je.id
-WHERE je.is_posted = true AND COALESCE(je.is_reversed, false) = false
-GROUP BY je.id, je.source_module, je.reference_id, je.reference_number,
-  je.entry_number, je.entry_date, je.description, je.is_posted, je.is_reversed
-HAVING COALESCE(SUM(jel.debit), 0) <> COALESCE(SUM(jel.credit), 0);
+-- The first deployment attempt may have left an earlier column shape in the
+-- other projections. Replace only those read-only projections. The existing
+-- unbalanced_journal_entries view has downstream report dependencies, so keep
+-- its established columns when present; create the direct calculation only
+-- on databases where it is genuinely absent.
+DROP VIEW IF EXISTS public.duplicate_postings;
+DROP VIEW IF EXISTS public.orphan_journal_lines;
+DROP VIEW IF EXISTS public.missing_petty_cash_links;
+DROP VIEW IF EXISTS public.negative_cash_anomalies;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class
+    WHERE oid = 'public.unbalanced_journal_entries'::regclass
+      AND relkind = 'v'
+  ) THEN
+    EXECUTE $view$
+      CREATE VIEW public.unbalanced_journal_entries
+      WITH (security_invoker = true) AS
+      SELECT
+        je.id AS journal_entry_id,
+        je.source_module,
+        je.reference_id,
+        je.reference_number,
+        COALESCE(SUM(jel.debit), 0) AS debit_sum,
+        COALESCE(SUM(jel.credit), 0) AS credit_sum,
+        COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS imbalance,
+        je.entry_number,
+        je.entry_date,
+        je.description,
+        je.is_posted,
+        je.is_reversed
+      FROM public.journal_entries je
+      LEFT JOIN public.journal_entry_lines jel ON jel.journal_entry_id = je.id
+      WHERE je.is_posted = true AND COALESCE(je.is_reversed, false) = false
+      GROUP BY je.id, je.source_module, je.reference_id, je.reference_number,
+        je.entry_number, je.entry_date, je.description, je.is_posted, je.is_reversed
+      HAVING COALESCE(SUM(jel.debit), 0) <> COALESCE(SUM(jel.credit), 0)
+    $view$;
+  END IF;
+END $$;
 
 CREATE OR REPLACE VIEW public.duplicate_postings
 WITH (security_invoker = true) AS
