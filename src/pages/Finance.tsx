@@ -333,7 +333,7 @@ function FinanceContent() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setActiveTab]);
+  }, []);
 
   useEffect(() => {
     if (!navigationData?.sourceType || !navigationData?.sourceId) return;
@@ -352,7 +352,7 @@ function FinanceContent() {
       setFocusExpenseId(null);
       clearNavigationData();
     }
-  }, [navigationData, clearNavigationData, setActiveTab]);
+  }, [navigationData, clearNavigationData]);
 
   const renderContent = () => {
     switch (activeTab) {

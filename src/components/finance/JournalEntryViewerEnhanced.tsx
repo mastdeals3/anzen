@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { Search, FileText, Edit, Trash2 } from 'lucide-react';
@@ -42,15 +42,6 @@ interface JournalEntryLine {
   };
   customers?: { company_name: string } | null;
   suppliers?: { company_name: string } | null;
-}
-
-interface JournalRegisterLine {
-  journal_entry_id: string;
-  debit: number | null;
-  credit: number | null;
-  transaction_debit: number | null;
-  transaction_credit: number | null;
-  chart_of_accounts?: { code: string; name: string } | null;
 }
 
 interface VoucherJournalEntry {
@@ -132,13 +123,17 @@ export function JournalEntryViewerEnhanced({
   const [sourceSummary, setSourceSummary] = useState<string | null>(null);
   const [filterModule, setFilterModule] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'posted' | 'all' | 'draft' | 'reversed'>('posted');
-  const sourceLabel = useCallback((sourceModule: string | null | undefined) => {
+  const sourceLabel = (sourceModule: string | null | undefined) => {
     if (!sourceModule) return t.finance.journalManual;
     const key = sourceModuleKey[sourceModule];
     return key ? t(`finance.${key}`) : sourceModule.replace(/_/g, ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase());
-  }, [t]);
+  };
 
-  const loadVoucherJournal = useCallback(async () => {
+  useEffect(() => {
+    loadVoucherJournal();
+  }, [filterModule, statusFilter, language]);
+
+  const loadVoucherJournal = async () => {
     try {
       setLoading(true);
       setLoadError(null);
@@ -185,7 +180,7 @@ export function JournalEntryViewerEnhanced({
       if (failedLineBatch?.error) throw failedLineBatch.error;
       const lines = lineResults.flatMap(result => result.data || []);
       const linesByEntry = new Map<string, Array<{ debit: number; credit: number; transaction_debit: number; transaction_credit: number; chart_of_accounts?: { code: string; name: string } | null }>>();
-      (lines || []).forEach((line: JournalRegisterLine) => {
+      (lines || []).forEach((line: any) => {
         const list = linesByEntry.get(line.journal_entry_id) || [];
         list.push({ debit: Number(line.debit || 0), credit: Number(line.credit || 0),
           transaction_debit: Number(line.transaction_debit || 0), transaction_credit: Number(line.transaction_credit || 0),
@@ -223,13 +218,9 @@ export function JournalEntryViewerEnhanced({
     } finally {
       setLoading(false);
     }
-  }, [sourceLabel, statusFilter]);
+  };
 
-  useEffect(() => {
-    void loadVoucherJournal();
-  }, [filterModule, language, loadVoucherJournal]);
-
-  const loadEntryLines = useCallback(async (entryId: string) => {
+  const loadEntryLines = async (entryId: string) => {
     try {
       const { data, error } = await supabase
         .from('journal_entry_lines')
@@ -242,9 +233,9 @@ export function JournalEntryViewerEnhanced({
     } catch (error) {
       console.error('Error loading lines:', error);
     }
-  }, []);
+  };
 
-  const handleViewVoucher = useCallback(async (voucherEntry: VoucherJournalEntry) => {
+  const handleViewVoucher = async (voucherEntry: VoucherJournalEntry) => {
     try {
       const { data: entry, error: entryError } = await supabase
         .from('journal_entries')
@@ -280,14 +271,14 @@ export function JournalEntryViewerEnhanced({
     } catch (error) {
       console.error('Error loading voucher details:', error);
     }
-  }, [loadEntryLines]);
+  };
 
   useEffect(() => {
     if (!initialViewEntryId || loading) return;
     const entry = voucherEntries.find(voucher => voucher.journal_entry_id === initialViewEntryId);
     if (entry) void handleViewVoucher(entry);
     onInitialViewHandled?.();
-  }, [initialViewEntryId, loading, voucherEntries, onInitialViewHandled, handleViewVoucher]);
+  }, [initialViewEntryId, loading, voucherEntries, onInitialViewHandled]);
 
   const handleDeleteJournal = async (journalId: string) => {
     const confirmed = await showConfirm({
