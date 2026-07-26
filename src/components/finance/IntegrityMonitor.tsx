@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, RefreshCw, ShieldCheck, X, ExternalLink } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 type IntegrityKey =
@@ -29,6 +29,10 @@ export function IntegrityMonitor() {
   const [loading, setLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMetric, setSelectedMetric] = useState<IntegrityMetric | null>(null);
+  const [detailRows, setDetailRows] = useState<Record<string, unknown>[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const loadMetrics = useCallback(async () => {
     setLoading(true);
@@ -51,13 +55,39 @@ export function IntegrityMonitor() {
 
       setMetrics(results);
       setLastRefreshed(new Date().toISOString());
-    } catch (err: any) {
-      console.error('Error loading integrity monitor:', err);
-      setError(err?.message || 'Failed to load integrity checks');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load integrity checks';
+      setError(message);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const openDetails = useCallback(async (metric: IntegrityMetric) => {
+    if (metric.count === 0) return;
+    setSelectedMetric(metric);
+    setDetailRows([]);
+    setDetailError(null);
+    setDetailLoading(true);
+    const { data, error: queryError } = await supabase
+      .from(metric.viewName)
+      .select('*')
+      .limit(100);
+    if (queryError) {
+      setDetailError('Unable to load the underlying records. Please try again.');
+    } else {
+      setDetailRows((data ?? []) as Record<string, unknown>[]);
+    }
+    setDetailLoading(false);
+  }, []);
+
+  const detailHref = (row: Record<string, unknown>) => {
+    const journalId = row.journal_entry_id;
+    const pettyCashId = row.petty_cash_transaction_id;
+    if (journalId) return `/finance/journal-register?journal=${encodeURIComponent(String(journalId))}`;
+    if (pettyCashId) return `/finance/petty-cash?document=${encodeURIComponent(String(pettyCashId))}`;
+    return null;
+  };
 
   useEffect(() => {
     loadMetrics();
@@ -100,12 +130,18 @@ export function IntegrityMonitor() {
               const hasIssue = metric.count > 0;
               return (
                 <tr key={metric.key}>
-                  <td className="px-2 py-1.5 text-sm text-gray-900">{metric.label}</td>
-                  <td className="px-2 py-1.5 text-right text-sm font-semibold text-gray-900">{metric.count}</td>
+                  <td className="px-2 py-1.5 text-sm text-gray-900">
+                    {hasIssue ? (
+                      <button type="button" onClick={() => openDetails(metric)} className="font-medium text-blue-700 underline-offset-2 hover:underline">
+                        {metric.label}
+                      </button>
+                    ) : metric.label}
+                  </td>
+                  <td className="px-2 py-1.5 text-right text-sm font-semibold text-gray-900">{metric.count || 'No records found'}</td>
                   <td className="px-2 py-1.5 text-sm">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${hasIssue ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
                       {hasIssue ? <AlertTriangle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
-                      {hasIssue ? 'Issue detected' : 'OK'}
+                      {hasIssue ? 'Issue detected' : 'No records found'}
                     </span>
                   </td>
                 </tr>
@@ -114,6 +150,33 @@ export function IntegrityMonitor() {
           </tbody>
         </table>
       </div>
+
+      {selectedMetric && (
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm" role="dialog" aria-label={`${selectedMetric.label} details`}>
+          <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
+            <h3 className="text-sm font-semibold text-gray-900">{selectedMetric.label}</h3>
+            <button type="button" onClick={() => setSelectedMetric(null)} className="rounded p-1 text-gray-500 hover:bg-gray-100" aria-label="Close details"><X className="h-4 w-4" /></button>
+          </div>
+          {detailLoading && <p className="p-3 text-sm text-gray-500">Loading records…</p>}
+          {detailError && <p className="p-3 text-sm text-red-700">{detailError}</p>}
+          {!detailLoading && !detailError && detailRows.length === 0 && <p className="p-3 text-sm text-gray-500">No records found</p>}
+          {!detailLoading && !detailError && detailRows.length > 0 && (
+            <div className="max-h-80 overflow-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-xs">
+                <thead className="sticky top-0 bg-gray-50"><tr><th className="px-2 py-1 text-left font-medium text-gray-500">Record</th><th className="px-2 py-1 text-left font-medium text-gray-500">Details</th><th className="px-2 py-1 text-left font-medium text-gray-500">Open</th></tr></thead>
+                <tbody className="divide-y divide-gray-100">
+                  {detailRows.map((row, index) => {
+                    const href = detailHref(row);
+                    const record = row.entry_number || row.transaction_number || row.journal_entry_id || row.journal_line_id || `Record ${index + 1}`;
+                    const summary = row.description || row.reference_number || row.source_module || '';
+                    return <tr key={String(row.journal_line_id || row.journal_entry_id || row.petty_cash_transaction_id || index)}><td className="px-2 py-1.5 text-gray-900">{String(record)}</td><td className="max-w-xs px-2 py-1.5 text-gray-600">{String(summary)}</td><td className="px-2 py-1.5">{href ? <a href={href} className="inline-flex items-center gap-1 text-blue-700 hover:underline" title="Open underlying record">Open <ExternalLink className="h-3 w-3" /></a> : <span className="text-gray-400">—</span>}</td></tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {lastRefreshed && (
         <p className="text-xs text-gray-500">Last refreshed: {new Date(lastRefreshed).toLocaleString()}</p>

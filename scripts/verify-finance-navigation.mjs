@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 const financeSource = readFileSync('src/pages/Finance.tsx', 'utf8');
 const dashboardSource = readFileSync('src/components/finance/FinanceExceptionCorrectionDashboard.tsx', 'utf8');
+const integritySource = readFileSync('src/components/finance/IntegrityMonitor.tsx', 'utf8');
 
 const expectedMenuItems = [
   'purchase', 'receipt', 'payment', 'journal', 'contra', 'expenses', 'petty_cash',
@@ -37,6 +38,10 @@ for (const marker of sourceMarkers) {
 const dashboardMarkers = ['Edit correction', 'SAVE ALL', 'From Bank', 'To Bank', 'bank_alias', 'SelectField'];
 for (const marker of dashboardMarkers) {
   if (!dashboardSource.includes(marker)) throw new Error(`Missing Exception Correction control: ${marker}`);
+}
+
+for (const marker of ['duplicate_postings', 'orphan_journal_lines', 'missing_petty_cash_links', 'negative_cash_anomalies', 'No records found', 'openDetails']) {
+  if (!integritySource.includes(marker)) throw new Error(`Missing Integrity Monitor drill-down marker: ${marker}`);
 }
 
 const assetDir = 'dist/assets';
