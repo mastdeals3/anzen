@@ -103,6 +103,15 @@ async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
+/** Shared existing USD→IDR resolver used when a normal USD document does not
+ * carry a transaction-specific conversion rate. Fund Transfers continue to
+ * supply their own business rate. */
+export const getReportingUsdRate = async (): Promise<number> => {
+  const rate = await rpc<number>('get_reporting_usd_rate', {});
+  if (!Number.isFinite(rate) || rate <= 1) throw new Error('Unable to resolve a valid USD-to-IDR rate');
+  return rate;
+};
+
 export const saveFinanceExpense = (expenseId: string | null, payload: FinanceExpensePayload) =>
   rpc<string>('save_finance_expense', { p_expense_id: expenseId, p_payload: payload });
 

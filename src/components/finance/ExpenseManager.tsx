@@ -10,7 +10,7 @@ import { getCategoryFieldRules } from './categoryFieldRules';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { moduleExpenseCategories, sortExpenseCategories } from './expenseCategories';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
-import { approveFinanceExpense, saveFinanceExpense } from '../../services/financeCommands';
+import { approveFinanceExpense, getReportingUsdRate, saveFinanceExpense } from '../../services/financeCommands';
 import {
   linkBankTransaction,
   notifyFinanceReconciliationRefresh,
@@ -893,11 +893,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       const transactionCurrency = normalizeCurrency(
         formData.payment_method !== null ? selectedExpenseBank?.currency : formData.transaction_currency,
       ) as 'IDR' | 'USD';
-      const exchangeRate = transactionCurrency === 'IDR' ? 1 : formData.exchange_rate;
-      if (transactionCurrency === 'USD' && exchangeRate <= 1) {
-        alert('Enter a valid USD-to-IDR exchange rate.');
-        return;
-      }
+      const exchangeRate = transactionCurrency === 'IDR'
+        ? 1
+        : (formData.exchange_rate > 1 ? formData.exchange_rate : await getReportingUsdRate());
       const expenseData = {
         expense_category: formData.expense_category,
         expense_type: category?.type || 'admin',
@@ -3126,17 +3124,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       <option value="IDR">IDR</option>
                       <option value="USD">USD</option>
                     </select>
-                  </div>
-                )}
-
-                {expenseFormCurrency === 'USD' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">USD to IDR Rate <span className="text-red-500">*</span></label>
-                      <input type="number" min="1.000001" step="0.000001" required value={formData.exchange_rate || ''}
-                        onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 0 })}
-                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs text-right font-mono" />
-                    </div>
                   </div>
                 )}
 

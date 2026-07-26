@@ -16,7 +16,7 @@ import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { type CompanySnapshot } from '../../types/company';
 import { waitForImages } from '../../utils/companyLogoUrl';
 import { formatCurrency } from '../../utils/currency';
-import { saveReceiptVoucher } from '../../services/financeCommands';
+import { getReportingUsdRate, saveReceiptVoucher } from '../../services/financeCommands';
 
 interface Customer {
   id: string;
@@ -378,7 +378,9 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
       }
 
       const currency = (bankAccounts.find(bank => bank.id === formData.bank_account_id)?.currency || 'IDR') as 'IDR' | 'USD';
-      if (currency === 'USD' && formData.exchange_rate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
+      const exchangeRate = currency === 'IDR'
+        ? 1
+        : (formData.exchange_rate > 1 ? formData.exchange_rate : await getReportingUsdRate());
       await saveReceiptVoucher(
         editMode && selectedVoucher ? selectedVoucher.id : null,
         {
@@ -390,7 +392,7 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
           amount: formData.amount,
           description: formData.description || null,
           transaction_currency: currency,
-          exchange_rate: currency === 'IDR' ? 1 : formData.exchange_rate,
+          exchange_rate: exchangeRate,
           created_by: user.id,
         },
         allocations.map(alloc => ({
@@ -774,20 +776,6 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
               </select>
             </SapField>
           </SapRow>
-
-          {formCurrency === 'USD' && (
-            <SapRow>
-              <SapField label="USD to IDR Exchange Rate" required span={4}>
-                <input type="number" required min="1.000001" step="0.000001" value={formData.exchange_rate}
-                  onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 0 })}
-                  className={SAP_INPUT + ' !text-right !font-mono'} />
-              </SapField>
-              <SapField label="Functional Amount (IDR)" span={4}>
-                <input readOnly value={(formData.amount * formData.exchange_rate).toLocaleString('id-ID')}
-                  className={SAP_INPUT + ' !text-right !font-mono !bg-gray-50'} />
-              </SapField>
-            </SapRow>
-          )}
 
           <SapRow>
             <SapField label={`Amount (${formCurrency})`} required span={formData.payment_method === 'cash' ? 12 : 4}>

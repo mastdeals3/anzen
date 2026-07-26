@@ -12,7 +12,7 @@ import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { formatCurrency } from '../../utils/currency';
-import { linkBankStatementLine, savePaymentVoucher } from '../../services/financeCommands';
+import { getReportingUsdRate, linkBankStatementLine, savePaymentVoucher } from '../../services/financeCommands';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
 import {
   type BankTransactionLine,
@@ -798,14 +798,17 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       );
       return;
     }
-    if (isCrossCurrency && formData.exchange_rate <= 1) {
-      alert(`Cross-currency payment requires an exchange rate greater than 1. Please enter the rate in the Currency Conversion panel.`);
-      return;
-    }
+      if (isCrossCurrency && formData.exchange_rate <= 1) {
+        alert(`Cross-currency payment requires an exchange rate greater than 1. Please enter the rate in the Currency Conversion panel.`);
+        return;
+      }
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+      const effectiveExchangeRate = formData.payment_currency === 'IDR'
+        ? 1
+        : (formData.exchange_rate > 1 ? formData.exchange_rate : await getReportingUsdRate());
 
       const payload = {
         voucher_date: formData.voucher_date,
@@ -819,7 +822,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
         pph_code_id: formData.pph_code_id || null,
         description: formData.description || null,
         payment_currency: formData.payment_currency,
-        exchange_rate: formData.exchange_rate,
+        exchange_rate: effectiveExchangeRate,
         bank_amount: isCrossCurrency ? totalBankDebit : null,
         bank_charge: formData.bank_charge || 0,
       };
