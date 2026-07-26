@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { useLanguage } from '../../contexts/LanguageContext';
 import { Eye, Search, ArrowDownCircle, CreditCard as Edit2, Trash2, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
@@ -82,7 +81,6 @@ interface ReceiptVoucherManagerProps {
 }
 
 export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onInitialViewHandled }: ReceiptVoucherManagerProps) {
-  const { t } = useLanguage();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const printRef = useRef<HTMLDivElement>(null);

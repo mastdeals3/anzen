@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, ChevronDown, ChevronRight, ExternalLink, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
@@ -20,7 +20,7 @@ interface Row {
 }
 
 interface InputLine {
-  source: 'purchase_invoice' | 'expense' | 'broker' | 'pib';
+  source: 'journal';
   doc_number: string;
   doc_date: string;
   party: string;
@@ -31,7 +31,7 @@ interface InputLine {
 }
 
 interface OutputLine {
-  source: 'sales_invoice' | 'credit_note';
+  source: 'journal';
   doc_number: string;
   doc_date: string;
   customer: string;
@@ -46,125 +46,34 @@ function fmtDate(s: string) {
   return isNaN(d.getTime()) ? s : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// Mirror compute_period_ppn (20260714190000) EXACTLY so the listed documents
-// sum to the engine's input_ppn_total / output_ppn_total. Attribution is by
-// tax_period_id (the same key the engine uses), NOT by date. Input PPN =
-// purchase_invoices + finance_expenses.ppn_amount (rows WITHOUT broker PPN) +
-// broker_items[].ppn_amount + pib_ppn_amount. Output PPN = sales_invoices −
-// approved credit_notes.
+// Period detail uses the same journal-native report views as the period totals.
+// Source documents provide labels and Faktur metadata only; their stored tax
+// amounts are not independently summed here.
 async function loadDetail(row: Row): Promise<{ input: InputLine[]; output: OutputLine[] }> {
-  const periodId = row.tax_period_id;
-
-  const [piRes, feRes, siRes, cnRes] = await Promise.all([
-    supabase
-      .from('purchase_invoices')
-      .select('id, invoice_number, invoice_date, tax_amount, suppliers:supplier_id(company_name), description')
-      .eq('tax_period_id', periodId)
-      .gt('tax_amount', 0),
-    supabase
-      .from('finance_expenses')
-      .select('id, voucher_number, expense_date, ppn_amount, pib_ppn_amount, broker_items, suppliers:supplier_id(company_name), description')
-      .eq('tax_period_id', periodId),
-    supabase
-      .from('sales_invoices')
-      .select('id, invoice_number, invoice_date, tax_amount, customers:customer_id(company_name), faktur_pajak_number')
-      .eq('tax_period_id', periodId)
-      .gt('tax_amount', 0),
-    supabase
-      .from('credit_notes')
-      .select('id, credit_note_number, credit_note_date, tax_amount, customers:customer_id(company_name)')
-      .eq('tax_period_id', periodId)
-      .eq('status', 'approved')
-      .gt('tax_amount', 0),
+  const startDate = `${row.fiscal_year}-${String(row.period_month).padStart(2, '0')}-01`;
+  const lastDay = new Date(row.fiscal_year, row.period_month, 0).getDate();
+  const endDate = `${row.fiscal_year}-${String(row.period_month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const [inputRes, outputRes] = await Promise.all([
+    supabase.from('vw_input_ppn_report').select('*').gte('expense_date', startDate).lte('expense_date', endDate),
+    supabase.from('vw_output_ppn_report').select('*').gte('invoice_date', startDate).lte('invoice_date', endDate),
   ]);
-
-  const input: InputLine[] = [
-    ...((piRes.data ?? []) as any[]).map(r => ({
-      source: 'purchase_invoice' as const,
-      id: r.id,
-      doc_number: r.invoice_number ?? '—',
-      doc_date: r.invoice_date,
-      party: r.suppliers?.company_name ?? '—',
-      description: r.description,
-      ppn_amount: Number(r.tax_amount),
-      tax_period_id: periodId,
-    })),
-  ];
-
-  // finance_expenses: broker-line PPN and PIB PPN are additive; the regular
-  // ppn_amount is counted ONLY on rows that carry no broker-line PPN (exactly
-  // the engine's NOT EXISTS guard), to avoid double-counting.
-  for (const r of ((feRes.data ?? []) as any[])) {
-    const brokerItems: any[] = Array.isArray(r.broker_items) ? r.broker_items : [];
-    const hasBrokerPpn = brokerItems.some(it => Number(it?.ppn_amount ?? 0) > 0);
-    const supplier = r.suppliers?.company_name ?? '—';
-
-    if (!hasBrokerPpn && Number(r.ppn_amount) > 0) {
-      input.push({
-        source: 'expense',
-        id: r.id,
-        doc_number: r.voucher_number ?? '—',
-        doc_date: r.expense_date,
-        party: supplier,
-        description: r.description,
-        ppn_amount: Number(r.ppn_amount),
-        tax_period_id: periodId,
-      });
-    }
-
-    brokerItems.forEach((it, idx) => {
-      const amt = Number(it?.ppn_amount ?? 0);
-      if (amt > 0) {
-        input.push({
-          source: 'broker',
-          id: `${r.id}-broker-${idx}`,
-          doc_number: r.voucher_number ?? '—',
-          doc_date: r.expense_date,
-          party: supplier,
-          description: it?.description ?? r.description,
-          ppn_amount: amt,
-          tax_period_id: periodId,
-        });
-      }
-    });
-
-    if (Number(r.pib_ppn_amount) > 0) {
-      input.push({
-        source: 'pib',
-        id: `${r.id}-pib`,
-        doc_number: r.voucher_number ?? '—',
-        doc_date: r.expense_date,
-        party: supplier,
-        description: r.description,
-        ppn_amount: Number(r.pib_ppn_amount),
-        tax_period_id: periodId,
-      });
-    }
+  const invoiceNumbers = (outputRes.data || []).map((item: any) => item.invoice_number).filter(Boolean);
+  const fakturByInvoice = new Map<string, string | null>();
+  if (invoiceNumbers.length) {
+    const { data } = await supabase.from('sales_invoices').select('invoice_number, faktur_pajak_number').in('invoice_number', invoiceNumbers);
+    (data || []).forEach(item => fakturByInvoice.set(item.invoice_number, item.faktur_pajak_number));
   }
-
-  const output: OutputLine[] = [
-    ...((siRes.data ?? []) as any[]).map(r => ({
-      source: 'sales_invoice' as const,
-      id: r.id,
-      doc_number: r.invoice_number ?? '—',
-      doc_date: r.invoice_date,
-      customer: r.customers?.company_name || '—',
-      ppn_amount: Number(r.tax_amount),
-      faktur_number: r.faktur_pajak_number ?? null,
-    })),
-    // Approved credit notes reduce Output PPN — shown as negative lines so the
-    // subtotal equals the engine's netted output_ppn_total.
-    ...((cnRes.data ?? []) as any[]).map(r => ({
-      source: 'credit_note' as const,
-      id: r.id,
-      doc_number: r.credit_note_number ?? '—',
-      doc_date: r.credit_note_date,
-      customer: r.customers?.company_name || r.customers?.customer_name || '—',
-      ppn_amount: -Number(r.tax_amount),
-      faktur_number: null,
-    })),
-  ];
-
+  const input: InputLine[] = (inputRes.data || []).map((item: any) => ({
+    source: 'journal', id: item.reference, doc_number: item.reference,
+    doc_date: item.expense_date, party: item.supplier, description: item.description,
+    ppn_amount: Number(item.ppn_amount), tax_period_id: row.tax_period_id,
+  }));
+  const output: OutputLine[] = (outputRes.data || []).map((item: any) => ({
+    source: 'journal', id: item.invoice_number, doc_number: item.invoice_number,
+    doc_date: item.invoice_date, customer: item.customer,
+    ppn_amount: Number(item.ppn_amount),
+    faktur_number: fakturByInvoice.get(item.invoice_number) ?? null,
+  }));
   return { input, output };
 }
 
@@ -172,7 +81,6 @@ export function TaxPeriodsPanel() {
   const { dateRange } = useFinance();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<{ input: InputLine[]; output: OutputLine[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -211,19 +119,6 @@ export function TaxPeriodsPanel() {
     }),
     { input: 0, output: 0, net: 0, cfOut: 0 },
   ), [filtered]);
-
-  async function recompute(id: string) {
-    setBusyId(id);
-    try {
-      const { error } = await supabase.rpc('compute_period_ppn', { p_period_id: id });
-      if (error) throw error;
-      await refresh();
-    } catch (err) {
-      alert('Recompute failed: ' + (err as Error).message);
-    } finally {
-      setBusyId(null);
-    }
-  }
 
   async function toggleExpand(row: Row) {
     if (expandedId === row.tax_period_id) {
@@ -286,7 +181,6 @@ export function TaxPeriodsPanel() {
                 <th className="text-right px-3 py-2">Carry Fwd In</th>
                 <th className="text-right px-3 py-2">Net Payable</th>
                 <th className="text-right px-3 py-2">Carry Fwd Out</th>
-                <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -309,20 +203,10 @@ export function TaxPeriodsPanel() {
                       <td className="px-3 py-2 text-right">{fmt(r.carry_forward_in)}</td>
                       <td className="px-3 py-2 text-right font-semibold">Rp {fmt(r.net_ppn_payable)}</td>
                       <td className="px-3 py-2 text-right">{fmt(r.carry_forward_out)}</td>
-                      <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => void recompute(r.tax_period_id)}
-                          disabled={busyId === r.tax_period_id || r.status === 'closed'}
-                          className="text-xs px-2 py-1 border rounded hover:bg-gray-50 disabled:opacity-50 inline-flex items-center gap-1"
-                        >
-                          <RefreshCw className={`w-3 h-3 ${busyId === r.tax_period_id ? 'animate-spin' : ''}`} />
-                          Recompute
-                        </button>
-                      </td>
                     </tr>
                     {isOpen && (
                       <tr key={`${r.tax_period_id}-detail`} className="bg-blue-50/40">
-                        <td colSpan={9} className="px-4 pb-4 pt-1">
+                        <td colSpan={8} className="px-4 pb-4 pt-1">
                           {detailLoading ? (
                             <p className="text-xs text-gray-500 py-2">Loading source documents…</p>
                           ) : detail ? (
@@ -348,12 +232,7 @@ export function TaxPeriodsPanel() {
                                       {detail.input.map(l => (
                                         <tr key={l.id} className="border-b border-gray-100">
                                           <td className="py-1 pr-2 font-mono">
-                                            <span className="text-[10px] text-gray-400 mr-1">
-                                              {l.source === 'purchase_invoice' ? 'PI'
-                                                : l.source === 'broker' ? 'BRK'
-                                                : l.source === 'pib' ? 'PIB'
-                                                : 'EXP'}
-                                            </span>
+                                            <span className="text-[10px] text-gray-400 mr-1">JE</span>
                                             {l.doc_number}
                                           </td>
                                           <td className="py-1 pr-2 whitespace-nowrap">{fmtDate(l.doc_date)}</td>
@@ -393,19 +272,15 @@ export function TaxPeriodsPanel() {
                                       {detail.output.map(l => (
                                         <tr key={l.id} className="border-b border-gray-100">
                                           <td className="py-1 pr-2 font-mono">
-                                            {l.source === 'credit_note' && (
-                                              <span className="text-[10px] text-red-500 mr-1">CN</span>
-                                            )}
+                                            <span className="text-[10px] text-gray-400 mr-1">JE</span>
                                             {l.doc_number}
                                           </td>
                                           <td className="py-1 pr-2 whitespace-nowrap">{fmtDate(l.doc_date)}</td>
                                           <td className="py-1 pr-2 text-gray-600 max-w-[120px] truncate" title={l.customer}>{l.customer}</td>
                                           <td className="py-1 pr-2">
-                                            {l.source === 'credit_note'
-                                              ? <span className="text-red-500 text-[10px]">Reversal</span>
-                                              : l.faktur_number
-                                                ? <span className="text-green-700 font-mono">{l.faktur_number}</span>
-                                                : <span className="text-orange-500 text-[10px]">Missing</span>}
+                                            {l.faktur_number
+                                              ? <span className="text-green-700 font-mono">{l.faktur_number}</span>
+                                              : <span className="text-orange-500 text-[10px]">Missing</span>}
                                           </td>
                                           <td className={`py-1 text-right font-mono ${l.ppn_amount < 0 ? 'text-red-600' : 'text-green-700'}`}>{fmt(l.ppn_amount)}</td>
                                         </tr>

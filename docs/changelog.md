@@ -5,6 +5,36 @@ per-file diffs live in `git log`.
 
 ## 2026-07-26 — Finance stabilization and source-document consolidation
 
+- Production journal `JE2607-0048` was accountant-confirmed as a Director Loan
+  from Vijay. Its sole liability line was reclassified from `2210 – Bank Loans`
+  to `2105 – Director Loan – Vijay`; journal identity, date, amounts, bank line,
+  voucher reference, and posting state were preserved. The legacy journal has no
+  linked Loan source document, so no source row was modified or invented.
+- Corrected the shared Director/Owner Loan command to resolve the canonical
+  active COA account `2105 – Director Loan – Vijay`; it no longer references
+  unavailable legacy account `2220`. Migration `20260726170000` is applied in
+  production.
+- Removed hardcoded Loan, Capital, bank and staff-account templates from Manual
+  Journal. Canonical Loan and Capital events are no longer offered as Manual
+  Journal shortcuts; account selection continues to read the active COA.
+- CA Bank Ledger account discovery now follows active `bank_accounts.coa_id`
+  mappings instead of assuming a duplicated `1111%` account-code list.
+- Account Ledger now reads active posted `journal_entry_lines` for every Chart
+  of Accounts account, including bank control accounts. It no longer replaces
+  bank-account ledger postings with raw statement lines; statement activity
+  remains in Bank Ledger and Bank Reconciliation.
+- Finance-wide TypeScript cleanup removed stale imports and dead helpers,
+  corrected shared table typing without changing rendered values, normalised
+  Supabase nested-relation shapes in Receivables/Faktur views, and corrected
+  confirmation-dialog option names. All Finance components now pass the scoped
+  TypeScript check.
+- Exception reporting now covers Loan, Loan Repayment, Capital Contribution,
+  Petty Cash and Tax Payment sources. Two previously hidden USD Capital
+  Contribution exceptions are now included, and legacy manual journal
+  `JE2602-0085` is explicitly flagged for native Loan source completion.
+- All 38 taxed Sales Invoices assigned to a tax period but missing an official
+  Faktur Pajak number are now visible as manual-edit exceptions. Their invoice,
+  tax and posted journal amounts were not changed.
 - Bank Reconciliation Loan, Loan Repayment, and Capital Injection actions now
   call shared Finance commands backed by the existing `loans`,
   `loan_transactions`, and `capital_contributions` source tables.
@@ -28,8 +58,20 @@ per-file diffs live in `git log`.
   for legacy two-line Owner Capital bank journals. No journal amount or line was
   modified. JE2607-0048 was not guessed into a Loan document and is explicitly
   listed for manual review.
-- Generated `docs/finance_exception_report.csv` with 463 business-readable
-  exception rows (424 distinct records requiring review).
+- Generated the first consolidated `docs/finance_exception_report.csv`; the
+  final post-Phase-1 figures are recorded below.
+- Final journal/report stabilization made Bank Ledger and Party Ledger
+  journal-native, removed report-time USD revaluation, corrected Current Year
+  Earnings in both the database and UI, and made PPN/PPh/tax/CA accounting
+  amounts derive from active posted journal lines.
+- Phase 1 deterministically changed 161 journal-line account classifications
+  from Cash on Hand to the uniquely linked `bank_accounts.coa_id`. It preserved
+  journal identity and all debit, credit, date, amount, and currency values;
+  zero eligible Phase 1 candidates remain.
+- Regenerated the final exception report after Phase 1: 2,680 records scanned,
+  1,215 fully repaired, 56 partially repaired, and 166 records requiring manual
+  review across 192 detailed findings. See
+  `docs/finance_final_consistency_audit_2026-07-26.md`.
 
 ## 2026-07-26 — Finance notification currency display
 

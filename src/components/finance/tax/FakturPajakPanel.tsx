@@ -72,7 +72,7 @@ export function FakturPajakPanel() {
       alert('Failed to load Faktur Pajak invoices: ' + invErr.message);
       return;
     }
-    const loaded = (inv as SalesInvoice[] | null) ?? [];
+    const loaded = (inv as unknown as SalesInvoice[] | null) ?? [];
     setInvoices(loaded);
 
     const invIds = loaded.map(i => i.id);

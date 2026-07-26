@@ -126,24 +126,25 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
     case 'tax_payments': {
       const { data } = await supabase
         .from('tax_payments')
-        .select('payment_date, tax_type, amount, billing_code, ntpn, payment_reference, government_reference, status, journal_entry_id, notes, bank_accounts:bank_account_id(alias, bank_name, account_name)')
+        .select('payment_date, tax_type, billing_code, ntpn, payment_reference, government_reference, status, journal_entry_id, notes, bank_accounts:bank_account_id(alias, bank_name, account_name), journal_entries:journal_entry_id(entry_number, total_debit, is_posted, is_reversed)')
         .gte('payment_date', startDate)
         .lte('payment_date', endDate)
         .order('payment_date', { ascending: false });
       return ((data ?? []) as Array<Record<string, unknown>>).map(r => {
         const bank = r.bank_accounts as { alias?: string; bank_name?: string; account_name?: string } | null;
+        const journal = r.journal_entries as { entry_number?: string; total_debit?: number; is_posted?: boolean; is_reversed?: boolean } | null;
         const bankLabel = bank ? (bank.alias || `${bank.bank_name ?? ''} - ${bank.account_name ?? ''}`) : '';
         return {
           'Payment Date':   r.payment_date as string,
           'Tax Type':       r.tax_type as string,
-          'Amount (Rp)':    Number(r.amount ?? 0),
+          'Amount (Rp)':    journal?.is_posted && !journal?.is_reversed ? Number(journal.total_debit ?? 0) : 0,
           'Bank':           bankLabel,
           'NTPN':           (r.ntpn as string) ?? '',
           'Billing Code':   (r.billing_code as string) ?? '',
           'Payment Ref':    (r.payment_reference as string) ?? '',
           'Gov Ref':        (r.government_reference as string) ?? '',
           'Status':         r.status as string,
-          'JE #':           (r.journal_entry_id as string) ?? '',
+          'JE #':           journal?.entry_number ?? (r.journal_entry_id as string) ?? '',
           'Notes':          (r.notes as string) ?? '',
         };
       });
@@ -164,13 +165,45 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
     case 'faktur_register': {
       const { data } = await supabase
         .from('faktur_pajak')
-        .select('faktur_number, issue_date, status, dpp_amount, ppn_amount, reported_at, sales_invoice:sales_invoice_id(invoice_number, customer:customer_id(company_name, npwp))')
+        .select('faktur_number, issue_date, status, reported_at, sales_invoice:sales_invoice_id(id, invoice_number, customer:customer_id(company_name, npwp))')
         .gte('issue_date', startDate)
         .lte('issue_date', endDate)
         .order('issue_date', { ascending: false });
+      const invoiceIds = ((data ?? []) as Array<Record<string, any>>)
+        .map(row => row.sales_invoice?.id)
+        .filter(Boolean);
+      const journalByInvoice = new Map<string, { id: string; total_credit: number }>();
+      if (invoiceIds.length) {
+        const { data: journals } = await supabase
+          .from('journal_entries')
+          .select('id, reference_id, total_credit')
+          .eq('source_module', 'sales_invoice')
+          .eq('is_posted', true)
+          .eq('is_reversed', false)
+          .in('reference_id', invoiceIds);
+        (journals || []).forEach(journal => journalByInvoice.set(journal.reference_id, {
+          id: journal.id,
+          total_credit: Number(journal.total_credit || 0),
+        }));
+      }
+      const journalIds = [...journalByInvoice.values()].map(journal => journal.id);
+      const ppnByJournal = new Map<string, number>();
+      if (journalIds.length) {
+        const { data: lines } = await supabase
+          .from('journal_entry_lines')
+          .select('journal_entry_id, debit, credit, chart_of_accounts!inner(code)')
+          .in('journal_entry_id', journalIds)
+          .eq('chart_of_accounts.code', '2130');
+        (lines || []).forEach(line => ppnByJournal.set(
+          line.journal_entry_id,
+          (ppnByJournal.get(line.journal_entry_id) || 0) + Number(line.credit || 0) - Number(line.debit || 0),
+        ));
+      }
       return ((data ?? []) as Array<Record<string, unknown>>).map(r => {
-        const inv = r.sales_invoice as { invoice_number?: string; customer?: { company_name?: string; npwp?: string } } | null;
+        const inv = r.sales_invoice as { id?: string; invoice_number?: string; customer?: { company_name?: string; npwp?: string } } | null;
         const cust = inv?.customer;
+        const journal = inv?.id ? journalByInvoice.get(inv.id) : undefined;
+        const ppn = journal ? (ppnByJournal.get(journal.id) || 0) : 0;
         const custDisplay = cust
           ? (cust.company_name || '')
           : '';
@@ -180,8 +213,8 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
           'Invoice #':      inv?.invoice_number ?? '',
           'Customer':       custDisplay,
           'NPWP':           cust?.npwp ?? '',
-          'DPP (Rp)':       Number(r.dpp_amount ?? 0),
-          'PPN (Rp)':       Number(r.ppn_amount ?? 0),
+          'DPP (Rp)':       Math.max(0, Number(journal?.total_credit || 0) - ppn),
+          'PPN (Rp)':       ppn,
           'Status':         r.status as string,
           'Reported At':    (r.reported_at as string) ?? '',
         };

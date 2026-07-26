@@ -3,7 +3,6 @@ import { supabase } from '../../lib/supabase';
 import { Download, ChevronDown, ChevronRight, Printer } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useFinance } from '../../contexts/FinanceContext';
-import { useLanguage } from '../../contexts/LanguageContext';
 import { sanitizeExportRows } from '../../utils/csvSafe';
 
 interface TrialBalanceRow {
@@ -47,16 +46,6 @@ const prevDay = (iso: string) => {
   return d.toISOString().split('T')[0];
 };
 
-function groupBy<T>(arr: T[], key: (r: T) => string): Map<string, T[]> {
-  const map = new Map<string, T[]>();
-  for (const item of arr) {
-    const k = key(item);
-    if (!map.has(k)) map.set(k, []);
-    map.get(k)!.push(item);
-  }
-  return map;
-}
-
 // ─── TB section definitions ───────────────────────────────────────────────────
 const TB_SECTIONS = [
   { id: 'current-assets',     label: 'Assets — Current',       labelId: 'Aset Lancar',           color: 'blue',   filter: (r: MergedTBRow) => r.account_type === 'asset' && (r.account_group === 'Current Assets' || (!r.account_group && r.code < '1200')) },
@@ -94,35 +83,16 @@ const BS_LIAB_LONGTERM  = ['Long-term Liabilities', 'Long Term Liabilities', 'Ot
 
 export function FinancialReports({ initialReport = 'trial_balance', onDrillDown }: FinancialReportsProps) {
   const { dateRange } = useFinance();
-  const { t } = useLanguage();
   const [reportType, setReportType] = useState<ReportType>(initialReport);
   const [loading, setLoading] = useState(false);
-  const [usdRate, setUsdRate] = useState<number>(16000);
-  const [usdRateInput, setUsdRateInput] = useState<string>('16000');
 
   const [openingTB, setOpeningTB]         = useState<TrialBalanceRow[]>([]);
   const [periodTB, setPeriodTB]           = useState<TrialBalanceRow[]>([]);
   const [balanceSheetData, setBalanceSheetData] = useState<TrialBalanceRow[]>([]);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
-  // Fetch the system's latest USD→IDR rate on mount
-  useEffect(() => {
-    supabase.rpc('get_reporting_usd_rate').then(({ data }) => {
-      if (data && Number(data) > 1) {
-        setUsdRate(Number(data));
-        setUsdRateInput(String(Number(data)));
-      }
-    });
-  }, []);
-
   useEffect(() => { setReportType(initialReport); }, [initialReport]);
-  useEffect(() => { loadReport(); }, [reportType, dateRange, usdRate]);
-
-  const handleRateChange = (val: string) => {
-    setUsdRateInput(val);
-    const n = parseFloat(val.replace(/,/g, ''));
-    if (!isNaN(n) && n > 100) setUsdRate(n);
-  };
+  useEffect(() => { loadReport(); }, [reportType, dateRange]);
 
   const loadReport = async () => {
     setLoading(true);
@@ -131,12 +101,10 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
         supabase.rpc('get_trial_balance', {
           p_start_date: dateRange.startDate,
           p_end_date:   dateRange.endDate,
-          p_usd_rate:   usdRate,
         }),
         supabase.rpc('get_trial_balance', {
           p_start_date: '2000-01-01',
           p_end_date:   prevDay(dateRange.startDate),
-          p_usd_rate:   usdRate,
         }),
       ]);
       setPeriodTB((periodRes.data || []) as TrialBalanceRow[]);
@@ -145,7 +113,6 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
       if (reportType === 'balance_sheet') {
         const { data: bsData } = await supabase.rpc('get_balance_sheet', {
           p_as_of_date: dateRange.endDate,
-          p_usd_rate:   usdRate,
         });
         setBalanceSheetData((bsData || []) as TrialBalanceRow[]);
       }
@@ -218,10 +185,13 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const bsLiabRows     = useMemo(() => balanceSheetData.filter(r => r.account_type === 'liability'), [balanceSheetData]);
   const bsEquityRows   = useMemo(() => balanceSheetData.filter(r => r.account_type === 'equity' || (r.account_type === 'contra' && r.account_group === 'Equity')), [balanceSheetData]);
 
-  const totalAssets      = bsAssetRows.reduce((s, r) => s + r.balance, 0) - bsContraAssets.reduce((s, r) => s + Math.abs(r.balance), 0);
-  const totalLiabilities = bsLiabRows.reduce((s, r) => s + Math.abs(r.balance), 0);
-  const totalEquityBase  = bsEquityRows.reduce((s, r) => s + (r.account_type === 'equity' ? Math.abs(r.balance) : -Math.abs(r.balance)), 0);
-  const totalEquity      = totalEquityBase + netIncome;
+  const totalAssets      = bsAssetRows.reduce((s, r) => s + r.balance, 0) + bsContraAssets.reduce((s, r) => s + r.balance, 0);
+  const totalLiabilities = bsLiabRows.reduce((s, r) => s - r.balance, 0);
+  const totalEquityBase  = bsEquityRows.reduce((s, r) => s - r.balance, 0);
+  // get_balance_sheet already returns Current Year Earnings (3300), either
+  // posted or as its journal-derived virtual row. Adding P&L again here would
+  // double count earnings and break the accounting equation.
+  const totalEquity      = totalEquityBase;
   const totalLiabEquity  = totalLiabilities + totalEquity;
   const balanceCheck     = Math.abs(totalAssets - totalLiabEquity);
 
@@ -231,9 +201,9 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const liabLongtermRows  = bsLiabRows.filter(r => BS_LIAB_LONGTERM.includes(r.account_group || ''));
 
   const totalCurrentAssets   = assetCurrentRows.reduce((s, r) => s + r.balance, 0);
-  const totalNonCurrAssets   = assetNonCurrRows.reduce((s, r) => s + r.balance, 0) - bsContraAssets.reduce((s, r) => s + Math.abs(r.balance), 0);
-  const totalCurrentLiab     = liabCurrentRows.reduce((s, r) => s + Math.abs(r.balance), 0);
-  const totalLongtermLiab    = liabLongtermRows.reduce((s, r) => s + Math.abs(r.balance), 0);
+  const totalNonCurrAssets   = assetNonCurrRows.reduce((s, r) => s + r.balance, 0) + bsContraAssets.reduce((s, r) => s + r.balance, 0);
+  const totalCurrentLiab     = liabCurrentRows.reduce((s, r) => s - r.balance, 0);
+  const totalLongtermLiab    = liabLongtermRows.reduce((s, r) => s - r.balance, 0);
 
   // ── TB grand totals ───────────────────────────────────────────────────────
   const tbGrandTotals = useMemo(() => mergedTB.reduce(
@@ -261,7 +231,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const exportTrialBalance = () => {
     const rows: Record<string, string | number>[] = [
       { 'Code': '', 'Account': `Trial Balance — ${fmtDate(dateRange.startDate)} to ${fmtDate(dateRange.endDate)}`, 'Opening Dr': '', 'Opening Cr': '', 'Period Dr': '', 'Period Cr': '', 'Closing Dr': '', 'Closing Cr': '' },
-      { 'Code': '', 'Account': `Reporting Currency: IDR | USD Rate: 1 USD = Rp ${fmt(usdRate)}`, 'Opening Dr': '', 'Opening Cr': '', 'Period Dr': '', 'Period Cr': '', 'Closing Dr': '', 'Closing Cr': '' },
+      { 'Code': '', 'Account': 'Reporting Currency: IDR | Posted functional journal values', 'Opening Dr': '', 'Opening Cr': '', 'Period Dr': '', 'Period Cr': '', 'Closing Dr': '', 'Closing Cr': '' },
       { 'Code': '', 'Account': '', 'Opening Dr': '', 'Opening Cr': '', 'Period Dr': '', 'Period Cr': '', 'Closing Dr': '', 'Closing Cr': '' },
     ];
     for (const section of TB_SECTIONS) {
@@ -287,7 +257,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const exportPnL = () => {
     const rows: Record<string, string | number>[] = [
       { 'Section': `Profit & Loss — ${fmtDate(dateRange.startDate)} to ${fmtDate(dateRange.endDate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '', '% of Revenue': '' },
-      { 'Section': `Reporting Currency: IDR | USD Rate: 1 USD = Rp ${fmt(usdRate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '', '% of Revenue': '' },
+      { 'Section': 'Reporting Currency: IDR | Posted functional journal values', 'Code': '', 'Account': '', 'Amount (Rp)': '', '% of Revenue': '' },
       { 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '', '% of Revenue': '' },
     ];
     const add = (label: string, items: TrialBalanceRow[], getAmt: (r: TrialBalanceRow) => number) => {
@@ -317,7 +287,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const exportBalanceSheet = () => {
     const rows: Record<string, string | number>[] = [
       { 'Section': `Balance Sheet — As of ${fmtDate(dateRange.endDate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '' },
-      { 'Section': `Reporting Currency: IDR | USD Rate: 1 USD = Rp ${fmt(usdRate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '' },
+      { 'Section': 'Reporting Currency: IDR | Posted functional journal values', 'Code': '', 'Account': '', 'Amount (Rp)': '' },
       { 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '' },
     ];
     const addGroup = (label: string, items: TrialBalanceRow[], getAmt: (r: TrialBalanceRow) => number, total: number, totalLabel: string) => {
@@ -330,12 +300,12 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
     addGroup('NON-CURRENT ASSETS', assetNonCurrRows, r => r.balance, totalNonCurrAssets, 'Total Non-current Assets');
     rows.push({ 'Section': 'TOTAL ASSETS', 'Code': '', 'Account': '', 'Amount (Rp)': totalAssets });
     rows.push({ 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '' });
-    addGroup('CURRENT LIABILITIES', liabCurrentRows, r => Math.abs(r.balance), totalCurrentLiab, 'Total Current Liabilities');
-    if (liabLongtermRows.length) addGroup('LONG-TERM LIABILITIES', liabLongtermRows, r => Math.abs(r.balance), totalLongtermLiab, 'Total Long-term Liabilities');
+    addGroup('CURRENT LIABILITIES', liabCurrentRows, r => -r.balance, totalCurrentLiab, 'Total Current Liabilities');
+    if (liabLongtermRows.length) addGroup('LONG-TERM LIABILITIES', liabLongtermRows, r => -r.balance, totalLongtermLiab, 'Total Long-term Liabilities');
     rows.push({ 'Section': 'TOTAL LIABILITIES', 'Code': '', 'Account': '', 'Amount (Rp)': totalLiabilities });
     rows.push({ 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '' });
     rows.push({ 'Section': 'EQUITY', 'Code': '', 'Account': '', 'Amount (Rp)': '' });
-    bsEquityRows.forEach(r => rows.push({ 'Section': '', 'Code': r.code, 'Account': r.name, 'Amount (Rp)': r.account_type === 'equity' ? Math.abs(r.balance) : -Math.abs(r.balance) }));
+    bsEquityRows.forEach(r => rows.push({ 'Section': '', 'Code': r.code, 'Account': r.name, 'Amount (Rp)': -r.balance }));
     rows.push({ 'Section': '', 'Code': '3300', 'Account': 'Current Year Earnings', 'Amount (Rp)': netIncome });
     rows.push({ 'Section': 'TOTAL EQUITY', 'Code': '', 'Account': '', 'Amount (Rp)': totalEquity });
     rows.push({ 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '' });
@@ -389,30 +359,18 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
     </tr>
   );
 
-  // Shared currency info bar shown in every report header
+  // Posted journals already store functional IDR. Reports must not revalue
+  // selected journals with a separate UI exchange rate.
   const CurrencyBar = () => (
-    <div className="flex items-center gap-4 mt-1.5 print:hidden">
-      <span className="text-[10px] text-slate-300">Reporting Currency: <span className="font-semibold text-white">IDR</span></span>
-      <span className="text-slate-500 text-[10px]">|</span>
-      <span className="text-[10px] text-slate-300 flex items-center gap-1.5">
-        USD Rate:
-        <span className="text-[10px] text-slate-400">1 USD =</span>
-        <input
-          type="text"
-          value={usdRateInput}
-          onChange={e => handleRateChange(e.target.value)}
-          onBlur={() => setUsdRateInput(fmt(usdRate))}
-          className="w-24 px-1.5 py-0.5 rounded text-[10px] bg-slate-700 border border-slate-500 text-white text-right tabular-nums focus:outline-none focus:border-blue-400"
-        />
-        <span className="text-slate-400 text-[10px]">IDR</span>
-      </span>
+    <div className="mt-1.5 print:hidden">
+      <span className="text-[10px] text-slate-300">Reporting Currency: <span className="font-semibold text-white">IDR</span> · Posted functional journal values</span>
     </div>
   );
 
   // Print-only currency info
   const CurrencyBarPrint = () => (
     <div className="hidden print:block text-[9px] text-gray-500 mt-0.5">
-      Reporting Currency: IDR &nbsp;|&nbsp; USD Rate: 1 USD = Rp {fmt(usdRate)}
+      Reporting Currency: IDR | Posted functional journal values
     </div>
   );
 
@@ -824,7 +782,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                       </td>
                     </tr>
                     {!collapsedSections.has('bs-noncurr-assets') && assetNonCurrRows.map(r => <BSRow key={r.code} row={r} amount={r.balance} />)}
-                    {!collapsedSections.has('bs-noncurr-assets') && bsContraAssets.map(r => <BSRow key={r.code} row={r} amount={-Math.abs(r.balance)} />)}
+                    {!collapsedSections.has('bs-noncurr-assets') && bsContraAssets.map(r => <BSRow key={r.code} row={r} amount={r.balance} />)}
                     <tr className="bg-blue-100 border-t border-blue-300">
                       <td />
                       <td className="px-2 py-2 text-xs font-bold text-blue-900">Total Non-current Assets</td>
@@ -860,7 +818,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                         </div>
                       </td>
                     </tr>
-                    {!collapsedSections.has('bs-curr-liab') && liabCurrentRows.map(r => <BSRow key={r.code} row={r} amount={Math.abs(r.balance)} />)}
+                    {!collapsedSections.has('bs-curr-liab') && liabCurrentRows.map(r => <BSRow key={r.code} row={r} amount={-r.balance} />)}
                     <tr className="bg-red-100 border-t border-red-300">
                       <td />
                       <td className="px-2 py-2 text-xs font-bold text-red-900">Total Current Liabilities</td>
@@ -880,7 +838,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                         </div>
                       </td>
                     </tr>
-                    {!collapsedSections.has('bs-lt-liab') && liabLongtermRows.map(r => <BSRow key={r.code} row={r} amount={Math.abs(r.balance)} />)}
+                    {!collapsedSections.has('bs-lt-liab') && liabLongtermRows.map(r => <BSRow key={r.code} row={r} amount={-r.balance} />)}
                     <tr className="bg-red-100 border-t border-red-300">
                       <td />
                       <td className="px-2 py-2 text-xs font-bold text-red-900">Total Long-term Liabilities</td>
@@ -911,7 +869,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                   </td>
                 </tr>
                 {!collapsedSections.has('bs-equity') && bsEquityRows.map(r => {
-                  const amt = r.account_type === 'equity' ? Math.abs(r.balance) : -Math.abs(r.balance);
+                  const amt = -r.balance;
                   return <BSRow key={r.code} row={r} amount={amt} />;
                 })}
                 {!collapsedSections.has('bs-equity') && (

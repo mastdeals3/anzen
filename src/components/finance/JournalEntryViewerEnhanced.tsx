@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { Search, FileText, Edit, Trash2 } from 'lucide-react';
@@ -88,23 +88,6 @@ const sourceModuleKey: Record<string, string> = {
   manual: 'journalManual',
 };
 
-const sourceFilters = [
-  { value: 'all', label: 'All Sources' },
-  { value: 'sales_invoice', label: 'Sales Invoices' },
-  { value: 'sales_invoice_cogs', label: 'COGS' },
-  { value: 'purchase_invoice', label: 'Purchase Invoices' },
-  { value: 'receipt', label: 'Receipts' },
-  { value: 'payment', label: 'Payments' },
-  { value: 'expenses', label: 'Expenses' },
-  { value: 'petty_cash', label: 'Petty Cash' },
-  { value: 'fund_transfers', label: 'Fund Transfers' },
-  { value: 'bank_reconciliation', label: 'Bank Reconciliation' },
-  { value: 'tax_payment', label: 'Tax Payments' },
-  { value: 'loans', label: 'Loans' },
-  { value: 'loan_transactions', label: 'Loan Repayments' },
-  { value: 'capital_contribution', label: 'Capital Contributions' },
-  { value: 'manual', label: 'Manual' },
-];
 export function JournalEntryViewerEnhanced({
   canManage,
   onEditEntry,
@@ -128,6 +111,12 @@ export function JournalEntryViewerEnhanced({
     const key = sourceModuleKey[sourceModule];
     return key ? t(`finance.${key}`) : sourceModule.replace(/_/g, ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase());
   };
+  const sourceFilters = useMemo(() => [
+    { value: 'all', label: 'All Sources' },
+    ...Array.from(new Set(voucherEntries.map(entry => entry.source_module || 'manual')))
+      .sort((a, b) => sourceLabel(a).localeCompare(sourceLabel(b)))
+      .map(value => ({ value, label: sourceLabel(value) })),
+  ], [voucherEntries, language]);
 
   useEffect(() => {
     loadVoucherJournal();
@@ -554,7 +543,7 @@ export function JournalEntryViewerEnhanced({
             )}
 
             {selectedEntry.source_module && selectedEntry.reference_id && onOpenSource
-              && ['expense','expenses','receipt','payment','petty_cash','fund_transfer','fund_transfers','bank_reconciliation'].includes(selectedEntry.source_module) && (
+              && ['expense','expenses','receipt','payment','petty_cash','fund_transfer','fund_transfers','bank_reconciliation','tax_payment'].includes(selectedEntry.source_module) && (
               <button
                 type="button"
                 onClick={() => onOpenSource(selectedEntry.source_module || '', selectedEntry.reference_id || '')}

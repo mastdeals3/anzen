@@ -31,7 +31,7 @@ interface Row {
 }
 
 interface SourceLine {
-  module: 'expense' | 'payment_voucher' | 'import';
+  module: 'journal';
   id: string;
   doc_number: string;
   doc_date: string;
@@ -62,95 +62,37 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const lastDay = new Date(yr, mo, 0).getDate();
   const endDate = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
 
-  const [feRes, pvRes, importRes] = await Promise.all([
-    supabase
-      .from('finance_expenses')
-      .select('id, voucher_number, expense_date, pph_amount, description, payment_method, expense_category, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:paid_by_staff_id(full_name)')
-      .gte('expense_date', startDate)
-      .lte('expense_date', endDate)
-      .gt('pph_amount', 0),
-    supabase
-      .from('payment_vouchers')
-      .select('id, voucher_number, voucher_date, pph_amount, description, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name)')
-      .gte('voucher_date', startDate)
-      .lte('voucher_date', endDate)
-      .gt('pph_amount', 0),
-    // Import PPh 22: pib_import (pib_pph_amount) + pph_import (whole amount).
-    // Mirrors compute_period_ppn's import branch. Always PPh22.
-    supabase
-      .from('finance_expenses')
-      .select('id, voucher_number, expense_date, amount, pib_pph_amount, description, expense_category, suppliers:supplier_id(company_name)')
-      .gte('expense_date', startDate)
-      .lte('expense_date', endDate)
-      .in('expense_category', ['pib_import', 'pph_import']),
-  ]);
-
-  const pphType = row.tax_type;
-
-  const expenses: SourceLine[] = ((feRes.data ?? []) as any[])
-    .filter(r => {
-      // Import categories are handled by the import branch below; exclude here
-      // to avoid double-counting (matches the engine's NOT IN import guard).
-      if (r.expense_category === 'pib_import' || r.expense_category === 'pph_import') return false;
-      const codeType = r.pph_code?.tax_type ?? null;
-      return pphType === 'PPh_Unifikasi' || codeType === pphType;
-    })
-    .map(r => ({
-      module: 'expense' as const,
-      id: r.id,
-      doc_number: r.voucher_number ?? '—',
-      doc_date: r.expense_date,
-      party: r.suppliers?.company_name ?? r.staff?.full_name ?? '—',
-      description: r.description,
-      pph_code: r.pph_code?.code ?? null,
-      pph_amount: Number(r.pph_amount),
-      payment_method: r.payment_method,
-      recon_status: null,
-    }));
-
-  const vouchers: SourceLine[] = ((pvRes.data ?? []) as any[])
-    .filter(r => {
-      const codeType = r.pph_code?.tax_type ?? null;
-      return pphType === 'PPh_Unifikasi' || codeType === pphType;
-    })
-    .map(r => ({
-      module: 'payment_voucher' as const,
-      id: r.id,
-      doc_number: r.voucher_number ?? '—',
-      doc_date: r.voucher_date,
-      party: r.suppliers?.company_name ?? '—',
-      description: r.description,
-      pph_code: r.pph_code?.code ?? null,
-      pph_amount: Number(r.pph_amount),
+  const codes = row.tax_type === 'PPh_Unifikasi'
+    ? ['2131', '1155', '2132', '2138']
+    : [({ PPh21: '2131', PPh22: '1155', PPh23: '2132', 'PPh4(2)': '2138' } as Record<string, string>)[row.tax_type]];
+  const { data, error } = await supabase
+    .from('journal_entry_lines')
+    .select('id, debit, credit, description, chart_of_accounts!inner(code), suppliers(company_name), journal_entries!inner(entry_date, entry_number, reference_number, source_module, is_posted, is_reversed)')
+    .in('chart_of_accounts.code', codes.filter(Boolean))
+    .eq('journal_entries.is_posted', true)
+    .eq('journal_entries.is_reversed', false)
+    .gte('journal_entries.entry_date', startDate)
+    .lte('journal_entries.entry_date', endDate);
+  if (error) throw error;
+  return (data || []).flatMap((line: any) => {
+    const journal = Array.isArray(line.journal_entries) ? line.journal_entries[0] : line.journal_entries;
+    const account = Array.isArray(line.chart_of_accounts) ? line.chart_of_accounts[0] : line.chart_of_accounts;
+    const supplier = Array.isArray(line.suppliers) ? line.suppliers[0] : line.suppliers;
+    const amount = account.code === '1155' ? Number(line.debit || 0) : Number(line.credit || 0);
+    if (amount <= 0) return [];
+    return [{
+      module: 'journal' as const,
+      id: line.id,
+      doc_number: journal.reference_number || journal.entry_number,
+      doc_date: journal.entry_date,
+      party: supplier?.company_name || '—',
+      description: line.description,
+      pph_code: account.code,
+      pph_amount: amount,
       payment_method: null,
-      recon_status: null,
-    }));
-
-  // Import PPh 22 — only relevant to the PPh22 and consolidated tabs.
-  const imports: SourceLine[] = (pphType === 'PPh22' || pphType === 'PPh_Unifikasi')
-    ? ((importRes.data ?? []) as any[])
-        .map(r => {
-          const amt = r.expense_category === 'pib_import'
-            ? Number(r.pib_pph_amount ?? 0)
-            : Number(r.amount ?? 0);
-          return { r, amt };
-        })
-        .filter(({ amt }) => amt > 0)
-        .map(({ r, amt }) => ({
-          module: 'import' as const,
-          id: `${r.id}-imp`,
-          doc_number: r.voucher_number ?? '—',
-          doc_date: r.expense_date,
-          party: r.suppliers?.company_name ?? '—',
-          description: r.description,
-          pph_code: 'PPh22 Import',
-          pph_amount: amt,
-          payment_method: null,
-          recon_status: null,
-        }))
-    : [];
-
-  return [...expenses, ...vouchers, ...imports].sort((a, b) => a.doc_date.localeCompare(b.doc_date));
+      recon_status: journal.source_module,
+    }];
+  }).sort((a, b) => a.doc_date.localeCompare(b.doc_date));
 }
 
 export function PphRegisterPanel() {
@@ -324,14 +266,8 @@ export function PphRegisterPanel() {
                                 {detail.map(l => (
                                   <tr key={l.id} className="border-b border-gray-100 hover:bg-white">
                                     <td className="py-1.5 pr-3">
-                                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                        l.module === 'expense' ? 'bg-orange-100 text-orange-700'
-                                          : l.module === 'import' ? 'bg-blue-100 text-blue-700'
-                                          : 'bg-purple-100 text-purple-700'
-                                      }`}>
-                                        {l.module === 'expense' ? 'Expense'
-                                          : l.module === 'import' ? 'Import PPh22'
-                                          : 'Payment Voucher'}
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-purple-100 text-purple-700">
+                                        Journal
                                       </span>
                                     </td>
                                     <td className="py-1.5 pr-3 font-mono font-semibold">{l.doc_number}</td>

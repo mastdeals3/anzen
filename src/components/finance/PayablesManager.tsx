@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
 import { DataTable } from '../DataTable';
 import { Modal } from '../Modal';
-import { Plus, CreditCard as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
+import { Plus, CreditCard as Edit, Trash2, FileText, DollarSign, AlertCircle } from 'lucide-react';
 import { formatDate } from '../../utils/dateFormat';
 import { EXPENSE_CATEGORY_LABELS } from '../../utils/taxCalculations';
 
@@ -75,7 +74,6 @@ interface PayablesManagerProps {
 type ViewMode = 'bills' | 'payments' | 'expense_bills';
 
 export function PayablesManager({ canManage }: PayablesManagerProps) {
-  const { profile } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('expense_bills');
   const [bills, setBills] = useState<VendorBill[]>([]);
   const [payments, setPayments] = useState<VendorPayment[]>([]);
@@ -479,24 +477,24 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
     {
       key: 'bill_number',
       label: 'Bill Number',
-      render: (bill: VendorBill) => (
+      render: (_value: unknown, bill: VendorBill) => (
         <span className="font-medium text-gray-900">{bill.bill_number}</span>
       )
     },
     {
       key: 'vendor_name',
       label: 'Vendor',
-      render: (bill: VendorBill) => bill.vendor_name
+      render: (_value: unknown, bill: VendorBill) => bill.vendor_name
     },
     {
       key: 'bill_date',
       label: 'Bill Date',
-      render: (bill: VendorBill) => formatDate(bill.bill_date)
+      render: (_value: unknown, bill: VendorBill) => formatDate(bill.bill_date)
     },
     {
       key: 'due_date',
       label: 'Due Date',
-      render: (bill: VendorBill) => {
+      render: (_value: unknown, bill: VendorBill) => {
         if (!bill.due_date) return 'N/A';
         const dueDate = new Date(bill.due_date);
         const isOverdue = dueDate < new Date() && bill.payment_status !== 'paid';
@@ -511,12 +509,12 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
     {
       key: 'category',
       label: 'Category',
-      render: (bill: VendorBill) => getCategoryLabel(bill.category)
+      render: (_value: unknown, bill: VendorBill) => getCategoryLabel(bill.category)
     },
     {
       key: 'total_amount',
       label: 'Total Amount',
-      render: (bill: VendorBill) => (
+      render: (_value: unknown, bill: VendorBill) => (
         <span className="font-semibold text-red-600">
           Rp {bill.total_amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
@@ -525,7 +523,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
     {
       key: 'payment_status',
       label: 'Status',
-      render: (bill: VendorBill) => (
+      render: (_value: unknown, bill: VendorBill) => (
         <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getPaymentStatusColor(bill.payment_status)}`}>
           {bill.payment_status.toUpperCase()}
         </span>
@@ -537,29 +535,29 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
     {
       key: 'payment_number',
       label: 'Payment Number',
-      render: (payment: VendorPayment) => (
+      render: (_value: unknown, payment: VendorPayment) => (
         <span className="font-medium text-gray-900">{payment.payment_number}</span>
       )
     },
     {
       key: 'bill',
       label: 'Bill Number',
-      render: (payment: VendorPayment) => payment.vendor_bills?.bill_number || 'N/A'
+      render: (_value: unknown, payment: VendorPayment) => payment.vendor_bills?.bill_number || 'N/A'
     },
     {
       key: 'vendor',
       label: 'Vendor',
-      render: (payment: VendorPayment) => payment.vendor_bills?.vendor_name || 'N/A'
+      render: (_value: unknown, payment: VendorPayment) => payment.vendor_bills?.vendor_name || 'N/A'
     },
     {
       key: 'payment_date',
       label: 'Payment Date',
-      render: (payment: VendorPayment) => formatDate(payment.payment_date)
+      render: (_value: unknown, payment: VendorPayment) => formatDate(payment.payment_date)
     },
     {
       key: 'amount',
       label: 'Amount',
-      render: (payment: VendorPayment) => (
+      render: (_value: unknown, payment: VendorPayment) => (
         <span className="font-semibold text-green-600">
           Rp {payment.amount.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
@@ -568,12 +566,12 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
     {
       key: 'payment_method',
       label: 'Method',
-      render: (payment: VendorPayment) => getPaymentMethodLabel(payment.payment_method)
+      render: (_value: unknown, payment: VendorPayment) => getPaymentMethodLabel(payment.payment_method)
     },
     {
       key: 'bank_account',
       label: 'Bank Account',
-      render: (payment: VendorPayment) =>
+      render: (_value: unknown, payment: VendorPayment) =>
         payment.bank_accounts
           ? (payment.bank_accounts.alias || `${payment.bank_accounts.account_name} - ${payment.bank_accounts.bank_name}`)
           : 'N/A'

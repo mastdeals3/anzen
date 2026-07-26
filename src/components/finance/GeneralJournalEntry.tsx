@@ -4,8 +4,8 @@ import { useFinance } from '../../contexts/FinanceContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { saveFinanceJournal } from '../../services/financeCommands';
 import {
-  Plus, Trash2, Search, Eye, BookOpen, FileText,
-  ChevronDown, X, Loader2, Save, RotateCcw
+  Plus, Trash2, Search, Eye, BookOpen,
+  X, Loader2, Save, RotateCcw
 } from 'lucide-react';
 import { showToast } from '../ToastNotification';
 import { Modal } from '../Modal';
@@ -53,93 +53,12 @@ interface JournalEntryDetail extends JournalEntry {
   }[];
 }
 
-interface Template {
-  name: string;
-  description: string;
-  lines: { accountCode: string; side: 'debit' | 'credit'; label: string }[];
-}
-
 interface GeneralJournalEntryProps {
   canManage: boolean;
   onNavigateToLedger: () => void;
   initialEditEntryId?: string | null;
   onEditComplete?: () => void;
 }
-
-const TEMPLATES: Template[] = [
-  {
-    name: 'Loan Received',
-    description: 'Bank loan received into account',
-    lines: [
-      { accountCode: '111101', side: 'debit', label: 'Bank BCA - IDR' },
-      { accountCode: '2210', side: 'credit', label: 'Bank Loans' },
-    ],
-  },
-  {
-    name: 'Loan Repayment',
-    description: 'Repay bank loan from account',
-    lines: [
-      { accountCode: '2210', side: 'debit', label: 'Bank Loans' },
-      { accountCode: '111101', side: 'credit', label: 'Bank BCA - IDR' },
-    ],
-  },
-  {
-    name: 'Loan Given',
-    description: 'Loan given to external party',
-    lines: [
-      { accountCode: '1310', side: 'debit', label: 'Loan Receivable' },
-      { accountCode: '111101', side: 'credit', label: 'Bank BCA - IDR' },
-    ],
-  },
-  {
-    name: 'Director Loan',
-    description: 'Loan from director/owner',
-    lines: [
-      { accountCode: '111101', side: 'debit', label: 'Bank BCA - IDR' },
-      { accountCode: '2220', side: 'credit', label: 'Loan from Vijay Lunkad' },
-    ],
-  },
-  {
-    name: 'Owner Contribution',
-    description: 'Capital injected by owner into the business bank account',
-    lines: [
-      { accountCode: '111101', side: 'debit', label: 'Bank BCA - IDR' },
-      { accountCode: '3100', side: 'credit', label: 'Owner Capital' },
-    ],
-  },
-  {
-    name: 'Staff Advance',
-    description: 'Advance given to staff',
-    lines: [
-      { accountCode: '1160', side: 'debit', label: 'Staff Advances & Loans' },
-      { accountCode: '1102', side: 'credit', label: 'Petty Cash' },
-    ],
-  },
-  {
-    name: 'Advance Recovery',
-    description: 'Recover advance from staff salary',
-    lines: [
-      { accountCode: '6100', side: 'debit', label: 'Salaries & Wages' },
-      { accountCode: '1160', side: 'credit', label: 'Staff Advances & Loans' },
-    ],
-  },
-  {
-    name: 'Salary Adjustment',
-    description: 'Adjust salary or bonus entries',
-    lines: [
-      { accountCode: '6100', side: 'debit', label: 'Salaries & Wages' },
-      { accountCode: '111101', side: 'credit', label: 'Bank BCA - IDR' },
-    ],
-  },
-  {
-    name: 'Interest Payment',
-    description: 'Pay interest on loan',
-    lines: [
-      { accountCode: '7200', side: 'debit', label: 'Interest Expense' },
-      { accountCode: '111101', side: 'credit', label: 'Bank BCA - IDR' },
-    ],
-  },
-];
 
 function createEmptyLine(): JournalLine {
   return {
@@ -174,9 +93,6 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
   const [viewEntry, setViewEntry] = useState<JournalEntryDetail | null>(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
-
-  const [templateOpen, setTemplateOpen] = useState(false);
-  const templateRef = useRef<HTMLDivElement>(null);
 
   const totalDebit = lines.reduce((s, l) => s + (l.debit || 0), 0);
   const totalCredit = lines.reduce((s, l) => s + (l.credit || 0), 0);
@@ -213,9 +129,6 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
     function handleClickOutside(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setSearchOpen(null);
-      }
-      if (templateRef.current && !templateRef.current.contains(e.target as Node)) {
-        setTemplateOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -276,24 +189,6 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
     setNarration('');
     setLines([createEmptyLine(), createEmptyLine()]);
     setEditingEntryId(null);
-  };
-
-  const applyTemplate = (template: Template) => {
-    const newLines: JournalLine[] = template.lines.map(tl => {
-      const acc = accounts.find(a => a.code === tl.accountCode);
-      return {
-        key: crypto.randomUUID(),
-        account_id: acc?.id || '',
-        account_code: acc?.code || tl.accountCode,
-        account_name: acc?.name || tl.label,
-        description: '',
-        debit: tl.side === 'debit' ? 0 : 0,
-        credit: tl.side === 'credit' ? 0 : 0,
-      };
-    });
-    setNarration(template.description);
-    setLines(newLines);
-    setTemplateOpen(false);
   };
 
   const validateBeforePost = (): string | null => {
@@ -447,32 +342,6 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
         <div className="flex items-baseline gap-2 min-w-0">
           <h1 className="text-xs font-bold text-gray-900 truncate">Journal Voucher</h1>
           <span className="text-[10px] text-gray-400 truncate">Manual double-entry journal posting</span>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <div className="relative" ref={templateRef}>
-            <button
-              onClick={() => setTemplateOpen(!templateOpen)}
-              className="inline-flex items-center gap-1 h-7 px-2 text-xs bg-white hover:bg-gray-50 text-gray-700 rounded border border-gray-300"
-            >
-              <FileText className="w-3 h-3" />
-              Templates
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            {templateOpen && (
-              <div className="absolute right-0 top-full mt-1 w-72 bg-white rounded-lg shadow-xl border border-gray-200 z-50 py-1 max-h-80 overflow-y-auto">
-                {TEMPLATES.map(t => (
-                  <button
-                    key={t.name}
-                    onClick={() => applyTemplate(t)}
-                    className="w-full text-left px-2 py-1.5 hover:bg-blue-50 transition-colors"
-                  >
-                    <div className="text-xs font-medium text-gray-900">{t.name}</div>
-                    <div className="text-[10px] text-gray-500">{t.description}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

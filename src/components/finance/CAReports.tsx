@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Download, FileText, TrendingUp, Package, Building2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { useAuth } from '../../contexts/AuthContext';
 import { useFinance } from '../../contexts/FinanceContext';
 import { sanitizeCsvCell } from '../../utils/csvSafe';
 
@@ -28,7 +27,6 @@ interface CAReportsProps {
 }
 
 export function CAReports({ onOpenJournal }: CAReportsProps) {
-  const { profile } = useAuth();
   const { dateRange: contextDateRange } = useFinance();
   const [selectedReport, setSelectedReport] = useState<ReportType>('inventory_movement');
   const [loading, setLoading] = useState(false);
@@ -192,14 +190,17 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
         accountIds = [selectedBank.coa_id];
       }
     } else {
-      // Load all bank accounts
+      // Bank Accounts is the authoritative mapping from a bank master to its
+      // Chart of Accounts control account. Do not infer banks from a duplicated
+      // account-code prefix.
       const { data: allBankAccounts } = await supabase
-        .from('chart_of_accounts')
-        .select('id, code, name')
-        .like('code', '1111%');
+        .from('bank_accounts')
+        .select('coa_id')
+        .eq('is_active', true)
+        .not('coa_id', 'is', null);
 
       if (!allBankAccounts || allBankAccounts.length === 0) return [];
-      accountIds = allBankAccounts.map(a => a.id);
+      accountIds = Array.from(new Set(allBankAccounts.map(a => a.coa_id).filter(Boolean))) as string[];
     }
 
     if (accountIds.length === 0) return [];
@@ -256,9 +257,6 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
         invoice_date,
         due_date,
         customer_id,
-        subtotal,
-        tax_amount,
-        total_amount,
         payment_status,
         customers(company_name)
       `)
@@ -271,6 +269,31 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
     // Bulk fetch payment dates: replicate get_invoice_latest_payment_date =
     // MAX(receipt_vouchers.voucher_date) for voucher_allocations where sales_invoice_id in (...) AND voucher_type='receipt'.
     const invoiceIds = (data || []).map((inv) => inv.id);
+    const journalByInvoice = new Map<string, { id: string; total_debit: number }>();
+    if (invoiceIds.length > 0) {
+      const { data: journals } = await supabase
+        .from('journal_entries')
+        .select('id, reference_id, total_debit')
+        .eq('source_module', 'sales_invoice')
+        .eq('is_posted', true)
+        .eq('is_reversed', false)
+        .in('reference_id', invoiceIds);
+      (journals || []).forEach(journal => journalByInvoice.set(journal.reference_id, {
+        id: journal.id,
+        total_debit: Number(journal.total_debit || 0),
+      }));
+    }
+    const salesJournalIds = [...journalByInvoice.values()].map(journal => journal.id);
+    const ppnByJournal = new Map<string, number>();
+    if (salesJournalIds.length > 0) {
+      const { data: taxLines } = await supabase
+        .from('journal_entry_lines')
+        .select('journal_entry_id, debit, credit, chart_of_accounts!inner(code)')
+        .in('journal_entry_id', salesJournalIds)
+        .eq('chart_of_accounts.code', '2130');
+      (taxLines || []).forEach(line => ppnByJournal.set(line.journal_entry_id,
+        (ppnByJournal.get(line.journal_entry_id) || 0) + Number(line.credit || 0) - Number(line.debit || 0)));
+    }
     const latestByInvoice = new Map<string, string>();
     if (invoiceIds.length > 0) {
       const { data: allocs } = await supabase
@@ -288,49 +311,69 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
       }
     }
 
-    const invoicesWithPaymentData = (data || []).map((inv) => ({
-      invoice_date: inv.invoice_date,
-      invoice_number: inv.invoice_number,
-      customer_name: (inv.customers as any)?.company_name,
-      due_date: inv.due_date,
-      payment_receipt: latestByInvoice.get(inv.id) || null,
-      payment_status: inv.payment_status,
-      net_amount: inv.subtotal,
-      ppn: inv.tax_amount,
-      total_amount: inv.total_amount,
-    }));
+    const invoicesWithPaymentData = (data || []).map((inv) => {
+      const journal = journalByInvoice.get(inv.id);
+      const ppn = journal ? (ppnByJournal.get(journal.id) || 0) : 0;
+      const total = Number(journal?.total_debit || 0);
+      return {
+        invoice_date: inv.invoice_date,
+        invoice_number: inv.invoice_number,
+        customer_name: (inv.customers as any)?.company_name,
+        due_date: inv.due_date,
+        payment_receipt: latestByInvoice.get(inv.id) || null,
+        payment_status: inv.payment_status,
+        net_amount: Math.max(0, total - ppn),
+        ppn,
+        total_amount: total,
+      };
+    });
 
     return invoicesWithPaymentData;
   };
 
   const loadPurchaseRegister = async () => {
     const { data, error } = await supabase
-      .from('purchase_orders')
+      .from('purchase_invoices')
       .select(`
-        po_number,
-        po_date,
+        id,
+        invoice_number,
+        invoice_date,
         supplier_id,
-        subtotal,
-        tax_amount,
-        total_amount,
         currency,
+        journal_entry_id,
         suppliers(company_name)
       `)
-      .gte('po_date', dateRange.from)
-      .lte('po_date', dateRange.to)
-      .order('po_date', { ascending: true });
+      .gte('invoice_date', dateRange.from)
+      .lte('invoice_date', dateRange.to)
+      .order('invoice_date', { ascending: true });
 
     if (error) throw error;
 
-    return data?.map(po => ({
-      po_date: po.po_date,
-      po_number: po.po_number,
-      supplier_name: (po.suppliers as any)?.company_name,
-      net_amount: po.subtotal,
-      ppn: po.tax_amount,
-      total_amount: po.total_amount,
-      currency: po.currency
-    })) || [];
+    const journalIds = (data || []).map(invoice => invoice.journal_entry_id).filter(Boolean);
+    const journalTotals = new Map<string, number>();
+    const ppnByJournal = new Map<string, number>();
+    if (journalIds.length) {
+      const [{ data: journals }, { data: taxLines }] = await Promise.all([
+        supabase.from('journal_entries').select('id, total_credit').eq('is_posted', true).eq('is_reversed', false).in('id', journalIds),
+        supabase.from('journal_entry_lines').select('journal_entry_id, debit, credit, chart_of_accounts!inner(code)').in('journal_entry_id', journalIds).eq('chart_of_accounts.code', '1150'),
+      ]);
+      (journals || []).forEach(journal => journalTotals.set(journal.id, Number(journal.total_credit || 0)));
+      (taxLines || []).forEach(line => ppnByJournal.set(line.journal_entry_id,
+        (ppnByJournal.get(line.journal_entry_id) || 0) + Number(line.debit || 0) - Number(line.credit || 0)));
+    }
+    return data?.map(invoice => {
+      const total = journalTotals.get(invoice.journal_entry_id) || 0;
+      const ppn = ppnByJournal.get(invoice.journal_entry_id) || 0;
+      return {
+        po_date: invoice.invoice_date,
+        po_number: invoice.invoice_number,
+        supplier_name: (invoice.suppliers as any)?.company_name,
+        net_amount: Math.max(0, total - ppn),
+        ppn,
+        total_amount: total,
+        currency: invoice.currency,
+      };
+    }) || [];
   };
 
   const loadInventoryMovement = async () => {

@@ -424,8 +424,6 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
     const totals = calculateTotals();
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-
       const invoiceData = {
         invoice_number: formData.invoice_number.trim(),
         supplier_id: formData.supplier_id,
@@ -491,7 +489,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `purchase-invoices/${fileName}`;
 
-        const { error: uploadError, data } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('documents')
           .upload(filePath, file);
 
