@@ -20,7 +20,7 @@ interface StatementLine {
   debit: number;
   credit: number;
   balance: number;
-  status: 'matched' | 'needs_review' | 'suggested' | 'unmatched' | 'recorded';
+  status: 'matched' | 'needs_review' | 'unmatched' | 'recorded';
   matchedEntry?: string;
   notes?: string;
 }
@@ -248,6 +248,22 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
     }
 
     return lines;
+  };
+
+  const calculateStringSimilarity = (str1: string, str2: string): number => {
+    if (!str1 || !str2) return 0;
+    const s1 = str1.toLowerCase().trim();
+    const s2 = str2.toLowerCase().trim();
+
+    if (s1 === s2) return 1;
+    if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+
+    const words1 = s1.split(/\s+/);
+    const words2 = s2.split(/\s+/);
+    const commonWords = words1.filter(w => words2.includes(w)).length;
+    const totalWords = Math.max(words1.length, words2.length);
+
+    return commonWords / totalWords;
   };
 
   const autoMatchTransactions = async () => {

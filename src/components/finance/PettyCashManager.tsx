@@ -7,6 +7,7 @@ import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { formatDate } from '../../utils/dateFormat';
@@ -347,6 +348,7 @@ const expenseCategories = [
 ];
 
 export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialViewTransactionId, onInitialViewHandled }: PettyCashManagerProps) {
+  const { t } = useLanguage();
   const [approvalLoading, setApprovalLoading] = useState<string | null>(null);
   const [pcRejectionModalOpen, setPcRejectionModalOpen] = useState(false);
   const [pcRejectionTarget, setPcRejectionTarget] = useState<string | null>(null);

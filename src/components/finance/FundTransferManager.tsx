@@ -9,6 +9,7 @@ import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { notifyFinanceReconciliationRefresh } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
 
@@ -104,6 +105,7 @@ export function FundTransferManager({
   prefillFromBankReconciliation,
   onPrefillConsumed,
 }: FundTransferManagerProps) {
+  const { t } = useLanguage();
   const [transfers, setTransfers] = useState<FundTransfer[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [fromBankStatements, setFromBankStatements] = useState<BankStatementLine[]>([]);

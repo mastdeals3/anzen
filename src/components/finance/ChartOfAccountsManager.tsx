@@ -161,6 +161,10 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
     setExpandedGroups(newExpanded);
   };
 
+  const getTypeColor = (type: string) => {
+    return accountTypes.find(t => t.value === type)?.color || 'bg-gray-100 text-gray-800';
+  };
+
   const filteredAccounts = accounts.filter(account =>
     account.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
     account.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -22,7 +22,6 @@ interface Party {
 
 interface LedgerEntry {
   id: string;
-  journal_entry_id: string;
   entry_date: string;
   particulars: string;
   reference: string;
@@ -32,11 +31,7 @@ interface LedgerEntry {
   type: 'invoice' | 'payment' | 'receipt' | 'opening';
 }
 
-interface PartyLedgerProps {
-  onOpenJournal?: (journalEntryId: string) => void;
-}
-
-export default function PartyLedger({ onOpenJournal }: PartyLedgerProps) {
+export default function PartyLedger() {
   const { dateRange: globalDateRange } = useFinance();
   const printRef = useRef<HTMLDivElement>(null);
   const [partyType, setPartyType] = useState<'customer' | 'supplier' | 'staff'>('customer');
@@ -116,54 +111,268 @@ export default function PartyLedger({ onOpenJournal }: PartyLedgerProps) {
     setSelectedParty('');
   };
 
-  // Accounting amounts always come from posted journal lines. Party masters
-  // and source documents are used only to identify which journal lines belong
-  // to the selected party; they never supply ledger debit/credit values.
+  // Fetch ledger entries for [fromDate, toDate]. fromDate null = from the
+  // beginning of time (used to compute the opening balance before the period).
   const fetchEntries = async (fromDate: string | null, toDate: string): Promise<LedgerEntry[]> => {
-    let journalIds: string[] | null = null;
-    if (partyType === 'staff') {
-      const [{ data: expenses }, { data: payments }] = await Promise.all([
-        supabase.from('finance_expenses').select('id').eq('staff_id', selectedParty),
-        supabase.from('payment_vouchers').select('journal_entry_id').eq('staff_id', selectedParty).not('journal_entry_id', 'is', null),
-      ]);
-      const expenseIds = (expenses || []).map(row => row.id);
-      const expenseJournals = expenseIds.length
-        ? await supabase.from('journal_entries').select('id').eq('source_module', 'expenses').in('reference_id', expenseIds)
-        : { data: [] as { id: string }[] };
-      journalIds = Array.from(new Set([
-        ...(expenseJournals.data || []).map(row => row.id),
-        ...(payments || []).map(row => row.journal_entry_id).filter(Boolean),
-      ])) as string[];
-      if (journalIds.length === 0) return [];
+    const entries: LedgerEntry[] = [];
+    const toFunctionalIDR = (amount: number, currency?: string | null, rate?: number | null) =>
+      currency === 'USD' ? (rate && rate > 0 ? amount * rate : 0) : amount;
+    const currencyDetail = (amount: number, currency?: string | null, rate?: number | null) =>
+      currency === 'USD'
+        ? ` (${formatCurrency(amount, 'USD')}${rate && rate > 0 ? ` @ ${formatCurrency(rate, 'IDR')}/USD` : ' — exchange rate missing'})`
+        : '';
+    const dateRange = <T,>(q: T, col: string): T => {
+      let qq = (q as any).lte(col, toDate);
+      if (fromDate) qq = qq.gte(col, fromDate);
+      return qq;
+    };
+
+    if (partyType === 'customer') {
+      const { data: invoices } = await dateRange(
+        supabase
+          .from('sales_invoices')
+          .select('id, invoice_date, invoice_number, total_amount, payment_status')
+          .eq('customer_id', selectedParty),
+        'invoice_date',
+      ).order('invoice_date');
+
+      if (invoices) {
+        invoices.forEach(inv => {
+          entries.push({
+            id: inv.id,
+            entry_date: inv.invoice_date,
+            particulars: `Sales Invoice - ${inv.payment_status || 'Unpaid'}`,
+            reference: inv.invoice_number,
+            debit: inv.total_amount,
+            credit: 0,
+            running_balance: 0,
+            type: 'invoice',
+          });
+        });
+      }
+
+      const { data: receipts } = await dateRange(
+        supabase
+          .from('receipt_vouchers')
+          .select('id, voucher_date, voucher_number, amount, description, transaction_currency, currency_code, exchange_rate')
+          .eq('customer_id', selectedParty)
+          .eq('is_posted', true),
+        'voucher_date',
+      ).order('voucher_date');
+
+      if (receipts) {
+        receipts.forEach(rec => {
+          const currency = rec.transaction_currency || rec.currency_code || 'IDR';
+          entries.push({
+            id: rec.id,
+            entry_date: rec.voucher_date,
+            particulars: `${rec.description || 'Receipt'}${currencyDetail(rec.amount, currency, rec.exchange_rate)}`,
+            reference: rec.voucher_number,
+            debit: 0,
+            credit: toFunctionalIDR(rec.amount, currency, rec.exchange_rate),
+            running_balance: 0,
+            type: 'receipt',
+          });
+        });
+      }
+
+      const { data: creditNotes } = await dateRange(
+        supabase
+          .from('credit_notes')
+          .select('id, credit_note_date, credit_note_number, total_amount')
+          .eq('customer_id', selectedParty)
+          .eq('status', 'approved'),
+        'credit_note_date',
+      ).order('credit_note_date');
+
+      if (creditNotes) {
+        creditNotes.forEach(cn => {
+          entries.push({
+            id: cn.id,
+            entry_date: cn.credit_note_date,
+            particulars: 'Credit Note',
+            reference: cn.credit_note_number,
+            debit: 0,
+            credit: cn.total_amount,
+            running_balance: 0,
+            type: 'receipt',
+          });
+        });
+      }
+    } else if (partyType === 'supplier') {
+      const { data: invoices } = await dateRange(
+        supabase
+          .from('purchase_invoices')
+          .select('id, invoice_date, invoice_number, total_amount, status, currency, exchange_rate')
+          .eq('supplier_id', selectedParty),
+        'invoice_date',
+      ).order('invoice_date');
+
+      if (invoices) {
+        invoices.forEach(inv => {
+          const functionalAmount = toFunctionalIDR(inv.total_amount, inv.currency, inv.exchange_rate);
+          entries.push({
+            id: inv.id,
+            entry_date: inv.invoice_date,
+            particulars: `Purchase Invoice - ${inv.status || 'Unpaid'}${currencyDetail(inv.total_amount, inv.currency, inv.exchange_rate)}`,
+            reference: inv.invoice_number,
+            debit: 0,
+            credit: functionalAmount,
+            running_balance: 0,
+            type: 'invoice',
+          });
+        });
+      }
+
+      // Expense bills (A/P): approved outstanding-type expenses booked
+      // against this supplier. Settlement vouchers already appear via
+      // payment_vouchers below — without these credits the statement
+      // would show payments with no matching bill.
+      const { data: expenseBills } = await dateRange(
+        supabase
+          .from('finance_expenses')
+          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount, transaction_currency, currency_code, exchange_rate')
+          .eq('supplier_id', selectedParty)
+          .is('payment_method', null)
+          .eq('approval_status', 'approved'),
+        'expense_date',
+      ).order('expense_date');
+
+      if (expenseBills) {
+        expenseBills.forEach(bill => {
+          const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
+          const currency = bill.transaction_currency || bill.currency_code || 'IDR';
+          entries.push({
+            id: bill.id,
+            entry_date: bill.expense_date,
+            particulars: `Expense Bill - ${(bill.expense_category || '').replace(/_/g, ' ')}${outstanding <= 0.01 ? ' (Paid)' : ''}${currencyDetail(bill.amount, currency, bill.exchange_rate)}`,
+            reference: bill.invoice_number || bill.voucher_number || '',
+            debit: 0,
+            credit: toFunctionalIDR(bill.amount, currency, bill.exchange_rate),
+            running_balance: 0,
+            type: 'invoice',
+          });
+        });
+      }
+
+      const { data: payments } = await dateRange(
+        supabase
+          .from('payment_vouchers')
+          .select('id, voucher_date, voucher_number, amount, description, transaction_currency, payment_currency, currency_code, exchange_rate')
+          .eq('supplier_id', selectedParty)
+          .eq('is_posted', true),
+        'voucher_date',
+      ).order('voucher_date');
+
+      if (payments) {
+        payments.forEach(pay => {
+          const currency = pay.transaction_currency || pay.payment_currency || pay.currency_code || 'IDR';
+          entries.push({
+            id: pay.id,
+            entry_date: pay.voucher_date,
+            particulars: `${pay.description || 'Payment'}${currencyDetail(pay.amount, currency, pay.exchange_rate)}`,
+            reference: pay.voucher_number,
+            debit: toFunctionalIDR(pay.amount, currency, pay.exchange_rate),
+            credit: 0,
+            running_balance: 0,
+            type: 'payment',
+          });
+        });
+      }
+    } else {
+      // Staff ledger — one running account per staff member:
+      //   Cr  salary / staff bills recorded as outstanding (company owes staff)
+      //   Dr  payment vouchers paid to the staff member
+      //   Dr  advances given (staff_advance expenses, paid — staff owes company)
+      //   Dr+Cr  advance-adjustment vouchers (settle salary payable against the
+      //          advance — net zero on the running balance, shown for the trail)
+      const { data: bills } = await dateRange(
+        supabase
+          .from('finance_expenses')
+          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount, transaction_currency, currency_code, exchange_rate')
+          .eq('staff_id', selectedParty)
+          .neq('expense_category', 'staff_advance')
+          .is('payment_method', null)
+          .eq('approval_status', 'approved'),
+        'expense_date',
+      ).order('expense_date');
+
+      if (bills) {
+        bills.forEach(bill => {
+          const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
+          const currency = bill.transaction_currency || bill.currency_code || 'IDR';
+          entries.push({
+            id: bill.id,
+            entry_date: bill.expense_date,
+            particulars: `${(bill.expense_category || '').replace(/_/g, ' ')} Bill${outstanding <= 0.01 ? ' (Paid)' : ''}${currencyDetail(bill.amount, currency, bill.exchange_rate)}`,
+            reference: bill.invoice_number || bill.voucher_number || '',
+            debit: 0,
+            credit: toFunctionalIDR(bill.amount, currency, bill.exchange_rate),
+            running_balance: 0,
+            type: 'invoice',
+          });
+        });
+      }
+
+      const { data: advances } = await dateRange(
+        supabase
+          .from('finance_expenses')
+          .select('id, expense_date, invoice_number, voucher_number, amount, transaction_currency, currency_code, exchange_rate')
+          .eq('staff_id', selectedParty)
+          .eq('expense_category', 'staff_advance')
+          .not('payment_method', 'is', null)
+          .eq('approval_status', 'approved'),
+        'expense_date',
+      ).order('expense_date');
+
+      if (advances) {
+        advances.forEach(adv => {
+          const currency = adv.transaction_currency || adv.currency_code || 'IDR';
+          entries.push({
+            id: adv.id,
+            entry_date: adv.expense_date,
+            particulars: `Staff Advance Given${currencyDetail(adv.amount, currency, adv.exchange_rate)}`,
+            reference: adv.invoice_number || adv.voucher_number || '',
+            debit: toFunctionalIDR(adv.amount, currency, adv.exchange_rate),
+            credit: 0,
+            running_balance: 0,
+            type: 'payment',
+          });
+        });
+      }
+
+      const { data: vouchers } = await dateRange(
+        supabase
+          .from('payment_vouchers')
+          .select('id, voucher_date, voucher_number, amount, description, payment_method, transaction_currency, payment_currency, currency_code, exchange_rate')
+          .eq('staff_id', selectedParty)
+          .eq('is_posted', true),
+        'voucher_date',
+      ).order('voucher_date');
+
+      if (vouchers) {
+        vouchers.forEach(pv => {
+          const isAdjustment = pv.payment_method === 'advance_adjustment';
+          const currency = pv.transaction_currency || pv.payment_currency || pv.currency_code || 'IDR';
+          const functionalAmount = toFunctionalIDR(pv.amount, currency, pv.exchange_rate);
+          entries.push({
+            id: pv.id,
+            entry_date: pv.voucher_date,
+            particulars: isAdjustment
+              ? `Advance Adjusted Against Salary${currencyDetail(pv.amount, currency, pv.exchange_rate)}`
+              : `${pv.description || 'Payment to Staff'}${currencyDetail(pv.amount, currency, pv.exchange_rate)}`,
+            reference: pv.voucher_number,
+            debit: functionalAmount,
+            credit: isAdjustment ? functionalAmount : 0,
+            running_balance: 0,
+            type: 'payment',
+          });
+        });
+      }
     }
 
-    let query = supabase
-      .from('journal_entry_lines')
-      .select('id, debit, credit, description, journal_entries!inner(id, entry_date, entry_number, reference_number, description, source_module, is_posted, is_reversed)')
-      .eq('journal_entries.is_posted', true)
-      .eq('journal_entries.is_reversed', false)
-      .lte('journal_entries.entry_date', toDate);
-    if (fromDate) query = query.gte('journal_entries.entry_date', fromDate);
-    if (partyType === 'customer') query = query.eq('customer_id', selectedParty);
-    else if (partyType === 'supplier') query = query.eq('supplier_id', selectedParty);
-    else query = query.in('journal_entry_id', journalIds!);
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data || []).map((line: any) => {
-      const journal = Array.isArray(line.journal_entries) ? line.journal_entries[0] : line.journal_entries;
-      return {
-        id: line.id,
-        journal_entry_id: journal.id,
-        entry_date: journal.entry_date,
-        particulars: line.description || journal.description || journal.source_module || 'Journal posting',
-        reference: journal.reference_number || journal.entry_number,
-        debit: Number(line.debit || 0),
-        credit: Number(line.credit || 0),
-        running_balance: 0,
-        type: 'opening' as const,
-      };
-    }).sort((a, b) => a.entry_date.localeCompare(b.entry_date) || a.id.localeCompare(b.id));
+    entries.sort((a, b) => new Date(a.entry_date).getTime() - new Date(b.entry_date).getTime());
+    return entries;
   };
 
   const loadLedgerEntries = async () => {
@@ -439,9 +648,7 @@ export default function PartyLedger({ onOpenJournal }: PartyLedgerProps) {
                           {entry.particulars}
                         </td>
                         <td className="px-2 py-1 text-xs text-gray-600 font-mono">
-                          <button className="text-blue-700 hover:underline" onClick={() => onOpenJournal?.(entry.journal_entry_id)}>
-                            {entry.reference}
-                          </button>
+                          {entry.reference}
                         </td>
                         <td className="px-2 py-1 whitespace-nowrap text-xs text-red-600 text-right font-medium">
                           {entry.debit > 0 ? formatAmount(entry.debit) : '-'}

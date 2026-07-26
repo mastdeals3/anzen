@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { Search, ArrowUpCircle, Pencil, Trash2, Eye, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { Modal } from '../Modal';
 import { SearchableSelect } from '../SearchableSelect';
@@ -157,6 +158,7 @@ function fmt(amount: number, currency: string) {
 
 
 export function PaymentVoucherManager({ canManage, initialViewVoucherId, onInitialViewHandled, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice, prefillFromBankReconciliation, onBankReconciliationPrefillConsumed }: PaymentVoucherManagerProps) {
+  const { t } = useLanguage();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const [cancelPostingTarget, setCancelPostingTarget] = useState<PaymentVoucher | null>(null);

@@ -186,47 +186,12 @@ query is restricted to `source_module='manual'`; generated journals from source
 documents never belong in that list. Journal Register is the all-source master
 accounting register.
 
-Manual Journal has no hardcoded posting templates. Loan, Loan Repayment and
-Capital Contribution use their canonical shared commands and source masters.
-The shared Director/Owner Loan command resolves account `2105 – Director Loan –
-Vijay` from the active Chart of Accounts; Bank Loans continue to use `2210`.
-
 Historical repair is metadata-only. The 2026-07-26 consolidation created native
 Capital Contribution source rows only where a two-line posted bank receipt had
 Owner Capital (`3100`) as its sole counter-entry. It preserved the original
 journal and amounts. Legacy loan journals are not converted without certain
 counterparty and loan terms; they appear in
 `finance_exception_report.csv` instead.
-
-After explicit accountant confirmation, the liability line of legacy journal
-`JE2607-0048` was reclassified from `2210 – Bank Loans` to
-`2105 – Director Loan – Vijay`. This journal has no linked `loans` or
-`loan_transactions` source row; its existing Bank Reconciliation statement-line
-reference remains authoritative and unchanged. No Loan source document was
-created because doing so would require additional loan terms outside this
-classification correction.
-
-Legacy `JE2602-0085` is also demonstrably a Director Loan posting but lacks a
-native Loan source row and complete loan terms. Its amounts and classification
-have not been guessed or rewritten; it is included in the Exception Report for
-authorised source-document completion and relinking.
-
-The Exception Report details view supports every canonical Finance source type:
-Expense, Receipt, Payment, Fund Transfer, Loan, Loan Repayment, Capital
-Contribution, Petty Cash, Tax Payment, Journal and Bank Reconciliation. Its
-distinct record count must equal `records_manual_review` in the repair summary.
-Sales and Purchase Invoice exceptions are included as well. Taxed Sales
-Invoices without a Faktur Pajak number remain posted and unchanged, but are
-listed for manual completion because the official tax number cannot be inferred
-from accounting data.
-
-Account Ledger is a General Ledger view and therefore always reads active,
-posted, non-reversed `journal_entry_lines`, including for COA accounts linked to
-bank masters. It reports functional IDR balances so its totals reconcile to
-Trial Balance and the financial statements. Raw `bank_statement_lines` remain
-the bank-book/reconciliation source and never substitute for accounting ledger
-postings. CA Bank Ledger identifies bank control accounts through active
-`bank_accounts.coa_id` mappings rather than an account-code prefix.
 
 ## 12. Approval Workflow
 
@@ -288,44 +253,6 @@ Delegated to [tax_compliance.md](tax_compliance.md). Key points:
   are additive locks, admin override via `reopen_tax_period`.
 - Regenerate Balance Sheet + P&L reports.
 - Reconcile all bank statements up to period-end.
-
-### Audited architecture boundaries
-
-- `Bank Ledger`, `Party Ledger`, `Account Ledger`, Trial Balance, Profit & Loss
-  and Balance Sheet are journal-native accounting reports. Bank Ledger selects
-  the control account through active `bank_accounts.coa_id` and displays active
-  posted functional-IDR journal lines. Imported statement rows remain only in
-  Bank Reconciliation and never substitute for General Ledger postings.
-- Trial Balance and Balance Sheet sum functional journal-line debit/credit
-  values directly. They never multiply stored functional values by a UI USD
-  rate. Balance Sheet derives Current Year Earnings once as revenue less
-  expenses; the UI must not add P&L a second time or apply `ABS()` to equity.
-- PPN, PPh, outstanding-tax, tax-period, Tax Payment, Faktur, and CA report
-  accounting amounts come from active posted tax-control journal lines.
-  Business documents and Faktur rows supply descriptive metadata only.
-- Phase 1 repaired only exact, uniquely linked Cash-on-Hand classifications:
-  161 journal lines were pointed to the related Bank Master's canonical COA.
-  No amount, side, date, journal identity, or currency value changed, and every
-  remaining bank mismatch is a manual exception.
-- Historical USD bank journals cannot all be rendered as USD from journal data
-  alone: 33 of 37 active USD-bank GL lines lack line-level transaction-currency
-  metadata. Thirty-five journals have one authoritative linked statement line;
-  two (`JE2511-0067` and `JE2602-0125`) have neither transaction metadata nor a
-  statement link. Their functional IDR postings are preserved and the missing
-  currency evidence remains a manual-review exception; no exchange rate is
-  inferred.
-- The current schema has no native Owner Withdrawal source master. The existing
-  Bank Reconciliation action therefore delegates atomically to the shared
-  Manual Journal command and shared reconciliation-link command. Creating a new
-  source table or document type would violate the consolidation scope and must
-  be an explicit product/accounting decision.
-- Active `tax_codes` rows do not currently configure
-  `collection_account_id`/`payment_account_id`. Tax-payment RPCs consistently
-  resolve the existing payable COAs by tax type (`2130`, `2131`, `2132`,
-  `2137`, `2138`), and production tax-payment journals reconcile. Moving those
-  mappings into tax-code configuration requires an authorised configuration
-  decision, especially for collection-account semantics; it is not a safe
-  historical repair.
 
 ## 16. Finance RPCs (public, SECURITY DEFINER unless noted)
 

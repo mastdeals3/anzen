@@ -153,15 +153,15 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       const invoicesWithPaidAmount = (invoicesRes.data || []).map((invoice) => ({
         ...invoice,
         paid_amount: paidByInvoice.get(invoice.id) || 0,
-        customers: Array.isArray(invoice.customers) ? invoice.customers[0] || null : invoice.customers || null,
-      })) as unknown as SalesInvoice[];
+        customers: invoice.customers || null,
+      }));
 
       const paymentsWithAllocations = (paymentsRes.data || []).map((voucher) => ({
         ...voucher,
         allocations: allocationsByVoucher.get(voucher.id) || [],
-        customers: Array.isArray(voucher.customers) ? voucher.customers[0] || null : voucher.customers || null,
-        bank_accounts: Array.isArray(voucher.bank_accounts) ? voucher.bank_accounts[0] || null : voucher.bank_accounts || null,
-      })) as unknown as ReceiptVoucher[];
+        customers: voucher.customers || null,
+        bank_accounts: voucher.bank_accounts || null,
+      }));
 
       setInvoices(invoicesWithPaidAmount);
       setPayments(paymentsWithAllocations);

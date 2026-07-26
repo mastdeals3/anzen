@@ -141,7 +141,7 @@ export function UtilityMasterManager({ canManage }: Props) {
     const ok = await showConfirm({
       title: 'Delete utility record?',
       message: `Delete ${r.provider_name}? Utility expenses already booked are NOT affected — this only removes the master record.`,
-      confirmLabel: 'Delete',
+      confirmText: 'Delete',
       variant: 'danger',
     });
     if (!ok) return;

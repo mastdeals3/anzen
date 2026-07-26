@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Search, FileText } from 'lucide-react';
+import { Search, FileText, Filter } from 'lucide-react';
 import { Modal } from '../Modal';
 import { useFinance } from '../../contexts/FinanceContext';
 
@@ -45,7 +45,7 @@ const sourceModuleLabels: Record<string, string> = {
   manual: 'Manual Entry',
 };
 
-export function JournalEntryViewer({ canManage: _canManage }: JournalEntryViewerProps) {
+export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
   const { dateRange: globalDateRange } = useFinance();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -231,7 +231,7 @@ export function JournalEntryViewer({ canManage: _canManage }: JournalEntryViewer
               </div>
               <div>
                 <span className="text-gray-500">Posted:</span>
-                <span className="ml-2">{new Date(selectedEntry.posted_at).toLocaleString('id-ID')}</span>
+                <span className="ml-2">{new Date(selectedEntry.posted_at).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             </div>
 

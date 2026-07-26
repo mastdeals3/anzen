@@ -20,7 +20,7 @@ interface DataTableProps<T> {
   tableClassName?: string;
 }
 
-export function DataTable<T extends object>({
+export function DataTable<T extends Record<string, unknown>>({
   data,
   columns,
   onRowClick,
@@ -42,7 +42,7 @@ export function DataTable<T extends object>({
     setSortConfig({ key, direction });
   };
 
-  const getSearchableValues = (obj: T): string[] => {
+  const getSearchableValues = (obj: Record<string, unknown>): string[] => {
     const values: string[] = [];
 
     const extractValues = (value: unknown) => {
@@ -63,9 +63,6 @@ export function DataTable<T extends object>({
     return values;
   };
 
-  const getItemValue = (item: T, key: string): unknown =>
-    (item as Record<string, unknown>)[key];
-
   const filteredAndSortedData = (() => {
     let result = [...data];
 
@@ -79,18 +76,11 @@ export function DataTable<T extends object>({
 
     if (sortConfig) {
       result.sort((a, b) => {
-        const aValue = getItemValue(a, sortConfig.key);
-        const bValue = getItemValue(b, sortConfig.key);
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
 
-        if (aValue == null && bValue == null) return 0;
-        if (aValue == null) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (bValue == null) return sortConfig.direction === 'asc' ? 1 : -1;
-
-        const aComparable = typeof aValue === 'number' ? aValue : String(aValue);
-        const bComparable = typeof bValue === 'number' ? bValue : String(bValue);
-
-        if (aComparable < bComparable) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aComparable > bComparable) return sortConfig.direction === 'asc' ? 1 : -1;
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
       });
     }
@@ -180,9 +170,7 @@ export function DataTable<T extends object>({
                 >
                   {columns.map((column) => (
                     <td key={column.key} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${column.tdClassName || ''}`}>
-                      {column.render
-                        ? column.render(getItemValue(item, column.key), item)
-                        : String(getItemValue(item, column.key) ?? '')}
+                      {column.render ? column.render(item[column.key], item) : item[column.key]}
                     </td>
                   ))}
                   {actions && (

@@ -119,7 +119,7 @@ export function StaffMasterManager({ canManage }: Props) {
     const ok = await showConfirm({
       title: 'Delete staff record?',
       message: `Delete ${r.full_name}? Expenses already booked against this staff are NOT affected — this only removes the master record.`,
-      confirmLabel: 'Delete',
+      confirmText: 'Delete',
       variant: 'danger',
     });
     if (!ok) return;
