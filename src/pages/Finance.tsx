@@ -272,6 +272,14 @@ function FinanceContent() {
     }
   }, [handleOpenBankReconciliation, setActiveTab]);
 
+  const handleOpenExceptionDocument = useCallback((row: { document_type: string; document_id: string; journal_entry_id?: string | null }) => {
+    if (row.document_type === 'journal' && row.journal_entry_id) {
+      handleOpenJournal(row.journal_entry_id);
+      return;
+    }
+    void handleOpenJournalSource(row.document_type, row.document_id);
+  }, [handleOpenJournal, handleOpenJournalSource]);
+
   const financeMenu = useMemo(() => {
     if (!t || !t.finance) return [];
     return getFinanceMenu(t);
@@ -333,7 +341,7 @@ function FinanceContent() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [setActiveTab]);
 
   useEffect(() => {
     if (!navigationData?.sourceType || !navigationData?.sourceId) return;
@@ -352,7 +360,7 @@ function FinanceContent() {
       setFocusExpenseId(null);
       clearNavigationData();
     }
-  }, [navigationData, clearNavigationData]);
+  }, [navigationData, clearNavigationData, setActiveTab]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -447,7 +455,7 @@ function FinanceContent() {
       case 'integrity_monitor':
         return <IntegrityMonitor />;
       case 'exception_correction':
-        return <FinanceExceptionCorrectionDashboard canManage={canManage} />;
+        return <FinanceExceptionCorrectionDashboard canManage={canManage} onOpenDocument={handleOpenExceptionDocument} />;
       case 'coa':
         return <ChartOfAccountsManager canManage={canManage} />;
       case 'suppliers':
