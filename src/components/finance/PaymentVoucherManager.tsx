@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { Search, ArrowUpCircle, Pencil, Trash2, Eye, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
@@ -64,6 +64,9 @@ interface PaymentVoucher {
   supplier_id: string | null;
   staff_id: string | null;
   payment_method: string;
+  payment_purpose: 'general' | 'salary_advance' | 'salary_advance_settlement';
+  salary_advance_status?: 'not_applicable' | 'outstanding' | 'partially_settled' | 'settled';
+  salary_advance_applied_amount?: number;
   bank_account_id: string | null;
   reference_number: string | null;
   amount: number;
@@ -85,6 +88,11 @@ interface PaymentVoucher {
   // derived
   invoice_currency: string;
   invoice_numbers: { id: string; number: string }[];
+  salary_advance_applications?: Array<{
+    salary_expense_id: string;
+    salary_voucher_number: string | null;
+    applied_amount: number;
+  }>;
 }
 
 interface PrefillInvoice {
@@ -111,6 +119,7 @@ interface PaymentVoucherManagerProps {
   prefillExpenseBill?: PrefillExpenseBill | null;
   onPrefillExpenseBillConsumed?: () => void;
   onViewInvoice?: (invoiceId: string) => void;
+  onViewExpense?: (expenseId: string) => void;
   prefillFromBankReconciliation?: {
     bankAccountId: string; statementLineId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string;
   } | null;
@@ -130,6 +139,8 @@ interface ViewAllocationRow {
   purchase_invoices?: { id: string; invoice_number: string; invoice_date: string } | null;
   finance_expenses?: { id: string; voucher_number: string | null; invoice_number: string | null } | null;
 }
+
+type PaymentPurpose = 'general' | 'salary_advance' | 'salary_advance_settlement';
 
 // Outstanding expense bill for allocation in PV
 interface OutstandingExpenseBillForPV {
@@ -157,7 +168,7 @@ function fmt(amount: number, currency: string) {
 }
 
 
-export function PaymentVoucherManager({ canManage, initialViewVoucherId, onInitialViewHandled, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice, prefillFromBankReconciliation, onBankReconciliationPrefillConsumed }: PaymentVoucherManagerProps) {
+export function PaymentVoucherManager({ canManage, initialViewVoucherId, onInitialViewHandled, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice, onViewExpense, prefillFromBankReconciliation, onBankReconciliationPrefillConsumed }: PaymentVoucherManagerProps) {
   const { t } = useLanguage();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
@@ -189,6 +200,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
     supplier_id: '',
     staff_id: '',
     payment_method: 'bank_transfer',
+    payment_purpose: 'general' as PaymentPurpose,
     bank_account_id: '',
     reference_number: '',
     amount: 0,
@@ -340,6 +352,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       const allocCcyMap: Record<string, string> = {};
       const invoicesMap: Record<string, { id: string; number: string }[]> = {};
       const bankLineMap = new Map<string, BankTransactionLine>();
+      const advanceApplicationsMap: Record<string, PaymentVoucher['salary_advance_applications']> = {};
       if (voucherIds.length > 0) {
         const { data: allocs } = await supabase
           .from('voucher_allocations')
@@ -357,6 +370,25 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
               number: a.purchase_invoices.invoice_number,
             });
           }
+        }
+
+        const { data: advanceApplications } = await supabase
+          .from('salary_advance_applications')
+          .select('advance_payment_voucher_id, salary_expense_id, applied_amount, finance_expenses(voucher_number)')
+          .in('advance_payment_voucher_id', voucherIds);
+        for (const application of (advanceApplications || []) as Array<{
+          advance_payment_voucher_id: string;
+          salary_expense_id: string;
+          applied_amount: number;
+          finance_expenses?: { voucher_number: string | null } | null;
+        }>) {
+          const rows = advanceApplicationsMap[application.advance_payment_voucher_id] || [];
+          rows.push({
+            salary_expense_id: application.salary_expense_id,
+            salary_voucher_number: application.finance_expenses?.voucher_number || null,
+            applied_amount: application.applied_amount,
+          });
+          advanceApplicationsMap[application.advance_payment_voucher_id] = rows;
         }
       }
 
@@ -390,6 +422,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
           ...v,
           invoice_currency: invCcy,
           invoice_numbers: invoicesMap[v.id] || [],
+          salary_advance_applications: advanceApplicationsMap[v.id] || [],
           bank_statement_line_id: bankLine?.id || null,
           bank_statement_line: bankLine,
         };
@@ -514,6 +547,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       supplier_id: '',
       staff_id: '',
       payment_method: 'bank_transfer',
+      payment_purpose: 'general',
       bank_account_id: '',
       reference_number: '',
       amount: 0,
@@ -593,6 +627,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       supplier_id: v.supplier_id || '',
       staff_id: v.staff_id || '',
       payment_method: v.payment_method,
+      payment_purpose: v.payment_purpose || 'general',
       bank_account_id: v.bank_account_id || '',
       reference_number: v.reference_number || '',
       amount: v.amount,
@@ -789,6 +824,10 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       alert('Advance Adjustment is only available for staff payees.');
       return;
     }
+    if (formData.payment_purpose === 'salary_advance' && !isStaffPayee) {
+      alert('Salary Advance requires a staff payee.');
+      return;
+    }
 
     // ── Currency / bank account guard ──────────────────────────────
     if (currencyMismatchWithoutRate) {
@@ -815,6 +854,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
         supplier_id: isStaffPayee ? null : formData.supplier_id,
         staff_id: isStaffPayee ? formData.staff_id : null,
         payment_method: formData.payment_method,
+        payment_purpose: formData.payment_purpose,
         bank_account_id: formData.bank_account_id || null,
         reference_number: formData.reference_number || null,
         amount: formData.amount,
@@ -935,6 +975,11 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                 {v.payment_method.replace(/_/g, ' ')}
               </span>
             ) },
+            { header: 'Purpose',    cell: (v) => v.payment_purpose === 'salary_advance' ? (
+              <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-semibold">Salary Advance</span>
+            ) : v.payment_purpose === 'salary_advance_settlement' ? (
+              <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded text-[10px] font-semibold">Advance Settlement</span>
+            ) : <span className="text-gray-400">—</span> },
             { header: 'Invoice',    cell: (v) => {
               const invs = v.invoice_numbers || [];
               if (invs.length === 0) return <span className="text-gray-400">—</span>;
@@ -1045,6 +1090,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                     payee_type: payeeType,
                     supplier_id: '',
                     staff_id: '',
+                    payment_purpose: payeeType === 'staff' ? formData.payment_purpose : 'general',
                     payment_method: formData.payment_method === 'advance_adjustment' ? 'bank_transfer' : formData.payment_method,
                   });
                   setExpenseBillAllocations([]);
@@ -1087,6 +1133,30 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
               </select>
             </SapField>
           </SapRow>
+
+          {formData.payee_type === 'staff' && (
+            <SapRow>
+              <SapField label="Payment Purpose" required span={4}>
+                <select
+                  value={formData.payment_purpose}
+                  onChange={(e) => setFormData({ ...formData, payment_purpose: e.target.value as PaymentPurpose })}
+                  className={SAP_INPUT}
+                  disabled={!!editingVoucher?.is_posted}
+                >
+                  <option value="general">General Staff Payment</option>
+                  <option value="salary_advance">Salary Advance</option>
+                  {formData.payment_purpose === 'salary_advance_settlement' && (
+                    <option value="salary_advance_settlement">Salary Advance Settlement</option>
+                  )}
+                </select>
+              </SapField>
+              {formData.payment_purpose === 'salary_advance' && (
+                <div className="col-span-8 flex items-center rounded border border-amber-200 bg-amber-50 px-3 text-xs text-amber-800">
+                  This posted payment will remain as an outstanding Salary Advance for the selected staff member.
+                </div>
+              )}
+            </SapRow>
+          )}
 
           {/* Row B: Amount · Bank Account · Reference (bank account/ref only for
               methods that actually move money through a bank) */}
@@ -1512,13 +1582,19 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <div className="text-xs text-gray-500 mb-0.5">Supplier</div>
-                <div className="font-medium text-gray-900">{viewingVoucher.suppliers?.company_name || '—'}</div>
+                <div className="text-xs text-gray-500 mb-0.5">Payee</div>
+                <div className="font-medium text-gray-900">{viewingVoucher.suppliers?.company_name || viewingVoucher.finance_staff_master?.full_name || '—'}</div>
               </div>
               <div>
                 <div className="text-xs text-gray-500 mb-0.5">Payment Method</div>
                 <div className="font-medium text-gray-900 capitalize">{viewingVoucher.payment_method.replace(/_/g, ' ')}</div>
               </div>
+              {viewingVoucher.payment_purpose !== 'general' && (
+                <div>
+                  <div className="text-xs text-gray-500 mb-0.5">Purpose</div>
+                  <div className="font-medium text-amber-800 capitalize">{viewingVoucher.payment_purpose.replace(/_/g, ' ')}</div>
+                </div>
+              )}
               <div>
                 <div className="text-xs text-gray-500 mb-0.5">Bank Account</div>
                 <div className="font-medium text-gray-900">
@@ -1613,7 +1689,14 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                       {viewAllocations.map((a, i) => (
                         <tr key={i} className="border-t border-gray-100">
                           <td className="px-3 py-2">
-                            {onViewInvoice && a.invoice_id ? (
+                            {a.is_expense_bill && onViewExpense && a.expense_id ? (
+                              <button
+                                onClick={() => { setViewingVoucher(null); onViewExpense(a.expense_id!); }}
+                                className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                              >
+                                {a.invoice_number}
+                              </button>
+                            ) : onViewInvoice && a.invoice_id && !a.is_expense_bill ? (
                               <button
                                 onClick={() => { setViewingVoucher(null); onViewInvoice(a.invoice_id); }}
                                 className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
@@ -1633,6 +1716,33 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {viewingVoucher.payment_purpose === 'salary_advance' && (
+              <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">Salary Advance Status</div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                  <span className="font-medium capitalize text-amber-900">{(viewingVoucher.salary_advance_status || 'outstanding').replace(/_/g, ' ')}</span>
+                  <span>Applied: <span className="font-mono font-semibold">{fmt(viewingVoucher.salary_advance_applied_amount || 0, viewingVoucher.payment_currency || 'IDR')}</span></span>
+                  <span>Outstanding: <span className="font-mono font-semibold">{fmt(Math.max((viewingVoucher.amount || 0) - (viewingVoucher.salary_advance_applied_amount || 0), 0), viewingVoucher.payment_currency || 'IDR')}</span></span>
+                </div>
+                {(viewingVoucher.salary_advance_applications || []).length > 0 && (
+                  <div className="mt-2 border-t border-amber-200 pt-2 text-xs text-amber-900">
+                    {(viewingVoucher.salary_advance_applications || []).map((application) => (
+                      <div key={`${application.salary_expense_id}:${application.applied_amount}`} className="flex justify-between gap-3 py-0.5">
+                        {onViewExpense ? (
+                          <button type="button" onClick={() => { setViewingVoucher(null); onViewExpense(application.salary_expense_id); }} className="text-blue-700 hover:underline">
+                            Salary Expense {application.salary_voucher_number || application.salary_expense_id}
+                          </button>
+                        ) : (
+                          <span>Applied to Salary Expense {application.salary_voucher_number || application.salary_expense_id}</span>
+                        )}
+                        <span className="font-mono">{fmt(application.applied_amount, viewingVoucher.payment_currency || 'IDR')}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

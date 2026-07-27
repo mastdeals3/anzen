@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 
-export const SAP_INPUT = 'w-full px-2.5 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:border-blue-400';
+export const SAP_INPUT = 'w-full h-8 px-2 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500';
 
 interface SapRowProps {
   children: ReactNode;
@@ -25,7 +25,7 @@ interface SapFieldProps {
 export function SapField({ label, children, span = 6, required, right }: SapFieldProps) {
   return (
     <div className={`col-span-${span}`}>
-      <label className="block text-xs font-medium text-gray-700 mb-0.5 flex items-center justify-between">
+      <label className="block text-[11px] font-medium text-gray-600 mb-0.5 flex items-center justify-between">
         <span>
           {label}
           {required && <span className="text-red-500 ml-0.5">*</span>}

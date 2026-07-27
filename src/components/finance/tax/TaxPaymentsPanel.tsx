@@ -5,7 +5,7 @@ import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { TaxAttachments } from './TaxAttachments';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
-import { Modal } from '../../Modal';
+import { FinanceModal as Modal } from '../FinanceModal';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
 
 interface Period {

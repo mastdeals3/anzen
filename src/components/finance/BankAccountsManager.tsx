@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DataTable } from '../DataTable';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { formatCurrency } from '../../utils/currency';
 import { Plus, Edit } from 'lucide-react';

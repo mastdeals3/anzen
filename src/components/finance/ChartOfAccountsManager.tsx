@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Edit, Trash2, ChevronRight, ChevronDown, Search } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 
 interface Account {

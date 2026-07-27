@@ -41,6 +41,8 @@ interface FinanceModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   /** Pass a Tailwind max-w-* to override the size preset. */
   maxWidth?: string;
+  /** Compatibility prop for legacy Finance dialogs; standard body padding is retained. */
+  noPadding?: boolean;
   children: ReactNode;
 }
 

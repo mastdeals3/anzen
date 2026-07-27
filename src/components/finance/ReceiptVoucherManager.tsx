@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { Eye, Search, ArrowDownCircle, CreditCard as Edit2, Trash2, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';

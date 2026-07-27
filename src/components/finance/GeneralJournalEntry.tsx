@@ -8,7 +8,7 @@ import {
   ChevronDown, X, Loader2, Save, RotateCcw
 } from 'lucide-react';
 import { showToast } from '../ToastNotification';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { parseIndonesianNumber } from '../../utils/currency';
 

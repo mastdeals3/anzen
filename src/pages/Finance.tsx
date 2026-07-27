@@ -361,7 +361,7 @@ function FinanceContent() {
       case 'receipt':
         return <ReceiptVoucherManager canManage={canManage} initialViewVoucherId={focusReceiptId} onInitialViewHandled={() => setFocusReceiptId(null)} />;
       case 'payment':
-        return <PaymentVoucherManager canManage={canManage} initialViewVoucherId={focusPaymentId} onInitialViewHandled={() => setFocusPaymentId(null)} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} prefillExpenseBill={payExpenseBill} onPrefillExpenseBillConsumed={() => setPayExpenseBill(null)} onViewInvoice={() => setActiveTab('purchase')} prefillFromBankReconciliation={paymentReconPrefill} onBankReconciliationPrefillConsumed={() => setPaymentReconPrefill(null)} />;
+        return <PaymentVoucherManager canManage={canManage} initialViewVoucherId={focusPaymentId} onInitialViewHandled={() => setFocusPaymentId(null)} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} prefillExpenseBill={payExpenseBill} onPrefillExpenseBillConsumed={() => setPayExpenseBill(null)} onViewInvoice={() => setActiveTab('purchase')} onViewExpense={(expenseId) => { setFocusExpenseId(expenseId); setActiveTab('expenses'); }} prefillFromBankReconciliation={paymentReconPrefill} onBankReconciliationPrefillConsumed={() => setPaymentReconPrefill(null)} />;
       case 'journal':
         return <GeneralJournalEntry
           canManage={canManage}
@@ -387,6 +387,7 @@ function FinanceContent() {
             initialViewExpenseId={focusExpenseId}
             onInitialViewHandled={() => setFocusExpenseId(null)}
             onSettleBill={handleSettleExpenseBill}
+            onViewPaymentVoucher={(paymentVoucherId) => { setFocusPaymentId(paymentVoucherId); setActiveTab('payment'); }}
           />
         );
       case 'petty_cash':

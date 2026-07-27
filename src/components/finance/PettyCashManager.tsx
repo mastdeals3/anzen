@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, ArrowDownCircle, ArrowUpCircle, Upload, X, FileText, Image, Eye, CreditCard as Edit2, Trash2, ExternalLink, Download, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';

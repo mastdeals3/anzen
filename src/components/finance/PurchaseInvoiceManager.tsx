@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, CreditCard as Edit, Trash2, Search, FileText, Eye, X, AlertCircle, CreditCard } from 'lucide-react';
 import { showConfirm } from '../ConfirmDialog';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapField, SAP_INPUT } from './SapLayout';

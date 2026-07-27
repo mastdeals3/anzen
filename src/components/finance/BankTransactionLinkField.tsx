@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Landmark, Link2, Search, Unlink } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import {
   type BankTransactionLine,
   loadUnmatchedDebitBankTransactions,

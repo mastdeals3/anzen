@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DataTable } from '../DataTable';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { Plus, CreditCard as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
 import { formatDate } from '../../utils/dateFormat';
 import { EXPENSE_CATEGORY_LABELS } from '../../utils/taxCalculations';

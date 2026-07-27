@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal } from './FinanceModal';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
@@ -221,9 +221,25 @@ export function StaffMasterManager({ canManage }: Props) {
 
       {/* Modal */}
       {modalOpen && (
-        <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); reset(); }}
-          title={editing ? `Edit Staff: ${editing.full_name}` : 'New Staff'} maxWidth="max-w-lg">
-          <form onSubmit={save} className="flex flex-col gap-1.5">
+        <FinanceModal
+          isOpen={modalOpen}
+          onClose={() => { setModalOpen(false); reset(); }}
+          title={editing ? `Edit Staff: ${editing.full_name}` : 'New Staff'}
+          size="md"
+          footer={(
+            <>
+              <button type="button" onClick={() => { setModalOpen(false); reset(); }}
+                className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">
+                Cancel
+              </button>
+              <button type="submit" form="staff-master-form"
+                className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
+                {editing ? 'Update' : 'Create'}
+              </button>
+            </>
+          )}
+        >
+          <form id="staff-master-form" onSubmit={save} className="flex flex-col gap-2">
             <SapRow>
               <SapField label="Full Name" required span={8}>
                 <input required value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })}
@@ -269,16 +285,8 @@ export function StaffMasterManager({ canManage }: Props) {
                   className={SAP_INPUT} />
               </SapField>
             </SapRow>
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
-              <button type="button" onClick={() => { setModalOpen(false); reset(); }}
-                className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
-              <button type="submit"
-                className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
-                {editing ? 'Update' : 'Create'}
-              </button>
-            </div>
           </form>
-        </Modal>
+        </FinanceModal>
       )}
     </div>
   );

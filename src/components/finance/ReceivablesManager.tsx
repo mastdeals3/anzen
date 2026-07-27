@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DataTable } from '../DataTable';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { TrendingUp, RefreshCw, BarChart2 } from 'lucide-react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { formatDate } from '../../utils/dateFormat';

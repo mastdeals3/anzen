@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Pencil, Trash2, Search, Zap } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';

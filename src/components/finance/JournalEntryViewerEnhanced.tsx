@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { Search, FileText, Edit, Trash2 } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { formatCurrency } from '../../utils/currency';

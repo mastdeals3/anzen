@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clipboard, ClipboardCheck, Lock, RotateCcw, UserPlus, AlertCircle, Banknote, Link2 } from 'lucide-react';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinanceModal } from './FinanceModal';
@@ -242,9 +242,10 @@ interface ExpenseManagerProps {
   initialViewExpenseId?: string | null;
   onInitialViewHandled?: () => void;
   onSettleBill?: (bill: { id: string; supplier_id: string | null; staff_id: string | null; balance_amount: number }) => void;
+  onViewPaymentVoucher?: (paymentVoucherId: string) => void;
 }
 
-export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewHandled, onSettleBill }: ExpenseManagerProps) {
+export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewHandled, onSettleBill, onViewPaymentVoucher }: ExpenseManagerProps) {
   const { profile } = useAuth();
   const { t } = useLanguage();
   const isAdmin = profile?.role === 'admin';
@@ -276,6 +277,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<FinanceExpense | null>(null);
   const [viewingExpense, setViewingExpense] = useState<FinanceExpense | null>(null);
+  const [salaryAdvanceApplications, setSalaryAdvanceApplications] = useState<Array<{
+    application_id: string;
+    advance_payment_voucher_id: string;
+    advance_voucher_number: string | null;
+    settlement_payment_voucher_id: string;
+    settlement_voucher_number: string | null;
+    applied_amount: number;
+    applied_at: string;
+  }>>([]);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [linkedDCQuickView, setLinkedDCQuickView] = useState<{ challan: any; items: any[] } | null>(null);
   const [linkedDCQuickViewLoading, setLinkedDCQuickViewLoading] = useState(false);
@@ -302,6 +312,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [staffRoster, setStaffRoster] = useState<Array<{ id: string; full_name: string; department: string | null; default_gl_code: string | null }>>([]);
   const [utilityRoster, setUtilityRoster] = useState<Array<{ id: string; provider_name: string; utility_type: string; supplier_id: string | null; default_gl_code: string | null }>>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>('');
+  const [salaryAdvances, setSalaryAdvances] = useState<Array<{
+    advance_id: string;
+    voucher_number: string;
+    voucher_date: string;
+    amount: number;
+    applied_amount: number;
+    available_amount: number;
+  }>>([]);
+  const [applySalaryAdvance, setApplySalaryAdvance] = useState(true);
   const [selectedUtilityId, setSelectedUtilityId] = useState<string>('');
   const [periodLabel, setPeriodLabel] = useState<string>('');   // Salary Month / Billing Month
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
@@ -415,6 +434,44 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   useEffect(() => {
     loadData();
   }, [dateRange]);
+
+  useEffect(() => {
+    if (formData.expense_category !== 'salary' || !selectedStaffId) {
+      setSalaryAdvances([]);
+      setApplySalaryAdvance(true);
+      return;
+    }
+    void supabase.rpc('get_outstanding_salary_advances', {
+      p_staff_id: selectedStaffId,
+      p_as_of_date: formData.expense_date,
+    }).then(({ data, error }) => {
+      if (error) {
+        // The feature may be awaiting its migration during a rolling deploy.
+        console.error('Unable to load salary advances:', error.message);
+        setSalaryAdvances([]);
+        return;
+      }
+      setSalaryAdvances((data || []) as typeof salaryAdvances);
+      setApplySalaryAdvance(true);
+    });
+  }, [formData.expense_category, formData.expense_date, selectedStaffId]);
+
+  useEffect(() => {
+    if (!viewingExpense || viewingExpense.expense_category !== 'salary') {
+      setSalaryAdvanceApplications([]);
+      return;
+    }
+    void supabase.rpc('get_salary_advance_applications', {
+      p_salary_expense_id: viewingExpense.id,
+    }).then(({ data, error }) => {
+      if (error) {
+        console.error('Unable to load salary advance applications:', error.message);
+        setSalaryAdvanceApplications([]);
+        return;
+      }
+      setSalaryAdvanceApplications((data || []) as typeof salaryAdvanceApplications);
+    });
+  }, [viewingExpense]);
 
   // Retry the Staff / Utility load-back after the rosters arrive.
   // handleEdit runs immediately on click; if the rosters were still loading
@@ -970,6 +1027,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
         await saveFinanceExpense(editingExpense.id, expenseData);
 
+        if (formData.expense_category === 'salary' && selectedStaffId && applySalaryAdvance) {
+          const { error: advanceError } = await supabase.rpc('apply_salary_advances_to_expense', {
+            p_salary_expense_id: editingExpense.id,
+            p_apply: true,
+          });
+          if (advanceError) throw advanceError;
+        }
+
         console.log('Update successful! Fetching updated data...');
 
         // Fetch the updated expense with relations
@@ -1071,6 +1136,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         console.log('=== CREATING NEW EXPENSE ===');
 
         const newExpenseId = await saveFinanceExpense(null, { ...expenseData, created_by: user.id });
+        if (formData.expense_category === 'salary' && selectedStaffId && applySalaryAdvance) {
+          const { error: advanceError } = await supabase.rpc('apply_salary_advances_to_expense', {
+            p_salary_expense_id: newExpenseId,
+            p_apply: true,
+          });
+          if (advanceError) throw advanceError;
+        }
         const selectClause = `
             *,
             batches (batch_number),
@@ -1460,6 +1532,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     setSelectedDocType('');
     setBrokerItems([]);
     setSelectedStaffId('');
+    setSalaryAdvances([]);
+    setApplySalaryAdvance(true);
     setSelectedUtilityId('');
     setPeriodLabel('');
     setFormData({
@@ -2522,6 +2596,41 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     )}
                   </SapRow>
 
+                  {rules.staff === 'show' && formData.expense_category === 'salary' && selectedStaffId && salaryAdvances.length > 0 && (
+                    <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-semibold text-amber-900">Outstanding Salary Advance</div>
+                          <div className="text-[10px] text-amber-700">Applied oldest first. Any balance beyond this salary remains outstanding.</div>
+                        </div>
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-amber-900">
+                          <input
+                            type="checkbox"
+                            checked={applySalaryAdvance}
+                            onChange={(e) => setApplySalaryAdvance(e.target.checked)}
+                            className="rounded border-amber-400 text-amber-600"
+                          />
+                          Apply Advance
+                        </label>
+                      </div>
+                      <div className="mt-2 space-y-1 text-xs">
+                        {salaryAdvances.map((advance) => (
+                          <div key={advance.advance_id} className="flex items-center justify-between border-t border-amber-100 pt-1 text-amber-900">
+                            <span>{advance.voucher_number} · {new Date(advance.voucher_date).toLocaleDateString('en-GB')}</span>
+                            <span className="font-mono">Available {formatCurrency(advance.available_amount, expenseFormCurrency)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {applySalaryAdvance && (
+                        <div className="mt-2 grid grid-cols-3 gap-2 border-t border-amber-200 pt-2 text-xs">
+                          <div><span className="text-amber-700">Gross Salary</span><div className="font-mono font-semibold text-amber-950">{formatCurrency(formData.amount, expenseFormCurrency)}</div></div>
+                          <div><span className="text-amber-700">Less Salary Advance</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(Math.min(formData.amount || 0, salaryAdvances.reduce((sum, item) => sum + item.available_amount, 0)), expenseFormCurrency)}</div></div>
+                          <div><span className="text-amber-700">Net Payable</span><div className="font-mono font-bold text-emerald-800">{formatCurrency(Math.max((formData.amount || 0) - Math.min(formData.amount || 0, salaryAdvances.reduce((sum, item) => sum + item.available_amount, 0)), 0), expenseFormCurrency)}</div></div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* ── Row C: Invoice Amount · Invoice DPP (broker) · PPN · PPh · Stamp · Bank Chg ── */}
                   <SapRow>
                     <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={4}>
@@ -3426,6 +3535,27 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 )}
               </div>
             </div>
+
+            {viewingExpense.expense_category === 'salary' && salaryAdvanceApplications.length > 0 && (
+              <div className="border border-amber-200 rounded-lg bg-amber-50 overflow-hidden">
+                <div className="px-3 py-1.5 border-b border-amber-200 text-[10px] font-semibold text-amber-800 uppercase tracking-wide">Salary Advance Applications</div>
+                <div className="px-3 py-2 space-y-1 text-xs text-amber-950">
+                  {salaryAdvanceApplications.map((application) => (
+                    <div key={application.application_id} className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-100 pb-1 last:border-0 last:pb-0">
+                      <span>
+                        Advance {application.advance_voucher_number || application.advance_payment_voucher_id} → Settlement {application.settlement_voucher_number || application.settlement_payment_voucher_id}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono font-semibold">{fmtMoney(application.applied_amount)}</span>
+                        {onViewPaymentVoucher && (
+                          <button type="button" onClick={() => onViewPaymentVoucher(application.settlement_payment_voucher_id)} className="text-blue-700 hover:underline">View Payment</button>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* ── Tax breakdown (only if non-zero) ── */}
             {(() => {

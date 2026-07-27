@@ -42,6 +42,7 @@ export interface PaymentPayload {
   supplier_id?: string | null;
   staff_id?: string | null;
   payment_method: string;
+  payment_purpose?: 'general' | 'salary_advance' | 'salary_advance_settlement';
   bank_account_id?: string | null;
   reference_number?: string | null;
   amount: number;
@@ -132,10 +133,11 @@ export const savePaymentVoucher = (
   voucherId: string | null,
   payload: PaymentPayload,
   allocations: Record<string, unknown>[],
-) => rpc<{ id: string; voucher_number: string }>('save_payment_voucher_command', {
+) => rpc<{ id: string; voucher_number: string }>('save_payment_voucher_with_purpose', {
   p_voucher_id: voucherId,
   p_payload: payload,
   p_allocations: allocations,
+  p_payment_purpose: payload.payment_purpose || 'general',
 });
 
 export const saveFinanceJournal = (

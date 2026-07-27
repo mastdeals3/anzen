@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Upload, RefreshCw, CheckCircle2, AlertCircle, XCircle, Plus, Calendar, Landmark, FileText, CreditCard as Edit } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Modal } from '../Modal';
+import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useLanguage } from '../../contexts/LanguageContext';
