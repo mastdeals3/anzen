@@ -79,6 +79,8 @@ export function FinanceExceptionCorrectionDashboard({ canManage }: {
   const [taxCodes, setTaxCodes] = useState<TaxOption[]>([]);
   const [suppliers, setSuppliers] = useState<PartyOption[]>([]);
   const [customers, setCustomers] = useState<PartyOption[]>([]);
+  const [batchRepairAttempted, setBatchRepairAttempted] = useState(false);
+  const [repairSummary, setRepairSummary] = useState<{ total_scanned: number; automatically_repaired: number; skipped: number } | null>(null);
 
   const filter = useCallback((key: string) => searchParams.get(key) || '', [searchParams]);
   const setFilter = useCallback((key: string, value: string) => {
@@ -109,6 +111,16 @@ export function FinanceExceptionCorrectionDashboard({ canManage }: {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!canManage || batchRepairAttempted) return;
+    setBatchRepairAttempted(true);
+    void supabase.rpc('repair_all_posted_fund_transfers').then(({ data, error: repairError }) => {
+      if (repairError) { setError(repairError.message); return; }
+      setRepairSummary(data as { total_scanned: number; automatically_repaired: number; skipped: number });
+      return load();
+    });
+  }, [batchRepairAttempted, canManage, load]);
 
   const filteredRows = useMemo(() => {
     const search = filter('search').toLowerCase();
@@ -163,6 +175,7 @@ export function FinanceExceptionCorrectionDashboard({ canManage }: {
       <div className="flex items-center gap-2"><span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">{filteredRows.length === rows.length ? rows.length : `${filteredRows.length} of ${rows.length}`} unresolved</span><button type="button" onClick={() => void load()} className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><RefreshCw className="h-3.5 w-3.5" />Refresh</button></div>
     </div>
     {error && <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+    {repairSummary && <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">Fund Transfer audit: {repairSummary.total_scanned} scanned · {repairSummary.automatically_repaired} repaired · {repairSummary.skipped} skipped for manual review.</div>}
     <div className="rounded-lg border border-gray-200 bg-gray-50 p-2">
       <div className="mb-2 flex items-center justify-between"><span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700"><SlidersHorizontal className="h-3.5 w-3.5" />Filters</span><button type="button" onClick={() => setSearchParams(new URLSearchParams(), { replace: true })} className="text-xs font-medium text-blue-600 hover:underline">Clear all</button></div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
@@ -192,7 +205,7 @@ export function FinanceExceptionCorrectionDashboard({ canManage }: {
           <td className="px-2 py-2 align-top">{row.date || '—'}</td><td className="px-2 py-2 align-top font-medium">{row.voucher_number || '—'}</td><td className="px-2 py-2 align-top">{row.journal_number || '—'}</td><td className="px-2 py-2 text-right align-top">{formatAmount(row.amount, row.currency)}</td><td className="px-2 py-2 align-top font-medium">{row.bank_alias || row.bank || '—'}</td><td className="px-2 py-2 align-top">{row.from_bank_alias || '—'}</td><td className="px-2 py-2 align-top">{row.to_bank_alias || '—'}</td><td className="px-2 py-2 align-top">{row.customer_supplier || '—'}</td><td className="px-2 py-2 align-top">{humanize(row.document_type)}</td><td className="px-2 py-2 align-top">{humanize(row.current_category)}</td><td className="px-2 py-2 align-top">{row.current_gl_account || '—'}</td><td className="max-w-80 px-2 py-2 align-top">{row.problem}</td><td className="px-2 py-2 align-top"><span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 font-medium text-amber-800"><AlertTriangle className="h-3 w-3" />{humanize(row.status)}</span></td><td className="px-2 py-2 align-top"><button type="button" onClick={() => toggle(row)} className="whitespace-nowrap rounded-md bg-blue-600 px-2.5 py-1.5 font-semibold text-white hover:bg-blue-700">{isExpanded ? 'Close' : 'Open correction'}</button></td>
         </tr>
         {isExpanded && <tr key={`${row.row_id}:details`} className="bg-gray-50/70"><td colSpan={15} className="px-4 py-3"><div className="mb-3 grid gap-2 rounded-md border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">{[['Voucher Number',row.voucher_number],['Journal Number',row.journal_number],['Date',row.date],['Amount',formatAmount(row.amount,row.currency)],['Currency',row.currency],['Bank Alias',row.bank_alias || row.bank],['Current GL',row.current_gl_account],['Current Category',humanize(row.current_category)],['Current Subcategory',humanize(row.current_subcategory)],['Source Document',row.current_source_document]].map(([label,value]) => <div key={label}><div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</div><div className="mt-0.5 break-words text-xs font-medium text-gray-800">{value || '—'}</div></div>)}</div><div className="mb-3 grid gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 md:grid-cols-3"><div><span className="font-semibold">Business problem:</span> {row.problem}</div><div><span className="font-semibold">Why it needs review:</span> {row.why_not_automatic}</div><div><span className="font-semibold">Recommended action:</span> {row.recommended_action}</div></div><div className="grid gap-3 rounded-md border border-blue-200 bg-blue-50/40 p-3 sm:grid-cols-2 lg:grid-cols-4">
-          {['expense','petty_cash','capital_contribution'].includes(row.document_type) && needsCategory && <label className="text-xs">Expense Category<select value={edit.expense_category || ''} onChange={event => updateEdit(row,'expense_category',event.target.value)} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage}><option value="">No change</option><option value="other">Other</option><option value="utilities">Utilities</option><option value="fixed_asset">Fixed Asset</option></select></label>}
+          {['expense','petty_cash','capital_contribution'].includes(row.document_type) && needsCategory && <label className="text-xs">Expense Category<select value={edit.expense_category || ''} onChange={event => updateEdit(row,'expense_category',event.target.value)} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage}><option value="">No change</option><option value="other">Other</option><option value="utilities">Utilities</option><option value="fixed_asset">Fixed Asset</option><option value="non_permanent_employee_fee">Non-Permanent Employee Fee (PPh 21)</option></select></label>}
           {row.document_type === 'expense' && needsCategory && <label className="text-xs">Expense Subcategory<select value={edit.expense_subcategory || ''} onChange={event => updateEdit(row,'expense_subcategory',event.target.value)} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage}><option value="">No change</option><option value={row.current_subcategory || ''}>{humanize(row.current_subcategory)}</option></select></label>}
           {needsSupplier && <label className="text-xs">Supplier<select value={edit.supplier_id || ''} onChange={event => updateEdit(row,'supplier_id',event.target.value)} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage}><option value="">No change</option>{suppliers.map(item => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></label>}
           {needsCustomer && <label className="text-xs">Customer<select value={edit.customer_id || ''} onChange={event => updateEdit(row,'customer_id',event.target.value)} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage}><option value="">No change</option>{customers.map(item => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></label>}

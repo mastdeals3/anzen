@@ -193,6 +193,7 @@ interface Supplier {
   default_expense_category: string | null;
   default_pph_code_id: string | null;
   tax_preference: 'none' | 'ppn_only' | 'ppn_pph' | 'pph_only' | null;
+  supplier_type?: string | null;
 }
 
 interface Batch {
@@ -686,7 +687,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       if (suppliers.length === 0) {
         const { data: sup } = await supabase
           .from('suppliers')
-          .select('id, company_name, pkp_status, payment_terms_days, default_expense_category, default_pph_code_id, tax_preference')
+          .select('id, company_name, pkp_status, payment_terms_days, default_expense_category, default_pph_code_id, tax_preference, supplier_type')
           .order('company_name');
         setSuppliers((sup as Supplier[]) || []);
       }
@@ -755,6 +756,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       // respective master row to be picked. Supplier categories keep the
       // existing behaviour (supplier is optional at the DB level).
       const preRules = getCategoryFieldRules(formData.expense_category);
+      if (formData.expense_category === 'non_permanent_employee_fee' && selectedSupplier
+          && !['employee', 'non-permanent individual', 'freelancer', 'casual worker', 'honorarium recipient']
+            .includes((selectedSupplier.supplier_type || '').trim().toLowerCase())) {
+        alert('Non-Permanent Employee Fee is intended for an individual subject to PPh 21. Select an Employee, Freelancer, Casual Worker, or Honorarium supplier.');
+        return;
+      }
       if (preRules.staff === 'show' && !selectedStaffId) {
         alert('Please pick a Staff member for this salary / staff expense.');
         return;
@@ -1540,7 +1547,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           country: 'Indonesia',
           is_active: true,
         }])
-        .select('id, company_name, pkp_status, payment_terms_days, default_expense_category, default_pph_code_id, tax_preference')
+        .select('id, company_name, pkp_status, payment_terms_days, default_expense_category, default_pph_code_id, tax_preference, supplier_type')
         .single();
       if (error) throw error;
       const sup = newSupplier as Supplier;
@@ -2400,7 +2407,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             if (cats.includes(cat)) { dt = docType; break; }
                           }
                           setSelectedDocType(dt);
-                          setFormData(prev => ({ ...prev, expense_category: cat }));
+                          setFormData(prev => ({
+                            ...prev,
+                            expense_category: cat,
+                            ...(cat === 'non_permanent_employee_fee'
+                              ? { pph_code_id: taxCodes.find(tc => tc.code === 'PPH21')?.id || prev.pph_code_id }
+                              : {}),
+                          }));
                         }}
                         options={(Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]).flatMap(([docType, cats]) =>
                           cats.map(cat => {

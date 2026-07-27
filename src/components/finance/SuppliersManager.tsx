@@ -53,6 +53,7 @@ const DEFAULT_CATEGORY_OPTIONS = [
   { value: 'salary',                     label: 'Salary' },
   { value: 'staff_overtime',             label: 'Staff Overtime' },
   { value: 'staff_welfare',              label: 'Staff Welfare' },
+  { value: 'non_permanent_employee_fee', label: 'Non-Permanent Employee Fee (PPh 21)' },
   { value: 'travel_conveyance',          label: 'Travel & Conveyance' },
   { value: 'delivery_sales',             label: 'Delivery (Sales)' },
   { value: 'loading_sales',              label: 'Loading (Sales)' },
