@@ -4,7 +4,7 @@ import { Plus, ArrowDownCircle, ArrowUpCircle, Upload, X, FileText, Image, Eye, 
 import { FinanceModal as Modal } from './FinanceModal';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
-import { FinanceActionButton } from './FinanceUI';
+import { FinanceActionButton, FinanceBadge } from './FinanceUI';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -1472,34 +1472,16 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {tx.fund_transfer_id ? (
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold border rounded-full ${
-                          tx.fund_transfer_status === 'posted'
-                            ? 'text-green-700 bg-green-50 border-green-200'
-                            : tx.fund_transfer_status === 'pending'
-                              ? 'text-yellow-700 bg-yellow-50 border-yellow-200'
-                              : 'text-gray-600 bg-gray-100 border-gray-200'
-                        }`}>
-                          {tx.fund_transfer_status === 'posted' ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                          {tx.fund_transfer_status === 'posted'
-                            ? 'Posted'
-                            : tx.fund_transfer_status === 'pending'
-                              ? 'Pending'
-                              : tx.fund_transfer_status === 'reversed'
-                                ? 'Reversed'
-                                : 'Cancelled'}
-                        </span>
+                        <FinanceBadge status={tx.fund_transfer_status === 'posted' ? 'posted' : tx.fund_transfer_status === 'pending' ? 'pending' : tx.fund_transfer_status === 'reversed' ? 'reversed' : 'cancelled'}>
+                          {tx.fund_transfer_status === 'posted' ? <CheckCircle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                          {tx.fund_transfer_status === 'posted' ? 'Posted' : tx.fund_transfer_status === 'pending' ? 'Pending' : tx.fund_transfer_status === 'reversed' ? 'Reversed' : 'Cancelled'}
+                        </FinanceBadge>
                       ) : tx.approval_status === 'approved' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full">
-                          <CheckCircle className="w-3 h-3" />Approved
-                        </span>
+                        <FinanceBadge status="approved"><CheckCircle className="h-3 w-3" />Approved</FinanceBadge>
                       ) : tx.approval_status === 'rejected' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 rounded-full" title={tx.rejection_reason || ''}>
-                          <XCircle className="w-3 h-3" />Rejected
-                        </span>
+                        <FinanceBadge status="rejected" title={tx.rejection_reason || ''}><XCircle className="h-3 w-3" />Rejected</FinanceBadge>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-full">
-                          <Clock className="w-3 h-3" />Pending
-                        </span>
+                        <FinanceBadge status="pending"><Clock className="h-3 w-3" />Pending</FinanceBadge>
                       )}
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-right text-sm">

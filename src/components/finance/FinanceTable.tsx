@@ -61,14 +61,14 @@ export function FinanceTable<T>({
 
   return (
     <div className="overflow-x-auto">
-      <table className={`w-full text-xs border-collapse ${className}`}>
+      <table className={`w-full text-sm border-collapse ${className}`}>
         <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-          <tr className="h-8">
+          <tr className="h-11">
             {expandable && <th className="w-6" />}
             {columns.map((c, i) => (
               <th
                 key={i}
-                className={`px-2 py-1 ${alignCls(c.align)} font-semibold text-[11px] text-gray-600 uppercase tracking-wide whitespace-nowrap ${c.width ?? ''}`}
+                className={`px-3 py-2 ${alignCls(c.align)} text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap ${c.width ?? ''}`}
               >
                 {c.header}
               </th>
@@ -90,7 +90,7 @@ export function FinanceTable<T>({
                 <Fragment key={key}>
                   <tr
                     onClick={() => onRowClick?.(r, i)}
-                    className={`h-8 border-b border-gray-100 transition-colors ${
+                    className={`min-h-11 border-b border-gray-100 transition-colors ${
                       sel ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-blue-50/40'
                     } ${onRowClick ? 'cursor-pointer' : ''}`}
                   >
@@ -115,7 +115,7 @@ export function FinanceTable<T>({
                     {columns.map((c, ci) => (
                       <td
                         key={ci}
-                        className={`px-2 py-1 ${alignCls(c.align)} ${c.align === 'right' ? TYPE_NUM.replace('text-right ', '') : TYPE_VALUE} ${c.className ?? ''}`}
+                        className={`px-3 py-2 ${alignCls(c.align)} ${c.align === 'right' ? TYPE_NUM.replace('text-right ', '') : TYPE_VALUE} ${c.className ?? ''}`}
                       >
                         {c.cell(r, i)}
                       </td>

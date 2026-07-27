@@ -28,14 +28,15 @@ export function TaxComplianceCentre() {
 
   return (
     <FinancePage title="Tax Compliance" subtitle="Periods, registers, payments, Faktur Pajak, and reports">
-      <div className="space-y-2">
-      <div className="border-b border-gray-200 bg-white p-1">
-        <div className="flex items-center gap-1 overflow-x-auto">
+      <div className="space-y-4">
+      <div className="border-b border-gray-200 bg-white px-2 py-2">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
           {TABS.map(t => (
             <FinanceButton
               key={t.id}
               onClick={() => setActive(t.id)}
               variant={active === t.id ? 'primary' : 'ghost'}
+              className="flex-none"
             >
               {t.icon}
               {t.label}

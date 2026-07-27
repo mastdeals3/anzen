@@ -12,12 +12,12 @@ import {
  * so a single change ripples across every dialog.
  *
  * Rules (from the ERP density brief)
- *   • Input / dropdown / date picker: h-8 (32 px)
- *   • Button: h-[30px]
- *   • Label: 10px uppercase, tight
- *   • Value / body text: 11px
- *   • Grid gaps: gap-x-3, gap-y-2  (very tight vertical rhythm)
- *   • Sections: section title 12px bold, 4px bottom margin, no giant dividers
+ *   • Input / dropdown / date picker: 40 px
+ *   • Button: at least 38 px
+ *   • Label: 12px, readable and consistent
+ *   • Value / body text: 14px
+ *   • Grid gaps: 16px
+ *   • Sections: consistent heading and divider spacing
  *
  * Do not tune these per-form. If a form needs a different shape, extend
  * this file so the whole module picks it up.
@@ -30,8 +30,8 @@ export const F_SELECT = SELECT;
 export const F_TEXTAREA = TEXTAREA;
 export const F_LABEL  = FORM_LABEL;
 export const F_HINT   = FORM_HINT;
-export const F_HELP   = 'text-[10px] text-red-600 mt-0.5';
-export const F_BTN_H  = 'h-7';
+export const F_HELP   = 'text-xs text-red-600 mt-1';
+export const F_BTN_H  = 'h-10';
 export const F_BTN_PRIMARY   = BTN_PRIMARY;
 export const F_BTN_SECONDARY = BTN_SECONDARY;
 export const F_BTN_DANGER    = BTN_DANGER;
@@ -46,11 +46,11 @@ export const F_BTN_SUCCESS   = BTN_SUCCESS;
  */
 export function FormSection({ title, right, children }: { title?: string; right?: ReactNode; children: ReactNode }) {
   return (
-    <section className="mb-2 last:mb-0">
+    <section className="mb-5 last:mb-0">
       {title && (
-        <div className="flex items-center justify-between border-b border-gray-200 pb-0.5 mb-1.5">
-          <h4 className="text-[10px] font-bold uppercase tracking-wide text-gray-600">{title}</h4>
-          {right && <div className="text-[10px] text-gray-500">{right}</div>}
+        <div className="flex items-center justify-between border-b border-gray-200 pb-2 mb-3">
+          <h4 className="text-sm font-semibold text-gray-700">{title}</h4>
+          {right && <div className="text-xs text-gray-500">{right}</div>}
         </div>
       )}
       {children}
@@ -69,7 +69,7 @@ export function FormGrid({ cols = 2, children }: { cols?: 2 | 3 | 4 | 6 | 12; ch
                 : cols === 4  ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
                 : cols === 3  ? 'grid-cols-1 sm:grid-cols-3'
                 : 'grid-cols-1 sm:grid-cols-2';
-  return <div className={`grid ${gridCls} gap-x-3 gap-y-2`}>{children}</div>;
+  return <div className={`grid ${gridCls} gap-x-4 gap-y-4`}>{children}</div>;
 }
 
 // ─── Field ────────────────────────────────────────────────────────────────

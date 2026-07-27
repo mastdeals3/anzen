@@ -12,7 +12,7 @@ import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChann
 import { useLanguage } from '../../contexts/LanguageContext';
 import { notifyFinanceReconciliationRefresh } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
-import { FinanceActionButton } from './FinanceUI';
+import { FinanceActionButton, FinanceBadge } from './FinanceUI';
 
 interface FundTransfer {
   id: string;
@@ -670,32 +670,13 @@ export function FundTransferManager({
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'posted':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded">
-            <CheckCircle className="w-3 h-3" />
-            Posted
-          </span>
-        );
+        return <FinanceBadge status="posted"><CheckCircle className="h-3 w-3" />Posted</FinanceBadge>;
       case 'pending':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-yellow-700 bg-yellow-50 border border-yellow-200 rounded">
-            <Clock className="w-3 h-3" />
-            Pending
-          </span>
-        );
+        return <FinanceBadge status="pending"><Clock className="h-3 w-3" />Pending</FinanceBadge>;
       case 'reversed':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded">
-            <RotateCcw className="w-3 h-3" />
-            Reversed
-          </span>
-        );
+        return <FinanceBadge status="reversed"><RotateCcw className="h-3 w-3" />Reversed</FinanceBadge>;
       case 'cancelled':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded">
-            Cancelled
-          </span>
-        );
+        return <FinanceBadge status="cancelled">Cancelled</FinanceBadge>;
       default:
         return <span className="text-xs text-gray-500">{status}</span>;
     }

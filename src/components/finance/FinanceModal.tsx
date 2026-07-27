@@ -12,17 +12,17 @@ import { X } from 'lucide-react';
  *
  * Anatomy (locked)
  *   ┌────────────────────────────────────────────────┐
- *   │ Title                              [X]         │  h-9  (36px)
+ *   │ Title                              [X]         │  56px minimum
  *   ├────────────────────────────────────────────────┤
  *   │                                                │
- *   │ p-3 body (12px inset on every side)            │
+ *   │ p-5 body (20px inset on every side)            │
  *   │                                                │
  *   ├────────────────────────────────────────────────┤
- *   │ optional footer — h-11, right-aligned buttons  │
+ *   │ optional footer — 64px minimum, right-aligned  │
  *   └────────────────────────────────────────────────┘
  *
- * • Header: 36px tall, text-xs bold (12px), matches Finance module titles.
- * • Body:   p-3 fixed. If body needs scroll, only body scrolls; header/footer stay pinned.
+ * • Header: 56px minimum, readable semibold title.
+ * • Body:   p-5 fixed. If body needs scroll, only body scrolls; header/footer stay pinned.
  * • Footer: optional slot for action buttons — kept out of the scroll region so Save/Cancel
  *   never slide off screen on tall forms.
  *
@@ -70,39 +70,37 @@ export function FinanceModal({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center p-2">
+      <div className="flex min-h-screen items-center justify-center p-4">
         <div className="fixed inset-0 bg-gray-900/50" onClick={onClose} />
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className={`relative bg-white rounded shadow-xl border border-gray-300 w-full ${widthClass} max-h-[92vh] flex flex-col`}
+          className={`relative bg-white rounded-lg shadow-xl border border-gray-300 w-full ${widthClass} max-h-[92vh] flex flex-col`}
         >
-          {/* Header — 36px */}
-          <div className="flex items-center justify-between h-9 px-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+          <div className="flex min-h-14 items-center justify-between gap-4 px-5 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
             <div className="flex items-baseline gap-2 min-w-0">
-              <h3 id={titleId} className="text-xs font-bold text-gray-900 uppercase tracking-wide truncate">{title}</h3>
-              {subtitle && <span className="text-[10px] text-gray-400 truncate">{subtitle}</span>}
+              <h3 id={titleId} className="text-base font-semibold text-gray-900 truncate">{title}</h3>
+              {subtitle && <span className="text-xs text-gray-500 truncate">{subtitle}</span>}
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="p-0.5 rounded hover:bg-gray-200"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-gray-200"
               title="Close"
               aria-label="Close"
             >
-              <X className="w-3.5 h-3.5 text-gray-500" />
+              <X className="w-4 h-4 text-gray-500" />
             </button>
           </div>
 
-          {/* Body — p-3, scrollable */}
-          <div className="flex-1 overflow-y-auto p-3">
+          <div className="flex-1 overflow-y-auto p-5">
             {children}
           </div>
 
           {/* Footer — pinned so Save / Cancel never scrolls off */}
           {footer && (
-            <div className="flex items-center justify-end gap-1.5 h-11 px-3 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+            <div className="flex min-h-16 items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 bg-gray-50 flex-shrink-0">
               {footer}
             </div>
           )}

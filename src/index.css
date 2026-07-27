@@ -2,145 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * Finance is a deliberately dense ERP workspace. Older Finance screens were
- * built before the shared components and inherited the roomier application
- * base rules below. This scoped layer normalizes their rendered geometry while
- * they progressively move to FinancePage/FinanceTable/FinanceForm. It contains
- * presentation only: no state, visibility, or workflow selectors live here.
- */
-@layer components {
-  .finance-ui {
-    @apply text-xs text-gray-800;
-  }
-
-  .finance-ui .text-base,
-  .finance-ui .text-sm {
-    font-size: 0.75rem !important;
-    line-height: 1rem !important;
-  }
-
-  .finance-ui .text-lg,
-  .finance-ui .text-xl,
-  .finance-ui .text-2xl {
-    font-size: 0.875rem !important;
-    line-height: 1.25rem !important;
-  }
-
-  .finance-ui h1,
-  .finance-ui h2,
-  .finance-ui h3 {
-    @apply text-xs font-bold text-gray-900;
-  }
-
-  .finance-ui h4,
-  .finance-ui h5,
-  .finance-ui h6 {
-    @apply text-[11px] font-semibold text-gray-600;
-  }
-
-  .finance-ui label {
-    @apply mb-0.5 text-[11px] font-medium text-gray-600;
-  }
-
-  .finance-ui input:not([type='checkbox']):not([type='radio']):not([type='file']),
-  .finance-ui select {
-    @apply h-8 rounded border border-gray-300 bg-white px-2 py-0 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500;
-  }
-
-  .finance-ui textarea {
-    @apply rounded border border-gray-300 bg-white px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500;
-  }
-
-  .finance-ui input[type='checkbox'],
-  .finance-ui input[type='radio'] {
-    @apply h-3.5 w-3.5 border-gray-300 text-blue-600 focus:ring-1 focus:ring-blue-500;
-  }
-
-  .finance-ui button {
-    border-radius: 0.25rem;
-    font-size: 0.75rem;
-    line-height: 1rem;
-  }
-
-  .finance-ui button:not(.finance-card-button) {
-    height: 1.75rem;
-  }
-
-  .finance-ui button:not(.finance-card-button):not(:has(> svg:only-child)) {
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
-  }
-
-  .finance-ui button:not(.finance-card-button):has(> svg:only-child) {
-    width: 1.75rem;
-    padding: 0 !important;
-  }
-
-  .finance-ui table {
-    @apply w-full border-collapse text-xs;
-  }
-
-  .finance-ui table thead {
-    @apply border-b border-gray-200 bg-gray-50;
-  }
-
-  .finance-ui table thead tr,
-  .finance-ui table tbody tr {
-    height: 2rem;
-  }
-
-  .finance-ui table thead th {
-    @apply whitespace-nowrap px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600;
-  }
-
-  .finance-ui table tbody td {
-    @apply px-2 py-1 text-xs text-gray-800;
-  }
-
-  .finance-ui table tbody tr {
-    @apply border-b border-gray-100 transition-colors hover:bg-blue-50/40;
-  }
-
-  .finance-ui .rounded-lg,
-  .finance-ui .rounded-xl,
-  .finance-ui .rounded-2xl {
-    border-radius: 0.25rem !important;
-  }
-
-  .finance-ui span[class*='bg-'][class*='rounded']:not([class*='w-']):not([class*='h-']) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    border-radius: 0.25rem !important;
-    padding: 0.125rem 0.375rem !important;
-    font-size: 0.625rem !important;
-    line-height: 0.875rem !important;
-    font-weight: 600;
-  }
-
-  /* Neutralize the app-wide .bg-white.rounded-lg padding rule when a Finance
-     surface intentionally supplies no padding, while preserving explicit
-     Finance padding utilities at their authored size. */
-  .finance-ui [class~='bg-white'][class~='rounded-lg']:not([class~='p-1']):not([class~='p-2']):not([class~='p-3']):not([class~='p-4']):not([class~='p-5']):not([class~='p-6']) {
-    padding: 0;
-  }
-
-  .finance-ui [class~='p-1'] { padding: 0.25rem !important; }
-  .finance-ui [class~='p-2'] { padding: 0.5rem !important; }
-  .finance-ui [class~='p-3'] { padding: 0.75rem !important; }
-  .finance-ui [class~='p-4'] { padding: 1rem !important; }
-  .finance-ui [class~='p-5'] { padding: 1.25rem !important; }
-  .finance-ui [class~='p-6'] { padding: 1.5rem !important; }
-
-  .finance-ui .shadow-lg,
-  .finance-ui .shadow-xl,
-  .finance-ui .shadow-2xl {
-    --tw-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1) !important;
-    --tw-shadow-colored: 0 1px 3px 0 var(--tw-shadow-color), 0 1px 2px -1px var(--tw-shadow-color) !important;
-  }
-}
-
 @keyframes slideIn {
   from {
     transform: translateX(100%);
@@ -295,5 +156,42 @@
 
   .email-content li {
     margin: 4px 0;
+  }
+
+  /* Finance keeps these guarantees scoped to its own workspace. Legacy
+     screens can retain their layout, while shared controls still meet the
+     same readable production baseline as FinanceButton/FinanceTable. */
+  .finance-ui button {
+    min-height: 38px;
+    white-space: nowrap;
+  }
+
+  .finance-ui button.finance-icon-button {
+    width: 38px;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .finance-ui input:not([type='checkbox']):not([type='radio']):not([type='file']),
+  .finance-ui select {
+    min-height: 40px;
+  }
+
+  .finance-ui textarea {
+    min-height: 80px;
+  }
+
+  .finance-ui table thead th {
+    min-height: 44px;
+    white-space: nowrap;
+  }
+
+  .finance-ui table tbody td {
+    min-height: 44px;
+  }
+
+  .finance-ui .finance-badge {
+    min-height: 24px;
+    white-space: nowrap;
   }
 }

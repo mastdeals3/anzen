@@ -1,4 +1,4 @@
-import { ButtonHTMLAttributes, ReactNode } from 'react';
+import { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import {
   ArchiveRestore, CheckCircle2, Copy, Eye, FileClock, FileDown,
   Link2, Paperclip, Pencil, Printer, Trash2, XCircle,
@@ -47,7 +47,8 @@ export function FinanceButton({
 
 export type FinanceStatus =
   | 'posted' | 'draft' | 'approved' | 'pending' | 'rejected'
-  | 'paid' | 'partial' | 'unpaid' | 'reconciled' | 'info';
+  | 'paid' | 'partial' | 'unpaid' | 'reconciled' | 'info'
+  | 'reversed' | 'cancelled' | 'overdue';
 
 const BADGE_CLASS: Record<FinanceStatus, string> = {
   posted: BADGE_POSTED,
@@ -60,14 +61,17 @@ const BADGE_CLASS: Record<FinanceStatus, string> = {
   unpaid: BADGE_UNPAID,
   reconciled: BADGE_RECONCILED,
   info: BADGE_INFO,
+  reversed: BADGE_DRAFT,
+  cancelled: BADGE_DRAFT,
+  overdue: BADGE_UNPAID,
 };
 
-export function FinanceBadge({ status, children, className = '' }: {
+export function FinanceBadge({ status, children, className = '', ...props }: HTMLAttributes<HTMLSpanElement> & {
   status: FinanceStatus;
   children?: ReactNode;
   className?: string;
 }) {
-  return <span className={`${BADGE_CLASS[status]} ${className}`}>{children ?? status}</span>;
+  return <span data-finance-badge="true" className={`finance-badge ${BADGE_CLASS[status]} ${className}`} {...props}>{children ?? status}</span>;
 }
 
 export type FinanceAction = keyof typeof FINANCE_ACTION_ICONS;
@@ -93,7 +97,7 @@ export function FinanceActionButton({ action, label, className = '', ...props }:
       type="button"
       title={title}
       aria-label={title}
-      className={`${ACTION_CLASS[action] ?? ICON_BTN} ${className}`}
+      className={`finance-icon-button ${ACTION_CLASS[action] ?? ICON_BTN} ${className}`}
       {...props}
     >
       <Icon className={ICON_SIZE} />
@@ -105,4 +109,3 @@ export function FinanceActionButton({ action, label, className = '', ...props }:
 export const FINANCE_ACTION_ORDER: readonly FinanceAction[] = [
   'view', 'edit', 'attachment', 'approve', 'reject', 'reverse', 'delete',
 ];
-
