@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { Eye, Search, ArrowDownCircle, CreditCard as Edit2, Trash2, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
+import { Search, ArrowDownCircle, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinanceModal } from './FinanceModal';
@@ -12,6 +12,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
+import { FinanceActionButton, FinanceBadge } from './FinanceUI';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { type CompanySnapshot } from '../../types/company';
 import { waitForImages } from '../../utils/companyLogoUrl';
@@ -665,52 +666,21 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
                 </td>
                 <td className="px-2 py-1.5">
                   <div className="flex items-center justify-center gap-1">
-                    <button
-                      onClick={() => handleView(voucher)}
-                      className="p-1.5 text-gray-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-                      title="View Details"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                    </button>
+                    <FinanceActionButton action="view" label="View Details" onClick={() => handleView(voucher)} />
                     {canManage && !voucher.is_posted && (
                       <>
-                        <button
-                          onClick={() => handlePostVoucher(voucher)}
-                          disabled={postingLoading === voucher.id}
-                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-                          title="Post to GL"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleEdit(voucher)}
-                          className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(voucher)}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <FinanceActionButton action="edit" onClick={() => handleEdit(voucher)} />
+                        <FinanceActionButton action="approve" label="Post to GL" onClick={() => handlePostVoucher(voucher)} disabled={postingLoading === voucher.id} />
                       </>
                     )}
                     {voucher.is_posted && (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
-                        <Lock className="w-3 h-3" /> Posted
-                      </span>
+                      <FinanceBadge status="posted"><Lock className="mr-0.5 h-3 w-3" /> Posted</FinanceBadge>
                     )}
                     {voucher.is_posted && isAdmin && (
-                      <button
-                        onClick={() => openCancelPostingModal(voucher)}
-                        className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
-                        title="Cancel Posting"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </button>
+                      <FinanceActionButton action="reverse" label="Cancel Posting" onClick={() => openCancelPostingModal(voucher)} />
+                    )}
+                    {canManage && !voucher.is_posted && (
+                      <FinanceActionButton action="delete" onClick={() => handleDelete(voucher)} />
                     )}
                   </div>
                 </td>

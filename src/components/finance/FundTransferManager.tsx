@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, ArrowRightLeft, CheckCircle, Clock, Edit, Trash2, RotateCcw, Eye, Undo2, Landmark, AlertTriangle } from 'lucide-react';
+import { Plus, ArrowRightLeft, CheckCircle, Clock, RotateCcw, Undo2, Landmark, AlertTriangle } from 'lucide-react';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
@@ -12,6 +12,7 @@ import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChann
 import { useLanguage } from '../../contexts/LanguageContext';
 import { notifyFinanceReconciliationRefresh } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
+import { FinanceActionButton } from './FinanceUI';
 
 interface FundTransfer {
   id: string;
@@ -830,44 +831,32 @@ export function FundTransferManager({
               cell: (t: FundTransfer) => (
                 <div className="flex items-center justify-center gap-0.5">
                   {t.status === 'pending' && (
-                    <button onClick={(e) => { e.stopPropagation(); handleEdit(t); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit Transfer">
-                      <Edit className="w-3.5 h-3.5" />
-                    </button>
+                    <FinanceActionButton action="edit" label="Edit Transfer" onClick={(e) => { e.stopPropagation(); handleEdit(t); }} />
                   )}
                   {t.status === 'posted' && (
-                    <button onClick={(e) => { e.stopPropagation(); handleView(t); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="View Transfer">
-                      <Eye className="w-3.5 h-3.5" />
-                    </button>
+                    <FinanceActionButton action="view" label="View Transfer" onClick={(e) => { e.stopPropagation(); handleView(t); }} />
                   )}
                   {t.status === 'posted' && (
-                    <button onClick={(e) => { e.stopPropagation(); handleReverse(t.id); }} className="p-1 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Reverse this posted transfer">
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
+                    <FinanceActionButton action="reverse" label="Reverse this posted transfer" onClick={(e) => { e.stopPropagation(); handleReverse(t.id); }} />
                   )}
                   {(t.status === 'reversed' || t.status === 'cancelled') && (
-                    <button onClick={(e) => { e.stopPropagation(); handleView(t); }} className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded" title="View Transfer">
-                      <Eye className="w-3.5 h-3.5" />
-                    </button>
+                    <FinanceActionButton action="view" label="View Transfer" onClick={(e) => { e.stopPropagation(); handleView(t); }} />
                   )}
                   {t.status === 'reversed' && (
-                    <button
+                    <FinanceActionButton
+                      action="reverse"
+                      label="Undo Reverse"
                       onClick={(e) => { e.stopPropagation(); openUndoReverse(t); }}
                       disabled={undoingTransferId === t.id}
-                      className="p-1 text-gray-400 hover:text-green-700 hover:bg-green-50 rounded disabled:opacity-50"
-                      title="Undo Reverse"
-                    >
-                      <Undo2 className="w-3.5 h-3.5" />
-                    </button>
+                    />
                   )}
                   {t.status !== 'posted' && (
-                    <button
+                    <FinanceActionButton
+                      action="delete"
+                      label="Delete permanently"
                       onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
                       disabled={deletingTransferId === t.id}
-                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
-                      title="Delete permanently"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    />
                   )}
                 </div>
               ),

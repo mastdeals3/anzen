@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Edit, Trash2, ChevronRight, ChevronDown, Search } from 'lucide-react';
+import { Plus, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
+import { FinancePage } from './FinancePage';
+import { FinanceActionButton, FinanceBadge, FinanceButton } from './FinanceUI';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 
 interface Account {
@@ -181,29 +183,27 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
+    <FinancePage
+      title="Chart of Accounts"
+      subtitle="General ledger account master"
+      actions={canManage ? (
+        <FinanceButton variant="primary" onClick={() => { resetForm(); setModalOpen(true); }}>
+          <Plus className="w-3.5 h-3.5" /> Add Account
+        </FinanceButton>
+      ) : undefined}
+      toolbar={(
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
           <input
             type="text"
             placeholder="Search accounts..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            className="w-full h-7 pl-7 pr-2 border border-gray-300 rounded"
           />
         </div>
-        {canManage && (
-          <button
-            onClick={() => { resetForm(); setModalOpen(true); }}
-            className="flex items-center gap-2 bg-blue-600 text-white h-7 px-2 rounded hover:bg-blue-700"
-          >
-            <Plus className="w-5 h-5" />
-            Add Account
-          </button>
-        )}
-      </div>
-
+      )}
+    >
       <div className="bg-white rounded border border-gray-200 overflow-hidden">
         {accountTypes.map(type => (
           <div key={type.value} className="border-b last:border-b-0">
@@ -238,18 +238,16 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
                       <td className="px-4 py-2 text-gray-500">{account.name_id || '-'}</td>
                       <td className="px-4 py-2 text-sm text-gray-500">{account.account_group || '-'}</td>
                       <td className="px-4 py-2 text-center">
-                        <span className={`text-xs px-2 py-1 rounded ${account.normal_balance === 'debit' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                        <FinanceBadge status={account.normal_balance === 'debit' ? 'info' : 'approved'}>
                           {account.normal_balance}
-                        </span>
+                        </FinanceBadge>
                       </td>
                       {canManage && (
                         <td className="px-4 py-2 text-right">
-                          <button onClick={() => handleEdit(account)} className="text-blue-600 hover:text-blue-800 mr-2">
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDelete(account.id)} className="text-red-600 hover:text-red-800">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-end gap-0.5">
+                            <FinanceActionButton action="edit" onClick={() => handleEdit(account)} />
+                            <FinanceActionButton action="delete" onClick={() => handleDelete(account.id)} />
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -333,15 +331,13 @@ export function ChartOfAccountsManager({ canManage }: ChartOfAccountsManagerProp
           </SapRow>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
-            <button type="button" onClick={() => setModalOpen(false)}
-              className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
-            <button type="submit"
-              className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
+            <FinanceButton type="button" onClick={() => setModalOpen(false)}>Cancel</FinanceButton>
+            <FinanceButton type="submit" variant="primary">
               {editingAccount ? 'Update' : 'Create'} Account
-            </button>
+            </FinanceButton>
           </div>
         </form>
       </Modal>
-    </div>
+    </FinancePage>
   );
 }

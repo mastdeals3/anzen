@@ -6,6 +6,7 @@ import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
+import { FinanceActionButton } from './FinanceUI';
 import { getCategoryFieldRules } from './categoryFieldRules';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { moduleExpenseCategories, sortExpenseCategories } from './expenseCategories';
@@ -2333,7 +2334,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     {canManage && (
                       <td className="px-2 py-1.5 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          <button
+                          <FinanceActionButton
+                            action="view"
                             onClick={async () => {
                               setViewingExpense(expense);
                               setViewModalOpen(true);
@@ -2344,11 +2346,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                 setSignedUrlCache(prev => ({ ...prev, ...Object.fromEntries(entries) }));
                               }
                             }}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                            title="View"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
+                          />
+                          {expense.approval_status !== 'approved' && (
+                            <FinanceActionButton action="edit" onClick={() => handleEdit(expense)} />
+                          )}
                           {onSettleBill &&
                             expense.payment_method === null &&
                             expense.approval_status === 'approved' &&
@@ -2369,50 +2370,27 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           )}
                           {isAdmin && expense.approval_status === 'pending_approval' && (
                             <>
-                              <button
+                              <FinanceActionButton
+                                action="approve"
                                 onClick={() => handleApproveExpense(expense.id)}
                                 disabled={approvalLoading === expense.id}
-                                className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-                                title="Approve"
-                              >
-                                <CheckCircle className="w-3.5 h-3.5" />
-                              </button>
-                              <button
+                              />
+                              <FinanceActionButton
+                                action="reject"
                                 onClick={() => { setRejectionTarget({ id: expense.id, type: 'expense' }); setRejectionModalOpen(true); }}
                                 disabled={approvalLoading === expense.id}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                                title="Reject"
-                              >
-                                <XCircle className="w-3.5 h-3.5" />
-                              </button>
+                              />
                             </>
                           )}
                           {isAdmin && expense.approval_status === 'approved' && (
-                            <button
+                            <FinanceActionButton
+                              action="reverse"
+                              label="Cancel Posting"
                               onClick={() => { setCancelPostingTarget(expense); setCancelPostingReason(''); setCancelPostingModalOpen(true); }}
-                              className="p-1 text-orange-600 hover:bg-orange-50 rounded transition-colors"
-                              title="Cancel Posting"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
+                            />
                           )}
                           {expense.approval_status !== 'approved' && (
-                            <>
-                              <button
-                                onClick={() => handleEdit(expense)}
-                                className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-                                title="Edit"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(expense.id)}
-                                className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </>
+                            <FinanceActionButton action="delete" onClick={() => handleDelete(expense.id)} />
                           )}
                         </div>
                       </td>
@@ -3327,7 +3305,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
       {/* Quick Add Supplier Modal — redesigned with type, PKP, terms */}
       {showQuickAddSupplier && (
-        <Modal isOpen={showQuickAddSupplier} onClose={() => { setShowQuickAddSupplier(false); setQuickAddSupplierName(''); }} title="Quick Add Supplier" maxWidth="max-w-sm">
+        <Modal isOpen={showQuickAddSupplier} onClose={() => { setShowQuickAddSupplier(false); setQuickAddSupplierName(''); }} title="Quick Add Supplier" size="sm">
           <div className="space-y-3">
             <p className="text-xs text-gray-500">Minimum info. Fill full details in Suppliers Master later.</p>
             <div>
@@ -3464,7 +3442,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             setLinkedDCQuickView(null);
           }}
           title="Expense Details"
-          maxWidth="max-w-3xl"
+          size="lg"
         >
           <div className="space-y-3">
             {/* ── Expense Summary (compact single card) ── */}
@@ -3982,7 +3960,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
       {/* Cancel Posting modal */}
       {cancelPostingModalOpen && cancelPostingTarget && (
-        <Modal isOpen={cancelPostingModalOpen} onClose={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }} title="Cancel Expense Posting" maxWidth="max-w-md">
+        <Modal isOpen={cancelPostingModalOpen} onClose={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }} title="Cancel Expense Posting" size="sm">
           <div className="space-y-4">
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
               <p className="font-semibold mb-1">{cancelPostingTarget.expense_category} — {formatCurrency(cancelPostingTarget.amount, getExpenseCurrency(cancelPostingTarget))}</p>
@@ -4016,7 +3994,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
       {/* Rejection reason modal */}
       {rejectionModalOpen && (
-        <Modal isOpen={rejectionModalOpen} onClose={() => { setRejectionModalOpen(false); setRejectionReason(''); }} title="Reject Expense" maxWidth="max-w-md">
+        <Modal isOpen={rejectionModalOpen} onClose={() => { setRejectionModalOpen(false); setRejectionReason(''); }} title="Reject Expense" size="sm">
           <div className="space-y-4">
             <p className="text-sm text-gray-600">Please provide a reason for rejecting this expense entry.</p>
             <textarea

@@ -564,7 +564,7 @@ function FinanceContent() {
 
           {/* Content Area — minimal padding so summary cards sit right under the header */}
           <div className="flex-1 overflow-auto bg-white">
-            <div className="px-2 py-1.5 md:px-2.5 md:py-2">
+            <div className="finance-ui px-2 py-1.5 md:px-2.5 md:py-2">
               <Suspense fallback={
                 <div className="flex items-center justify-center py-12">
                   <Loader className="w-6 h-6 animate-spin text-blue-600" />

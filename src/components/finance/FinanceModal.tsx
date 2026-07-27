@@ -1,4 +1,4 @@
-import { useEffect, ReactNode } from 'react';
+import { useEffect, ReactNode, useId } from 'react';
 import { X } from 'lucide-react';
 
 /**
@@ -57,6 +57,7 @@ const SIZE: Record<NonNullable<FinanceModalProps['size']>, string> = {
 export function FinanceModal({
   isOpen, onClose, title, subtitle, footer, size = 'md', maxWidth, children,
 }: FinanceModalProps) {
+  const titleId = useId();
   useEffect(() => {
     if (!isOpen) return;
     const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -71,14 +72,20 @@ export function FinanceModal({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex min-h-screen items-center justify-center p-2">
         <div className="fixed inset-0 bg-gray-900/50" onClick={onClose} />
-        <div className={`relative bg-white rounded shadow-xl border border-gray-300 w-full ${widthClass} max-h-[92vh] flex flex-col`}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          className={`relative bg-white rounded shadow-xl border border-gray-300 w-full ${widthClass} max-h-[92vh] flex flex-col`}
+        >
           {/* Header — 36px */}
           <div className="flex items-center justify-between h-9 px-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
             <div className="flex items-baseline gap-2 min-w-0">
-              <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide truncate">{title}</h3>
+              <h3 id={titleId} className="text-xs font-bold text-gray-900 uppercase tracking-wide truncate">{title}</h3>
               {subtitle && <span className="text-[10px] text-gray-400 truncate">{subtitle}</span>}
             </div>
             <button
+              type="button"
               onClick={onClose}
               className="p-0.5 rounded hover:bg-gray-200"
               title="Close"

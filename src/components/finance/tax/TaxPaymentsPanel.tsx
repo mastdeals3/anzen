@@ -359,7 +359,7 @@ export function TaxPaymentsPanel() {
         isOpen={showForm}
         onClose={cancelForm}
         title={editingId ? 'Edit Tax Payment' : 'Record Tax Payment'}
-        maxWidth="max-w-3xl"
+        size="lg"
       >
         <form onSubmit={submit} className="space-y-3">
           {editingId && (
@@ -602,7 +602,7 @@ export function TaxPaymentsPanel() {
         isOpen={!!bslPickerPayment}
         onClose={() => setBslPickerPayment(null)}
         title="Link Bank Statement Line"
-        maxWidth="max-w-lg"
+        size="sm"
       >
         {bslPickerPayment && (
           <div>

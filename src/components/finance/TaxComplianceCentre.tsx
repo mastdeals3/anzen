@@ -7,6 +7,8 @@ import { TaxPaymentsPanel } from './tax/TaxPaymentsPanel';
 import { FakturPajakPanel } from './tax/FakturPajakPanel';
 import { PeriodClosePanel } from './tax/PeriodClosePanel';
 import { TaxReportsPanel } from './tax/TaxReportsPanel';
+import { FinancePage } from './FinancePage';
+import { FinanceButton } from './FinanceUI';
 
 type TaxSubTab =
   | 'calendar' | 'periods' | 'pph' | 'payments' | 'faktur' | 'close' | 'reports';
@@ -25,22 +27,19 @@ export function TaxComplianceCentre() {
   const [active, setActive] = useState<TaxSubTab>('calendar');
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-1.5">
+    <FinancePage title="Tax Compliance" subtitle="Periods, registers, payments, Faktur Pajak, and reports">
+      <div className="space-y-2">
+      <div className="border-b border-gray-200 bg-white p-1">
         <div className="flex items-center gap-1 overflow-x-auto">
           {TABS.map(t => (
-            <button
+            <FinanceButton
               key={t.id}
               onClick={() => setActive(t.id)}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition whitespace-nowrap ${
-                active === t.id
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              variant={active === t.id ? 'primary' : 'ghost'}
             >
               {t.icon}
               {t.label}
-            </button>
+            </FinanceButton>
           ))}
         </div>
       </div>
@@ -54,6 +53,7 @@ export function TaxComplianceCentre() {
         {active === 'close'    && <PeriodClosePanel />}
         {active === 'reports'  && <TaxReportsPanel />}
       </Suspense>
-    </div>
+      </div>
+    </FinancePage>
   );
 }

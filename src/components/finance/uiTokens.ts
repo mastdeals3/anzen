@@ -32,6 +32,13 @@ export const TYPE_VALUE = 'text-xs text-gray-800';
 export const TYPE_NUM   = 'text-xs font-mono text-right text-gray-900 tabular-nums';
 export const TYPE_MUTED = 'text-[10px] text-gray-400';
 
+// Shared geometry. These are exported separately so components can compose
+// them without re-declaring subtly different heights, radii, and focus rings.
+export const CONTROL_HEIGHT = 'h-8';
+export const BUTTON_HEIGHT = 'h-7';
+export const CONTROL_RADIUS = 'rounded';
+export const CONTROL_FOCUS = 'focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500';
+
 // ─── Page shell ────────────────────────────────────────────────────────────
 export const PAGE_SPACE = 'space-y-2';                 // vertical spacing between page sections
 
@@ -47,11 +54,11 @@ export const SECTION_TITLE = TYPE_TITLE;
 
 // ─── Toolbar ───────────────────────────────────────────────────────────────
 export const TOOLBAR = 'flex flex-wrap items-center gap-1.5';
-export const TOOLBAR_INPUT = 'h-7 px-2 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500';
-export const TOOLBAR_SELECT = 'h-7 px-2 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500';
+export const TOOLBAR_INPUT = `${BUTTON_HEIGHT} px-2 text-xs border border-gray-300 ${CONTROL_RADIUS} bg-white ${CONTROL_FOCUS}`;
+export const TOOLBAR_SELECT = TOOLBAR_INPUT;
 
 // ─── Buttons (always h-7 in the finance module) ────────────────────────────
-export const BTN_BASE = 'inline-flex items-center gap-1 h-7 px-2 text-xs font-medium rounded border transition-colors whitespace-nowrap';
+export const BTN_BASE = `inline-flex items-center justify-center gap-1 ${BUTTON_HEIGHT} px-2 text-xs font-medium ${CONTROL_RADIUS} border transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed`;
 export const BTN_PRIMARY = `${BTN_BASE} bg-blue-600 border-blue-600 text-white hover:bg-blue-700`;
 export const BTN_SECONDARY = `${BTN_BASE} bg-white border-gray-300 text-gray-700 hover:bg-gray-50`;
 export const BTN_DANGER = `${BTN_BASE} bg-white border-red-300 text-red-700 hover:bg-red-50`;
@@ -59,10 +66,10 @@ export const BTN_SUCCESS = `${BTN_BASE} bg-white border-green-300 text-green-700
 export const BTN_GHOST = `${BTN_BASE} border-transparent text-gray-700 hover:bg-gray-100`;
 
 // Icon-only variant (view/edit/delete in action columns)
-export const ICON_BTN = 'inline-flex items-center justify-center w-6 h-6 rounded text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors';
-export const ICON_BTN_DANGER = 'inline-flex items-center justify-center w-6 h-6 rounded text-red-500 hover:bg-red-50 hover:text-red-700 transition-colors';
-export const ICON_BTN_SUCCESS = 'inline-flex items-center justify-center w-6 h-6 rounded text-green-600 hover:bg-green-50 hover:text-green-800 transition-colors';
-export const ICON_BTN_INFO = 'inline-flex items-center justify-center w-6 h-6 rounded text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition-colors';
+export const ICON_BTN = 'inline-flex items-center justify-center w-7 h-7 rounded text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors';
+export const ICON_BTN_DANGER = 'inline-flex items-center justify-center w-7 h-7 rounded text-red-500 hover:bg-red-50 hover:text-red-700 transition-colors';
+export const ICON_BTN_SUCCESS = 'inline-flex items-center justify-center w-7 h-7 rounded text-green-600 hover:bg-green-50 hover:text-green-800 transition-colors';
+export const ICON_BTN_INFO = 'inline-flex items-center justify-center w-7 h-7 rounded text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition-colors';
 export const ICON_SIZE = 'w-3.5 h-3.5';  // default lucide icon size for finance
 export const ICON_ROW_GAP = 'gap-0.5';   // spacing between action icons in a row
 
@@ -90,18 +97,24 @@ export const BADGE_LINKED = `${BADGE} bg-green-100 text-green-700`;
 export const BADGE_UNLINKED = `${BADGE} bg-orange-100 text-orange-700`;
 export const BADGE_INFO = `${BADGE} bg-blue-100 text-blue-700`;
 export const BADGE_NEUTRAL = `${BADGE} bg-gray-100 text-gray-600`;
+export const BADGE_PAID = `${BADGE} bg-green-100 text-green-700`;
+export const BADGE_UNPAID = `${BADGE} bg-red-100 text-red-700`;
+export const BADGE_RECONCILED = `${BADGE} bg-teal-100 text-teal-700`;
+export const BADGE_DRAFT = `${BADGE} bg-gray-100 text-gray-600`;
 
 // ─── Forms & inputs (identical height everywhere) ──────────────────────────
 export const FORM_LABEL = 'block text-[11px] font-medium text-gray-600 mb-0.5';
 export const FORM_HINT = 'text-[10px] text-gray-400 mt-0.5';
-export const INPUT = 'w-full h-8 px-2 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500';
-export const INPUT_MONEY = 'w-full h-8 px-2 text-xs text-right font-mono border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500';
-export const SELECT = 'w-full h-8 px-2 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500';
-export const TEXTAREA = 'w-full px-2 py-1.5 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none';
+export const INPUT = `w-full ${CONTROL_HEIGHT} px-2 text-xs border border-gray-300 ${CONTROL_RADIUS} bg-white ${CONTROL_FOCUS}`;
+export const INPUT_MONEY = `${INPUT} text-right font-mono tabular-nums`;
+export const SELECT = INPUT;
+export const TEXTAREA = `w-full px-2 py-1.5 text-xs border border-gray-300 ${CONTROL_RADIUS} bg-white ${CONTROL_FOCUS} resize-none`;
+export const CHECKBOX = `h-3.5 w-3.5 rounded border-gray-300 text-blue-600 ${CONTROL_FOCUS}`;
+export const RADIO = `h-3.5 w-3.5 border-gray-300 text-blue-600 ${CONTROL_FOCUS}`;
 
 // ─── Summary / total cards ─────────────────────────────────────────────────
 export const CARD = 'border border-gray-200 rounded bg-white';
 export const CARD_HEADER = 'px-3 py-1.5 border-b border-gray-100 flex items-center justify-between';
 export const CARD_BODY = 'px-3 py-2';
 export const KPI_LABEL = 'text-[10px] font-semibold text-gray-500 uppercase tracking-wide';
-export const KPI_VALUE = 'text-sm font-mono font-bold text-gray-900';
+export const KPI_VALUE = 'text-[14px] font-mono font-bold text-gray-900';

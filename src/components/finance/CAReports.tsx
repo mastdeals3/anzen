@@ -793,14 +793,14 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
         <h2 className="text-sm font-bold text-slate-900">CA Reports - Tax Consultant Excel Exports</h2>
       </div>
 
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {reports.map((report) => {
           const Icon = report.icon;
           return (
             <button
               key={report.id}
               onClick={() => setSelectedReport(report.id)}
-              className={`p-4 rounded-lg border-2 text-left transition-all ${
+              className={`finance-card-button p-3 rounded border text-left transition-all ${
                 selectedReport === report.id
                   ? 'border-emerald-500 bg-emerald-50'
                   : report.highlight

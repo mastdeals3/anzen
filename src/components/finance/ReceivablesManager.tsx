@@ -620,7 +620,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
         /* AR Ageing Schedule */
         <div className="space-y-2">
           {/* Summary cards */}
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {[
               { label: 'Total Outstanding', value: ageingTotals.balance, color: 'bg-gray-50 border-gray-200 text-gray-900' },
               { label: '0 – 30 Days', value: ageingTotals.bucket0_30, color: 'bg-green-50 border-green-200 text-green-800' },

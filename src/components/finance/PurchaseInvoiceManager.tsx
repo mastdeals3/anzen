@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, CreditCard as Edit, Trash2, Search, FileText, Eye, X, AlertCircle, CreditCard } from 'lucide-react';
+import { Plus, Search, FileText, X, AlertCircle, CreditCard } from 'lucide-react';
 import { showConfirm } from '../ConfirmDialog';
 import { FinanceModal as Modal } from './FinanceModal';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapField, SAP_INPUT } from './SapLayout';
+import { FinanceActionButton, FinanceBadge } from './FinanceUI';
 import { SearchableSelect } from '../SearchableSelect';
 import { FileUpload } from '../FileUpload';
 import { showToast } from '../ToastNotification';
@@ -675,25 +676,16 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                     </span>
                   </td>
                   <td className="hidden lg:table-cell px-3 sm:px-2 py-1.5 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                      invoice.status === 'paid'
-                        ? 'bg-green-100 text-green-800'
-                        : invoice.status === 'partial'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
+                    <FinanceBadge status={invoice.status === 'paid' ? 'paid' : invoice.status === 'partial' ? 'partial' : 'unpaid'}>
                       {invoice.status}
-                    </span>
+                    </FinanceBadge>
                   </td>
                   <td className="px-3 sm:px-2 py-1.5 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white">
                     <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => handleOpenView(invoice)}
-                        className="text-blue-600 hover:text-blue-900"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      <FinanceActionButton action="view" label="View Details" onClick={() => handleOpenView(invoice)} />
+                      {canManage && (
+                        <FinanceActionButton action="edit" onClick={() => handleOpenEdit(invoice)} />
+                      )}
                       {canManage && onPayInvoice && invoice.status !== 'paid' && invoice.balance_amount > 0 && (
                         <button
                           onClick={() => onPayInvoice({ id: invoice.id, invoice_number: invoice.invoice_number, supplier_id: invoice.supplier_id, balance_amount: invoice.balance_amount })}
@@ -704,23 +696,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                         </button>
                       )}
                       {canManage && (
-                        <>
-                          <button
-                            onClick={() => handleOpenEdit(invoice)}
-                            className="text-gray-500 hover:text-gray-800"
-                            title="Edit"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(invoice)}
-                            disabled={deleting}
-                            className="text-red-500 hover:text-red-700 disabled:opacity-50"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
+                        <FinanceActionButton action="delete" onClick={() => handleDelete(invoice)} disabled={deleting} />
                       )}
                     </div>
                   </td>
@@ -999,7 +975,7 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                     />
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                     <div>
                       <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         Qty *

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { Search, ArrowUpCircle, Pencil, Trash2, Eye, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
+import { Search, ArrowUpCircle, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
 import { FinancePage } from './FinancePage';
@@ -14,6 +14,7 @@ import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { formatCurrency } from '../../utils/currency';
 import { getReportingUsdRate, linkBankStatementLine, savePaymentVoucher } from '../../services/financeCommands';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
+import { FinanceActionButton, FinanceBadge } from './FinanceUI';
 import {
   type BankTransactionLine,
   linkBankTransaction,
@@ -1011,42 +1012,21 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
               align: 'center' as const,
               cell: (v: PaymentVoucher) => (
                 <div className="flex items-center justify-center gap-0.5">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleView(v); }}
-                    className="p-1 text-gray-400 hover:text-slate-700 hover:bg-slate-100 rounded"
-                    title="View"
-                  ><Eye className="w-3.5 h-3.5" /></button>
+                  <FinanceActionButton action="view" onClick={(e) => { e.stopPropagation(); handleView(v); }} />
                   {!v.is_posted && (
                     <>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handlePostVoucher(v); }}
-                        disabled={postingLoading === v.id}
-                        className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded disabled:opacity-50"
-                        title="Post to GL"
-                      ><CheckCircle className="w-3.5 h-3.5" /></button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleEdit(v); }}
-                        className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                        title="Edit"
-                      ><Pencil className="w-3.5 h-3.5" /></button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(v); }}
-                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                        title="Delete"
-                      ><Trash2 className="w-3.5 h-3.5" /></button>
+                      <FinanceActionButton action="edit" onClick={(e) => { e.stopPropagation(); handleEdit(v); }} />
+                      <FinanceActionButton action="approve" label="Post to GL" onClick={(e) => { e.stopPropagation(); handlePostVoucher(v); }} disabled={postingLoading === v.id} />
                     </>
                   )}
                   {v.is_posted && (
-                    <span className="flex items-center gap-0.5 px-1 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
-                      <Lock className="w-3 h-3" /> Posted
-                    </span>
+                    <FinanceBadge status="posted"><Lock className="mr-0.5 h-3 w-3" /> Posted</FinanceBadge>
                   )}
                   {v.is_posted && isAdmin && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openCancelPostingModal(v); }}
-                      className="p-1 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded"
-                      title="Cancel Posting"
-                    ><RotateCcw className="w-3.5 h-3.5" /></button>
+                    <FinanceActionButton action="reverse" label="Cancel Posting" onClick={(e) => { e.stopPropagation(); openCancelPostingModal(v); }} />
+                  )}
+                  {!v.is_posted && (
+                    <FinanceActionButton action="delete" onClick={(e) => { e.stopPropagation(); handleDelete(v); }} />
                   )}
                 </div>
               ),

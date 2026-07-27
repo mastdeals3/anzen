@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { Search, FileText, Edit, Trash2 } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { formatCurrency } from '../../utils/currency';
+import { FinanceActionButton } from './FinanceUI';
 
 interface JournalEntry {
   id: string;
@@ -460,29 +461,11 @@ export function JournalEntryViewerEnhanced({
                   </td>
                   <td className="px-1.5 py-1 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => handleViewVoucher(voucher)}
-                        className="text-blue-600 hover:text-blue-800"
-                        title="View detailed breakdown"
-                      >
-                        <FileText className="w-4 h-4" />
-                      </button>
+                      <FinanceActionButton action="view" label="View detailed breakdown" onClick={() => handleViewVoucher(voucher)} />
                       {canManage && voucher.source_module === 'manual' && (
                         <>
-                          <button
-                            onClick={() => onEditEntry?.(voucher.journal_entry_id)}
-                            className="text-gray-600 hover:text-gray-800"
-                            title="Edit manual entry"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteJournal(voucher.journal_entry_id)}
-                            className="text-red-600 hover:text-red-800"
-                            title="Delete manual entry"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <FinanceActionButton action="edit" label="Edit manual entry" onClick={() => onEditEntry?.(voucher.journal_entry_id)} />
+                          <FinanceActionButton action="delete" label="Delete manual entry" onClick={() => handleDeleteJournal(voucher.journal_entry_id)} />
                         </>
                       )}
                     </div>

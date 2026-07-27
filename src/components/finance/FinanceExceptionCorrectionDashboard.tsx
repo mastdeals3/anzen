@@ -4,6 +4,8 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
 import type { BankTransactionLine } from './bankTransactionLinking';
+import { FinancePage } from './FinancePage';
+import { FinanceBadge, FinanceButton } from './FinanceUI';
 
 interface ExceptionRow {
   row_id: string;
@@ -169,11 +171,12 @@ export function FinanceExceptionCorrectionDashboard({ canManage }: {
 
   if (loading) return <div className="flex items-center justify-center py-16 text-sm text-gray-500"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Loading unresolved exceptions…</div>;
 
-  return <div className="space-y-3">
-    <div className="flex flex-wrap items-start justify-between gap-2">
-      <div><h2 className="text-base font-semibold text-gray-900">Finance Exception Correction</h2><p className="text-xs text-gray-500">Open the original business document and correct it using its normal Finance workflow.</p></div>
-      <div className="flex items-center gap-2"><span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">{filteredRows.length === rows.length ? rows.length : `${filteredRows.length} of ${rows.length}`} unresolved</span><button type="button" onClick={() => void load()} className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><RefreshCw className="h-3.5 w-3.5" />Refresh</button></div>
-    </div>
+  return <FinancePage
+    title="Finance Exception Correction"
+    subtitle="Correct source documents using their normal Finance workflow"
+    actions={<><FinanceBadge status="pending">{filteredRows.length === rows.length ? rows.length : `${filteredRows.length} of ${rows.length}`} unresolved</FinanceBadge><FinanceButton type="button" onClick={() => void load()}><RefreshCw className="h-3.5 w-3.5" />Refresh</FinanceButton></>}
+  >
+    <div className="space-y-2">
     {error && <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
     {repairSummary && <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">Fund Transfer audit: {repairSummary.total_scanned} scanned · {repairSummary.automatically_repaired} repaired · {repairSummary.skipped} skipped for manual review.</div>}
     <div className="rounded-lg border border-gray-200 bg-gray-50 p-2">
@@ -202,7 +205,7 @@ export function FinanceExceptionCorrectionDashboard({ canManage }: {
         return <Fragment key={row.row_id}>
         <tr key={row.row_id}>
           <td className="px-2 py-2 align-top"><button type="button" onClick={() => toggle(row)} aria-label={isExpanded ? 'Collapse exception' : 'Expand exception'} className="rounded p-0.5 hover:bg-gray-100">{isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></td>
-          <td className="px-2 py-2 align-top">{row.date || '—'}</td><td className="px-2 py-2 align-top font-medium">{row.voucher_number || '—'}</td><td className="px-2 py-2 align-top">{row.journal_number || '—'}</td><td className="px-2 py-2 text-right align-top">{formatAmount(row.amount, row.currency)}</td><td className="px-2 py-2 align-top font-medium">{row.bank_alias || row.bank || '—'}</td><td className="px-2 py-2 align-top">{row.from_bank_alias || '—'}</td><td className="px-2 py-2 align-top">{row.to_bank_alias || '—'}</td><td className="px-2 py-2 align-top">{row.customer_supplier || '—'}</td><td className="px-2 py-2 align-top">{humanize(row.document_type)}</td><td className="px-2 py-2 align-top">{humanize(row.current_category)}</td><td className="px-2 py-2 align-top">{row.current_gl_account || '—'}</td><td className="max-w-80 px-2 py-2 align-top">{row.problem}</td><td className="px-2 py-2 align-top"><span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 font-medium text-amber-800"><AlertTriangle className="h-3 w-3" />{humanize(row.status)}</span></td><td className="px-2 py-2 align-top"><button type="button" onClick={() => toggle(row)} className="whitespace-nowrap rounded-md bg-blue-600 px-2.5 py-1.5 font-semibold text-white hover:bg-blue-700">{isExpanded ? 'Close' : 'Open correction'}</button></td>
+          <td className="px-2 py-2 align-top">{row.date || '—'}</td><td className="px-2 py-2 align-top font-medium">{row.voucher_number || '—'}</td><td className="px-2 py-2 align-top">{row.journal_number || '—'}</td><td className="px-2 py-2 text-right align-top">{formatAmount(row.amount, row.currency)}</td><td className="px-2 py-2 align-top font-medium">{row.bank_alias || row.bank || '—'}</td><td className="px-2 py-2 align-top">{row.from_bank_alias || '—'}</td><td className="px-2 py-2 align-top">{row.to_bank_alias || '—'}</td><td className="px-2 py-2 align-top">{row.customer_supplier || '—'}</td><td className="px-2 py-2 align-top">{humanize(row.document_type)}</td><td className="px-2 py-2 align-top">{humanize(row.current_category)}</td><td className="px-2 py-2 align-top">{row.current_gl_account || '—'}</td><td className="max-w-80 px-2 py-2 align-top">{row.problem}</td><td className="px-2 py-2 align-top"><FinanceBadge status="pending"><AlertTriangle className="h-3 w-3" />{humanize(row.status)}</FinanceBadge></td><td className="px-2 py-2 align-top"><FinanceButton type="button" variant="primary" onClick={() => toggle(row)}>{isExpanded ? 'Close' : 'Open correction'}</FinanceButton></td>
         </tr>
         {isExpanded && <tr key={`${row.row_id}:details`} className="bg-gray-50/70"><td colSpan={15} className="px-4 py-3"><div className="mb-3 grid gap-2 rounded-md border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">{[['Voucher Number',row.voucher_number],['Journal Number',row.journal_number],['Date',row.date],['Amount',formatAmount(row.amount,row.currency)],['Currency',row.currency],['Bank Alias',row.bank_alias || row.bank],['Current GL',row.current_gl_account],['Current Category',humanize(row.current_category)],['Current Subcategory',humanize(row.current_subcategory)],['Source Document',row.current_source_document]].map(([label,value]) => <div key={label}><div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</div><div className="mt-0.5 break-words text-xs font-medium text-gray-800">{value || '—'}</div></div>)}</div><div className="mb-3 grid gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 md:grid-cols-3"><div><span className="font-semibold">Business problem:</span> {row.problem}</div><div><span className="font-semibold">Why it needs review:</span> {row.why_not_automatic}</div><div><span className="font-semibold">Recommended action:</span> {row.recommended_action}</div></div><div className="grid gap-3 rounded-md border border-blue-200 bg-blue-50/40 p-3 sm:grid-cols-2 lg:grid-cols-4">
           {['expense','petty_cash','capital_contribution'].includes(row.document_type) && needsCategory && <label className="text-xs">Expense Category<select value={edit.expense_category || ''} onChange={event => updateEdit(row,'expense_category',event.target.value)} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage}><option value="">No change</option><option value="other">Other</option><option value="utilities">Utilities</option><option value="fixed_asset">Fixed Asset</option><option value="non_permanent_employee_fee">Non-Permanent Employee Fee (PPh 21)</option></select></label>}
@@ -233,10 +236,11 @@ export function FinanceExceptionCorrectionDashboard({ canManage }: {
           {row.document_type === 'journal' && <label className="text-xs">Document Classification<input value={edit.document_classification || ''} onChange={event => updateEdit(row,'document_classification',event.target.value)} placeholder="No change" className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage} /></label>}
           {['loan','capital_contribution'].includes(row.document_type) && <label className="text-xs">Finance Classification<input value={edit.finance_classification || ''} onChange={event => updateEdit(row,'finance_classification',event.target.value)} placeholder={row.current_finance_classification || 'No change'} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage} /></label>}
           {['sales_invoice','purchase_invoice'].includes(row.document_type) && <label className="text-xs">Faktur Pajak Number<input value={edit.faktur_pajak_number || ''} onChange={event => updateEdit(row,'faktur_pajak_number',event.target.value)} placeholder={row.current_faktur_pajak_number || 'No change'} className="mt-1 w-full rounded border px-2 py-1.5" disabled={!canManage} /></label>}
-          <div className="flex items-end"><button type="button" onClick={() => void saveRepair(row)} disabled={!canManage || savingRow === row.row_id || !Object.values(edit).some(Boolean)} className="inline-flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><Save className="h-3.5 w-3.5" />{savingRow === row.row_id ? 'Saving…' : 'Save repair'}</button></div>
+          <div className="flex items-end"><FinanceButton type="button" variant="primary" onClick={() => void saveRepair(row)} disabled={!canManage || savingRow === row.row_id || !Object.values(edit).some(Boolean)}><Save className="h-3.5 w-3.5" />{savingRow === row.row_id ? 'Saving…' : 'Save repair'}</FinanceButton></div>
         </div></td></tr>}
       </Fragment>; })}
       {!filteredRows.length && <tr><td colSpan={15} className="px-4 py-16 text-center text-sm text-emerald-700">{rows.length ? 'No exceptions match the current filters.' : 'No unresolved Finance exceptions.'}</td></tr>}
     </tbody></table></div>
-  </div>;
+    </div>
+  </FinancePage>;
 }

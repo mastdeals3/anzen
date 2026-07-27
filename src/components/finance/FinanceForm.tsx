@@ -1,4 +1,8 @@
 import { ReactNode } from 'react';
+import {
+  BTN_DANGER, BTN_PRIMARY, BTN_SECONDARY, BTN_SUCCESS,
+  FORM_HINT, FORM_LABEL, INPUT, INPUT_MONEY, SELECT, TEXTAREA,
+} from './uiTokens';
 
 /**
  * FinanceForm primitives — ERP-style form spacing / sizing in ONE place.
@@ -20,18 +24,18 @@ import { ReactNode } from 'react';
  */
 
 // ─── Tokens ────────────────────────────────────────────────────────────────
-export const F_INPUT  = 'w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500';
-export const F_INPUT_MONEY = 'w-full h-8 px-2 text-[11px] text-right font-mono tabular-nums border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500';
-export const F_SELECT = 'w-full h-8 px-2 text-[11px] border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500';
-export const F_TEXTAREA = 'w-full px-2 py-1 text-[11px] border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none';
-export const F_LABEL  = 'block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5';
-export const F_HINT   = 'text-[10px] text-gray-400 mt-0.5';
+export const F_INPUT  = INPUT;
+export const F_INPUT_MONEY = INPUT_MONEY;
+export const F_SELECT = SELECT;
+export const F_TEXTAREA = TEXTAREA;
+export const F_LABEL  = FORM_LABEL;
+export const F_HINT   = FORM_HINT;
 export const F_HELP   = 'text-[10px] text-red-600 mt-0.5';
-export const F_BTN_H  = 'h-[30px]';
-export const F_BTN_PRIMARY   = `inline-flex items-center gap-1 ${F_BTN_H} px-3 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded`;
-export const F_BTN_SECONDARY = `inline-flex items-center gap-1 ${F_BTN_H} px-3 text-[11px] font-semibold text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded`;
-export const F_BTN_DANGER    = `inline-flex items-center gap-1 ${F_BTN_H} px-3 text-[11px] font-semibold text-white bg-red-600 hover:bg-red-700 rounded`;
-export const F_BTN_SUCCESS   = `inline-flex items-center gap-1 ${F_BTN_H} px-3 text-[11px] font-semibold text-white bg-green-600 hover:bg-green-700 rounded`;
+export const F_BTN_H  = 'h-7';
+export const F_BTN_PRIMARY   = BTN_PRIMARY;
+export const F_BTN_SECONDARY = BTN_SECONDARY;
+export const F_BTN_DANGER    = BTN_DANGER;
+export const F_BTN_SUCCESS   = BTN_SUCCESS;
 
 // ─── Section ──────────────────────────────────────────────────────────────
 /**
@@ -60,11 +64,11 @@ export function FormSection({ title, right, children }: { title?: string; right?
  * Field spans within the grid use FormField's `span` prop.
  */
 export function FormGrid({ cols = 2, children }: { cols?: 2 | 3 | 4 | 6 | 12; children: ReactNode }) {
-  const gridCls = cols === 12 ? 'grid-cols-12'
-                : cols === 6  ? 'grid-cols-6'
-                : cols === 4  ? 'grid-cols-4'
-                : cols === 3  ? 'grid-cols-3'
-                : 'grid-cols-2';
+  const gridCls = cols === 12 ? 'grid-cols-1 sm:grid-cols-12'
+                : cols === 6  ? 'grid-cols-1 sm:grid-cols-6'
+                : cols === 4  ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+                : cols === 3  ? 'grid-cols-1 sm:grid-cols-3'
+                : 'grid-cols-1 sm:grid-cols-2';
   return <div className={`grid ${gridCls} gap-x-3 gap-y-2`}>{children}</div>;
 }
 
@@ -85,11 +89,11 @@ export function FormField({
   children: ReactNode;
 }) {
   const spanCls =
-    span === 12 ? 'col-span-12'
-    : span === 6 ? 'col-span-6'
-    : span === 4 ? 'col-span-4'
-    : span === 3 ? 'col-span-3'
-    : span === 2 ? 'col-span-2'
+    span === 12 ? 'sm:col-span-12'
+    : span === 6 ? 'sm:col-span-6'
+    : span === 4 ? 'sm:col-span-4'
+    : span === 3 ? 'sm:col-span-3'
+    : span === 2 ? 'sm:col-span-2'
     : '';
   return (
     <div className={spanCls}>

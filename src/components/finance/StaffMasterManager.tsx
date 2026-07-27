@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { FinanceModal } from './FinanceModal';
+import { FinancePage } from './FinancePage';
+import { FinanceTable } from './FinanceTable';
+import { FinanceActionButton, FinanceBadge, FinanceButton } from './FinanceUI';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
@@ -137,27 +140,16 @@ export function StaffMasterManager({ canManage }: Props) {
   });
 
   return (
-    <div className="flex flex-col gap-1.5">
-      {/* Shared title strip */}
-      <div className="flex items-center justify-between h-8 px-2 bg-white border border-gray-200 rounded">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <h1 className="text-xs font-bold text-gray-900 truncate flex items-center gap-1.5">
-            <Users className="w-3 h-3 text-blue-600" /> Staff Master
-          </h1>
-          <span className="text-[10px] text-gray-400 truncate">Payroll / staff-expense targets</span>
-        </div>
-        {canManage && (
-          <button
-            onClick={() => { reset(); setModalOpen(true); }}
-            className="inline-flex items-center gap-1 h-7 px-2 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700"
-          >
-            <Plus className="w-3 h-3" /> New
-          </button>
-        )}
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-1.5 min-h-8 px-2 py-1 bg-white border border-gray-200 rounded">
+    <FinancePage
+      title="Staff Master"
+      subtitle="Payroll / staff-expense targets"
+      actions={canManage ? (
+        <FinanceButton variant="primary" onClick={() => { reset(); setModalOpen(true); }}>
+          <Plus className="w-3.5 h-3.5" /> New Staff
+        </FinanceButton>
+      ) : undefined}
+      toolbar={(
+        <>
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
           <input
@@ -168,56 +160,31 @@ export function StaffMasterManager({ canManage }: Props) {
           />
         </div>
         <span className="ml-auto text-xs text-gray-500">{filtered.length} staff</span>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded overflow-hidden">
-        <table className="w-full text-xs border-collapse">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr className="h-8">
-              <th className="px-2 py-1 text-left font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Name</th>
-              <th className="px-2 py-1 text-left font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Code</th>
-              <th className="px-2 py-1 text-left font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Department</th>
-              <th className="px-2 py-1 text-left font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Default GL</th>
-              <th className="px-2 py-1 text-left font-semibold text-[11px] text-gray-600 uppercase tracking-wide">NPWP</th>
-              <th className="px-2 py-1 text-center font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Status</th>
-              {canManage && <th className="px-2 py-1 text-center font-semibold text-[11px] text-gray-600 uppercase tracking-wide">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={canManage ? 7 : 6} className="py-8 text-center text-xs text-gray-400">Loading…</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={canManage ? 7 : 6} className="py-8 text-center text-xs text-gray-400">No staff records.</td></tr>
-            ) : filtered.map(r => (
-              <tr key={r.id} className="h-8 border-b border-gray-100 hover:bg-blue-50/40">
-                <td className="px-2 py-1 text-gray-900 font-medium">{r.full_name}</td>
-                <td className="px-2 py-1 text-gray-700 font-mono">{r.employee_code || '—'}</td>
-                <td className="px-2 py-1 text-gray-700">{r.department || '—'}</td>
-                <td className="px-2 py-1 text-gray-700 font-mono">{r.default_gl_code ? `${r.default_gl_code}${r.default_gl_name ? ' — ' + r.default_gl_name : ''}` : '—'}</td>
-                <td className="px-2 py-1 text-gray-700 font-mono">{r.npwp || '—'}</td>
-                <td className="px-2 py-1 text-center">
-                  <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded ${r.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                    {r.status}
-                  </span>
-                </td>
-                {canManage && (
-                  <td className="px-1 py-0.5">
-                    <div className="flex items-center justify-center gap-0.5">
-                      <button onClick={() => openEdit(r)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Edit">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => remove(r)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        </>
+      )}
+    >
+      <FinanceTable
+        rows={filtered}
+        rowKey={(row) => row.id}
+        loading={loading}
+        empty="No staff records."
+        columns={[
+          { header: 'Name', cell: (row) => <span className="font-medium text-gray-900">{row.full_name}</span> },
+          { header: 'Code', cell: (row) => <span className="font-mono">{row.employee_code || '—'}</span> },
+          { header: 'Department', cell: (row) => row.department || '—' },
+          { header: 'Default GL', cell: (row) => <span className="font-mono">{row.default_gl_code ? `${row.default_gl_code}${row.default_gl_name ? ` — ${row.default_gl_name}` : ''}` : '—'}</span> },
+          { header: 'NPWP', cell: (row) => <span className="font-mono">{row.npwp || '—'}</span> },
+          { header: 'Status', align: 'center', cell: (row) => <FinanceBadge status={row.status === 'active' ? 'approved' : 'draft'}>{row.status}</FinanceBadge> },
+          ...(canManage ? [{
+            header: 'Actions', align: 'center' as const, cell: (row: Staff) => (
+              <div className="flex items-center justify-center gap-0.5">
+                <FinanceActionButton action="edit" onClick={() => openEdit(row)} />
+                <FinanceActionButton action="delete" onClick={() => remove(row)} />
+              </div>
+            ),
+          }] : []),
+        ]}
+      />
 
       {/* Modal */}
       {modalOpen && (
@@ -228,14 +195,12 @@ export function StaffMasterManager({ canManage }: Props) {
           size="md"
           footer={(
             <>
-              <button type="button" onClick={() => { setModalOpen(false); reset(); }}
-                className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">
+              <FinanceButton type="button" onClick={() => { setModalOpen(false); reset(); }}>
                 Cancel
-              </button>
-              <button type="submit" form="staff-master-form"
-                className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
+              </FinanceButton>
+              <FinanceButton type="submit" form="staff-master-form" variant="primary">
                 {editing ? 'Update' : 'Create'}
-              </button>
+              </FinanceButton>
             </>
           )}
         >
@@ -288,6 +253,6 @@ export function StaffMasterManager({ canManage }: Props) {
           </form>
         </FinanceModal>
       )}
-    </div>
+    </FinancePage>
   );
 }

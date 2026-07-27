@@ -244,7 +244,7 @@ export function UtilityMasterManager({ canManage }: Props) {
       {/* Modal */}
       {modalOpen && (
         <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); reset(); }}
-          title={editing ? `Edit Utility: ${editing.provider_name}` : 'New Utility Provider'} maxWidth="max-w-lg">
+          title={editing ? `Edit Utility: ${editing.provider_name}` : 'New Utility Provider'} size="md">
           <form onSubmit={save} className="flex flex-col gap-1.5">
             <SapRow>
               <SapField label="Provider" required span={8}>

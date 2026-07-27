@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, RefreshCw, ShieldCheck, X, ExternalLink } from 'lucide-react';
+import { AlertTriangle, RefreshCw, ShieldCheck, ExternalLink } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { FinancePage } from './FinancePage';
+import { FinanceModal } from './FinanceModal';
+import { FinanceBadge, FinanceButton } from './FinanceUI';
 
 type IntegrityKey =
   | 'unbalanced_journals'
@@ -94,21 +97,19 @@ export function IntegrityMonitor() {
   }, [loadMetrics]);
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">Integrity Monitor</h2>
-          <p className="text-sm text-gray-500">Read-only finance integrity checks.</p>
-        </div>
-        <button
+    <FinancePage
+      title="Integrity Monitor"
+      subtitle="Read-only finance integrity checks"
+      actions={(
+        <FinanceButton
           onClick={loadMetrics}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           Refresh
-        </button>
-      </div>
+        </FinanceButton>
+      )}
+    >
 
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -139,10 +140,10 @@ export function IntegrityMonitor() {
                   </td>
                   <td className="px-2 py-1.5 text-right text-sm font-semibold text-gray-900">{metric.count || 'No records found'}</td>
                   <td className="px-2 py-1.5 text-sm">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${hasIssue ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
+                    <FinanceBadge status={hasIssue ? 'pending' : 'approved'}>
                       {hasIssue ? <AlertTriangle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
                       {hasIssue ? 'Issue detected' : 'No records found'}
-                    </span>
+                    </FinanceBadge>
                   </td>
                 </tr>
               );
@@ -152,11 +153,7 @@ export function IntegrityMonitor() {
       </div>
 
       {selectedMetric && (
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm" role="dialog" aria-label={`${selectedMetric.label} details`}>
-          <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
-            <h3 className="text-sm font-semibold text-gray-900">{selectedMetric.label}</h3>
-            <button type="button" onClick={() => setSelectedMetric(null)} className="rounded p-1 text-gray-500 hover:bg-gray-100" aria-label="Close details"><X className="h-4 w-4" /></button>
-          </div>
+        <FinanceModal isOpen title={`${selectedMetric.label} Details`} onClose={() => setSelectedMetric(null)} size="lg">
           {detailLoading && <p className="p-3 text-sm text-gray-500">Loading records…</p>}
           {detailError && <p className="p-3 text-sm text-red-700">{detailError}</p>}
           {!detailLoading && !detailError && detailRows.length === 0 && <p className="p-3 text-sm text-gray-500">No records found</p>}
@@ -175,12 +172,12 @@ export function IntegrityMonitor() {
               </table>
             </div>
           )}
-        </div>
+        </FinanceModal>
       )}
 
       {lastRefreshed && (
         <p className="text-xs text-gray-500">Last refreshed: {new Date(lastRefreshed).toLocaleString()}</p>
       )}
-    </div>
+    </FinancePage>
   );
 }

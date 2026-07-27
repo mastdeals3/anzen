@@ -4,6 +4,7 @@ import { Plus, ArrowDownCircle, ArrowUpCircle, Upload, X, FileText, Image, Eye, 
 import { FinanceModal as Modal } from './FinanceModal';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
+import { FinanceActionButton } from './FinanceUI';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -1503,59 +1504,37 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-right text-sm">
                       <div className="flex items-center justify-end gap-2">
-                        <button
+                        <FinanceActionButton
+                          action="view"
+                          label={tx.fund_transfer_id ? 'Open Contra Voucher' : 'View Details'}
                           onClick={(event) => { event.stopPropagation(); viewTransaction(tx); }}
-                          className="text-blue-600 hover:text-blue-900"
-                          title={tx.fund_transfer_id ? 'Open Contra Voucher' : 'View Details'}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
+                        />
+                        {!tx.fund_transfer_id && canManage && tx.approval_status !== 'approved' && (
+                          <FinanceActionButton action="edit" onClick={(event) => { event.stopPropagation(); openEditModal(tx); }} />
+                        )}
                         {!tx.fund_transfer_id && isAdmin && tx.approval_status === 'pending_approval' && (
                           <>
-                            <button
+                            <FinanceActionButton
+                              action="approve"
                               onClick={(event) => { event.stopPropagation(); handleApprovePettyCash(tx.id); }}
                               disabled={approvalLoading === tx.id}
-                              className="text-green-600 hover:text-green-900 disabled:opacity-50"
-                              title="Approve"
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </button>
-                            <button
+                            />
+                            <FinanceActionButton
+                              action="reject"
                               onClick={(event) => { event.stopPropagation(); setPcRejectionTarget(tx.id); setPcRejectionModalOpen(true); }}
                               disabled={approvalLoading === tx.id}
-                              className="text-red-600 hover:text-red-900 disabled:opacity-50"
-                              title="Reject"
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </button>
+                            />
                           </>
                         )}
                         {!tx.fund_transfer_id && isAdmin && tx.approval_status === 'approved' && (
-                          <button
+                          <FinanceActionButton
+                            action="reverse"
+                            label="Cancel Posting"
                             onClick={(event) => { event.stopPropagation(); openCancelPostingModal(tx); }}
-                            className="text-orange-600 hover:text-orange-900"
-                            title="Cancel Posting"
-                          >
-                            <RotateCcw className="h-4 w-4" />
-                          </button>
+                          />
                         )}
                         {!tx.fund_transfer_id && canManage && tx.approval_status !== 'approved' && (
-                          <>
-                            <button
-                              onClick={(event) => { event.stopPropagation(); openEditModal(tx); }}
-                              className="text-yellow-600 hover:text-yellow-900"
-                              title="Edit"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={(event) => { event.stopPropagation(); handleDelete(tx.id); }}
-                              className="text-red-600 hover:text-red-900"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </>
+                          <FinanceActionButton action="delete" onClick={(event) => { event.stopPropagation(); handleDelete(tx.id); }} />
                         )}
                       </div>
                     </td>
@@ -1910,7 +1889,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
         isOpen={viewModalOpen}
         onClose={() => setViewModalOpen(false)}
         title="Petty Cash Receipt"
-        maxWidth="max-w-lg"
+        size="sm"
       >
         {viewingTransaction && (
           <div className="space-y-2 text-sm">

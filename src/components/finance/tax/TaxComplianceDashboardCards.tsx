@@ -155,7 +155,7 @@ export function TaxComplianceDashboardCards({ variant = 'grid' }: Props) {
           <button
             key={c.label}
             onClick={() => navigate('/finance/tax')}
-            className={`text-left border rounded p-3 hover:shadow-sm transition ${colorClass(c.color)}`}
+            className={`finance-card-button text-left border rounded p-3 hover:shadow-sm transition ${colorClass(c.color)}`}
           >
             <div className="flex items-start justify-between">
               <div>

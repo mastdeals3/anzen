@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DataTable } from '../DataTable';
 import { FinanceModal as Modal } from './FinanceModal';
+import { FinancePage } from './FinancePage';
+import { FinanceActionButton, FinanceBadge, FinanceButton } from './FinanceUI';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { formatCurrency } from '../../utils/currency';
-import { Plus, Edit } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 interface BankAccount {
   id: string;
@@ -190,40 +192,29 @@ export function BankAccountsManager({ canManage }: Props) {
       }
     },
     { key: 'status', label: 'Status', render: (_val: any, item: BankAccount) => (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-        item.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-      }`}>
+      <FinanceBadge status={item.is_active ? 'approved' : 'draft'}>
         {item.is_active ? 'Active' : 'Inactive'}
-      </span>
+      </FinanceBadge>
     )},
   ];
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Bank Accounts</h2>
-        {canManage && (
-          <button
-            onClick={() => { resetForm(); setModalOpen(true); }}
-            className="flex items-center gap-2 bg-blue-600 text-white h-7 px-2 rounded hover:bg-blue-700"
-          >
-            <Plus className="w-5 h-5" />
+    <FinancePage
+      title="Bank Accounts"
+      subtitle="Bank master and ledger balances"
+      actions={canManage ? (
+          <FinanceButton variant="primary" onClick={() => { resetForm(); setModalOpen(true); }}>
+            <Plus className="w-3.5 h-3.5" />
             Add Bank Account
-          </button>
-        )}
-      </div>
-
+          </FinanceButton>
+      ) : undefined}
+    >
       <DataTable
         columns={columns}
         data={accounts}
         loading={loading}
         actions={canManage ? (account) => (
-          <button
-            onClick={() => handleEdit(account)}
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
+          <FinanceActionButton action="edit" onClick={() => handleEdit(account)} />
         ) : undefined}
       />
 
@@ -290,15 +281,13 @@ export function BankAccountsManager({ canManage }: Props) {
           </SapRow>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 mt-1">
-            <button type="button" onClick={() => { setModalOpen(false); resetForm(); }}
-              className="h-7 px-3 text-xs text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded">Cancel</button>
-            <button type="submit"
-              className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded font-semibold">
+            <FinanceButton type="button" onClick={() => { setModalOpen(false); resetForm(); }}>Cancel</FinanceButton>
+            <FinanceButton type="submit" variant="primary">
               {editingAccount ? 'Update' : 'Add'} Account
-            </button>
+            </FinanceButton>
           </div>
         </form>
       </Modal>
-    </div>
+    </FinancePage>
   );
 }

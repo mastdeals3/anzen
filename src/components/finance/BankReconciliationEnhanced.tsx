@@ -14,6 +14,7 @@ import {
   notifyFinanceReconciliationRefresh,
 } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
+import { FinanceActionButton } from './FinanceUI';
 import {
   approveFinanceExpense,
   linkBankStatementLine,
@@ -2951,23 +2952,22 @@ export function BankReconciliationEnhanced({
                   </td>
                   <td className="px-1.5 py-1 text-center">
                     <div className="flex items-center justify-center gap-1">
+                      {canManage && (
+                        <FinanceActionButton action="edit" label="Edit debit/credit" onClick={() => openEditModal(line)} />
+                      )}
                       {line.status === 'suggested' && (
                         <>
-                          <button
+                          <FinanceActionButton
+                            action="approve"
+                            label="Confirm Match"
                             onClick={() => confirmMatch(line.id)}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded"
-                            title="Confirm Match"
                             aria-label={t.finance.bankAcceptSuggestedMatch}
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                          </button>
-                          <button
+                          />
+                          <FinanceActionButton
+                            action="reject"
+                            label="Reject Match"
                             onClick={() => rejectMatch(line.id)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded"
-                            title="Reject Match"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </button>
+                          />
                         </>
                       )}
                       {line.status === 'unmatched' && canManage && (
@@ -2978,15 +2978,6 @@ export function BankReconciliationEnhanced({
                         >
                           <Plus className="w-3 h-3" />
                           Record
-                        </button>
-                      )}
-                      {canManage && (
-                        <button
-                          onClick={() => openEditModal(line)}
-                          className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                          title="Edit debit/credit"
-                        >
-                          <Edit className="w-4 h-4" />
                         </button>
                       )}
                     </div>
