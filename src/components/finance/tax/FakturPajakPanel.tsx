@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Hash, ExternalLink, Download, FileWarning, CheckCircle2, Receipt } from 'lucide-react';
+import { FileText, ExternalLink, Download, FileWarning, CheckCircle2, Receipt, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
-import { TaxAttachments } from './TaxAttachments';
-import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
+import { StatCard, StatCardGrid, SectionCard, EmptyState } from './TaxUI';
+import { FinanceModal } from '../FinanceModal';
+import { FinanceBadge, FinanceButton, FinanceInput, FinanceSelect, type FinanceStatus } from '../FinanceUI';
+import { FinanceTable } from '../FinanceTable';
+import { F_TEXTAREA, F_LABEL } from '../FinanceForm';
 
 interface Customer {
   company_name: string | null;
@@ -31,18 +34,175 @@ interface FakturRow {
   ppn_amount: number;
   status: string;
   reported_at: string | null;
+  notes: string | null;
+  customer_id: string | null;
+  invoice_amount: number | null;
+  official_djp_number: string | null;
+  linked_invoice_id: string | null;
+  uploaded_by: string | null;
+  uploaded_at: string | null;
 }
 
-const FAKTUR_KINDS = [
-  { value: 'pdf', label: 'PDF Faktur' },
-  { value: 'xml', label: 'XML' },
-  { value: 'csv', label: 'CSV' },
-  { value: 'other', label: 'Other' },
-] as const;
+type WorkflowStatus = 'waiting' | 'recorded' | 'reported';
+
+function workflowStatus(invoice: SalesInvoice, faktur?: FakturRow): WorkflowStatus {
+  if (faktur?.status === 'reported') return 'reported';
+  if (faktur && faktur.status !== 'generated' && faktur.status !== 'cancelled') return 'recorded';
+  if (faktur?.status === 'uploaded') return 'recorded';
+  return 'waiting';
+}
+
+function workflowLabel(status: WorkflowStatus): string {
+  return status === 'waiting' ? 'Waiting for Faktur' : status === 'recorded' ? 'Recorded' : 'Reported';
+}
 
 function customerDisplay(c: Customer | undefined): string {
   if (!c) return '—';
   return c.company_name || '—';
+}
+
+function RecordFakturModal({
+  invoice, existing, busy, onClose, onSave,
+}: {
+  invoice: SalesInvoice;
+  existing?: FakturRow;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (data: { invoice: SalesInvoice; number: string; date: string; notes: string; pdf: File | null }) => Promise<void>;
+}) {
+  const [number, setNumber] = useState(existing?.faktur_number ?? invoice.faktur_pajak_number ?? '');
+  const [date, setDate] = useState(existing?.issue_date ?? invoice.invoice_date);
+  const [notes, setNotes] = useState(existing?.notes ?? '');
+  const [pdf, setPdf] = useState<File | null>(null);
+  const [error, setError] = useState('');
+  const [showMismatchWarning, setShowMismatchWarning] = useState(false);
+
+  const invoiceDpp = Math.max(Number(invoice.total_amount ?? 0) - Number(invoice.tax_amount ?? 0), 0);
+  const invoicePpn = Number(invoice.tax_amount ?? 0);
+  const hasMismatch = Boolean(existing && (
+    (existing.customer_id ?? invoice.customer_id) !== invoice.customer_id
+    || Math.abs(Number(existing.invoice_amount ?? Number(existing.dpp_amount) + Number(existing.ppn_amount)) - Number(invoice.total_amount)) > 0.01
+    || Math.abs(Number(existing.dpp_amount) - invoiceDpp) > 0.01
+    || Math.abs(Number(existing.ppn_amount) - invoicePpn) > 0.01
+  ));
+
+  function saveAfterValidation() {
+    setShowMismatchWarning(false);
+    void onSave({ invoice, number, date, notes, pdf });
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    if (!number.trim()) {
+      setError('Official DJP Faktur Number is required.');
+      return;
+    }
+    if (!date) {
+      setError('Faktur Date is required.');
+      return;
+    }
+    if (!existing && !pdf) {
+      setError('Upload the official PDF Faktur Pajak received from the CA.');
+      return;
+    }
+    if (hasMismatch) {
+      setShowMismatchWarning(true);
+      return;
+    }
+    saveAfterValidation();
+  }
+
+  return (
+    <FinanceModal
+      isOpen
+      onClose={onClose}
+      title={existing ? 'Edit Recorded Faktur' : 'Record Faktur'}
+      subtitle="Record the official DJP document received from the CA"
+      size="lg"
+      footer={(
+        <>
+          <FinanceButton type="button" onClick={onClose} disabled={busy}>Cancel</FinanceButton>
+          <FinanceButton type="submit" form="record-faktur-form" variant="primary" disabled={busy}>
+            <Upload className="h-4 w-4" /> {busy ? 'Saving…' : 'Save'}
+          </FinanceButton>
+        </>
+      )}
+    >
+      <form id="record-faktur-form" onSubmit={handleSubmit} className="space-y-5">
+        <div className="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          This ERP records the official Faktur Pajak issued by the external CA. It never issues the legal DJP number.
+        </div>
+
+        <section className="space-y-4">
+          <h4 className="border-b border-gray-200 pb-2 text-sm font-semibold text-gray-700">Sales Invoice</h4>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div><span className={F_LABEL}>Sales Invoice</span><div className="h-10 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">{invoice.invoice_number}</div></div>
+            <div><span className={F_LABEL}>Customer</span><div className="h-10 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">{customerDisplay(invoice.customer ?? undefined)}</div></div>
+            <div><span className={F_LABEL}>ERP Reference</span><div className="h-10 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-800">{invoice.invoice_number}</div></div>
+            <div><span className={F_LABEL}>Invoice Amount</span><div className="h-10 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-right text-sm font-mono text-gray-800">Rp {Number(invoice.total_amount ?? 0).toLocaleString('id-ID')}</div></div>
+            <div><span className={F_LABEL}>DPP</span><div className="h-10 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-right text-sm font-mono text-gray-800">Rp {invoiceDpp.toLocaleString('id-ID')}</div></div>
+            <div><span className={F_LABEL}>PPN</span><div className="h-10 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-right text-sm font-mono text-gray-800">Rp {invoicePpn.toLocaleString('id-ID')}</div></div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h4 className="border-b border-gray-200 pb-2 text-sm font-semibold text-gray-700">Official Faktur Details</h4>
+          <div>
+            <label className={F_LABEL} htmlFor="official-faktur-number">Official DJP Faktur <span className="text-red-500">*</span></label>
+            <FinanceInput id="official-faktur-number" value={number} onChange={e => setNumber(e.target.value)} placeholder="Enter number from CA" autoFocus />
+          </div>
+          <div>
+            <label className={F_LABEL} htmlFor="faktur-date">Faktur Date <span className="text-red-500">*</span></label>
+            <FinanceInput id="faktur-date" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label className={F_LABEL} htmlFor="faktur-pdf">Official PDF Faktur Pajak {!existing && <span className="text-red-500">*</span>}</label>
+            <label htmlFor="faktur-pdf" className="flex min-h-16 cursor-pointer items-center gap-3 rounded-md border border-dashed border-gray-300 bg-gray-50 px-4 py-3 hover:border-blue-400 hover:bg-blue-50">
+              <Upload className="h-5 w-5 text-gray-500" />
+              <span className="min-w-0 text-sm text-gray-700">{pdf ? pdf.name : existing ? 'Choose a replacement PDF' : 'Choose the official PDF received from the CA'}</span>
+              <input id="faktur-pdf" type="file" accept="application/pdf,.pdf" className="sr-only" onChange={e => {
+                const file = e.target.files?.[0] ?? null;
+                if (file && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                  setError('Only PDF files are accepted.');
+                  setPdf(null);
+                  return;
+                }
+                if (file && file.size > 10 * 1024 * 1024) {
+                  setError('The PDF must be 10 MB or smaller.');
+                  setPdf(null);
+                  return;
+                }
+                setError('');
+                setPdf(file);
+              }} />
+            </label>
+            {existing && <p className="mt-1 text-xs text-gray-500">A recorded PDF is already stored. Upload a new file only if it should be replaced or supplemented.</p>}
+          </div>
+          <div>
+            <label className={F_LABEL} htmlFor="faktur-notes">Notes</label>
+            <textarea id="faktur-notes" className={F_TEXTAREA} rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional CA reference or audit note" />
+          </div>
+        </section>
+        {error && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      </form>
+      <FinanceModal
+        isOpen={showMismatchWarning}
+        onClose={() => setShowMismatchWarning(false)}
+        title="Confirm Faktur Difference"
+        subtitle="Accountant override required"
+        size="sm"
+        footer={(
+          <>
+            <FinanceButton type="button" onClick={() => setShowMismatchWarning(false)}>Cancel</FinanceButton>
+            <FinanceButton type="button" variant="primary" onClick={saveAfterValidation}>Continue anyway</FinanceButton>
+          </>
+        )}
+      >
+        <p className="text-sm text-gray-700">The uploaded Faktur differs from the Sales Invoice. Continue anyway?</p>
+      </FinanceModal>
+    </FinanceModal>
+  );
 }
 
 export function FakturPajakPanel() {
@@ -52,8 +212,8 @@ export function FakturPajakPanel() {
   const [fakturs, setFakturs] = useState<Record<string, FakturRow>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'missing' | 'generated' | 'uploaded' | 'reported'>('all');
+  const [recording, setRecording] = useState<SalesInvoice | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'waiting' | 'recorded' | 'reported'>('all');
 
   async function refresh() {
     setLoading(true);
@@ -77,10 +237,21 @@ export function FakturPajakPanel() {
 
     const invIds = loaded.map(i => i.id);
     if (invIds.length) {
-      const { data: fs } = await supabase
+      let { data: fs, error: fakturError } = await supabase
         .from('faktur_pajak')
-        .select('id, sales_invoice_id, faktur_number, issue_date, dpp_amount, ppn_amount, status, reported_at')
+        .select('id, sales_invoice_id, linked_invoice_id, faktur_number, official_djp_number, issue_date, customer_id, invoice_amount, dpp_amount, ppn_amount, status, reported_at, notes, uploaded_by, uploaded_at')
         .in('sales_invoice_id', invIds);
+      // Keep the UI readable while an environment is between application and
+      // migration deployment; the new save path requires the migration.
+      if (fakturError) {
+        const legacy = await supabase
+          .from('faktur_pajak')
+          .select('id, sales_invoice_id, faktur_number, issue_date, customer_id, dpp_amount, ppn_amount, status, reported_at, notes')
+          .in('sales_invoice_id', invIds);
+        fs = legacy.data;
+        fakturError = legacy.error;
+      }
+      if (fakturError) alert('Failed to load recorded Faktur: ' + fakturError.message);
       setFakturs(Object.fromEntries(((fs as FakturRow[] | null) ?? []).map(f => [f.sales_invoice_id, f])));
     } else {
       setFakturs({});
@@ -89,9 +260,9 @@ export function FakturPajakPanel() {
   }
   useEffect(() => { void refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dateRange?.startDate, dateRange?.endDate]);
 
-  const missingCount = useMemo(
-    () => invoices.filter(i => !i.faktur_pajak_number || i.faktur_pajak_number === '').length,
-    [invoices]
+  const waitingCount = useMemo(
+    () => invoices.filter(i => workflowStatus(i, fakturs[i.id]) === 'waiting').length,
+    [invoices, fakturs]
   );
 
   const totals = useMemo(() => {
@@ -99,40 +270,97 @@ export function FakturPajakPanel() {
     for (const i of invoices) {
       ppn += Number(i.tax_amount ?? 0);
       const f = fakturs[i.id];
-      if (f?.status === 'reported') reported++;
+      if (workflowStatus(i, f) === 'reported') reported++;
     }
     return { ppn, reported, count: invoices.length };
   }, [invoices, fakturs]);
 
   const filteredInvoices = useMemo(() => {
     if (statusFilter === 'all') return invoices;
-    if (statusFilter === 'missing') return invoices.filter(i => !i.faktur_pajak_number);
-    return invoices.filter(i => {
-      const f = fakturs[i.id];
-      return f && f.status === statusFilter;
-    });
+    return invoices.filter(i => workflowStatus(i, fakturs[i.id]) === statusFilter);
   }, [invoices, fakturs, statusFilter]);
 
-  async function generateFor(invoiceId: string) {
-    setBusyId(invoiceId);
-    try {
-      const { error } = await supabase.rpc('assign_faktur_pajak_number', { p_sales_invoice_id: invoiceId });
-      if (error) throw error;
-      await refresh();
-    } catch (err) {
-      alert('Failed to generate Faktur Pajak: ' + (err as Error).message);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function markStatus(fakturRowId: string, status: 'uploaded' | 'reported') {
+  async function markReported(fakturRowId: string) {
     const { error } = await supabase
       .from('faktur_pajak')
-      .update({ status, reported_at: status === 'reported' ? new Date().toISOString() : null })
+      .update({ status: 'reported', reported_at: new Date().toISOString() })
       .eq('id', fakturRowId);
     if (error) alert(error.message);
     await refresh();
+  }
+
+  async function saveRecordedFaktur({ invoice, number, date, notes, pdf }: {
+    invoice: SalesInvoice;
+    number: string;
+    date: string;
+    notes: string;
+    pdf: File | null;
+  }) {
+    setBusyId(invoice.id);
+    try {
+      const existing = fakturs[invoice.id];
+      const status = existing?.status === 'reported' ? 'reported' : 'recorded';
+      const { data: authData } = await supabase.auth.getUser();
+      const uploadedAt = pdf ? new Date().toISOString() : (existing?.uploaded_at ?? new Date().toISOString());
+      const uploadedBy = pdf ? (authData.user?.id ?? null) : (existing?.uploaded_by ?? authData.user?.id ?? null);
+      const dpp = Math.max(Number(invoice.total_amount ?? 0) - Number(invoice.tax_amount ?? 0), 0);
+      const ppn = Number(invoice.tax_amount ?? 0);
+      const { data: saved, error } = await supabase
+        .from('faktur_pajak')
+        .upsert({
+          ...(existing?.id ? { id: existing.id } : {}),
+          sales_invoice_id: invoice.id,
+          linked_invoice_id: invoice.id,
+          faktur_number: number.trim(),
+          official_djp_number: number.trim(),
+          issue_date: date,
+          customer_id: invoice.customer_id,
+          invoice_amount: Number(invoice.total_amount ?? 0),
+          dpp_amount: dpp,
+          ppn_amount: ppn,
+          status,
+          reported_at: existing?.status === 'reported' ? existing.reported_at : null,
+          uploaded_by: uploadedBy,
+          uploaded_at: uploadedAt,
+          notes: notes.trim() || null,
+        }, { onConflict: 'sales_invoice_id' })
+        .select('id')
+        .single();
+      if (error || !saved) throw error ?? new Error('Faktur record was not saved');
+
+      const { error: invoiceError } = await supabase
+        .from('sales_invoices')
+        .update({ faktur_pajak_number: number.trim() })
+        .eq('id', invoice.id);
+      if (invoiceError) throw invoiceError;
+
+      if (pdf) {
+        const safeName = pdf.name.replace(/[^\w.-]/g, '_');
+        const path = `faktur_pajak/${saved.id}/${Date.now()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(path, pdf, { upsert: false, contentType: 'application/pdf' });
+        if (uploadError) throw uploadError;
+        const { error: fileError } = await supabase.from('faktur_pajak_files').insert({
+          faktur_pajak_id: saved.id,
+          file_url: path,
+          file_name: pdf.name,
+          file_type: pdf.type || 'application/pdf',
+          file_size: pdf.size,
+          kind: 'pdf',
+          uploaded_by: authData.user?.id ?? null,
+          uploaded_at: uploadedAt,
+        });
+        if (fileError) throw fileError;
+      }
+
+      setRecording(null);
+      await refresh();
+    } catch (err) {
+      alert('Failed to record Faktur Pajak: ' + (err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
   }
 
   function drillIntoInvoice(inv: SalesInvoice) {
@@ -155,8 +383,9 @@ export function FakturPajakPanel() {
         'Customer NPWP': cust?.npwp ?? '',
         'DPP (Rp)': Number(dpp),
         'PPN (Rp)': Number(ppn),
-        'Faktur Number': inv.faktur_pajak_number ?? '',
-        'Status': fak?.status ?? (inv.faktur_pajak_number ? 'generated' : 'missing'),
+        'ERP Reference': inv.invoice_number,
+        'Official DJP Faktur': fak?.official_djp_number ?? fak?.faktur_number ?? '',
+        'Status': workflowLabel(workflowStatus(inv, fak)),
         'Reported At': fak?.reported_at ?? '',
       };
     });
@@ -177,23 +406,18 @@ export function FakturPajakPanel() {
           <span className="text-xs text-gray-500 hidden md:inline">
             {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
           </span>
-          <select
+          <FinanceSelect
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="text-sm border rounded px-2 py-1.5 bg-white"
           >
             <option value="all">All ({invoices.length})</option>
-            <option value="missing">Missing ({missingCount})</option>
-            <option value="generated">Generated</option>
-            <option value="uploaded">Uploaded</option>
+            <option value="waiting">Waiting for Faktur ({waitingCount})</option>
+            <option value="recorded">Recorded</option>
             <option value="reported">Reported</option>
-          </select>
-          <button
-            onClick={exportExcel}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
-          >
+          </FinanceSelect>
+          <FinanceButton type="button" onClick={exportExcel}>
             <Download className="w-4 h-4" /> Excel
-          </button>
+          </FinanceButton>
         </div>
       </div>
 
@@ -201,7 +425,7 @@ export function FakturPajakPanel() {
         <StatCardGrid cols={4}>
           <StatCard label="Taxable invoices" value={totals.count} money={false} tone="blue" icon={<Receipt className="w-4 h-4" />} />
           <StatCard label="Invoiced PPN" value={totals.ppn} tone="green" icon={<FileText className="w-4 h-4" />} hint="Gross PPN from taxable sales invoices, before credit note adjustments" />
-          <StatCard label="Missing Faktur" value={missingCount} money={false} tone={missingCount > 0 ? 'orange' : 'gray'} icon={<FileWarning className="w-4 h-4" />} />
+          <StatCard label="Waiting for Faktur" value={waitingCount} money={false} tone={waitingCount > 0 ? 'orange' : 'gray'} icon={<FileWarning className="w-4 h-4" />} />
           <StatCard label="Reported" value={totals.reported} money={false} tone="green" icon={<CheckCircle2 className="w-4 h-4" />} />
         </StatCardGrid>
       )}
@@ -218,113 +442,33 @@ export function FakturPajakPanel() {
         </SectionCard>
       ) : (
         <SectionCard>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left px-3 py-2">Invoice #</th>
-                <th className="text-left px-3 py-2">Date</th>
-                <th className="text-left px-3 py-2">Customer</th>
-                <th className="text-right px-3 py-2">DPP</th>
-                <th className="text-right px-3 py-2">PPN</th>
-                <th className="text-left px-3 py-2">Faktur #</th>
-                <th className="text-left px-3 py-2">Status</th>
-                <th className="px-3 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredInvoices.map(inv => {
-                const fak = fakturs[inv.id];
-                const cust = inv.customer ?? undefined;
-                return (
-                  <tr key={inv.id} className={`border-t ${selected === inv.id ? 'bg-blue-50' : ''}`}>
-                    <td className="px-3 py-2 font-medium">
-                      <button
-                        onClick={() => drillIntoInvoice(inv)}
-                        className="text-blue-600 hover:underline inline-flex items-center gap-1"
-                        title="Open in Sales"
-                      >
-                        {inv.invoice_number}
-                        <ExternalLink className="w-3 h-3" />
-                      </button>
-                    </td>
-                    <td className="px-3 py-2">{inv.invoice_date}</td>
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{customerDisplay(cust)}</div>
-                      {cust?.npwp && <div className="text-[10px] text-gray-500">NPWP: {cust.npwp}</div>}
-                    </td>
-                    <td className="px-3 py-2 text-right">{Number((inv.total_amount ?? 0) - (inv.tax_amount ?? 0)).toLocaleString('id-ID')}</td>
-                    <td className="px-3 py-2 text-right">{Number(inv.tax_amount ?? 0).toLocaleString('id-ID')}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{inv.faktur_pajak_number ?? '—'}</td>
-                    <td className="px-3 py-2">
-                      {fak ? (
-                        <StatusChip status={fak.status} />
-                      ) : inv.faktur_pajak_number ? (
-                        <StatusChip status="generated" />
-                      ) : (
-                        <StatusChip status="missing" />
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right space-x-1 whitespace-nowrap">
-                      {!inv.faktur_pajak_number && (
-                        <button
-                          onClick={() => void generateFor(inv.id)}
-                          disabled={busyId === inv.id}
-                          className="text-xs px-2 py-1 border rounded hover:bg-gray-50 inline-flex items-center gap-1"
-                        >
-                          <Hash className="w-3 h-3" />
-                          {busyId === inv.id ? '…' : 'Generate'}
-                        </button>
-                      )}
-                      {fak && (
-                        <>
-                          <button
-                            onClick={() => setSelected(inv.id === selected ? null : inv.id)}
-                            className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
-                          >
-                            Files
-                          </button>
-                          {fak.status === 'generated' && (
-                            <button
-                              onClick={() => void markStatus(fak.id, 'uploaded')}
-                              className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
-                            >
-                              → Uploaded
-                            </button>
-                          )}
-                          {fak.status === 'uploaded' && (
-                            <button
-                              onClick={() => void markStatus(fak.id, 'reported')}
-                              className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
-                            >
-                              → Reported
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <FinanceTable
+          rows={filteredInvoices}
+          rowKey={inv => inv.id}
+          loading={loading}
+          empty="No taxable Sales Invoices in this view."
+          columns={[
+            { header: 'ERP Reference', cell: inv => <FinanceButton type="button" variant="ghost" onClick={() => drillIntoInvoice(inv)} className="text-blue-600 hover:underline inline-flex items-center gap-1 font-medium">{inv.invoice_number}<ExternalLink className="w-3 h-3" /></FinanceButton> },
+            { header: 'Date', cell: inv => inv.invoice_date },
+            { header: 'Customer', cell: inv => <div><div className="font-medium">{customerDisplay(inv.customer ?? undefined)}</div>{inv.customer?.npwp && <div className="text-[10px] text-gray-500">NPWP: {inv.customer.npwp}</div>}</div> },
+            { header: 'DPP', align: 'right' as const, cell: inv => Number((inv.total_amount ?? 0) - (inv.tax_amount ?? 0)).toLocaleString('id-ID') },
+            { header: 'PPN', align: 'right' as const, cell: inv => Number(inv.tax_amount ?? 0).toLocaleString('id-ID') },
+            { header: 'Official DJP Faktur', cell: inv => fakturs[inv.id]?.official_djp_number ?? fakturs[inv.id]?.faktur_number ?? '—' },
+            { header: 'Status', cell: inv => { const status = workflowStatus(inv, fakturs[inv.id]); return <FinanceBadge status={status as FinanceStatus}>{workflowLabel(status)}</FinanceBadge>; } },
+            { header: 'Actions', align: 'center' as const, cell: inv => { const fak = fakturs[inv.id]; return <div className="flex justify-center gap-1 whitespace-nowrap"><FinanceButton type="button" variant={fak ? 'secondary' : 'primary'} onClick={() => setRecording(inv)} disabled={busyId === inv.id}><FileText className="h-4 w-4" /> {fak ? 'Edit Faktur' : 'Record Faktur'}</FinanceButton><FinanceButton type="button" onClick={() => setRecording(inv)}>Files</FinanceButton>{fak && workflowStatus(inv, fak) !== 'reported' && <FinanceButton type="button" onClick={() => void markReported(fak.id)}>Mark as Reported</FinanceButton>}</div>; } },
+          ]}
+        />
         </SectionCard>
       )}
 
-      {selected && fakturs[selected] && (
-        <div className="border rounded p-4 bg-white space-y-2">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-sm">Attachments · Faktur {fakturs[selected].faktur_number}</h4>
-            <button onClick={() => setSelected(null)} className="text-xs text-gray-500">Close</button>
-          </div>
-          <TaxAttachments
-            table="faktur_pajak_files"
-            parentId={fakturs[selected].id}
-            storagePrefix="faktur_pajak"
-            allowedKinds={FAKTUR_KINDS}
-          />
-        </div>
+      {recording && (
+        <RecordFakturModal
+          invoice={recording}
+          existing={fakturs[recording.id]}
+          busy={busyId === recording.id}
+          onClose={() => setRecording(null)}
+          onSave={saveRecordedFaktur}
+        />
       )}
     </div>
   );

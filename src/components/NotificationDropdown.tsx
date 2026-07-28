@@ -41,6 +41,18 @@ function addToastedIds(userId: string, ids: string[]) {
   }
 }
 
+function displayNotificationText(notification: Notification): { title: string; message: string } {
+  if (!notification.type.toLowerCase().includes('faktur')
+    && !notification.title.toLowerCase().includes('faktur pajak missing')
+    && !notification.message.toLowerCase().includes('faktur pajak missing')) {
+    return { title: notification.title, message: notification.message };
+  }
+  return {
+    title: 'Waiting for Faktur',
+    message: notification.message.replace(/Faktur Pajak missing/gi, 'Waiting for Faktur'),
+  };
+}
+
 export function NotificationDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -90,10 +102,11 @@ export function NotificationDropdown() {
       newNotifications.forEach(notif => {
         if (toasted.has(notif.id)) return;
         newIds.push(notif.id);
+        const display = displayNotificationText(notif);
         if (notif.type === 'appointment') {
-          showToast({ type: 'appointment', title: notif.title, message: notif.message, duration: 8000 });
+          showToast({ type: 'appointment', title: display.title, message: display.message, duration: 8000 });
         } else {
-          showToast({ type: 'info', title: notif.title, message: notif.message, duration: 6000 });
+          showToast({ type: 'info', title: display.title, message: display.message, duration: 6000 });
         }
       });
       addToastedIds(user!.id, newIds);
@@ -233,8 +246,9 @@ export function NotificationDropdown() {
                   <p>No notifications</p>
                 </div>
               ) : (
-                notifications.map((notification) => (
-                  <div
+                notifications.map((notification) => {
+                  const display = displayNotificationText(notification);
+                  return (<div
                     key={notification.id}
                     className={`p-4 border-b hover:bg-gray-50 cursor-pointer transition ${
                       !notification.is_read ? 'bg-blue-50' : ''
@@ -254,14 +268,14 @@ export function NotificationDropdown() {
                           <p className={`text-sm font-medium ${
                             !notification.is_read ? 'text-gray-900' : 'text-gray-700'
                           }`}>
-                            {notification.title}
+                            {display.title}
                           </p>
                           {!notification.is_read && (
                             <span className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0 mt-1.5" />
                           )}
                         </div>
                         <p className="text-sm text-gray-600 mt-1">
-                          {notification.message}
+                          {display.message}
                         </p>
                         <p className="text-xs text-gray-400 mt-2">
                           {formatTime(notification.created_at)}
@@ -269,7 +283,8 @@ export function NotificationDropdown() {
                       </div>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
 

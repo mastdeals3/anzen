@@ -90,7 +90,7 @@ export function PeriodClosePanel() {
           <Lock className="w-5 h-5" /> Tax Period Close
         </h3>
         <p className="text-xs text-gray-500">
-          Closing a period requires all Faktur Pajak generated (PPN), all tax payments reconciled, and Rp 0 outstanding.
+          Closing a period requires all official Faktur Pajak recorded (PPN), all tax payments reconciled, and Rp 0 outstanding.
           Once closed, sales invoices and expenses in that period cannot be edited (admin override via Reopen).
         </p>
       </div>
@@ -127,7 +127,7 @@ export function PeriodClosePanel() {
                 const amount = p.tax_type === 'PPN' ? (p.net_ppn ?? 0) : (p.pph_total ?? 0);
                 const out = outstanding[p.id] ?? 0;
                 const blockers: string[] = [];
-                if (p.missing_faktur_count > 0) blockers.push(`${p.missing_faktur_count} missing Faktur`);
+                if (p.missing_faktur_count > 0) blockers.push(`${p.missing_faktur_count} Waiting for Faktur`);
                 if (p.unreconciled_payments_count > 0) blockers.push(`${p.unreconciled_payments_count} unreconciled`);
                 if (out > 0) blockers.push(`Rp ${out.toLocaleString('id-ID')} outstanding`);
                 const canClose = p.status !== 'closed' && blockers.length === 0;

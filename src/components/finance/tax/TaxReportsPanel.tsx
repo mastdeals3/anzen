@@ -244,7 +244,7 @@ export function TaxReportsPanel() {
     const meta: Row[] = [
       { 'Report': activeReport.label },
       { 'Report': `Period: ${dateRange.startDate} to ${dateRange.endDate}` },
-      { 'Report': `Generated: ${new Date().toISOString().slice(0, 19).replace('T', ' ')}` },
+      { 'Report': `Created: ${new Date().toISOString().slice(0, 19).replace('T', ' ')}` },
       { 'Report': `Rows: ${rows.length}` },
       { 'Report': '' },
     ];
@@ -284,7 +284,7 @@ export function TaxReportsPanel() {
 <body>
   <h1>${activeReport.label}</h1>
   <h2>${activeReport.description}</h2>
-  <div class="meta">Period: <b>${dateRange.startDate}</b> to <b>${dateRange.endDate}</b> · Generated ${new Date().toISOString().slice(0,19).replace('T',' ')} · Rows ${rows.length}</div>
+  <div class="meta">Period: <b>${dateRange.startDate}</b> to <b>${dateRange.endDate}</b> · Created ${new Date().toISOString().slice(0,19).replace('T',' ')} · Rows ${rows.length}</div>
   <table>
     <thead><tr>${columns.map(c => `<th>${c}</th>`).join('')}</tr></thead>
     <tbody>${rowsHtml}</tbody>

@@ -1,4 +1,4 @@
-import { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
+import { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 import {
   ArchiveRestore, CheckCircle2, Copy, Eye, FileClock, FileDown,
   Link2, Paperclip, Pencil, Printer, Trash2, XCircle,
@@ -9,6 +9,7 @@ import {
   BADGE_POSTED, BADGE_RECONCILED, BADGE_REJECTED, BADGE_UNPAID,
   BTN_DANGER, BTN_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SUCCESS,
   ICON_BTN, ICON_BTN_DANGER, ICON_BTN_INFO, ICON_BTN_SUCCESS, ICON_SIZE,
+  INPUT, SELECT,
 } from './uiTokens';
 
 export const FINANCE_ACTION_ICONS = {
@@ -45,10 +46,18 @@ export function FinanceButton({
   return <button className={`${BUTTON_CLASS[variant]} ${className}`} {...props}>{children}</button>;
 }
 
+export function FinanceInput({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return <input className={`${INPUT} ${className}`} {...props} />;
+}
+
+export function FinanceSelect({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select className={`${SELECT} ${className}`} {...props} />;
+}
+
 export type FinanceStatus =
   | 'posted' | 'draft' | 'approved' | 'pending' | 'rejected'
   | 'paid' | 'partial' | 'unpaid' | 'reconciled' | 'info'
-  | 'reversed' | 'cancelled' | 'overdue';
+  | 'reversed' | 'cancelled' | 'overdue' | 'waiting' | 'recorded' | 'reported';
 
 const BADGE_CLASS: Record<FinanceStatus, string> = {
   posted: BADGE_POSTED,
@@ -64,6 +73,9 @@ const BADGE_CLASS: Record<FinanceStatus, string> = {
   reversed: BADGE_DRAFT,
   cancelled: BADGE_DRAFT,
   overdue: BADGE_UNPAID,
+  waiting: 'bg-orange-100 text-orange-700',
+  recorded: 'bg-blue-100 text-blue-700',
+  reported: 'bg-green-100 text-green-700',
 };
 
 export function FinanceBadge({ status, children, className = '', ...props }: HTMLAttributes<HTMLSpanElement> & {

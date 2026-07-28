@@ -104,9 +104,9 @@ export function TaxComplianceDashboardCards({ variant = 'grid' }: Props) {
       color: s.pphOverdueCount > 0 ? 'red' : 'gray',
     },
     {
-      label: 'Faktur Pajak missing',
+      label: 'Waiting for Faktur',
       value: s.missingFakturCount,
-      subtitle: s.missingFakturCount > 0 ? 'Invoices with PPN need Faktur #' : 'All up to date',
+      subtitle: s.missingFakturCount > 0 ? 'Invoices with PPN await the official Faktur' : 'All up to date',
       icon: <FileText className="w-5 h-5" />,
       color: s.missingFakturCount > 0 ? 'yellow' : 'green',
     },

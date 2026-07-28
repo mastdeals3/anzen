@@ -393,7 +393,7 @@ BEGIN
     LOOP
       INSERT INTO notifications (user_id, type, title, message, reference_id, reference_type, is_read)
       SELECT v_user.id, 'faktur_missing',
-             'Faktur Pajak missing',
+             'Waiting for Faktur',
              format('%s sales invoice(s) in %s-%s need a Faktur Pajak number',
                v_row.missing_faktur_count,
                v_row.fiscal_year,

@@ -128,7 +128,7 @@ export function TaxCalendarPanel() {
           <button
             onClick={() => void generateNotifications()}
             disabled={refreshing}
-            title="Push overdue / due-soon / missing-faktur into the Dashboard notification stream"
+            title="Push overdue / due-soon / waiting-for-Faktur items into the Dashboard notification stream"
             className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 inline-flex items-center gap-1"
           >
             <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
@@ -141,7 +141,7 @@ export function TaxCalendarPanel() {
         <StatCardGrid cols={4}>
           <StatCard label="Overdue" value={summary.overdue} money={false} tone={summary.overdue > 0 ? 'red' : 'gray'} icon={<AlertCircle className="w-4 h-4" />} hint="Past payment due, unsettled" />
           <StatCard label="Due within 7 days" value={summary.dueSoon} money={false} tone={summary.dueSoon > 0 ? 'orange' : 'gray'} icon={<Clock className="w-4 h-4" />} />
-          <StatCard label="Missing Faktur" value={summary.missingFaktur} money={false} tone={summary.missingFaktur > 0 ? 'orange' : 'gray'} icon={<FileWarning className="w-4 h-4" />} />
+            <StatCard label="Waiting for Faktur" value={summary.missingFaktur} money={false} tone={summary.missingFaktur > 0 ? 'orange' : 'gray'} icon={<FileWarning className="w-4 h-4" />} />
           <StatCard label="Periods in range" value={summary.periods} money={false} tone="blue" />
         </StatCardGrid>
       )}
@@ -172,7 +172,7 @@ export function TaxCalendarPanel() {
                       <th className="text-right px-3 py-2">Amount</th>
                       <th className="text-left px-3 py-2">Payment Due</th>
                       <th className="text-left px-3 py-2">Filing Due</th>
-                      <th className="text-right px-3 py-2">Faktur Missing</th>
+                      <th className="text-right px-3 py-2">Waiting for Faktur</th>
                       <th className="text-right px-3 py-2">Reconciled</th>
                     </tr>
                   </thead>

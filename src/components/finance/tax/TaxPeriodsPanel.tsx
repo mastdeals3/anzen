@@ -405,7 +405,7 @@ export function TaxPeriodsPanel() {
                                               ? <span className="text-red-500 text-[10px]">Reversal</span>
                                               : l.faktur_number
                                                 ? <span className="text-green-700 font-mono">{l.faktur_number}</span>
-                                                : <span className="text-orange-500 text-[10px]">Missing</span>}
+                                                : <span className="text-orange-500 text-[10px]">Waiting for Faktur</span>}
                                           </td>
                                           <td className={`py-1 text-right font-mono ${l.ppn_amount < 0 ? 'text-red-600' : 'text-green-700'}`}>{fmt(l.ppn_amount)}</td>
                                         </tr>
