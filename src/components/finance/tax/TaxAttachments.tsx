@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, FileText, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import { Upload, Trash2, FileText, ExternalLink, Download, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 type AttachmentTable = 'tax_payment_files' | 'faktur_pajak_files';
@@ -8,8 +8,8 @@ interface Attachment {
   id: string;
   file_url: string;
   file_name: string;
-  file_type: string;
-  file_size: number;
+  file_type: string | null;
+  file_size: number | null;
   kind: string | null;
   uploaded_at: string;
 }
@@ -20,6 +20,8 @@ interface Props {
   storagePrefix: string;
   allowedKinds: readonly { value: string; label: string }[];
   disabled?: boolean;
+  showUploader?: boolean;
+  allowDelete?: boolean;
 }
 
 const MAX_SIZE = 10 * 1024 * 1024;
@@ -36,7 +38,7 @@ const ALLOWED_MIME = [
  * - Metadata rows live in tax_payment_files / faktur_pajak_files.
  * - Signed URLs are minted on demand (5-minute TTL) for preview/download.
  */
-export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, disabled }: Props) {
+export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, disabled, showUploader = true, allowDelete = true }: Props) {
   const [items, setItems] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [kind, setKind] = useState<string>(allowedKinds[0]?.value ?? 'other');
@@ -118,6 +120,24 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
     window.open(data.signedUrl, '_blank', 'noopener');
   }
 
+  async function download(a: Attachment) {
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(a.file_url, 60 * 5, { download: a.file_name || true });
+    if (error || !data?.signedUrl) {
+      alert('Cannot download file: ' + (error?.message ?? 'unknown'));
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = data.signedUrl;
+    link.download = a.file_name || 'faktur-pajak-document';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
   async function remove(a: Attachment) {
     if (!confirm(`Delete ${a.file_name}?`)) return;
     await supabase.storage.from('documents').remove([a.file_url]);
@@ -126,8 +146,8 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
   }
 
   return (
-    <div className="space-y-2" onPaste={handlePaste}>
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="space-y-2" onPaste={showUploader ? handlePaste : undefined}>
+      {showUploader && <div className="flex items-center gap-2 flex-wrap">
         <select
           value={kind}
           onChange={e => setKind(e.target.value)}
@@ -156,14 +176,14 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
           />
         </label>
         <span className="text-xs text-gray-500">or paste an image directly</span>
-      </div>
+      </div>}
 
       {items.length === 0 ? (
         <p className="text-xs text-gray-500">No attachments yet.</p>
       ) : (
         <ul className="divide-y border rounded">
           {items.map(a => {
-            const isImage = a.file_type.startsWith('image/');
+            const isImage = a.file_type?.startsWith('image/') ?? false;
             return (
               <li key={a.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
                 {isImage
@@ -174,17 +194,27 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
                   {allowedKinds.find(k => k.value === a.kind)?.label ?? a.kind ?? '—'}
                 </span>
                 <span className="text-xs text-gray-400 shrink-0">
-                  {(a.file_size / 1024).toFixed(0)} KB
+                  {((a.file_size ?? 0) / 1024).toFixed(0)} KB
                 </span>
                 <button
+                  type="button"
                   onClick={() => void preview(a)}
                   className="p-1 hover:bg-gray-100 rounded"
                   title="Preview"
                 >
                   <ExternalLink className="w-4 h-4" />
                 </button>
-                {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => void download(a)}
+                  className="p-1 hover:bg-gray-100 rounded"
+                  title="Download"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+                {!disabled && allowDelete && (
                   <button
+                    type="button"
                     onClick={() => void remove(a)}
                     className="p-1 hover:bg-red-50 text-red-600 rounded"
                     title="Delete"

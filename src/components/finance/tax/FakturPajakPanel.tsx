@@ -10,6 +10,7 @@ import { FinanceModal } from '../FinanceModal';
 import { FinanceBadge, FinanceButton, FinanceInput, FinanceSelect, type FinanceStatus } from '../FinanceUI';
 import { FinanceTable } from '../FinanceTable';
 import { F_TEXTAREA, F_LABEL } from '../FinanceForm';
+import { TaxAttachments } from './TaxAttachments';
 
 interface Customer {
   company_name: string | null;
@@ -60,6 +61,8 @@ function customerDisplay(c: Customer | undefined): string {
   if (!c) return '—';
   return c.company_name || '—';
 }
+
+const FAKTUR_PDF_KINDS = [{ value: 'pdf', label: 'Official PDF' }] as const;
 
 function RecordFakturModal({
   invoice, existing, busy, onClose, onSave,
@@ -179,6 +182,19 @@ function RecordFakturModal({
             </label>
             {existing && <p className="mt-1 text-xs text-gray-500">A recorded PDF is already stored. Upload a new file only if it should be replaced or supplemented.</p>}
           </div>
+          {existing && (
+            <div>
+              <span className={F_LABEL}>Stored PDF history</span>
+              <TaxAttachments
+                table="faktur_pajak_files"
+                parentId={existing.id}
+                storagePrefix="faktur_pajak"
+                allowedKinds={FAKTUR_PDF_KINDS}
+                showUploader={false}
+                allowDelete={false}
+              />
+            </div>
+          )}
           <div>
             <label className={F_LABEL} htmlFor="faktur-notes">Notes</label>
             <textarea id="faktur-notes" className={F_TEXTAREA} rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional CA reference or audit note" />
@@ -354,8 +370,10 @@ export function FakturPajakPanel() {
         if (fileError) throw fileError;
       }
 
-      setRecording(null);
       await refresh();
+      // Keep the popup open on the freshly refreshed record so the uploaded
+      // PDF is immediately visible through the same faktur_pajak_files query.
+      setRecording(invoice);
     } catch (err) {
       alert('Failed to record Faktur Pajak: ' + (err as Error).message);
     } finally {
