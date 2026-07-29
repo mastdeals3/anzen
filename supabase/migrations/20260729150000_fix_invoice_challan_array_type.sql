@@ -34,6 +34,11 @@ BEGIN
 
   DELETE FROM sales_invoice_items WHERE invoice_id = p_invoice_id;
 
+  -- Suppress the posting trigger during the intermediate header update. The
+  -- final trigger pass below must see the replacement invoice lines so COGS
+  -- is derived from the complete invoice.
+  PERFORM set_config('app.sales_invoice_rebuild', 'true', true);
+
   UPDATE sales_invoices
   SET
     invoice_date       = COALESCE((p_invoice_updates->>'invoice_date')::date, invoice_date),
@@ -78,6 +83,8 @@ BEGIN
     FROM unnest(p_new_items) WITH ORDINALITY AS payload(item, ord)
     ORDER BY COALESCE(NULLIF(item->>'delivery_challan_item_id', ''), '__manual_' || ord::text)
   ) AS unique_items;
+
+  PERFORM set_config('app.sales_invoice_rebuild', 'false', true);
 
   -- Fire the posting trigger after all replacement lines exist so COGS is
   -- calculated from the final invoice contents. The table has no status
@@ -161,6 +168,10 @@ DECLARE
   v_total_credit numeric := 0;
   v_stamp_duty numeric;
 BEGIN
+  IF current_setting('app.sales_invoice_rebuild', true) = 'true' THEN
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'UPDATE'
      AND NEW.journal_entry_id IS NULL
      AND OLD.journal_entry_id IS NOT NULL THEN
