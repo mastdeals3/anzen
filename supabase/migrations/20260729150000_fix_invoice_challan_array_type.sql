@@ -158,12 +158,7 @@ DECLARE
   v_revenue_account_id uuid;
   v_tax_account_id uuid;
   v_bm_expense_id uuid;
-  v_cogs_account_id uuid;
-  v_inventory_account_id uuid;
-  v_item record;
   v_line_num integer := 1;
-  v_total_cost numeric := 0;
-  v_item_cost numeric;
   v_total_debit numeric := 0;
   v_total_credit numeric := 0;
   v_stamp_duty numeric;
@@ -199,8 +194,6 @@ BEGIN
   SELECT id INTO v_revenue_account_id FROM chart_of_accounts WHERE code = '4100' LIMIT 1;
   SELECT id INTO v_tax_account_id FROM chart_of_accounts WHERE code = '2130' LIMIT 1;
   SELECT id INTO v_bm_expense_id FROM chart_of_accounts WHERE code = '6950' LIMIT 1;
-  SELECT id INTO v_cogs_account_id FROM chart_of_accounts WHERE code = '5100' LIMIT 1;
-  SELECT id INTO v_inventory_account_id FROM chart_of_accounts WHERE code = '1130' LIMIT 1;
   IF v_ar_account_id IS NULL OR v_revenue_account_id IS NULL THEN
     RETURN NEW;
   END IF;
@@ -233,27 +226,10 @@ BEGIN
     v_line_num := v_line_num + 1;
   END IF;
 
-  IF v_cogs_account_id IS NOT NULL AND v_inventory_account_id IS NOT NULL THEN
-    FOR v_item IN
-      SELECT sii.quantity, b.cost_per_unit
-      FROM sales_invoice_items sii
-      LEFT JOIN batches b ON b.id = sii.batch_id
-      WHERE sii.invoice_id = NEW.id AND sii.batch_id IS NOT NULL
-    LOOP
-      v_item_cost := COALESCE(v_item.cost_per_unit, 0) * v_item.quantity;
-      v_total_cost := v_total_cost + v_item_cost;
-    END LOOP;
-    IF v_total_cost > 0 THEN
-      INSERT INTO journal_entry_lines (journal_entry_id, line_number, account_id, description, debit, credit, customer_id)
-      VALUES (v_je_id, v_line_num, v_cogs_account_id, 'COGS - ' || NEW.invoice_number, v_total_cost, 0, NEW.customer_id);
-      v_line_num := v_line_num + 1;
-      INSERT INTO journal_entry_lines (journal_entry_id, line_number, account_id, description, debit, credit, customer_id)
-      VALUES (v_je_id, v_line_num, v_inventory_account_id, 'Inventory - ' || NEW.invoice_number, 0, v_total_cost, NEW.customer_id);
-    END IF;
-  END IF;
-
-  v_total_debit := COALESCE(NEW.total_amount, 0) + COALESCE(v_total_cost, 0);
-  v_total_credit := COALESCE(NEW.subtotal, 0) + COALESCE(NEW.tax_amount, 0) + v_stamp_duty + COALESCE(v_total_cost, 0);
+  -- COGS is posted by the existing deferred post_sales_invoice_cogs()
+  -- trigger. Keeping it out of this revenue journal avoids double posting.
+  v_total_debit := COALESCE(NEW.total_amount, 0);
+  v_total_credit := COALESCE(NEW.subtotal, 0) + COALESCE(NEW.tax_amount, 0) + v_stamp_duty;
   IF v_total_debit <> v_total_credit THEN
     RAISE EXCEPTION 'Journal not balanced: debit=% credit=%', v_total_debit, v_total_credit;
   END IF;
