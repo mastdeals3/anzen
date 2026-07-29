@@ -80,6 +80,7 @@ interface InvoiceItem {
   tax_rate: number;
   total: number;
   delivery_challan_item_id?: string | null;
+  challan_id?: string | null;
   dc_number?: string;
   max_quantity?: number;
   products?: {
@@ -233,17 +234,17 @@ export function Sales() {
 
   useEffect(() => {
     if (selectedDCIds.length > 0 && formData.customer_id && !editingInvoice) {
-      loadItemsFromSelectedDCs();
+      void loadItemsFromSelectedDCs(selectedDCIds);
     }
   }, [selectedDCIds]);
 
-  const loadItemsFromSelectedDCs = async () => {
+  const loadItemsFromSelectedDCs = async (challanIds: string[]) => {
     try {
       const { data, error } = await supabase
         .from('pending_dc_items_by_customer')
         .select('*')
         .eq('customer_id', formData.customer_id)
-        .in('challan_id', selectedDCIds);
+        .in('challan_id', challanIds);
 
       if (error) throw error;
 
@@ -251,7 +252,7 @@ export function Sales() {
       const { data: dcData } = await supabase
         .from('delivery_challans')
         .select('id, sales_order_id')
-        .in('id', selectedDCIds)
+        .in('id', challanIds)
         .not('sales_order_id', 'is', null);
 
       // Find a common SO from the DCs
@@ -300,28 +301,50 @@ export function Sales() {
           tax_rate: 11,
           total: 0,
           delivery_challan_item_id: item.dc_item_id,
+          challan_id: item.challan_id,
           dc_number: item.challan_number,
           max_quantity: item.remaining_quantity,
         };
       });
 
       if (dcItems.length > 0) {
-        setItems(dcItems.map(item => ({
-          ...item,
-          total: calculateItemTotal(item)
-        })));
-      } else {
-        setItems([{
-          product_id: '',
-          batch_id: null,
-          quantity: 1,
-          unit_price: 0,
-          tax_rate: 11,
-          total: 0,
-        }]);
+        setItems(previous => {
+          const existingDcItemIds = new Set(previous.map(item => item.delivery_challan_item_id).filter(Boolean));
+          const additions = dcItems
+            .filter(item => !existingDcItemIds.has(item.delivery_challan_item_id))
+            .map(item => ({ ...item, total: calculateItemTotal(item) }));
+          const retained = previous.filter(item => item.product_id || item.delivery_challan_item_id);
+          return additions.length > 0 ? [...retained, ...additions] : retained;
+        });
       }
     } catch (error) {
       console.error('Error loading DC items:', error);
+    }
+  };
+
+  const handleDCMultiSelectChange = async (nextIds: string[]) => {
+    const currentIds = new Set(selectedDCIds);
+    const nextIdSet = new Set(nextIds);
+    const removedIds = selectedDCIds.filter(id => !nextIdSet.has(id));
+    const protectedIds = new Set(items.map(item => item.challan_id).filter((id): id is string => Boolean(id)));
+
+    // Existing invoice lines are accounting/source records. Keep their DC link
+    // immutable during edit instead of silently deleting source lines.
+    if (editingInvoice && removedIds.some(id => protectedIds.has(id))) {
+      const restoredIds = [...new Set([...nextIds, ...removedIds.filter(id => protectedIds.has(id))])];
+      setSelectedDCIds(restoredIds);
+      showToast({ type: 'info', title: 'Delivery Challan retained', message: 'A Delivery Challan with existing invoice lines cannot be removed while editing.' });
+      return;
+    }
+
+    if (!editingInvoice && removedIds.length > 0) {
+      setItems(previous => previous.filter(item => !item.challan_id || !removedIds.includes(item.challan_id)));
+    }
+
+    setSelectedDCIds(nextIds);
+    const addedIds = nextIds.filter(id => !currentIds.has(id));
+    if (addedIds.length > 0 && formData.customer_id) {
+      await loadItemsFromSelectedDCs(addedIds);
     }
   };
 
@@ -991,26 +1014,17 @@ export function Sales() {
           *,
           products(product_name, product_code, unit),
           batches(batch_number, expiry_date),
-          delivery_challan_item_id
+          delivery_challan_item_id,
+          delivery_challan_items(challan_id, delivery_challans(challan_number))
         `)
         .eq('invoice_id', invoiceId);
 
       if (error) throw error;
 
-      const itemsWithDCInfo = await Promise.all((data || []).map(async (item) => {
-        if (item.delivery_challan_item_id) {
-          const { data: dcItemData } = await supabase
-            .from('delivery_challan_items')
-            .select('challan_id, delivery_challans(challan_number)')
-            .eq('id', item.delivery_challan_item_id)
-            .maybeSingle();
-
-          return {
-            ...item,
-            dc_number: (dcItemData?.delivery_challans as any)?.challan_number,
-          };
-        }
-        return item;
+      const itemsWithDCInfo = (data || []).map((item: any) => ({
+        ...item,
+        challan_id: item.delivery_challan_items?.challan_id ?? null,
+        dc_number: item.delivery_challan_items?.delivery_challans?.challan_number,
       }));
 
       setInvoiceItems(itemsWithDCInfo || []);
@@ -1148,6 +1162,7 @@ export function Sales() {
               subtotal: totals.subtotal,
               tax_amount: totals.taxAmount,
               stamp_duty_amount: totals.stampDuty,
+              linked_challan_ids: selectedDCIds.length > 0 ? selectedDCIds : null,
               total_amount: totals.total,
               discount_amount: formData.discount,
               po_number: formData.po_number || null,
@@ -1298,6 +1313,7 @@ export function Sales() {
           tax_rate: item.tax_rate,
           total: 0,
           delivery_challan_item_id: item.delivery_challan_item_id,
+          challan_id: item.challan_id,
           dc_number: item.dc_number,
         };
         return {
@@ -1309,10 +1325,12 @@ export function Sales() {
 
     await loadPendingDCOptions(invoice.customer_id);
 
-    if (invoice.linked_challan_ids && invoice.linked_challan_ids.length > 0) {
-      setSelectedDCIds(invoice.linked_challan_ids);
-      await ensureLinkedDCOptionsVisible(invoice.linked_challan_ids);
-    }
+    const linkedDCIds = [...new Set([
+      ...loadedItems.map((item: any) => item.challan_id).filter(Boolean),
+      ...(invoice.linked_challan_ids ?? []),
+    ])] as string[];
+    setSelectedDCIds(linkedDCIds);
+    await ensureLinkedDCOptionsVisible(linkedDCIds);
 
     setModalOpen(true);
   };
@@ -1683,7 +1701,7 @@ export function Sales() {
                         setSoAutoLinked(false);
                         setSelectedSOId('');
                       }
-                      setSelectedDCIds(ids);
+                      void handleDCMultiSelectChange(ids);
                     }}
                     placeholder="Select DCs"
                   />
