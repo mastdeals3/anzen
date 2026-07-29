@@ -12,6 +12,18 @@ interface Attachment {
   file_size: number | null;
   kind: string | null;
   uploaded_at: string;
+  uploaded_by: string | null;
+}
+
+export async function openStoredAttachment(fileUrl: string): Promise<void> {
+  const { data, error } = await supabase.storage
+    .from('documents')
+    .createSignedUrl(fileUrl, 60 * 5);
+  if (error || !data?.signedUrl) {
+    alert('Cannot open file: ' + (error?.message ?? 'unknown'));
+    return;
+  }
+  window.open(data.signedUrl, '_blank', 'noopener');
 }
 
 interface Props {
@@ -40,6 +52,7 @@ const ALLOWED_MIME = [
  */
 export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, disabled, showUploader = true, allowDelete = true }: Props) {
   const [items, setItems] = useState<Attachment[]>([]);
+  const [uploaderNames, setUploaderNames] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [kind, setKind] = useState<string>(allowedKinds[0]?.value ?? 'other');
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -54,10 +67,25 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
   async function refresh() {
     const { data, error } = await supabase
       .from(table)
-      .select('id, file_url, file_name, file_type, file_size, kind, uploaded_at')
+      .select('id, file_url, file_name, file_type, file_size, kind, uploaded_at, uploaded_by')
       .eq(parentColumn, parentId)
       .order('uploaded_at', { ascending: false });
-    if (!error && data) setItems(data as Attachment[]);
+    if (error || !data) return;
+    const attachments = data as Attachment[];
+    setItems(attachments);
+    const uploaderIds = [...new Set(attachments.map(a => a.uploaded_by).filter((id): id is string => Boolean(id)))];
+    if (!uploaderIds.length) {
+      setUploaderNames({});
+      return;
+    }
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, username, email')
+      .in('id', uploaderIds);
+    setUploaderNames(Object.fromEntries(((profiles as Array<{ id: string; full_name: string | null; username: string | null; email: string | null }> | null) ?? []).map(profile => [
+      profile.id,
+      profile.full_name || profile.username || profile.email || profile.id,
+    ])));
   }
 
   async function upload(files: File[]) {
@@ -110,14 +138,7 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
   }
 
   async function preview(a: Attachment) {
-    const { data, error } = await supabase.storage
-      .from('documents')
-      .createSignedUrl(a.file_url, 60 * 5);
-    if (error || !data?.signedUrl) {
-      alert('Cannot open file: ' + (error?.message ?? 'unknown'));
-      return;
-    }
-    window.open(data.signedUrl, '_blank', 'noopener');
+    await openStoredAttachment(a.file_url);
   }
 
   async function download(a: Attachment) {
@@ -195,6 +216,12 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
                 </span>
                 <span className="text-xs text-gray-400 shrink-0">
                   {((a.file_size ?? 0) / 1024).toFixed(0)} KB
+                </span>
+                <span className="text-xs text-gray-400 shrink-0" title="Uploaded by">
+                  {uploaderNames[a.uploaded_by ?? ''] ?? a.uploaded_by ?? 'Unknown user'}
+                </span>
+                <span className="text-xs text-gray-400 shrink-0" title="Upload date and time">
+                  {new Date(a.uploaded_at).toLocaleString('id-ID')}
                 </span>
                 <button
                   type="button"

@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, ExternalLink, Download, FileWarning, CheckCircle2, Receipt, Upload } from 'lucide-react';
+import { FileText, ExternalLink, Download, FileWarning, Receipt, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
 import { StatCard, StatCardGrid, SectionCard, EmptyState } from './TaxUI';
 import { FinanceModal } from '../FinanceModal';
-import { FinanceBadge, FinanceButton, FinanceInput, FinanceSelect, type FinanceStatus } from '../FinanceUI';
+import { FinanceActionButton, FinanceBadge, FinanceButton, FinanceInput, FinanceSelect, type FinanceStatus } from '../FinanceUI';
 import { FinanceTable } from '../FinanceTable';
 import { F_TEXTAREA, F_LABEL } from '../FinanceForm';
-import { TaxAttachments } from './TaxAttachments';
+import { openStoredAttachment, TaxAttachments } from './TaxAttachments';
+import { showToast } from '../../ToastNotification';
 
 interface Customer {
   company_name: string | null;
@@ -44,17 +45,15 @@ interface FakturRow {
   uploaded_at: string | null;
 }
 
-type WorkflowStatus = 'waiting' | 'recorded' | 'reported';
+type WorkflowStatus = 'waiting' | 'recorded';
 
 function workflowStatus(invoice: SalesInvoice, faktur?: FakturRow): WorkflowStatus {
-  if (faktur?.status === 'reported') return 'reported';
   if (faktur && faktur.status !== 'generated' && faktur.status !== 'cancelled') return 'recorded';
-  if (faktur?.status === 'uploaded') return 'recorded';
   return 'waiting';
 }
 
 function workflowLabel(status: WorkflowStatus): string {
-  return status === 'waiting' ? 'Waiting for Faktur' : status === 'recorded' ? 'Recorded' : 'Reported';
+  return status === 'waiting' ? 'Waiting for Faktur' : 'Recorded';
 }
 
 function customerDisplay(c: Customer | undefined): string {
@@ -229,7 +228,7 @@ export function FakturPajakPanel() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [recording, setRecording] = useState<SalesInvoice | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'waiting' | 'recorded' | 'reported'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'waiting' | 'recorded'>('all');
 
   async function refresh() {
     setLoading(true);
@@ -282,27 +281,36 @@ export function FakturPajakPanel() {
   );
 
   const totals = useMemo(() => {
-    let ppn = 0, reported = 0;
+    let ppn = 0;
     for (const i of invoices) {
       ppn += Number(i.tax_amount ?? 0);
-      const f = fakturs[i.id];
-      if (workflowStatus(i, f) === 'reported') reported++;
     }
-    return { ppn, reported, count: invoices.length };
-  }, [invoices, fakturs]);
+    return { ppn, count: invoices.length };
+  }, [invoices]);
 
   const filteredInvoices = useMemo(() => {
     if (statusFilter === 'all') return invoices;
     return invoices.filter(i => workflowStatus(i, fakturs[i.id]) === statusFilter);
   }, [invoices, fakturs, statusFilter]);
 
-  async function markReported(fakturRowId: string) {
-    const { error } = await supabase
-      .from('faktur_pajak')
-      .update({ status: 'reported', reported_at: new Date().toISOString() })
-      .eq('id', fakturRowId);
-    if (error) alert(error.message);
-    await refresh();
+  async function viewAttachments(invoice: SalesInvoice) {
+    const faktur = fakturs[invoice.id];
+    if (!faktur) {
+      setRecording(invoice);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('faktur_pajak_files')
+      .select('file_url')
+      .eq('faktur_pajak_id', faktur.id)
+      .order('uploaded_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data?.file_url) {
+      setRecording(invoice);
+      return;
+    }
+    await openStoredAttachment(data.file_url);
   }
 
   async function saveRecordedFaktur({ invoice, number, date, notes, pdf }: {
@@ -315,6 +323,8 @@ export function FakturPajakPanel() {
     setBusyId(invoice.id);
     try {
       const existing = fakturs[invoice.id];
+      // Preserve historical database values, but all new saves use the
+      // two-state business workflow exposed by this screen.
       const status = existing?.status === 'reported' ? 'reported' : 'recorded';
       const { data: authData } = await supabase.auth.getUser();
       const uploadedAt = pdf ? new Date().toISOString() : (existing?.uploaded_at ?? new Date().toISOString());
@@ -371,9 +381,8 @@ export function FakturPajakPanel() {
       }
 
       await refresh();
-      // Keep the popup open on the freshly refreshed record so the uploaded
-      // PDF is immediately visible through the same faktur_pajak_files query.
-      setRecording(invoice);
+      setRecording(null);
+      showToast({ type: 'success', title: 'Success', message: 'Faktur recorded successfully.' });
     } catch (err) {
       alert('Failed to record Faktur Pajak: ' + (err as Error).message);
     } finally {
@@ -404,7 +413,6 @@ export function FakturPajakPanel() {
         'ERP Reference': inv.invoice_number,
         'Official DJP Faktur': fak?.official_djp_number ?? fak?.faktur_number ?? '',
         'Status': workflowLabel(workflowStatus(inv, fak)),
-        'Reported At': fak?.reported_at ?? '',
       };
     });
     const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(rows));
@@ -431,7 +439,6 @@ export function FakturPajakPanel() {
             <option value="all">All ({invoices.length})</option>
             <option value="waiting">Waiting for Faktur ({waitingCount})</option>
             <option value="recorded">Recorded</option>
-            <option value="reported">Reported</option>
           </FinanceSelect>
           <FinanceButton type="button" onClick={exportExcel}>
             <Download className="w-4 h-4" /> Excel
@@ -440,11 +447,10 @@ export function FakturPajakPanel() {
       </div>
 
       {!loading && invoices.length > 0 && (
-        <StatCardGrid cols={4}>
+        <StatCardGrid cols={3}>
           <StatCard label="Taxable invoices" value={totals.count} money={false} tone="blue" icon={<Receipt className="w-4 h-4" />} />
           <StatCard label="Invoiced PPN" value={totals.ppn} tone="green" icon={<FileText className="w-4 h-4" />} hint="Gross PPN from taxable sales invoices, before credit note adjustments" />
           <StatCard label="Waiting for Faktur" value={waitingCount} money={false} tone={waitingCount > 0 ? 'orange' : 'gray'} icon={<FileWarning className="w-4 h-4" />} />
-          <StatCard label="Reported" value={totals.reported} money={false} tone="green" icon={<CheckCircle2 className="w-4 h-4" />} />
         </StatCardGrid>
       )}
 
@@ -473,7 +479,7 @@ export function FakturPajakPanel() {
             { header: 'PPN', align: 'right' as const, cell: inv => Number(inv.tax_amount ?? 0).toLocaleString('id-ID') },
             { header: 'Official DJP Faktur', cell: inv => fakturs[inv.id]?.official_djp_number ?? fakturs[inv.id]?.faktur_number ?? '—' },
             { header: 'Status', cell: inv => { const status = workflowStatus(inv, fakturs[inv.id]); return <FinanceBadge status={status as FinanceStatus}>{workflowLabel(status)}</FinanceBadge>; } },
-            { header: 'Actions', align: 'center' as const, cell: inv => { const fak = fakturs[inv.id]; return <div className="flex justify-center gap-1 whitespace-nowrap"><FinanceButton type="button" variant={fak ? 'secondary' : 'primary'} onClick={() => setRecording(inv)} disabled={busyId === inv.id}><FileText className="h-4 w-4" /> {fak ? 'Edit Faktur' : 'Record Faktur'}</FinanceButton><FinanceButton type="button" onClick={() => setRecording(inv)}>Files</FinanceButton>{fak && workflowStatus(inv, fak) !== 'reported' && <FinanceButton type="button" onClick={() => void markReported(fak.id)}>Mark as Reported</FinanceButton>}</div>; } },
+            { header: 'Actions', align: 'center' as const, cell: inv => { const fak = fakturs[inv.id]; return <div className="flex items-center justify-center gap-0.5"><FinanceActionButton action="edit" label={fak ? 'Edit Faktur' : 'Record Faktur'} onClick={() => setRecording(inv)} disabled={busyId === inv.id} /><FinanceActionButton action="attachment" label="View Attachments" onClick={() => void viewAttachments(inv)} /></div>; } },
           ]}
         />
         </SectionCard>
