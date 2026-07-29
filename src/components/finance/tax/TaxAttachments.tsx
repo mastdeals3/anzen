@@ -4,6 +4,8 @@ import { supabase } from '../../../lib/supabase';
 
 type AttachmentTable = 'tax_payment_files' | 'faktur_pajak_files';
 
+export const TAX_ATTACHMENT_BUCKET = 'documents';
+
 interface Attachment {
   id: string;
   file_url: string;
@@ -15,12 +17,33 @@ interface Attachment {
   uploaded_by: string | null;
 }
 
-export async function openStoredAttachment(fileUrl: string): Promise<void> {
+function showAttachmentDiagnostic(
+  bucketName: string,
+  storedPath: string,
+  attemptedPath: string,
+  message: string,
+) {
+  alert(`Attachment could not be opened.\n\nBucket: ${bucketName}\nStored path: ${storedPath}\nAttempted path: ${attemptedPath}\n\n${message}`);
+}
+
+async function verifyStoredAttachment(bucketName: string, storedPath: string): Promise<boolean> {
+  const attemptedPath = storedPath;
+  const { error } = await supabase.storage.from(bucketName).download(attemptedPath);
+  if (error) {
+    showAttachmentDiagnostic(bucketName, storedPath, attemptedPath, error.message);
+    return false;
+  }
+  return true;
+}
+
+export async function openStoredAttachment(fileUrl: string, bucketName = TAX_ATTACHMENT_BUCKET): Promise<void> {
+  const attemptedPath = fileUrl;
+  if (!await verifyStoredAttachment(bucketName, attemptedPath)) return;
   const { data, error } = await supabase.storage
-    .from('documents')
-    .createSignedUrl(fileUrl, 60 * 5);
+    .from(bucketName)
+    .createSignedUrl(attemptedPath, 60 * 5);
   if (error || !data?.signedUrl) {
-    alert('Cannot open file: ' + (error?.message ?? 'unknown'));
+    showAttachmentDiagnostic(bucketName, fileUrl, attemptedPath, error?.message ?? 'Signed URL was not returned.');
     return;
   }
   window.open(data.signedUrl, '_blank', 'noopener');
@@ -103,7 +126,7 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
         }
         const path = `${storagePrefix}/${parentId}/${Date.now()}-${file.name.replace(/[^\w.-]/g, '_')}`;
         const { error: upErr } = await supabase.storage
-          .from('documents')
+          .from(TAX_ATTACHMENT_BUCKET)
           .upload(path, file, { upsert: false, contentType: file.type });
         if (upErr) throw upErr;
 
@@ -142,11 +165,13 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
   }
 
   async function download(a: Attachment) {
+    const attemptedPath = a.file_url;
+    if (!await verifyStoredAttachment(TAX_ATTACHMENT_BUCKET, attemptedPath)) return;
     const { data, error } = await supabase.storage
-      .from('documents')
-      .createSignedUrl(a.file_url, 60 * 5, { download: a.file_name || true });
+      .from(TAX_ATTACHMENT_BUCKET)
+      .createSignedUrl(attemptedPath, 60 * 5, { download: a.file_name || true });
     if (error || !data?.signedUrl) {
-      alert('Cannot download file: ' + (error?.message ?? 'unknown'));
+      showAttachmentDiagnostic(TAX_ATTACHMENT_BUCKET, a.file_url, attemptedPath, error?.message ?? 'Signed URL was not returned.');
       return;
     }
     const link = document.createElement('a');
@@ -161,7 +186,7 @@ export function TaxAttachments({ table, parentId, storagePrefix, allowedKinds, d
 
   async function remove(a: Attachment) {
     if (!confirm(`Delete ${a.file_name}?`)) return;
-    await supabase.storage.from('documents').remove([a.file_url]);
+    await supabase.storage.from(TAX_ATTACHMENT_BUCKET).remove([a.file_url]);
     await supabase.from(table).delete().eq('id', a.id);
     await refresh();
   }
