@@ -41,6 +41,9 @@ interface SourceLine {
   pph_amount: number;
   payment_method: string | null;
   recon_status: string | null;
+  journal_reference: string | null;
+  posting_date: string | null;
+  journal_status: string | null;
 }
 
 function fmt(n: number) {
@@ -85,6 +88,29 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       .in('expense_category', ['pib_import', 'pph_import']),
   ]);
 
+  const sourceRows = [
+    ...((feRes.data ?? []) as any[]),
+    ...((pvRes.data ?? []) as any[]),
+  ];
+  const sourceIds = [...new Set(sourceRows.map(r => r.id).filter(Boolean))];
+  const journalRes = sourceIds.length
+    ? await supabase
+      .from('journal_entries')
+      .select('reference_id, entry_number, entry_date, is_posted, is_reversed')
+      .in('reference_id', sourceIds)
+    : { data: [] as any[] };
+  const journals = new Map<string, any>(((journalRes.data ?? []) as any[]).map(j => [j.reference_id, j]));
+  const journalFields = (id: string) => {
+    const journal = journals.get(id);
+    return {
+      journal_reference: journal?.entry_number ?? null,
+      posting_date: journal?.entry_date ?? null,
+      journal_status: journal
+        ? (journal.is_reversed ? 'Reversed' : journal.is_posted ? 'Posted' : 'Draft')
+        : 'Not posted',
+    };
+  };
+
   const pphType = row.tax_type;
 
   const expenses: SourceLine[] = ((feRes.data ?? []) as any[])
@@ -106,6 +132,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       pph_amount: Number(r.pph_amount),
       payment_method: r.payment_method,
       recon_status: null,
+      ...journalFields(r.id),
     }));
 
   const vouchers: SourceLine[] = ((pvRes.data ?? []) as any[])
@@ -124,6 +151,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       pph_amount: Number(r.pph_amount),
       payment_method: null,
       recon_status: null,
+      ...journalFields(r.id),
     }));
 
   // Import PPh 22 — only relevant to the PPh22 and consolidated tabs.
@@ -147,6 +175,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
           pph_amount: amt,
           payment_method: null,
           recon_status: null,
+          ...journalFields(r.id),
         }))
     : [];
 
@@ -299,7 +328,7 @@ export function PphRegisterPanel() {
                     </tr>
                     {isOpen && (
                       <tr key={`${r.tax_period_id}-detail`} className="bg-blue-50/30">
-                        <td colSpan={8} className="px-6 pb-4 pt-2">
+                        <td colSpan={10} className="px-6 pb-4 pt-2">
                           <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
                             Source Documents — {active} withheld in {r.fiscal_year}-{String(r.period_month).padStart(2,'0')}
                           </h4>
@@ -317,6 +346,9 @@ export function PphRegisterPanel() {
                                   <th className="text-left py-1 pr-3">Supplier / Staff</th>
                                   <th className="text-left py-1 pr-3">Description</th>
                                   <th className="text-left py-1 pr-3">PPh Code</th>
+                                  <th className="text-left py-1 pr-3">Posting Date</th>
+                                  <th className="text-left py-1 pr-3">Journal Ref</th>
+                                  <th className="text-left py-1 pr-3">Status</th>
                                   <th className="text-right py-1">PPh Withheld</th>
                                 </tr>
                               </thead>
@@ -343,13 +375,16 @@ export function PphRegisterPanel() {
                                         ? <span className="font-mono text-blue-700">{l.pph_code}</span>
                                         : <span className="text-orange-500 italic">⚠ No code</span>}
                                     </td>
+                                    <td className="py-1.5 pr-3 whitespace-nowrap">{l.posting_date ? fmtDate(l.posting_date) : '—'}</td>
+                                    <td className="py-1.5 pr-3 font-mono">{l.journal_reference ?? '—'}</td>
+                                    <td className="py-1.5 pr-3">{l.journal_status ?? '—'}</td>
                                     <td className="py-1.5 text-right font-mono font-semibold text-orange-700">
                                       Rp {fmt(l.pph_amount)}
                                     </td>
                                   </tr>
                                 ))}
                                 <tr className="font-semibold border-t-2 border-gray-300 bg-gray-50">
-                                  <td colSpan={6} className="py-1.5 pr-3 text-right text-xs text-gray-500">Total {active} Withheld</td>
+                                  <td colSpan={9} className="py-1.5 pr-3 text-right text-xs text-gray-500">Total {active} Withheld</td>
                                   <td className="py-1.5 text-right font-mono text-orange-700">
                                     Rp {fmt(detail.reduce((s, l) => s + l.pph_amount, 0))}
                                   </td>
