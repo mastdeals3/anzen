@@ -1055,7 +1055,7 @@ export function DeliveryChallan() {
         };
         return (
           <div className="flex items-center justify-center gap-2">
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[challan.approval_status]}`}>
+            <span className={`px-1.5 py-0.5 rounded-full text-[11px] leading-tight font-medium ${statusColors[challan.approval_status]}`}>
               {statusLabels[challan.approval_status]}
             </span>
             {challan.approval_status === 'pending_approval' && profile?.role === 'admin' && (
@@ -1065,10 +1065,10 @@ export function DeliveryChallan() {
                     e.stopPropagation();
                     handleApproveChallan(challan.id);
                   }}
-                  className="p-2 bg-green-100 hover:bg-green-200 rounded-lg transition-colors"
+                  className="p-1 bg-green-100 hover:bg-green-200 rounded-lg transition-colors"
                   title="Approve Delivery Challan"
                 >
-                  <CheckCircle className="w-6 h-6 text-green-600" />
+                  <CheckCircle className="w-4 h-4 text-green-600" />
                 </button>
                 <button
                   onClick={(e) => {
@@ -1076,18 +1076,18 @@ export function DeliveryChallan() {
                     setChallanToReject(challan.id);
                     setShowRejectModal(true);
                   }}
-                  className="p-2 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
+                  className="p-1 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
                   title="Reject Delivery Challan"
                 >
-                  <XCircle className="w-6 h-6 text-red-600" />
+                  <XCircle className="w-4 h-4 text-red-600" />
                 </button>
               </div>
             )}
             {challan.approval_status === 'approved' && (
-              <CheckCircle className="w-5 h-5 text-green-600 ml-2" title="Approved" />
+              <CheckCircle className="w-4 h-4 text-green-600 ml-1" title="Approved" />
             )}
             {challan.approval_status === 'rejected' && (
-              <XCircle className="w-5 h-5 text-red-600 ml-2" title="Rejected" />
+              <XCircle className="w-4 h-4 text-red-600 ml-1" title="Rejected" />
             )}
           </div>
         );
@@ -1128,7 +1128,7 @@ export function DeliveryChallan() {
         const status = challan.invoicing_status || 'not_invoiced';
         return (
           <div className="space-y-1">
-            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${statusColors[status]}`}>
+            <span className={`inline-block px-1.5 py-0.5 rounded-full text-[11px] leading-tight font-medium ${statusColors[status]}`}>
               {statusLabels[status]}
             </span>
             {challan.total_items > 0 && status !== 'fully_invoiced' && (
@@ -1178,7 +1178,7 @@ export function DeliveryChallan() {
         </div>
 
         <>
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-lg shadow p-3">
           <p className="text-sm text-gray-600">Total Delivery Challans</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
         </div>
@@ -1187,6 +1187,7 @@ export function DeliveryChallan() {
           columns={columns}
           data={challans}
           loading={loading}
+          compact
           tableClassName="w-full min-w-[1050px]"
           actions={(challan) => (
             <div className="flex items-center gap-2">

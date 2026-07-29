@@ -303,7 +303,7 @@ export default function SalesOrders() {
     const status = getBusinessStatus(order);
     const config = businessStatusConfig[status];
     return (
-      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${config.color}`}>
+      <span className={`px-1.5 py-0.5 text-[11px] leading-tight font-semibold rounded-full ${config.color}`}>
         {config.label}
       </span>
     );
@@ -406,7 +406,7 @@ export default function SalesOrders() {
 
     if (alert.level === 'overdue') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 mt-1 text-xs font-medium rounded-full bg-red-100 text-red-700">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 mt-1 text-[11px] leading-tight font-medium rounded-full bg-red-100 text-red-700">
           <AlertTriangle className="w-3 h-3" />
           Overdue
         </span>
@@ -414,7 +414,7 @@ export default function SalesOrders() {
     }
 
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 mt-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 mt-1 text-[11px] leading-tight font-medium rounded-full bg-yellow-100 text-yellow-700">
         <Clock className="w-3 h-3" />
         Due Soon
       </span>
@@ -724,7 +724,7 @@ export default function SalesOrders() {
         </button>
       </div>
 
-      <div className="mb-6 border-b border-gray-200">
+      <div className="mb-4 border-b border-gray-200">
         <nav className="flex gap-4">
           <button
             onClick={() => setActiveTab('active')}
@@ -749,7 +749,7 @@ export default function SalesOrders() {
         </nav>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
         {summaryCards.map((card) => {
           const isActive = statusFilter === card.key;
           return (
@@ -757,7 +757,7 @@ export default function SalesOrders() {
               key={card.key}
               type="button"
               onClick={() => setStatusFilter(card.key)}
-              className={`bg-white p-3 md:p-4 rounded-lg shadow text-left transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              className={`bg-white p-2.5 rounded-lg shadow text-left transition hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 isActive ? 'ring-2 ring-blue-500 bg-blue-50' : ''
               }`}
             >
@@ -768,22 +768,22 @@ export default function SalesOrders() {
         })}
       </div>
 
-      <div className="bg-white rounded-lg shadow mb-6">
-        <div className="p-4 border-b flex flex-col md:flex-row gap-4">
+      <div className="bg-white rounded-lg shadow mb-4 sales-transaction-table">
+        <div className="p-2 border-b flex flex-col md:flex-row gap-2">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
               placeholder="Search by SO number, PO number, customer, or product..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border rounded-lg"
+              className="w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="border rounded-lg px-4 py-2"
+            className="border rounded-lg px-3 py-1.5 text-sm"
           >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>

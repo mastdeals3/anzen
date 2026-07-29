@@ -1422,7 +1422,7 @@ export function Sales() {
       key: 'payment_status',
       label: t('sales.paymentStatus'),
       render: (value: any, inv: SalesInvoice) => (
-        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+        <span className={`inline-block px-1.5 py-0.5 rounded-full text-[11px] leading-tight font-medium ${
           inv.payment_status === 'paid' ? 'bg-green-100 text-green-800' :
           inv.payment_status === 'partial' ? 'bg-yellow-100 text-yellow-800' :
           'bg-red-100 text-red-800'
@@ -1483,8 +1483,8 @@ export function Sales() {
             'text-gray-700'
           }`}>
             {formatDate(inv.due_date)}
-            {isOverdue && <span className="ml-1 text-xs bg-red-100 text-red-700 px-1 py-0.5 rounded">Overdue</span>}
-            {!isOverdue && isUrgent && <span className="ml-1 text-xs bg-red-50 text-red-500 px-1 py-0.5 rounded">{daysUntilDue}d left</span>}
+            {isOverdue && <span className="ml-1 text-[11px] bg-red-100 text-red-700 px-1 py-0.5 rounded">Overdue</span>}
+            {!isOverdue && isUrgent && <span className="ml-1 text-[11px] bg-red-50 text-red-500 px-1 py-0.5 rounded">{daysUntilDue}d left</span>}
           </span>
         );
       }
@@ -1540,26 +1540,26 @@ export function Sales() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white rounded-lg shadow px-4 py-3 border border-gray-100">
+          <div className="bg-white rounded-lg shadow px-3 py-2 border border-gray-100">
             <p className="text-xs text-gray-500 uppercase tracking-wide">{t('sales.invoices')}</p>
             <p className="text-xl font-bold text-gray-900 mt-0.5">{stats.total}</p>
           </div>
           {isAdmin && (
-            <div className="bg-blue-50 rounded-lg shadow px-4 py-3 border border-blue-100">
+            <div className="bg-blue-50 rounded-lg shadow px-3 py-2 border border-blue-100">
               <p className="text-xs text-blue-500 uppercase tracking-wide">{t('common.total')} Revenue</p>
               <p className="text-base font-bold text-blue-700 mt-0.5 leading-tight">
                 Rp {stats.totalRevenue.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
               </p>
             </div>
           )}
-          <div className="bg-red-50 rounded-lg shadow px-4 py-3 border border-red-100">
+          <div className="bg-red-50 rounded-lg shadow px-3 py-2 border border-red-100">
             <p className="text-xs text-red-500 uppercase tracking-wide">{t('common.pending')}</p>
             <p className="text-xl font-bold text-red-600 mt-0.5">{stats.pending}</p>
             <p className="text-xs text-red-400 mt-0.5 leading-tight">
               Rp {stats.pendingValue.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
             </p>
           </div>
-          <div className="bg-green-50 rounded-lg shadow px-4 py-3 border border-green-100">
+          <div className="bg-green-50 rounded-lg shadow px-3 py-2 border border-green-100">
             <p className="text-xs text-green-500 uppercase tracking-wide">{t('common.paid')}</p>
             <p className="text-xl font-bold text-green-600 mt-0.5">{stats.paid}</p>
             <p className="text-xs text-green-400 mt-0.5 leading-tight">
@@ -1572,6 +1572,7 @@ export function Sales() {
           columns={columns}
           data={invoices}
           loading={loading}
+          compact
           tableClassName="w-full min-w-[1200px]"
           actions={(invoice) => (
             <div className="flex items-center gap-2">
