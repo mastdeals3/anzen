@@ -2452,9 +2452,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               return (
                 <div className="pb-2 mb-1 border-b border-gray-200 flex flex-col gap-1">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Basic Information</p>
-                  {/* ── Row A: Category · Doc Date · Due Date ── */}
+                  {/* ── Row A: Category · Doc Date · Due Date · Supplier ── */}
                   <SapRow>
-                    <SapField label="Category" required span={4}>
+                    <SapField label="Category" required span={3}>
                       <SearchableSelect
                         value={formData.expense_category}
                         onChange={(val) => {
@@ -2483,7 +2483,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </SapField>
                     <SapField
                       label={rules.billingMonth === 'show' ? 'Billing Date' : 'Doc Date'}
-                      required span={4}
+                      required span={3}
                     >
                       <input type="date" value={formData.expense_date}
                         onChange={(e) => {
@@ -2496,20 +2496,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         className={SAP_INPUT} required
                         title={rules.billingMonth === 'show' ? 'Date printed on the utility bill' : undefined} />
                     </SapField>
-                    <SapField label="Due Date" span={4}
+                    <SapField label="Due Date" span={3}
                       right={isOverdue ? <span className="text-[9px] text-red-600 font-semibold px-1">⚠ Overdue</span> : null}>
                       <input type="date" value={formData.due_date}
                         onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
                         className={SAP_INPUT + (isOverdue ? ' !border-red-400 !bg-red-50' : '')} />
                     </SapField>
-                  </SapRow>
-
-                  {/* ── Row B: Category-driven picker (Supplier/Staff/Utility) · Inv No · Period ── */}
-                  <SapRow>
                     <SapField
                       label={rules.staff === 'show' ? 'Staff' : rules.utility === 'show' ? 'Utility' : (isBroker ? 'Broker' : 'Supplier')}
                       required={rules.staff === 'show' || rules.utility === 'show' || rules.supplier === 'show'}
-                      span={4}
+                      span={3}
                       right={selectedSupplier && rules.staff !== 'show' && rules.utility !== 'show' ? (
                         <div className="flex gap-1 text-[9px] shrink-0">
                           {selectedSupplier.pkp_status && <span className="px-1 py-0.5 bg-green-100 text-green-700 rounded font-medium">PKP</span>}
@@ -2549,9 +2545,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         />
                       )}
                     </SapField>
+                  </SapRow>
+
+                  {/* ── Row B: Inv No · Period · Reference ── */}
+                  <SapRow>
                     <SapField
                       label={rules.billingMonth === 'show' ? 'Billing Reference' : 'Supplier Invoice Number'}
-                      span={4}
+                      span={3}
                     >
                       <input type="text" value={formData.invoice_number}
                         onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
@@ -2559,19 +2559,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         placeholder={rules.billingMonth === 'show' ? 'Bill number / account ref' : 'Enter invoice number'} />
                     </SapField>
                     {rules.salaryMonth === 'show' ? (
-                      <SapField label="Salary Month" required span={4}>
+                      <SapField label="Salary Month" required span={3}>
                         <input type="month" value={periodLabel}
                           onChange={(e) => setPeriodLabel(e.target.value)}
                           className={SAP_INPUT} />
                       </SapField>
                     ) : rules.billingMonth === 'show' ? (
-                      <SapField label="Billing Month" required span={4}>
+                      <SapField label="Billing Month" required span={3}>
                         <input type="month" value={periodLabel}
                           onChange={(e) => setPeriodLabel(e.target.value)}
                           className={SAP_INPUT} title="The month this bill covers" />
                       </SapField>
                     ) : (
-                      <SapField label="Reference / Cheque No." span={4}>
+                      <SapField label="Reference / Cheque No." span={3}>
                         <input type="text" value={formData.payment_reference}
                           onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
                           className={SAP_INPUT} placeholder="TT ref / cheque #" />
@@ -2616,7 +2616,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                   {/* ── Row C: Invoice Amount · Invoice DPP (broker) · PPN · PPh · Stamp · Bank Chg ── */}
                   <SapRow>
-                    <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={4}>
+                    <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={3}>
                       <MoneyInput value={formData.amount} required placeholder="0.00"
                         onChange={(amt) => {
                           setFormData(prev => {
@@ -2632,7 +2632,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} />
                     </SapField>
                     {isBroker && (
-                      <SapField label="Invoice DPP (Tax Base)" span={4}>
+                      <SapField label="Invoice DPP (Tax Base)" span={3}>
                         <MoneyInput value={formData.dpp_amount} placeholder="0.00"
                           onChange={(dpp) => setFormData(prev => {
                             // If a preset PPN rate is active (not manual), recompute PPN from new DPP.
@@ -2646,12 +2646,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     )}
                     {taxCfg?.ppn && !isBroker && formData.ppn_calc_mode === 'dpp_nilai_lain' && (
                       <>
-                        <SapField label="DPP (Nilai Lain)" span={4}>
+                        <SapField label="DPP (Nilai Lain)" span={3}>
                           <MoneyInput value={formData.dpp_amount} placeholder="0"
                             onChange={(dpp) => setFormData(prev => ({ ...prev, dpp_amount: dpp, ppn_amount: Math.round(dpp * (prev.ppn_rate || 11) / 100) }))}
                             className={SAP_INPUT + ' !text-right !font-mono'} />
                         </SapField>
-                        <SapField label="PPN" span={4}
+                        <SapField label="PPN" span={3}
                           right={<PpnModeToggle value={formData.ppn_calc_mode} onChange={(mode) => setFormData(prev => {
                             const rate = prev.ppn_rate || 11;
                             let ppn = prev.ppn_amount;
@@ -2668,7 +2668,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     {taxCfg?.ppn && !(formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBroker) && (
                       <>
                         {isBroker && (
-                          <SapField label="PPN %" span={4}>
+                          <SapField label="PPN %" span={3}>
                             <BrokerPpnRateSelector
                               rate={formData.ppn_rate ?? 11}
                               isCustom={formData.ppn_calc_mode === 'manual'}
@@ -2693,7 +2693,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             />
                           </SapField>
                         )}
-                        <SapField label={isBroker ? 'Invoice PPN' : 'PPN'} span={4}
+                        <SapField label={isBroker ? 'Invoice PPN' : 'PPN'} span={3}
                           right={!isBroker ? <PpnModeToggle value={formData.ppn_calc_mode} onChange={(mode) => setFormData(prev => {
                             const rate = prev.ppn_rate || 11;
                             let ppn = prev.ppn_amount;
@@ -2722,12 +2722,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     )}
                     {(taxCfg?.pph23 || taxCfg?.pph21) && (
                       <>
-                        <SapField label={taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'} span={4}>
+                        <SapField label={taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'} span={3}>
                           <MoneyInput value={formData.pph_amount} placeholder="0.00"
                             onChange={(v) => setFormData({ ...formData, pph_amount: v })}
                             className={SAP_INPUT + ' !text-right !font-mono text-orange-700'} />
                         </SapField>
-                        <SapField label="PPh Code" span={4}>
+                        <SapField label="PPh Code" span={3}>
                           <SearchableSelect
                             value={formData.pph_code_id}
                             onChange={(val) => {
@@ -2752,14 +2752,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       </>
                     )}
                     {taxCfg?.stamp && (
-                      <SapField label="Stamp Duty" span={4}>
+                      <SapField label="Stamp Duty" span={3}>
                         <MoneyInput value={formData.stamp_duty_amount} placeholder="0"
                           onChange={(v) => setFormData({ ...formData, stamp_duty_amount: v })}
                           className={SAP_INPUT + ' !text-right !font-mono'} />
                       </SapField>
                     )}
                     {formData.expense_category === 'utilities' && (
-                      <SapField label="Bank Charges" span={4}>
+                      <SapField label="Bank Charges" span={3}>
                         <MoneyInput value={formData.bank_charges_amount} placeholder="0.00"
                           onChange={(v) => setFormData({ ...formData, bank_charges_amount: v })}
                           className={SAP_INPUT + ' !text-right !font-mono'} />
@@ -2771,7 +2771,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   {((requiresContainer || isBroker) || requiresDC || formData.expense_category === 'fixed_asset') && (
                     <SapRow>
                       {(requiresContainer || isBroker) && (
-                        <SapField label="Import Container" required={requiresContainer} span={4}>
+                        <SapField label="Import Container" required={requiresContainer} span={3}>
                           <SearchableSelect
                             value={formData.import_container_id}
                             onChange={(val) => setFormData({ ...formData, import_container_id: val })}
@@ -2781,7 +2781,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         </SapField>
                       )}
                       {requiresDC && (
-                        <SapField label="DC" span={4}>
+                        <SapField label="DC" span={3}>
                           <SearchableSelect
                             value={formData.delivery_challan_id}
                             onChange={(val) => setFormData({ ...formData, delivery_challan_id: val })}
@@ -2791,7 +2791,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         </SapField>
                       )}
                       {formData.expense_category === 'fixed_asset' && (
-                        <SapField label="Asset Acct" required span={4}>
+                        <SapField label="Asset Acct" required span={3}>
                           <SearchableSelect
                             value={formData.fixed_asset_account_id}
                             onChange={(val) => setFormData({ ...formData, fixed_asset_account_id: val })}
