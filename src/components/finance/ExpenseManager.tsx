@@ -2450,7 +2450,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               const isBroker = formData.expense_category === 'import_broker';
               const isOverdue = !!formData.due_date && formData.due_date < new Date().toISOString().split('T')[0];
               return (
-                <div className="pb-2 mb-2 border-b border-gray-200 flex flex-col gap-1.5">
+                <div className="pb-2 mb-1 border-b border-gray-200 flex flex-col gap-1">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Basic Information</p>
                   {/* ── Row A: Category · Doc Date · Due Date ── */}
                   <SapRow>
                     <SapField label="Category" required span={4}>
@@ -2819,8 +2820,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               const taxCfg = DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType];
               if (!taxCfg || (!taxCfg.ppn && !taxCfg.pph23 && !taxCfg.pph21 && !taxCfg.stamp && !taxCfg.pib && !taxCfg.brokerItems)) return null;
               return (
-                <div className="py-2 border-b">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tax</p>
+                <div className="py-1.5 border-b">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Tax</p>
 
                   {/* PIB Breakdown */}
                   {taxCfg.pib && (() => {
@@ -3156,9 +3157,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             })()}
 
             {/* ── Bottom two-column: Payment (L) + Attachments (R) ── */}
-            <div className="grid grid-cols-2 gap-x-6 pt-2">
+            <div className="grid grid-cols-2 gap-x-4 pt-1.5">
               {/* LEFT: Payment */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment</p>
 
                 <div>
@@ -3238,7 +3239,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </div>
 
               {/* RIGHT: Attachments */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Attachments</p>
                   <button type="button" onClick={() => setAttachmentsExpanded(e => !e)}

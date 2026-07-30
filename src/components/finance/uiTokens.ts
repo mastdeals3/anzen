@@ -33,8 +33,8 @@ export const TYPE_MUTED = 'text-xs text-gray-500';
 
 // Shared geometry. These are exported separately so components can compose
 // them without re-declaring subtly different heights, radii, and focus rings.
-export const CONTROL_HEIGHT = 'h-10';
-export const BUTTON_HEIGHT = 'h-10';
+export const CONTROL_HEIGHT = 'h-9';
+export const BUTTON_HEIGHT = 'h-9';
 export const CONTROL_RADIUS = 'rounded-md';
 export const CONTROL_FOCUS = 'focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500';
 
@@ -102,9 +102,9 @@ export const BADGE_RECONCILED = `${BADGE} bg-teal-100 text-teal-700`;
 export const BADGE_DRAFT = `${BADGE} bg-gray-100 text-gray-600`;
 
 // ─── Forms & inputs (identical height everywhere) ──────────────────────────
-export const FORM_LABEL = 'block text-xs font-medium text-gray-700 mb-1.5';
+export const FORM_LABEL = 'block text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-0.5';
 export const FORM_HINT = 'text-xs text-gray-500 mt-1';
-export const INPUT = `w-full ${CONTROL_HEIGHT} px-3 text-sm border border-gray-300 ${CONTROL_RADIUS} bg-white ${CONTROL_FOCUS}`;
+export const INPUT = `w-full ${CONTROL_HEIGHT} px-2.5 text-[13px] border border-gray-300 ${CONTROL_RADIUS} bg-white ${CONTROL_FOCUS}`;
 export const INPUT_MONEY = `${INPUT} text-right font-mono tabular-nums`;
 export const SELECT = INPUT;
 export const TEXTAREA = `w-full px-3 py-2 text-sm border border-gray-300 ${CONTROL_RADIUS} bg-white ${CONTROL_FOCUS} resize-none`;

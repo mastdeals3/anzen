@@ -9,7 +9,7 @@ interface SapRowProps {
 
 export function SapRow({ children }: SapRowProps) {
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-12">
       {children}
     </div>
   );

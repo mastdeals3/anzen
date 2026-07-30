@@ -78,15 +78,15 @@ export function FinanceModal({
           aria-labelledby={titleId}
           className={`relative bg-white rounded-lg shadow-xl border border-gray-300 w-full ${widthClass} max-h-[92vh] flex flex-col`}
         >
-          <div className="flex min-h-14 items-center justify-between gap-4 px-5 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+          <div className="flex min-h-12 items-center justify-between gap-4 px-4 py-2.5 border-b border-gray-200 bg-gray-50 flex-shrink-0">
             <div className="flex items-baseline gap-2 min-w-0">
-              <h3 id={titleId} className="text-base font-semibold text-gray-900 truncate">{title}</h3>
-              {subtitle && <span className="text-xs text-gray-500 truncate">{subtitle}</span>}
+              <h3 id={titleId} className="text-[15px] font-semibold text-gray-900 truncate">{title}</h3>
+              {subtitle && <span className="text-[11px] text-gray-500 truncate">{subtitle}</span>}
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-gray-200"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-200"
               title="Close"
               aria-label="Close"
             >
@@ -94,13 +94,13 @@ export function FinanceModal({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-5">
+          <div className="flex-1 overflow-y-auto p-3">
             {children}
           </div>
 
           {/* Footer — pinned so Save / Cancel never scrolls off */}
           {footer && (
-            <div className="flex min-h-16 items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+            <div className="flex min-h-14 items-center justify-end gap-2 px-4 py-2.5 border-t border-gray-200 bg-gray-50 flex-shrink-0">
               {footer}
             </div>
           )}
