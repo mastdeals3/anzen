@@ -404,6 +404,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     return () => document.removeEventListener('keydown', handleEscapeForLinkedDC, true);
   }, [linkedDCQuickView]);
 
+  useEffect(() => {
+    if (!viewModalOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !linkedDCQuickView) {
+        event.preventDefault();
+        setViewModalOpen(false);
+        setViewingExpense(null);
+        setLinkedDCQuickView(null);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [viewModalOpen, linkedDCQuickView]);
+
   const openLinkedDCQuickView = async () => {
     if (!viewingExpense?.delivery_challan_id) return;
 
@@ -2337,7 +2351,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </td>
                     {canManage && (
                       <td className="px-2 py-1.5 whitespace-nowrap text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                        <div className="flex items-center justify-center gap-0.5">
                           <FinanceActionButton
                             action="view"
                             onClick={async () => {
@@ -2374,6 +2388,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           )}
                           {isAdmin && expense.approval_status === 'pending_approval' && (
                             <>
+                              <span className="w-px h-4 bg-gray-200 mx-0.5" aria-hidden="true" />
                               <FinanceActionButton
                                 action="approve"
                                 onClick={() => handleApproveExpense(expense.id)}
@@ -2387,14 +2402,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             </>
                           )}
                           {isAdmin && expense.approval_status === 'approved' && (
-                            <FinanceActionButton
-                              action="reverse"
-                              label="Cancel Posting"
-                              onClick={() => { setCancelPostingTarget(expense); setCancelPostingReason(''); setCancelPostingModalOpen(true); }}
-                            />
+                            <>
+                              <span className="w-px h-4 bg-gray-200 mx-0.5" aria-hidden="true" />
+                              <FinanceActionButton
+                                action="reverse"
+                                label="Cancel Posting"
+                                onClick={() => { setCancelPostingTarget(expense); setCancelPostingReason(''); setCancelPostingModalOpen(true); }}
+                              />
+                            </>
                           )}
                           {expense.approval_status !== 'approved' && (
-                            <FinanceActionButton action="delete" onClick={() => handleDelete(expense.id)} />
+                            <>
+                              <span className="w-px h-4 bg-gray-200 mx-0.5" aria-hidden="true" />
+                              <FinanceActionButton action="delete" onClick={() => handleDelete(expense.id)} />
+                            </>
                           )}
                         </div>
                       </td>
@@ -3513,13 +3534,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <div className="text-[19px] font-bold text-gray-900 font-mono leading-tight">{fmtMoney(canonicalExpenseTotal, 2)}</div>
                     <div className="mt-0.5">{approvalBadge()}</div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => { setViewModalOpen(false); setViewingExpense(null); setLinkedDCQuickView(null); }}
-                    className="p-1 rounded hover:bg-gray-200 transition -mt-1 -mr-1"
-                  >
-                    <X className="w-4 h-4 text-gray-500" />
-                  </button>
                 </div>
               </div>
               {/* Header meta row */}
