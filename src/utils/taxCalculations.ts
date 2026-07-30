@@ -161,6 +161,63 @@ export function sumBrokerItems(items: BrokerItem[]): number {
   return items.reduce((sum, item) => sum + (item.amount || 0), 0);
 }
 
+/**
+ * The broker invoice calculation is intentionally separate from the generic
+ * finance_expenses total. Broker invoices contain an independent header
+ * invoice plus pass-through reimbursement lines.
+ */
+export interface BrokerExpenseTotalsInput {
+  amount?: number | null;
+  dpp_amount?: number | null;
+  ppn_amount?: number | null;
+  pph_amount?: number | null;
+  stamp_duty_amount?: number | null;
+  broker_items?: BrokerItem[] | null;
+}
+
+export interface BrokerExpenseTotals {
+  brokerInvoiceAmount: number;
+  brokerInvoiceDpp: number;
+  reimbursementTotal: number;
+  reimbursementDpp: number;
+  reimbursementPpn: number;
+  totalPpn: number;
+  pphWithheld: number;
+  stampDuty: number;
+  totalPayable: number;
+}
+
+export function brokerLineTotal(item: BrokerItem): number {
+  return (Number(item.amount) || 0)
+    + (Number(item.dpp_amount) || 0)
+    + (Number(item.ppn_amount) || 0);
+}
+
+export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): BrokerExpenseTotals {
+  const items = Array.isArray(exp.broker_items) ? exp.broker_items : [];
+  const brokerInvoiceAmount = Number(exp.amount) || 0;
+  const brokerInvoiceDpp = Number(exp.dpp_amount) || 0;
+  const reimbursementTotal = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const reimbursementDpp = items.reduce((sum, item) => sum + (Number(item.dpp_amount) || 0), 0);
+  const reimbursementPpn = items.reduce((sum, item) => sum + (Number(item.ppn_amount) || 0), 0);
+  const totalPpn = (Number(exp.ppn_amount) || 0) + reimbursementPpn;
+  const pphWithheld = Number(exp.pph_amount) || 0;
+  const stampDuty = Number(exp.stamp_duty_amount) || 0;
+
+  return {
+    brokerInvoiceAmount,
+    brokerInvoiceDpp,
+    reimbursementTotal,
+    reimbursementDpp,
+    reimbursementPpn,
+    totalPpn,
+    pphWithheld,
+    stampDuty,
+    totalPayable: brokerInvoiceAmount + brokerInvoiceDpp + reimbursementTotal
+      + reimbursementDpp + totalPpn - pphWithheld + stampDuty,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tax calculations
 // ---------------------------------------------------------------------------

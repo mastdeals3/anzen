@@ -101,6 +101,8 @@ import {
   type DocumentType,
   calculatePPN,
   calculateExpenseTotals,
+  calculateBrokerExpenseTotals,
+  brokerLineTotal,
   computeBrokerLinePpn,
   getDueDateFromTerms,
   EXPENSE_CATEGORY_LABELS,
@@ -632,6 +634,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         .from('finance_expenses')
         .select(`
           *,
+          suppliers(id, company_name),
           batches(batch_number),
           import_containers(container_ref),
           delivery_challans(challan_number),
@@ -2921,25 +2924,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     const removeLine = (idx: number) => setBrokerItems(prev => prev.filter((_, i) => i !== idx));
 
                     // ─── Read-only derivations — never written back to state ───
-                    const reimbAmount  = brokerItems.reduce((s, i) => s + (i.amount     || 0), 0);
-                    const reimbDpp     = brokerItems.reduce((s, i) => s + (i.dpp_amount || 0), 0);
-                    const reimbPpn     = brokerItems.reduce((s, i) => s + (i.ppn_amount || 0), 0);
-                    const brokerInvoiceAmount = formData.amount || 0;
-                    const brokerHeaderDdp     = formData.dpp_amount || 0;
-                    const brokerInvoicePpn    = formData.ppn_amount || 0;
-                    const parentPph   = formData.pph_amount || 0;
-                    const parentStamp = formData.stamp_duty_amount || 0;
-                    // Total PPN (Payable formula) — sum of every PPN component in the invoice.
-                    const totalPpn = brokerInvoicePpn + reimbPpn;
-                    // Total Payable — the single formula, source of truth.
-                    const grandPayable =
-                        brokerInvoiceAmount
-                      + brokerHeaderDdp
-                      + reimbAmount
-                      + reimbDpp
-                      + totalPpn
-                      - parentPph
-                      + parentStamp;
+                    const brokerTotals = calculateBrokerExpenseTotals({ ...formData, broker_items: brokerItems });
+                    const {
+                      brokerInvoiceAmount, brokerInvoiceDpp: brokerHeaderDdp,
+                      reimbursementTotal: reimbAmount, reimbursementDpp: reimbDpp,
+                      reimbursementPpn: reimbPpn,
+                      totalPpn, pphWithheld: parentPph, stampDuty: parentStamp,
+                      totalPayable: grandPayable,
+                    } = brokerTotals;
                     const fmt = (n: number) => formatCurrency(n, expenseFormCurrency, {
                       minimumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
                       maximumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
@@ -2981,10 +2973,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               // Line Total (per user brief) = Amount + DDP + PPN Amount.
                               // NO conditionals — every line uses the same formula so what the
                               // user sees is what the Payable calc uses.
-                              const lineTotal =
-                                  (item.amount     || 0)
-                                + (item.dpp_amount || 0)
-                                + (item.ppn_amount || 0);
+                              const lineTotal = brokerLineTotal(item);
                               const rateDisplay = item.ppn_rate ?? 0;
                               const isManual = item.ppn_treatment === 'included';
                               return (
@@ -3092,10 +3081,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           const cells: FormulaCell[] = [
                             { label: 'Broker Invoice Amount', value: brokerInvoiceAmount, valueColor: 'text-gray-900', op: '+' },
                             { label: 'Invoice DPP',           value: brokerHeaderDdp,     valueColor: 'text-gray-700', op: '+' },
-                            { label: 'Reimb. Amount',         value: reimbAmount,         valueColor: 'text-gray-900', op: '+' },
-                            { label: 'Reimb. DPP',            value: reimbDpp,            valueColor: 'text-gray-700', op: '+' },
-                            { label: 'PPN (Total)',           value: totalPpn,            valueColor: 'text-blue-700', op: '−' },
-                            { label: 'PPh Withheld',          value: parentPph,           valueColor: 'text-orange-700', op: '+' },
+                            { label: 'Reimbursement Total',   value: reimbAmount,         valueColor: 'text-gray-900', op: '+' },
+                            { label: 'Reimbursement DPP',     value: reimbDpp,            valueColor: 'text-gray-700', op: '+' },
+                            { label: 'Total PPN',              value: totalPpn,            valueColor: 'text-blue-700', op: '+' },
+                            { label: 'PPh Withheld',          value: parentPph,           valueColor: 'text-orange-700', op: '−' },
                             { label: 'Stamp Duty',            value: parentStamp,         valueColor: 'text-gray-900' },
                           ];
                           return (
@@ -3536,7 +3525,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             )}
 
             {/* ── Tax breakdown (only if non-zero) ── */}
-            {(() => {
+            {viewingExpense.expense_category !== 'import_broker' && (() => {
               // Resolve the PPh code so the withheld row shows WHICH type
               // was deducted (PPh 23 vs PPh 21 vs PPh 4(2), etc.) rather
               // than a bare amount. Falls back gracefully when the code
@@ -3580,6 +3569,35 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               );
             })()}
 
+            {viewingExpense.expense_category === 'import_broker' && (() => {
+              const totals = calculateBrokerExpenseTotals(viewingExpense);
+              const rows: Array<[string, number, string]> = [
+                ['Broker Invoice Amount', totals.brokerInvoiceAmount, 'text-gray-900'],
+                ['Reimbursement Total', totals.reimbursementTotal, 'text-gray-900'],
+                ['Reimbursement DPP', totals.reimbursementDpp, 'text-gray-700'],
+                ['Total PPN', totals.totalPpn, 'text-blue-700'],
+                ['PPh Withheld', totals.pphWithheld, 'text-orange-700'],
+                ['Stamp Duty', totals.stampDuty, 'text-gray-700'],
+              ];
+              return (
+                <div className="border border-gray-200 rounded-lg bg-white">
+                  <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Broker Invoice Summary</div>
+                  <div className="px-3 py-2 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-sm">
+                    {rows.map(([label, value, tint]) => (
+                      <div key={label}>
+                        <div className="text-[10px] uppercase font-medium text-gray-400">{label}</div>
+                        <div className={`font-mono font-semibold ${tint}`}>{fmtMoney(value)}</div>
+                      </div>
+                    ))}
+                    <div className="col-span-2 md:col-span-4 flex items-center justify-between border-t border-gray-100 pt-2">
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">Final Total Payable</span>
+                      <span className="font-mono font-bold text-emerald-900">{fmtMoney(totals.totalPayable, 2)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ── Reimbursement Lines (only if broker items exist) ── */}
             {viewingExpense.broker_items && viewingExpense.broker_items.length > 0 && (
               <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
@@ -3588,7 +3606,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
                     <tr>
                       <th className="px-2 py-1 text-left font-medium">Sub-supplier</th>
-                      <th className="px-2 py-1 text-left font-medium">Invoice #</th>
+                      <th className="px-2 py-1 text-left font-medium">Invoice Number</th>
+                      <th className="px-2 py-1 text-left font-medium">Tax Invoice Number</th>
+                      <th className="px-2 py-1 text-left font-medium">Invoice Date</th>
                       <th className="px-2 py-1 text-right font-medium">Amount</th>
                       <th className="px-2 py-1 text-right font-medium">DPP</th>
                       <th className="px-2 py-1 text-center font-medium">PPN%</th>
@@ -3598,15 +3618,18 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   </thead>
                   <tbody>
                     {viewingExpense.broker_items.map((item, i) => {
-                      const dpp = item.dpp_amount ?? item.amount ?? 0;
-                      const rate = item.ppn_rate ?? (item.amount ? Math.round(((item.ppn_amount||0)/(item.dpp_amount||item.amount)) * 100) : 0);
-                      const total = (item.dpp_amount != null || item.ppn_treatment === 'included')
-                        ? (item.amount || 0)
-                        : (item.amount || 0) + (item.ppn_amount || 0);
+                      const dpp = item.dpp_amount ?? 0;
+                      const rate = item.ppn_rate ?? 0;
+                      const total = brokerLineTotal(item);
+                      const supplierName = item.supplier_id
+                        ? suppliers.find(s => s.id === item.supplier_id)?.company_name
+                        : null;
                       return (
                         <tr key={i} className="border-t border-gray-100">
-                          <td className="px-2 py-1 text-gray-700 truncate max-w-[160px]">{item.description || '—'}</td>
+                          <td className="px-2 py-1 text-gray-700 truncate max-w-[160px]">{supplierName || '—'}</td>
                           <td className="px-2 py-1 text-gray-600 font-mono">{item.invoice_number || '—'}</td>
+                          <td className="px-2 py-1 text-gray-600 font-mono">{item.tax_invoice_number || '—'}</td>
+                          <td className="px-2 py-1 text-gray-600 font-mono">{item.invoice_date || '—'}</td>
                           <td className="px-2 py-1 text-right font-mono text-gray-900">{fmtMoney(item.amount)}</td>
                           <td className="px-2 py-1 text-right font-mono text-gray-700">{fmtMoney(dpp)}</td>
                           <td className="px-2 py-1 text-center font-mono text-gray-700">{rate || 0}%</td>
