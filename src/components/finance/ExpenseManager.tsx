@@ -3409,10 +3409,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       )}
 
       {viewModalOpen && viewingExpense && (() => {
-        // Currency-aware formatter — resolves from the joined bank account (if the
-        // expense was paid from a bank), or falls back to the reconciled bank line's
-        // account, or IDR when there's no bank context (petty cash / outstanding).
-        // Priority 8 #1: never hardcode Rp.
         const currency = getExpenseCurrency(viewingExpense);
         const fmtMoney = (n: number | null | undefined, decimals: 0 | 2 = 0) => {
           return formatCurrency(n, currency, {
@@ -3422,6 +3418,51 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         };
         const canonicalExpenseTotal = calculateCanonicalExpenseTotal(viewingExpense);
         const canonicalCashPayable = calculateCanonicalCashPayable(viewingExpense);
+        const isBroker = viewingExpense.expense_category === 'import_broker';
+        const isSalary = viewingExpense.expense_category === 'salary';
+        const staffName = (() => {
+          const rules = getCategoryFieldRules(viewingExpense.expense_category);
+          if (rules.staff !== 'show' || !viewingExpense.staff_id) return null;
+          const staff = staffRoster.find(s => s.id === viewingExpense.staff_id);
+          return staff?.full_name ?? null;
+        })();
+        const approvalBadge = () => {
+          const s = viewingExpense.approval_status;
+          if (s === 'approved') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200"><CheckCircle className="w-3 h-3" /> Approved</span>;
+          if (s === 'rejected') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200"><XCircle className="w-3 h-3" /> Rejected</span>;
+          return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"><AlertCircle className="w-3 h-3" /> Pending</span>;
+        };
+
+        // Tax rows (non-broker)
+        const taxRows: Array<{ label: string; value: number; tint: string }> = [];
+        if (!isBroker) {
+          const pphCode = viewingExpense.pph_code_id ? taxCodes.find(t => t.id === viewingExpense.pph_code_id) : null;
+          const pphLabel = pphCode ? `PPh Withheld · ${pphCode.tax_type}${pphCode.rate ? ` @ ${pphCode.rate}%` : ''}` : 'PPh Withheld';
+          if ((viewingExpense.ppn_amount || 0) > 0) taxRows.push({ label: 'PPN', value: viewingExpense.ppn_amount || 0, tint: 'text-blue-700' });
+          if ((viewingExpense.pph_amount || 0) > 0) taxRows.push({ label: pphLabel, value: -(viewingExpense.pph_amount || 0), tint: 'text-orange-700' });
+          if ((viewingExpense.stamp_duty_amount || 0) > 0) taxRows.push({ label: 'Stamp Duty', value: viewingExpense.stamp_duty_amount || 0, tint: 'text-gray-700' });
+          if ((viewingExpense.bank_charges_amount || 0) > 0) taxRows.push({ label: 'Bank Charges', value: viewingExpense.bank_charges_amount || 0, tint: 'text-gray-700' });
+          if ((viewingExpense.pib_bm_amount || 0) > 0) taxRows.push({ label: 'Import Duty (BM)', value: viewingExpense.pib_bm_amount || 0, tint: 'text-gray-700' });
+          if ((viewingExpense.pib_ppn_amount || 0) > 0) taxRows.push({ label: 'PPN Import', value: viewingExpense.pib_ppn_amount || 0, tint: 'text-blue-700' });
+          if ((viewingExpense.pib_pph_amount || 0) > 0) taxRows.push({ label: 'PPh 22 Import', value: viewingExpense.pib_pph_amount || 0, tint: 'text-orange-700' });
+        }
+        const netPayable = !isBroker ? calculateExpenseTotals(viewingExpense).netPayable : 0;
+
+        // Broker totals
+        const brokerTotals = isBroker ? calculateBrokerExpenseTotals(viewingExpense) : null;
+
+        // Payment breakdown
+        const allocs = viewingExpense.voucher_allocations || [];
+        const bslLines = viewingExpense.bank_statement_lines || [];
+        const hasPaymentBreakdown = allocs.length > 0 || bslLines.length > 0;
+        const supplierPaid = viewingExpense.paid_amount ?? 0;
+        const pphTarget = viewingExpense.pph_amount || 0;
+        const pphPaid = viewingExpense.pph_paid_amount ?? 0;
+        const balance = canonicalCashPayable - supplierPaid;
+
+        // Related records
+        const hasRelated = viewingExpense.batches || viewingExpense.import_containers || viewingExpense.delivery_challans;
+
         return (
         <Modal
           isOpen={viewModalOpen}
@@ -3433,89 +3474,174 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           title="Expense Details"
           size="xl"
         >
-          <div className="space-y-3">
-            {/* ── Expense Summary (compact single card) ── */}
-            <div className="border border-gray-200 rounded-lg bg-white">
-              <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Expense Summary</span>
-                  {viewingExpense.voucher_number && (
-                    <span className="text-[11px] font-mono text-gray-600">{viewingExpense.voucher_number}</span>
-                  )}
+          {/* ═══ ONE UNIFIED CONTAINER ═══ */}
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+
+            {/* ── HEADER ── */}
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-600 text-white">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-[22px] font-semibold text-gray-900 leading-tight">
+                      {viewingExpense.voucher_number || 'Expense'}
+                    </h2>
+                    <p className="text-[13px] text-gray-500 mt-0.5">
+                      {expenseCategories.find(c => c.value === viewingExpense.expense_category)?.label || viewingExpense.expense_category}
+                      {viewingExpense.invoice_number && (
+                        <span className="ml-2 text-gray-400">·</span>
+                      )}
+                      {viewingExpense.invoice_number && (
+                        <span className="ml-2 font-mono text-gray-600">{viewingExpense.invoice_number}</span>
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <span className="text-xs text-gray-700">
-                  {formatDate(viewingExpense.expense_date)}
-                </span>
+                <div className="text-right">
+                  <div className="text-[11px] uppercase font-medium text-gray-400 tracking-wide">Expense Total</div>
+                  <div className="text-[26px] font-bold text-gray-900 font-mono leading-tight">{fmtMoney(canonicalExpenseTotal, 2)}</div>
+                  <div className="mt-1">{approvalBadge()}</div>
+                </div>
               </div>
-              <div className="px-3 py-2 grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
+              {/* Header meta row */}
+              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
                 <div>
-                  <div className="text-[10px] uppercase font-medium text-gray-400">Category</div>
-                  <div className="text-gray-900">
-                    {expenseCategories.find(c => c.value === viewingExpense.expense_category)?.label || viewingExpense.expense_category}
-                  </div>
+                  <div className="text-[11px] uppercase font-medium text-gray-400">Invoice Date</div>
+                  <div className="text-[15px] font-medium text-gray-800">{formatDate(viewingExpense.expense_date)}</div>
                 </div>
-                {viewingExpense.suppliers && (
-                  <div>
-                    <div className="text-[10px] uppercase font-medium text-gray-400">Supplier</div>
-                    <div className="text-gray-900 font-medium">{viewingExpense.suppliers.company_name}</div>
-                  </div>
-                )}
-                {(() => {
-                  const rules = getCategoryFieldRules(viewingExpense.expense_category);
-                  if (rules.staff !== 'show' || !viewingExpense.staff_id) return null;
-                  const staff = staffRoster.find(s => s.id === viewingExpense.staff_id);
-                  if (!staff) return null;
-                  return (
-                    <div>
-                      <div className="text-[10px] uppercase font-medium text-gray-400">Employee</div>
-                      <div className="text-gray-900 font-medium">{staff.full_name}</div>
-                    </div>
-                  );
-                })()}
-                <div>
-                  <div className="text-[10px] uppercase font-medium text-gray-400">Expense Total</div>
-                  <div className="text-base font-bold text-gray-900 font-mono">{fmtMoney(canonicalExpenseTotal, 2)}</div>
-                </div>
-                {viewingExpense.invoice_number && (
-                  <div>
-                    <div className="text-[10px] uppercase font-medium text-gray-400">Invoice No.</div>
-                    <div className="text-gray-900 font-mono text-xs">{viewingExpense.invoice_number}</div>
-                  </div>
-                )}
                 {viewingExpense.due_date && (
                   <div>
-                    <div className="text-[10px] uppercase font-medium text-gray-400">Due Date</div>
-                    <div className="text-gray-900 text-xs">{formatDate(viewingExpense.due_date)}</div>
+                    <div className="text-[11px] uppercase font-medium text-gray-400">Due Date</div>
+                    <div className="text-[15px] font-medium text-gray-800">{formatDate(viewingExpense.due_date)}</div>
                   </div>
                 )}
-                {viewingExpense.payment_reference && (
+                {viewingExpense.suppliers && (
                   <div>
-                    <div className="text-[10px] uppercase font-medium text-gray-400">Reference</div>
-                    <div className="text-gray-900 text-xs font-mono">{viewingExpense.payment_reference}</div>
+                    <div className="text-[11px] uppercase font-medium text-gray-400">Supplier</div>
+                    <div className="text-[15px] font-medium text-gray-800">{viewingExpense.suppliers.company_name}</div>
                   </div>
                 )}
-                {viewingExpense.description && (
-                  <div className="col-span-3">
-                    <div className="text-[10px] uppercase font-medium text-gray-400">Description</div>
-                    <div className="text-gray-900 text-xs whitespace-pre-wrap">{viewingExpense.description}</div>
+                {staffName && (
+                  <div>
+                    <div className="text-[11px] uppercase font-medium text-gray-400">Employee</div>
+                    <div className="text-[15px] font-medium text-gray-800">{staffName}</div>
                   </div>
                 )}
               </div>
             </div>
 
-            {viewingExpense.expense_category === 'salary' && salaryAdvanceApplications.length > 0 && (
-              <div className="border border-amber-200 rounded-lg bg-amber-50 overflow-hidden">
-                <div className="px-3 py-1.5 border-b border-amber-200 text-[10px] font-semibold text-amber-800 uppercase tracking-wide">Salary Advance Applications</div>
-                <div className="px-3 py-2 space-y-1 text-xs text-amber-950">
+            {/* ── SUMMARY ── */}
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Summary</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
+                <div>
+                  <div className="text-[11px] uppercase font-medium text-gray-400">Category</div>
+                  <div className="text-[15px] font-medium text-gray-800">
+                    {expenseCategories.find(c => c.value === viewingExpense.expense_category)?.label || viewingExpense.expense_category}
+                  </div>
+                </div>
+                {viewingExpense.suppliers && (
+                  <div>
+                    <div className="text-[11px] uppercase font-medium text-gray-400">Supplier</div>
+                    <div className="text-[15px] font-medium text-gray-800">{viewingExpense.suppliers.company_name}</div>
+                  </div>
+                )}
+                {staffName && (
+                  <div>
+                    <div className="text-[11px] uppercase font-medium text-gray-400">Employee</div>
+                    <div className="text-[15px] font-medium text-gray-800">{staffName}</div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-[11px] uppercase font-medium text-gray-400">Expense Amount</div>
+                  <div className="text-[15px] font-medium text-gray-800 font-mono">{fmtMoney(viewingExpense.amount, 2)}</div>
+                </div>
+                {viewingExpense.payment_reference && (
+                  <div>
+                    <div className="text-[11px] uppercase font-medium text-gray-400">Reference</div>
+                    <div className="text-[15px] font-medium text-gray-800 font-mono">{viewingExpense.payment_reference}</div>
+                  </div>
+                )}
+                {viewingExpense.description && (
+                  <div className="col-span-2 md:col-span-4">
+                    <div className="text-[11px] uppercase font-medium text-gray-400">Description</div>
+                    <div className="text-[14px] text-gray-700 whitespace-pre-wrap leading-relaxed">{viewingExpense.description}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── BROKER SUMMARY (only for broker) ── */}
+            {isBroker && brokerTotals && (() => {
+              const rows: Array<[string, number, string]> = [
+                ['Broker Invoice', brokerTotals.brokerInvoiceAmount, 'text-gray-900'],
+                ['Reimbursements', brokerTotals.reimbursementTotal, 'text-gray-900'],
+                ['Reimbursement DPP', brokerTotals.reimbursementDpp, 'text-gray-700'],
+                ['Recoverable PPN', brokerTotals.recoverableInputPpn, 'text-blue-700'],
+                ['PPh23', brokerTotals.pph23Withheld, 'text-orange-700'],
+                ['Stamp Duty', brokerTotals.stampDuty, 'text-gray-700'],
+                ['Expense Total', brokerTotals.expenseTotal, 'text-gray-900'],
+              ];
+              return (
+                <div className="px-6 py-4 border-b border-gray-100">
+                  <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Broker Invoice Summary</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
+                    {rows.map(([label, value, tint]) => (
+                      <div key={label}>
+                        <div className="text-[11px] uppercase font-medium text-gray-400">{label}</div>
+                        <div className={`text-[15px] font-medium font-mono ${tint}`}>{fmtMoney(value)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+                    <span className="text-[11px] font-semibold text-green-700 uppercase tracking-wide">Final Cash Payable</span>
+                    <span className="text-[18px] font-bold font-mono text-green-800">{fmtMoney(brokerTotals.finalCashPayable, 2)}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── TAX SECTION (only if tax rows exist) ── */}
+            {taxRows.length > 0 && (
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Tax Summary</h3>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] uppercase font-medium text-gray-400">Invoice</span>
+                    <span className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(viewingExpense.amount)}</span>
+                  </div>
+                  {taxRows.map((row) => (
+                    <div key={row.label} className="flex items-center gap-1.5">
+                      <span className="text-gray-300 text-base font-light">{row.value < 0 ? '−' : '+'}</span>
+                      <span className="text-[11px] uppercase font-medium text-gray-400">{row.label}</span>
+                      <span className={`text-[15px] font-medium font-mono ${row.tint}`}>{fmtMoney(Math.abs(row.value))}</span>
+                    </div>
+                  ))}
+                  <span className="text-gray-300 text-base font-light">=</span>
+                  <div className="ml-auto flex items-center gap-2 px-3 py-1 border border-green-200 bg-green-50 rounded-lg">
+                    <span className="text-[11px] font-semibold text-green-700 uppercase">Net Payable</span>
+                    <span className="text-[15px] font-bold font-mono text-green-800">{fmtMoney(netPayable, 2)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── SALARY ADVANCE APPLICATIONS (only for salary with advances) ── */}
+            {isSalary && salaryAdvanceApplications.length > 0 && (
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Salary Advance Applications</h3>
+                <div className="space-y-2">
                   {salaryAdvanceApplications.map((application) => (
-                    <div key={application.application_id} className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-100 pb-1 last:border-0 last:pb-0">
-                      <span>
+                    <div key={application.application_id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-[13px]">
+                      <span className="text-gray-700">
                         Advance {application.advance_voucher_number || application.advance_payment_voucher_id} → Settlement {application.settlement_voucher_number || application.settlement_payment_voucher_id}
                       </span>
-                      <span className="flex items-center gap-2">
-                        <span className="font-mono font-semibold">{fmtMoney(application.applied_amount)}</span>
+                      <span className="flex items-center gap-3">
+                        <span className="font-mono font-semibold text-gray-900">{fmtMoney(application.applied_amount)}</span>
                         {onViewPaymentVoucher && (
-                          <button type="button" onClick={() => onViewPaymentVoucher(application.settlement_payment_voucher_id)} className="text-blue-700 hover:underline">View Payment</button>
+                          <button type="button" onClick={() => onViewPaymentVoucher(application.settlement_payment_voucher_id)} className="text-blue-600 hover:underline text-[12px] font-medium">View Payment</button>
                         )}
                       </span>
                     </div>
@@ -3524,460 +3650,432 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </div>
             )}
 
-            {/* ── Tax breakdown (only if non-zero) ── */}
-            {viewingExpense.expense_category !== 'import_broker' && (() => {
-              // Resolve the PPh code so the withheld row shows WHICH type
-              // was deducted (PPh 23 vs PPh 21 vs PPh 4(2), etc.) rather
-              // than a bare amount. Falls back gracefully when the code
-              // hasn't loaded yet or isn't set.
-              const pphCode = viewingExpense.pph_code_id
-                ? taxCodes.find(t => t.id === viewingExpense.pph_code_id)
-                : null;
-              const pphLabel = pphCode
-                ? `PPh Withheld · ${pphCode.tax_type}${pphCode.rate ? ` @ ${pphCode.rate}%` : ''}`
-                : 'PPh Withheld';
-              const rows: Array<[string, number, string]> = [];
-              if ((viewingExpense.ppn_amount || 0) > 0) rows.push(['PPN', viewingExpense.ppn_amount || 0, 'text-blue-700']);
-              if ((viewingExpense.pph_amount || 0) > 0) rows.push([pphLabel, -(viewingExpense.pph_amount || 0), 'text-orange-700']);
-              if ((viewingExpense.stamp_duty_amount || 0) > 0) rows.push(['Stamp Duty', viewingExpense.stamp_duty_amount || 0, 'text-gray-700']);
-              if ((viewingExpense.bank_charges_amount || 0) > 0) rows.push(['Bank Charges', viewingExpense.bank_charges_amount || 0, 'text-purple-700']);
-              if ((viewingExpense.pib_bm_amount || 0) > 0) rows.push(['Import Duty (BM)', viewingExpense.pib_bm_amount || 0, 'text-amber-700']);
-              if ((viewingExpense.pib_ppn_amount || 0) > 0) rows.push(['PPN Import', viewingExpense.pib_ppn_amount || 0, 'text-amber-700']);
-              if ((viewingExpense.pib_pph_amount || 0) > 0) rows.push(['PPh 22 Import', viewingExpense.pib_pph_amount || 0, 'text-amber-700']);
-              if (rows.length === 0) return null;
-              const netPayable = calculateExpenseTotals(viewingExpense).netPayable;
-              return (
-                <div className="border border-gray-200 rounded-lg bg-white">
-                  <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Tax & Charges</div>
-                  <div className="px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                    <span className="text-gray-500 text-xs">Invoice</span>
-                    <span className="font-mono text-gray-800">{fmtMoney(viewingExpense.amount)}</span>
-                    {rows.map(([label, value, tint]) => (
-                      <span key={label} className="flex items-center gap-1">
-                        <span className="text-gray-400 text-base font-light">{value < 0 ? '−' : '+'}</span>
-                        <span className="text-gray-500 text-xs">{label}</span>
-                        <span className={`font-mono ${tint}`}>{fmtMoney(Math.abs(value))}</span>
-                      </span>
-                    ))}
-                    <span className="text-gray-400 text-base font-light">=</span>
-                    <span className="ml-auto flex items-center gap-1.5 px-2 py-0.5 border border-emerald-300 bg-emerald-50 rounded">
-                      <span className="text-[10px] font-semibold text-emerald-700 uppercase">Payable</span>
-                      <span className="font-mono font-bold text-emerald-900">{fmtMoney(netPayable, 2)}</span>
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {viewingExpense.expense_category === 'import_broker' && (() => {
-              const totals = calculateBrokerExpenseTotals(viewingExpense);
-              const rows: Array<[string, number, string]> = [
-                ['Broker Invoice', totals.brokerInvoiceAmount, 'text-gray-900'],
-                ['Reimbursements', totals.reimbursementTotal, 'text-gray-900'],
-                ['Reimbursement DPP', totals.reimbursementDpp, 'text-gray-700'],
-                ['Recoverable PPN', totals.recoverableInputPpn, 'text-blue-700'],
-                ['PPh23', totals.pph23Withheld, 'text-orange-700'],
-                ['Stamp Duty', totals.stampDuty, 'text-gray-700'],
-                ['Expense Total', totals.expenseTotal, 'text-gray-900'],
-              ];
-              return (
-                <div className="border border-gray-200 rounded-lg bg-white">
-                  <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Broker Invoice Summary</div>
-                  <div className="px-3 py-2 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-sm">
-                    {rows.map(([label, value, tint]) => (
-                      <div key={label}>
-                        <div className="text-[10px] uppercase font-medium text-gray-400">{label}</div>
-                        <div className={`font-mono font-semibold ${tint}`}>{fmtMoney(value)}</div>
-                      </div>
-                    ))}
-                    <div className="col-span-2 md:col-span-4 flex items-center justify-between border-t border-gray-100 pt-2">
-                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">Final Cash Payable</span>
-                      <span className="font-mono font-bold text-emerald-900">{fmtMoney(totals.finalCashPayable, 2)}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── Reimbursement Lines (only if broker items exist) ── */}
+            {/* ── BROKER REIMBURSEMENT TABLE ── */}
             {viewingExpense.broker_items && viewingExpense.broker_items.length > 0 && (
-              <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
-                <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Reimbursement Lines</div>
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
-                    <tr>
-                      <th className="px-2 py-1 text-left font-medium">Sub-supplier</th>
-                      <th className="px-2 py-1 text-left font-medium">Invoice Number</th>
-                      <th className="px-2 py-1 text-left font-medium">Tax Invoice Number</th>
-                      <th className="px-2 py-1 text-left font-medium">Invoice Date</th>
-                      <th className="px-2 py-1 text-right font-medium">Amount</th>
-                      <th className="px-2 py-1 text-right font-medium">DPP</th>
-                      <th className="px-2 py-1 text-center font-medium">PPN%</th>
-                      <th className="px-2 py-1 text-right font-medium">PPN Amt</th>
-                      <th className="px-2 py-1 text-right font-medium">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {viewingExpense.broker_items.map((item, i) => {
-                      const dpp = item.dpp_amount ?? 0;
-                      const rate = item.ppn_rate ?? 0;
-                      const total = brokerLineTotal(item);
-                      const supplierName = item.supplier_id
-                        ? suppliers.find(s => s.id === item.supplier_id)?.company_name
-                        : null;
-                      return (
-                        <tr key={i} className="border-t border-gray-100">
-                          <td className="px-2 py-1 text-gray-700 truncate max-w-[160px]">{supplierName || '—'}</td>
-                          <td className="px-2 py-1 text-gray-600 font-mono">{item.invoice_number || '—'}</td>
-                          <td className="px-2 py-1 text-gray-600 font-mono">{item.tax_invoice_number || '—'}</td>
-                          <td className="px-2 py-1 text-gray-600 font-mono">{formatDate(item.invoice_date || '')}</td>
-                          <td className="px-2 py-1 text-right font-mono text-gray-900">{fmtMoney(item.amount)}</td>
-                          <td className="px-2 py-1 text-right font-mono text-gray-700">{fmtMoney(dpp)}</td>
-                          <td className="px-2 py-1 text-center font-mono text-gray-700">{rate || 0}%</td>
-                          <td className="px-2 py-1 text-right font-mono text-blue-700">{fmtMoney(item.ppn_amount || 0)}</td>
-                          <td className="px-2 py-1 text-right font-mono text-gray-900">{fmtMoney(total)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Reimbursement Lines</h3>
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Supplier</th>
+                        <th className="px-3 py-2 text-left font-medium">Invoice No</th>
+                        <th className="px-3 py-2 text-left font-medium">Tax Invoice</th>
+                        <th className="px-3 py-2 text-left font-medium">Invoice Date</th>
+                        <th className="px-3 py-2 text-right font-medium">DPP</th>
+                        <th className="px-3 py-2 text-right font-medium">PPN</th>
+                        <th className="px-3 py-2 text-right font-medium">Line Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingExpense.broker_items.map((item, i) => {
+                        const total = brokerLineTotal(item);
+                        const supplierName = item.supplier_id ? suppliers.find(s => s.id === item.supplier_id)?.company_name : null;
+                        return (
+                          <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
+                            <td className="px-3 py-2 text-gray-700 truncate max-w-[140px]">{supplierName || '—'}</td>
+                            <td className="px-3 py-2 text-gray-600 font-mono">{item.invoice_number || '—'}</td>
+                            <td className="px-3 py-2 text-gray-600 font-mono">{item.tax_invoice_number || '—'}</td>
+                            <td className="px-3 py-2 text-gray-600 font-mono">{formatDate(item.invoice_date || '')}</td>
+                            <td className="px-3 py-2 text-right font-mono text-gray-700">{fmtMoney(item.dpp_amount ?? 0)}</td>
+                            <td className="px-3 py-2 text-right font-mono text-blue-700">{fmtMoney(item.ppn_amount || 0)}</td>
+                            <td className="px-3 py-2 text-right font-mono text-gray-900 font-medium">{fmtMoney(total)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-200 bg-gray-50">
+                        <td colSpan={6} className="px-3 py-2 text-right text-[11px] font-semibold text-gray-600 uppercase">Total</td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-gray-900">
+                          {fmtMoney(viewingExpense.broker_items.reduce((sum, item) => sum + brokerLineTotal(item), 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             )}
 
-            {/* ── Payment Information (only shows fields that exist) ── */}
-            {(viewingExpense.payment_method !== undefined || viewingExpense.bank_accounts) && (() => {
-              const isOutstanding = viewingExpense.payment_method === null;
-              const balance = canonicalCashPayable - (viewingExpense.paid_amount ?? 0);
-              return (
-                <div className="border border-gray-200 rounded-lg bg-white">
-                  <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Payment</div>
-                  <div className="px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                    <span className="flex items-center gap-1">
-                      <span className="text-[10px] uppercase font-medium text-gray-400">Method</span>
-                      {isOutstanding ? (
-                        <span className="px-1.5 py-0.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-300 rounded">A/P Outstanding</span>
-                      ) : (
-                        <span className="text-gray-900 capitalize">{viewingExpense.payment_method?.replace('_', ' ')}</span>
-                      )}
-                    </span>
-                    {viewingExpense.bank_accounts && (
-                      <span className="flex items-center gap-1">
-                        <span className="text-[10px] uppercase font-medium text-gray-400">Bank</span>
-                        <span className="text-gray-900 text-xs">
-                          {viewingExpense.bank_accounts.alias || viewingExpense.bank_accounts.bank_name} · {viewingExpense.bank_accounts.account_number}
-                          {viewingExpense.bank_accounts.currency && viewingExpense.bank_accounts.currency !== 'IDR' && (
-                            <span className="ml-1 text-[10px] text-purple-700 font-semibold">({viewingExpense.bank_accounts.currency})</span>
-                          )}
-                        </span>
-                      </span>
+            {/* ── PAYMENT + BANK RECONCILIATION (2-col on desktop) ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 border-b border-gray-100">
+              {/* Payment */}
+              <div className="px-6 py-4 md:border-r border-gray-100">
+                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Payment</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] uppercase font-medium text-gray-400">Method</span>
+                    {viewingExpense.payment_method === null ? (
+                      <span className="px-2 py-0.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded">A/P Outstanding</span>
+                    ) : (
+                      <span className="text-[15px] font-medium text-gray-800 capitalize">{viewingExpense.payment_method?.replace('_', ' ')}</span>
                     )}
-                    {isOutstanding && canonicalCashPayable > 0 && (
-                      <span className="ml-auto flex items-center gap-1">
-                        <span className="text-[10px] uppercase font-medium text-gray-400">Balance</span>
-                        <span className={`font-mono font-bold ${balance > 0 ? 'text-red-600' : 'text-green-700'}`}>
-                          {fmtMoney(balance)}
-                        </span>
-                        {(viewingExpense.paid_amount ?? 0) > 0 && (
-                          <span className="text-[10px] text-gray-500">(Paid {fmtMoney(viewingExpense.paid_amount)})</span>
+                  </div>
+                  {viewingExpense.bank_accounts && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] uppercase font-medium text-gray-400">Bank</span>
+                      <span className="text-[14px] font-medium text-gray-800">
+                        {viewingExpense.bank_accounts.alias || viewingExpense.bank_accounts.bank_name} · {viewingExpense.bank_accounts.account_number}
+                        {viewingExpense.bank_accounts.currency && viewingExpense.bank_accounts.currency !== 'IDR' && (
+                          <span className="ml-1 text-[11px] text-gray-500 font-semibold">({viewingExpense.bank_accounts.currency})</span>
                         )}
                       </span>
-                    )}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] uppercase font-medium text-gray-400">Amount Paid</span>
+                    <span className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(supplierPaid)}</span>
                   </div>
+                  {canonicalCashPayable > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] uppercase font-medium text-gray-400">Remaining Balance</span>
+                      <span className={`text-[15px] font-bold font-mono ${balance > 0 ? 'text-red-600' : 'text-green-700'}`}>{fmtMoney(balance)}</span>
+                    </div>
+                  )}
                 </div>
-              );
-            })()}
 
-            {/* ── Payment Breakdown — only when >= 1 payment line exists ── */}
+                {/* Payment breakdown lines */}
+                {hasPaymentBreakdown && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
+                    {(() => {
+                      const badge = (paid: number, target: number) => {
+                        if (target <= 0) return null;
+                        if (paid <= 0) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">Pending</span>;
+                        if (paid >= target - 1) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">Paid</span>;
+                        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">Partial</span>;
+                      };
+                      return (
+                        <>
+                          {(canonicalCashPayable > 0 || supplierPaid > 0) && (
+                            <div className="flex items-center justify-between text-[12px]">
+                              <span className="text-gray-600">Supplier</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-gray-800">{fmtMoney(supplierPaid)} / {fmtMoney(canonicalCashPayable)}</span>
+                                {badge(supplierPaid, canonicalCashPayable)}
+                              </div>
+                            </div>
+                          )}
+                          {(pphTarget > 0 || pphPaid > 0) && (
+                            <div className="flex items-center justify-between text-[12px]">
+                              <span className="text-gray-600">PPh Withholding</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-gray-800">{fmtMoney(pphPaid)} / {fmtMoney(pphTarget)}</span>
+                                {badge(pphPaid, pphTarget)}
+                              </div>
+                            </div>
+                          )}
+                          {(allocs.length + bslLines.length) > 1 && (
+                            <div className="mt-2 overflow-x-auto">
+                              <table className="w-full text-[11px]">
+                                <thead className="text-gray-500 text-[10px] uppercase">
+                                  <tr className="border-t border-gray-100">
+                                    <th className="text-left font-medium py-1">Date</th>
+                                    <th className="text-left font-medium py-1">Ref</th>
+                                    <th className="text-right font-medium py-1">Amount</th>
+                                    <th className="text-right font-medium py-1">Kind</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {allocs.map((a) => (
+                                    <tr key={`va-${a.id}`} className="border-t border-gray-100">
+                                      <td className="py-1 text-gray-700">{a.payment_vouchers?.payment_date ? formatDate(a.payment_vouchers.payment_date) : '—'}</td>
+                                      <td className="py-1 text-gray-700 font-mono">{a.payment_vouchers?.voucher_number || 'PV'}</td>
+                                      <td className="py-1 text-right font-mono">{fmtMoney(a.allocated_amount)}</td>
+                                      <td className="py-1 text-right text-gray-500 capitalize">{a.payment_kind || 'supplier'}</td>
+                                    </tr>
+                                  ))}
+                                  {bslLines.map((b) => {
+                                    const lineCurrency = b.bank_accounts?.currency ?? currency;
+                                    const lineAmount = (b.debit_amount || 0) + (b.credit_amount || 0);
+                                    const fmtLine = (n: number) => formatCurrency(n, lineCurrency, { minimumFractionDigits: lineCurrency === 'IDR' ? 0 : 2, maximumFractionDigits: lineCurrency === 'IDR' ? 0 : 2 });
+                                    return (
+                                      <tr key={`bsl-${b.id}`} className="border-t border-gray-100">
+                                        <td className="py-1 text-gray-700">{formatDate(b.transaction_date)}</td>
+                                        <td className="py-1 text-gray-700 truncate max-w-[120px]">{b.description || 'Bank'}</td>
+                                        <td className="py-1 text-right font-mono">{fmtLine(lineAmount)}</td>
+                                        <td className="py-1 text-right text-gray-500 capitalize">{b.payment_kind || 'supplier'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              {/* Bank Reconciliation */}
+              <div className="px-6 py-4 bg-gray-50/50">
+                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Bank Reconciliation</h3>
+                {bslLines.length > 0 ? (
+                  <div className="space-y-2">
+                    {bslLines.map((line) => {
+                      const lineCurrency = line.bank_accounts?.currency ?? currency;
+                      const fmtLine = (n: number) => formatCurrency(n, lineCurrency);
+                      const bankAmount = line.debit_amount || line.credit_amount || 0;
+                      const diff = bankAmount - viewingExpense.amount;
+                      return (
+                        <div key={line.id} className="px-3 py-2 bg-white border border-gray-200 rounded-lg">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200">
+                              <CheckCircle className="w-3 h-3" /> Linked
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px]">
+                            <div>
+                              <div className="text-[10px] uppercase font-medium text-gray-400">Date</div>
+                              <div className="text-gray-800">{formatDate(line.transaction_date)}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] uppercase font-medium text-gray-400">Reference</div>
+                              <div className="text-gray-800 truncate">{line.description?.slice(0, 24) || '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] uppercase font-medium text-gray-400">Bank Transaction</div>
+                              <div className="font-mono font-semibold text-gray-900">{fmtLine(bankAmount)}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] uppercase font-medium text-gray-400">Matched Amount</div>
+                              <div className="font-mono font-semibold text-gray-900">{fmtMoney(viewingExpense.amount, 2)}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] uppercase font-medium text-gray-400">Difference</div>
+                              <div className={`font-mono font-medium ${Math.abs(diff) < 1 ? 'text-green-700' : 'text-orange-600'}`}>{fmtLine(diff)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-3 bg-white border border-gray-200 rounded-lg text-[12px] text-gray-500">
+                    <Link2 className="w-4 h-4 text-gray-400" />
+                    Not linked to a bank transaction
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── DOCUMENTS + RELATED RECORDS (2-col on desktop) ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 border-b border-gray-100">
+              {/* Documents */}
+              <div className="px-6 py-4 md:border-r border-gray-100">
+                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">
+                  Documents {viewingExpense.document_urls && viewingExpense.document_urls.length > 0 && `(${viewingExpense.document_urls.length})`}
+                </h3>
+                {viewingExpense.document_urls && viewingExpense.document_urls.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {viewingExpense.document_urls.map((url, index) => {
+                      const isImage = /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(url);
+                      const fileName = url.split('/').pop()?.split('?')[0] || `Document ${index + 1}`;
+                      return (
+                        <div key={index} className="border border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 hover:shadow-sm transition-all">
+                          {isImage ? (
+                            <div className="cursor-pointer" onClick={() => openDocument(url)}>
+                              <img
+                                src={signedUrlCache[url] || url}
+                                alt={fileName}
+                                className="w-full h-32 object-cover border-b border-gray-200"
+                              />
+                            </div>
+                          ) : (
+                            <div className="h-32 flex items-center justify-center bg-gray-50 border-b border-gray-200">
+                              <FileText className="w-8 h-8 text-gray-400" />
+                            </div>
+                          )}
+                          <div className="px-2 py-2">
+                            <p className="text-[11px] text-gray-700 font-medium truncate" title={fileName}>{fileName}</p>
+                            <div className="mt-1.5 flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openDocument(url)}
+                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-blue-600 hover:bg-blue-50 rounded"
+                              >
+                                <Eye className="w-3 h-3" /> View
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => downloadDocument(url, fileName)}
+                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-600 hover:bg-gray-100 rounded"
+                              >
+                                <Download className="w-3 h-3" /> Download
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-3 bg-gray-50 border border-gray-200 rounded-lg text-[12px] text-gray-500">
+                    <FileText className="w-4 h-4 text-gray-400" />
+                    No documents attached
+                  </div>
+                )}
+              </div>
+
+              {/* Related Records */}
+              <div className="px-6 py-4 bg-gray-50/50">
+                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Related Records</h3>
+                {hasRelated ? (
+                  <div className="flex flex-wrap gap-2">
+                    {viewingExpense.batches && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-[12px] text-gray-700">
+                        <Package className="w-3.5 h-3.5 text-gray-500" /> Batch {viewingExpense.batches.batch_number}
+                      </span>
+                    )}
+                    {viewingExpense.import_containers && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-[12px] text-gray-700">
+                        <Package className="w-3.5 h-3.5 text-gray-500" /> {viewingExpense.import_containers.container_ref}
+                      </span>
+                    )}
+                    {viewingExpense.delivery_challans && (
+                      <button
+                        type="button"
+                        onClick={openLinkedDCQuickView}
+                        disabled={linkedDCQuickViewLoading}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-[12px] text-blue-600 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50"
+                      >
+                        <Truck className="w-3.5 h-3.5" /> DC {viewingExpense.delivery_challans.challan_number}
+                        {linkedDCQuickViewLoading && ' …'}
+                      </button>
+                    )}
+                    {viewingExpense.voucher_number && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-[12px] text-gray-700">
+                        <Clipboard className="w-3.5 h-3.5 text-gray-500" /> {viewingExpense.voucher_number}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-3 bg-white border border-gray-200 rounded-lg text-[12px] text-gray-500">
+                    <Link2 className="w-4 h-4 text-gray-400" />
+                    No related records
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── ACCOUNTING SUMMARY (collapsible, hidden by default) ── */}
             {(() => {
-              const allocs = viewingExpense.voucher_allocations || [];
-              const bslLines = viewingExpense.bank_statement_lines || [];
-              // Only render when there's actual settlement data.
-              if (allocs.length === 0 && bslLines.length === 0) return null;
-              const supplierTarget = canonicalCashPayable;
-              const supplierPaid = viewingExpense.paid_amount ?? 0;
-              const pphTarget = viewingExpense.pph_amount || 0;
-              const pphPaid = viewingExpense.pph_paid_amount ?? 0;
-              const badge = (paid: number, target: number) => {
-                if (target <= 0) return null;
-                if (paid <= 0) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">Pending</span>;
-                if (paid >= target - 1) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">Paid ✓</span>;
-                return <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800">Partial</span>;
-              };
-              // Hide the supplier row if there's nothing owed (fully unbilled etc).
-              const showSupplier = supplierTarget > 0 || supplierPaid > 0;
-              const showPph = pphTarget > 0 || pphPaid > 0;
+              const [expanded, setExpanded] = useState(false);
               return (
-                <div className="border border-gray-200 rounded-lg bg-white">
-                  <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-                    Payment Breakdown ({allocs.length + bslLines.length} {allocs.length + bslLines.length === 1 ? 'line' : 'lines'})
-                  </div>
-                  <div className="px-3 py-2 text-sm space-y-1">
-                    {showSupplier && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-700 text-xs">Supplier</span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-gray-900 text-xs">{fmtMoney(supplierPaid)} / {fmtMoney(supplierTarget)}</span>
-                          {badge(supplierPaid, supplierTarget)}
-                        </div>
+                <div className="border-b border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(!expanded)}
+                    className="w-full px-6 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                  >
+                    <span className="text-[14px] font-semibold text-gray-700 flex items-center gap-2">
+                      <Banknote className="w-4 h-4 text-gray-500" />
+                      Accounting Impact
+                    </span>
+                    <span className="text-gray-400 text-xs">{expanded ? 'Collapse' : 'Expand'}</span>
+                  </button>
+                  {expanded && (
+                    <div className="px-6 pb-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
+                      <div>
+                        <div className="text-[11px] uppercase font-medium text-gray-400">Expenses (P&L)</div>
+                        <div className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(canonicalExpenseTotal)}</div>
                       </div>
-                    )}
-                    {showPph && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-700 text-xs">PPh Withholding</span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-gray-900 text-xs">{fmtMoney(pphPaid)} / {fmtMoney(pphTarget)}</span>
-                          {badge(pphPaid, pphTarget)}
-                        </div>
+                      <div>
+                        <div className="text-[11px] uppercase font-medium text-gray-400">Cash Paid</div>
+                        <div className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(supplierPaid)}</div>
                       </div>
-                    )}
-                  </div>
-                  {(allocs.length + bslLines.length) > 1 && (
-                    <div className="px-3 pb-2">
-                      <table className="w-full text-xs">
-                        <thead className="text-gray-500 text-[10px] uppercase">
-                          <tr className="border-t border-gray-100">
-                            <th className="text-left font-medium py-1">Date</th>
-                            <th className="text-left font-medium py-1">Ref</th>
-                            <th className="text-right font-medium py-1">Amount</th>
-                            <th className="text-right font-medium py-1">Kind</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {allocs.map((a) => (
-                            <tr key={`va-${a.id}`} className="border-t border-gray-100">
-                              <td className="py-1 text-gray-700">{a.payment_vouchers?.payment_date ? formatDate(a.payment_vouchers.payment_date) : '—'}</td>
-                              <td className="py-1 text-gray-700 font-mono">{a.payment_vouchers?.voucher_number || 'PV'}</td>
-                              <td className="py-1 text-right font-mono">{fmtMoney(a.allocated_amount)}</td>
-                              <td className="py-1 text-right text-gray-600 capitalize">{a.payment_kind || 'supplier'}</td>
-                            </tr>
-                          ))}
-                          {bslLines.map((b) => {
-                            const lineCurrency = b.bank_accounts?.currency ?? currency;
-                            const lineAmount = (b.debit_amount || 0) + (b.credit_amount || 0);
-                            const fmtLine = (n: number) => formatCurrency(n, lineCurrency, {
-                              minimumFractionDigits: lineCurrency === 'IDR' ? 0 : 2,
-                              maximumFractionDigits: lineCurrency === 'IDR' ? 0 : 2,
-                            });
-                            return (
-                              <tr key={`bsl-${b.id}`} className="border-t border-gray-100">
-                                <td className="py-1 text-gray-700">{formatDate(b.transaction_date)}</td>
-                                <td className="py-1 text-gray-700 truncate max-w-[180px]">{b.description || 'Bank'}</td>
-                                <td className="py-1 text-right font-mono">{fmtLine(lineAmount)}</td>
-                                <td className="py-1 text-right text-gray-600 capitalize">{b.payment_kind || 'supplier'}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                      <div>
+                        <div className="text-[11px] uppercase font-medium text-gray-400">Liabilities (A/P)</div>
+                        <div className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(Math.max(0, balance))}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase font-medium text-gray-400">Assets (Recoverable)</div>
+                        <div className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(viewingExpense.ppn_amount || 0)}</div>
+                      </div>
                     </div>
                   )}
                 </div>
               );
             })()}
 
-            {/* Context Links — compact inline chips (only when linked) */}
-            {(viewingExpense.batches || viewingExpense.import_containers || viewingExpense.delivery_challans) && (
-              <div className="border border-gray-200 rounded-lg bg-white px-3 py-2 flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-[10px] uppercase font-medium text-gray-400">Linked to</span>
-                {viewingExpense.batches && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700">
-                    <Package className="w-3 h-3" /> Batch {viewingExpense.batches.batch_number}
-                  </span>
-                )}
-                {viewingExpense.import_containers && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-700">
-                    <Package className="w-3 h-3" /> {viewingExpense.import_containers.container_ref}
-                  </span>
-                )}
-                {viewingExpense.delivery_challans && (
-                  <button
-                    type="button"
-                    onClick={openLinkedDCQuickView}
-                    disabled={linkedDCQuickViewLoading}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-50 border border-green-200 text-green-700 hover:bg-green-100 disabled:opacity-50"
-                  >
-                    <Truck className="w-3 h-3" /> DC {viewingExpense.delivery_challans.challan_number}
-                    {linkedDCQuickViewLoading && ' …'}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {linkedDCQuickView && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-                <div className="w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-lg bg-white shadow-2xl">
-                  <div className="flex items-center justify-between border-b px-4 py-3">
-                    <h4 className="text-base font-semibold text-gray-900">
-                      Delivery Challan {linkedDCQuickView.challan.challan_number}
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={() => setLinkedDCQuickView(null)}
-                      className="rounded p-1 text-gray-500 hover:bg-gray-100"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                  <div className="space-y-4 overflow-y-auto p-4 text-sm">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-xs text-gray-500 uppercase font-medium">Date</div>
-                        <div className="font-medium">{formatDate(linkedDCQuickView.challan.challan_date)}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 uppercase font-medium">Customer</div>
-                        <div className="font-medium">{linkedDCQuickView.challan.customers?.company_name || '-'}</div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs text-gray-500 uppercase font-medium mb-2">Items</div>
-                      {linkedDCQuickView.items.length === 0 ? (
-                        <div className="text-gray-500">No items found for this DC.</div>
-                      ) : (
-                        <div className="overflow-x-auto border rounded">
-                          <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Product</th>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-600">Batch</th>
-                                <th className="px-3 py-2 text-right font-semibold text-gray-600">Qty</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {linkedDCQuickView.items.map((item) => (
-                                <tr key={item.id} className="border-t">
-                                  <td className="px-3 py-2">{item.products?.product_name || '-'}</td>
-                                  <td className="px-3 py-2">{item.batches?.batch_number || '-'}</td>
-                                  <td className="px-3 py-2 text-right">{Number(item.quantity || 0).toLocaleString('id-ID')}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500">Press Esc to close.</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Bank Reconciliation — only rendered when a match exists */}
-            {viewingExpense.bank_statement_lines && viewingExpense.bank_statement_lines.length > 0 && (
-              <div className="border border-green-200 rounded-lg bg-green-50">
-                <div className="px-3 py-1.5 border-b border-green-200 flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-green-800 uppercase tracking-wide flex items-center gap-1">
-                    <FileText className="w-3 h-3" /> Bank Reconciliation
-                  </span>
-                  <span className="text-[10px] font-bold text-green-700 bg-green-200 px-1.5 py-0.5 rounded">✓ LINKED</span>
-                </div>
-                <div className="px-3 py-2 space-y-2">
-                  {viewingExpense.bank_statement_lines.map((line) => {
-                    const lineCurrency = line.bank_accounts?.currency ?? currency;
-                    const fmtLine = (n: number) => formatCurrency(n, lineCurrency);
-                    const bankAmount = line.debit_amount || line.credit_amount || 0;
-                    return (
-                      <div key={line.id} className="text-xs">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                          <span className="text-gray-700">
-                            <span className="text-[10px] uppercase font-medium text-gray-500 mr-1">Date</span>
-                            {formatDate(line.transaction_date)}
-                          </span>
-                          <span className="text-gray-700">
-                            <span className="text-[10px] uppercase font-medium text-gray-500 mr-1">Ref</span>
-                            {line.description?.slice(0, 30) || '—'}
-                          </span>
-                          <span className="ml-auto flex items-center gap-3">
-                            <span className="flex items-center gap-1">
-                              <span className="text-[10px] uppercase font-medium text-gray-500">Bank Txn</span>
-                              <span className="font-mono font-bold text-green-700">{fmtLine(bankAmount)}</span>
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <span className="text-[10px] uppercase font-medium text-gray-500">Expense</span>
-                              <span className="font-mono font-bold text-gray-900">{fmtMoney(viewingExpense.amount, 2)}</span>
-                            </span>
-                          </span>
-                        </div>
-                        {line.description && (
-                          <div className="mt-1 text-[11px] text-gray-700 bg-white px-2 py-1 rounded border border-green-200 truncate">
-                            {line.description}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Documents — only when attachments exist */}
-            {viewingExpense.document_urls && viewingExpense.document_urls.length > 0 && (
-              <div>
-                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2 block">
-                  <FileText className="w-3.5 h-3.5 inline mr-1" />
-                  Supporting Documents ({viewingExpense.document_urls.length})
-                </label>
-                <div className="grid grid-cols-1 gap-3">
-                  {viewingExpense.document_urls.map((url, index) => {
-                    const isImage = /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(url);
-                    return (
-                      <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-3">
-                            <FileText className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                            <span className="text-sm text-blue-900 font-medium">Document {index + 1}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => openDocument(url)}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-white border border-blue-300 rounded hover:bg-blue-50"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              View
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => downloadDocument(url, `Document ${index + 1}`)}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-green-700 bg-white border border-green-300 rounded hover:bg-green-50"
-                            >
-                              <Download className="w-3 h-3" />
-                              Download
-                            </button>
-                          </div>
-                        </div>
-                        {isImage && (
-                          <div className="mt-2">
-                            <img
-                              src={signedUrlCache[url] || url}
-                              alt={`Document ${index + 1}`}
-                              className="w-full max-w-md rounded-lg border-2 border-gray-300 hover:border-blue-400 cursor-pointer shadow-sm hover:shadow-md transition-all"
-                              style={{ maxHeight: '300px', objectFit: 'contain' }}
-                              onClick={() => openDocument(url)}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Close Button */}
-            <div className="flex justify-end pt-2 border-t border-gray-100">
+            {/* ── FOOTER ── */}
+            <div className="px-6 py-3 flex justify-end gap-2">
+              {canManage && (
+                <button
+                  onClick={() => { handleEdit(viewingExpense); setViewModalOpen(false); setViewingExpense(null); }}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50"
+                >
+                  Edit
+                </button>
+              )}
               <button
-                onClick={() => {
-                  setViewModalOpen(false);
-                  setViewingExpense(null);
-                }}
-                className="px-3 py-1.5 text-xs font-medium bg-gray-600 text-white rounded hover:bg-gray-700"
+                onClick={() => { setViewModalOpen(false); setViewingExpense(null); setLinkedDCQuickView(null); }}
+                className="px-3 py-1.5 text-xs font-medium bg-gray-700 text-white rounded-lg hover:bg-gray-800"
               >
                 Close
               </button>
             </div>
           </div>
+
+          {/* Linked DC Quick View overlay */}
+          {linkedDCQuickView && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b px-5 py-3">
+                  <h4 className="text-[16px] font-semibold text-gray-900">
+                    Delivery Challan {linkedDCQuickView.challan.challan_number}
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setLinkedDCQuickView(null)}
+                    className="rounded-lg p-1 text-gray-500 hover:bg-gray-100"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="space-y-4 overflow-y-auto p-5 text-sm">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-[11px] uppercase font-medium text-gray-400">Date</div>
+                      <div className="text-[15px] font-medium text-gray-800">{formatDate(linkedDCQuickView.challan.challan_date)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase font-medium text-gray-400">Customer</div>
+                      <div className="text-[15px] font-medium text-gray-800">{linkedDCQuickView.challan.customers?.company_name || '—'}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase font-medium text-gray-400 mb-2">Items</div>
+                    {linkedDCQuickView.items.length === 0 ? (
+                      <div className="text-gray-500 text-sm">No items found.</div>
+                    ) : (
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-600">Product</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-600">Batch</th>
+                              <th className="px-3 py-2 text-right font-semibold text-gray-600">Qty</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {linkedDCQuickView.items.map((item) => (
+                              <tr key={item.id} className="border-t border-gray-100">
+                                <td className="px-3 py-2 text-gray-700">{item.products?.product_name || '—'}</td>
+                                <td className="px-3 py-2 text-gray-700">{item.batches?.batch_number || '—'}</td>
+                                <td className="px-3 py-2 text-right font-mono text-gray-800">{Number(item.quantity || 0).toLocaleString('id-ID')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </Modal>
         );
       })()}
