@@ -8,7 +8,7 @@ import { useFinance } from '../../contexts/FinanceContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 import { moduleExpenseCategories } from './expenseCategories';
-import { calculateExpenseTotals } from '../../utils/taxCalculations';
+import { calculateCanonicalCashPayable, calculateCanonicalExpenseTotal } from '../../utils/taxCalculations';
 import {
   FINANCE_RECONCILIATION_REFRESH_EVENT,
   notifyFinanceReconciliationRefresh,
@@ -77,6 +77,11 @@ interface StatementLine {
     description: string;
     expense_date: string;
     voucher_number?: string;
+    ppn_amount?: number | null;
+    pph_amount?: number | null;
+    stamp_duty_amount?: number | null;
+    bank_charges_amount?: number | null;
+    broker_items?: import('../../utils/taxCalculations').BrokerItem[] | null;
   } | null;
   matchedReceipt?: {
     id: string;
@@ -469,7 +474,7 @@ export function BankReconciliationEnhanced({
       if (expenseIds.length > 0) {
         const { data: expenses } = await supabase
           .from('finance_expenses')
-          .select('id, expense_category, amount, description, expense_date, voucher_number')
+          .select('id, expense_category, amount, description, expense_date, voucher_number, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items')
           .in('id', expenseIds);
         expenses?.forEach(e => expenseMap.set(e.id, e));
         // ── TEMP DIAG for expense batch (paired with the block below) ───
@@ -1708,13 +1713,13 @@ export function BankReconciliationEnhanced({
       try {
         const { data: exp } = await supabase
           .from('finance_expenses')
-          .select('amount, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, expense_category, paid_amount, pph_paid_amount')
+          .select('amount, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, expense_category, broker_items, paid_amount, pph_paid_amount')
           .eq('id', expenseId)
           .single();
         if (exp) {
           const thisAmount = (line.debit || 0) + (line.credit || 0);
           if (linkPaymentKind === 'supplier') {
-            const target = calculateExpenseTotals(exp).netPayable;
+            const target = calculateCanonicalCashPayable(exp);
             if ((exp.paid_amount || 0) + thisAmount > target + 1) {
               const proceed = confirm(`Warning: supplier paid amount (${((exp.paid_amount||0)+thisAmount).toLocaleString('id-ID')}) would exceed target (${target.toLocaleString('id-ID')}). Link anyway?`);
               if (!proceed) return;
@@ -3541,7 +3546,7 @@ export function BankReconciliationEnhanced({
                             <option key={expense.id} value={expense.id}>
                               {formattedDate} - {expense.voucher_number ? `[${expense.voucher_number}] ` : ''}
                               {expense.description} -
-                              {formatCurrency(expense.amount, recordingLine.currency)}
+                              {formatCurrency(calculateCanonicalExpenseTotal(expense), recordingLine.currency)}
                             </option>
                           );
                         })}
@@ -4155,7 +4160,7 @@ export function BankReconciliationEnhanced({
                     <div className="flex justify-between">
                       <span className="text-gray-600">Amount:</span>
                       <span className="font-medium text-gray-900">
-                        {formatCurrency(editingLine.matchedExpense.amount, editingLine.currency)}
+                        {formatCurrency(calculateCanonicalExpenseTotal(editingLine.matchedExpense), editingLine.currency)}
                       </span>
                     </div>
                     <div className="flex justify-between">

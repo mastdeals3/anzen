@@ -10,6 +10,8 @@ import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
 import { canSeeInventoryCosting } from '../utils/permissions';
+import { calculateCanonicalExpenseTotal } from '../utils/taxCalculations';
+import type { BrokerItem } from '../utils/taxCalculations';
 
 interface Supplier {
   id: string;
@@ -51,6 +53,11 @@ interface LinkedExpense {
   amount: number;
   expense_date: string;
   description: string | null;
+  ppn_amount?: number | null;
+  pph_amount?: number | null;
+  stamp_duty_amount?: number | null;
+  bank_charges_amount?: number | null;
+  broker_items?: BrokerItem[] | null;
 }
 
 export default function ImportContainers() {
@@ -131,9 +138,9 @@ export default function ImportContainers() {
             (containersData || []).map(async (container) => {
               const { data: expenses } = await supabase
                 .from('finance_expenses')
-                .select('amount')
+                .select('amount, expense_category, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items')
                 .eq('import_container_id', container.id);
-              const linkedExpensesTotal = expenses?.reduce((sum, exp) => sum + Number(exp.amount), 0) || 0;
+              const linkedExpensesTotal = expenses?.reduce((sum, exp) => sum + calculateCanonicalExpenseTotal(exp), 0) || 0;
               return { ...container, linked_expenses_total: linkedExpensesTotal };
             })
           )
@@ -261,7 +268,7 @@ export default function ImportContainers() {
     try {
       const { data, error } = await supabase
         .from('finance_expenses')
-        .select('id, expense_category, amount, expense_date, description')
+        .select('id, expense_category, amount, expense_date, description, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items')
         .eq('import_container_id', containerId)
         .order('expense_date', { ascending: false });
       if (error) throw error;
@@ -552,13 +559,13 @@ export default function ImportContainers() {
                           <div className="font-medium text-sm text-gray-900 truncate">{getExpenseCategoryLabel(expense.expense_category)}</div>
                           <div className="text-xs text-gray-600">{expense.expense_date} • {expense.description || 'No description'}</div>
                         </div>
-                        <div className="font-semibold text-green-700 text-sm whitespace-nowrap">{formatCurrency(expense.amount, 'IDR')}</div>
+                        <div className="font-semibold text-green-700 text-sm whitespace-nowrap">{formatCurrency(calculateCanonicalExpenseTotal(expense), 'IDR')}</div>
                       </div>
                     ))}
                   </div>
                   <div className="mt-3 pt-3 border-t border-green-300 flex justify-between items-center">
                     <span className="text-sm font-semibold text-green-900">{t('importContainers.totalFromLinked')}:</span>
-                    <span className="text-lg font-bold text-green-900">{formatCurrency(linkedExpenses.reduce((sum, exp) => sum + exp.amount, 0), 'IDR')}</span>
+                    <span className="text-lg font-bold text-green-900">{formatCurrency(linkedExpenses.reduce((sum, exp) => sum + calculateCanonicalExpenseTotal(exp), 0), 'IDR')}</span>
                   </div>
                 </div>
               )}
