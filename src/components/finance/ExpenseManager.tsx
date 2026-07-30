@@ -3466,22 +3466,27 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         const hasRelated = viewingExpense.batches || viewingExpense.import_containers || viewingExpense.delivery_challans;
 
         return (
-        <Modal
-          isOpen={viewModalOpen}
-          onClose={() => {
-            setViewModalOpen(false);
-            setViewingExpense(null);
-            setLinkedDCQuickView(null);
-          }}
-          title="Expense Details"
-          size="xl"
-          noPadding
-        >
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div className="fixed inset-0 bg-gray-900/50" onClick={() => { setViewModalOpen(false); setViewingExpense(null); setLinkedDCQuickView(null); }} />
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
+              {/* Floating close button — no header bar */}
+              <button
+                type="button"
+                onClick={() => { setViewModalOpen(false); setViewingExpense(null); setLinkedDCQuickView(null); }}
+                className="absolute top-3 right-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 border border-gray-200 shadow-sm hover:bg-gray-100 transition"
+                title="Close"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4 text-gray-600" />
+              </button>
+
+              <div className="flex-1 overflow-y-auto">
           {/* ═══ ONE UNIFIED CONTAINER ═══ */}
           <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
 
             {/* ── HEADER (document header — first card) ── */}
-            <div className="px-4 pt-3 pb-2.5 bg-gray-50 border-b border-gray-200">
+            <div className="px-4 pt-4 pb-2.5 bg-gray-50 border-b border-gray-200">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 text-white">
@@ -4083,7 +4088,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </div>
             </div>
           )}
-        </Modal>
+          </div>
+            </div>
+          </div>
+        </div>
         );
       })()}
 
