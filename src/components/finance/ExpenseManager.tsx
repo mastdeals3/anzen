@@ -3474,13 +3474,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           }}
           title="Expense Details"
           size="xl"
+          noPadding
         >
           {/* ═══ ONE UNIFIED CONTAINER ═══ */}
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
 
-            {/* ── HEADER ── */}
-            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
-              <div className="flex items-center justify-between gap-3">
+            {/* ── HEADER (document header — first card) ── */}
+            <div className="px-4 pt-3 pb-2.5 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 text-white">
                     <FileText className="w-4 h-4" />
@@ -3500,10 +3501,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-[9px] uppercase font-medium text-gray-400 tracking-wide">Total</div>
-                  <div className="text-[19px] font-bold text-gray-900 font-mono leading-tight">{fmtMoney(canonicalExpenseTotal, 2)}</div>
-                  <div className="mt-0.5">{approvalBadge()}</div>
+                <div className="flex items-start gap-3">
+                  <div className="text-right">
+                    <div className="text-[9px] uppercase font-medium text-gray-400 tracking-wide">Total</div>
+                    <div className="text-[19px] font-bold text-gray-900 font-mono leading-tight">{fmtMoney(canonicalExpenseTotal, 2)}</div>
+                    <div className="mt-0.5">{approvalBadge()}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setViewModalOpen(false); setViewingExpense(null); setLinkedDCQuickView(null); }}
+                    className="p-1 rounded hover:bg-gray-200 transition -mt-1 -mr-1"
+                  >
+                    <X className="w-4 h-4 text-gray-500" />
+                  </button>
                 </div>
               </div>
               {/* Header meta row */}
