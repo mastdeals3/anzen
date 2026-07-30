@@ -3479,96 +3479,96 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
 
             {/* ── HEADER ── */}
-            <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-600 text-white">
-                    <FileText className="w-5 h-5" />
+            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600 text-white">
+                    <FileText className="w-4 h-4" />
                   </div>
                   <div>
-                    <h2 className="text-[22px] font-semibold text-gray-900 leading-tight">
+                    <h2 className="text-[17px] font-semibold text-gray-900 leading-tight">
                       {viewingExpense.voucher_number || 'Expense'}
                     </h2>
-                    <p className="text-[13px] text-gray-500 mt-0.5">
+                    <p className="text-[11px] text-gray-500 mt-0">
                       {expenseCategories.find(c => c.value === viewingExpense.expense_category)?.label || viewingExpense.expense_category}
                       {viewingExpense.invoice_number && (
-                        <span className="ml-2 text-gray-400">·</span>
+                        <span className="ml-1.5 text-gray-400">·</span>
                       )}
                       {viewingExpense.invoice_number && (
-                        <span className="ml-2 font-mono text-gray-600">{viewingExpense.invoice_number}</span>
+                        <span className="ml-1.5 font-mono text-gray-600">{viewingExpense.invoice_number}</span>
                       )}
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[11px] uppercase font-medium text-gray-400 tracking-wide">Expense Total</div>
-                  <div className="text-[26px] font-bold text-gray-900 font-mono leading-tight">{fmtMoney(canonicalExpenseTotal, 2)}</div>
-                  <div className="mt-1">{approvalBadge()}</div>
+                  <div className="text-[9px] uppercase font-medium text-gray-400 tracking-wide">Total</div>
+                  <div className="text-[19px] font-bold text-gray-900 font-mono leading-tight">{fmtMoney(canonicalExpenseTotal, 2)}</div>
+                  <div className="mt-0.5">{approvalBadge()}</div>
                 </div>
               </div>
               {/* Header meta row */}
-              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2">
+              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-0.5">
                 <div>
-                  <div className="text-[11px] uppercase font-medium text-gray-400">Invoice Date</div>
-                  <div className="text-[15px] font-medium text-gray-800">{formatDate(viewingExpense.expense_date)}</div>
+                  <span className="text-[9px] uppercase font-medium text-gray-400">Invoice Date</span>
+                  <span className="ml-1.5 text-[12px] font-medium text-gray-800">{formatDate(viewingExpense.expense_date)}</span>
                 </div>
                 {viewingExpense.due_date && (
                   <div>
-                    <div className="text-[11px] uppercase font-medium text-gray-400">Due Date</div>
-                    <div className="text-[15px] font-medium text-gray-800">{formatDate(viewingExpense.due_date)}</div>
+                    <span className="text-[9px] uppercase font-medium text-gray-400">Due</span>
+                    <span className="ml-1.5 text-[12px] font-medium text-gray-800">{formatDate(viewingExpense.due_date)}</span>
                   </div>
                 )}
                 {viewingExpense.suppliers && (
                   <div>
-                    <div className="text-[11px] uppercase font-medium text-gray-400">Supplier</div>
-                    <div className="text-[15px] font-medium text-gray-800">{viewingExpense.suppliers.company_name}</div>
+                    <span className="text-[9px] uppercase font-medium text-gray-400">Supplier</span>
+                    <span className="ml-1.5 text-[12px] font-medium text-gray-800">{viewingExpense.suppliers.company_name}</span>
                   </div>
                 )}
                 {staffName && (
                   <div>
-                    <div className="text-[11px] uppercase font-medium text-gray-400">Employee</div>
-                    <div className="text-[15px] font-medium text-gray-800">{staffName}</div>
+                    <span className="text-[9px] uppercase font-medium text-gray-400">Employee</span>
+                    <span className="ml-1.5 text-[12px] font-medium text-gray-800">{staffName}</span>
                   </div>
                 )}
               </div>
             </div>
 
             {/* ── SUMMARY ── */}
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Summary</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
+            <div className="px-4 py-2 border-b border-gray-100">
+              <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Summary</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1">
                 <div>
-                  <div className="text-[11px] uppercase font-medium text-gray-400">Category</div>
-                  <div className="text-[15px] font-medium text-gray-800">
+                  <div className="text-[9px] uppercase font-medium text-gray-400">Category</div>
+                  <div className="text-[12px] font-medium text-gray-800">
                     {expenseCategories.find(c => c.value === viewingExpense.expense_category)?.label || viewingExpense.expense_category}
                   </div>
                 </div>
                 {viewingExpense.suppliers && (
                   <div>
-                    <div className="text-[11px] uppercase font-medium text-gray-400">Supplier</div>
-                    <div className="text-[15px] font-medium text-gray-800">{viewingExpense.suppliers.company_name}</div>
+                    <div className="text-[9px] uppercase font-medium text-gray-400">Supplier</div>
+                    <div className="text-[12px] font-medium text-gray-800">{viewingExpense.suppliers.company_name}</div>
                   </div>
                 )}
                 {staffName && (
                   <div>
-                    <div className="text-[11px] uppercase font-medium text-gray-400">Employee</div>
-                    <div className="text-[15px] font-medium text-gray-800">{staffName}</div>
+                    <div className="text-[9px] uppercase font-medium text-gray-400">Employee</div>
+                    <div className="text-[12px] font-medium text-gray-800">{staffName}</div>
                   </div>
                 )}
                 <div>
-                  <div className="text-[11px] uppercase font-medium text-gray-400">Expense Amount</div>
-                  <div className="text-[15px] font-medium text-gray-800 font-mono">{fmtMoney(viewingExpense.amount, 2)}</div>
+                  <div className="text-[9px] uppercase font-medium text-gray-400">Expense Amount</div>
+                  <div className="text-[12px] font-medium text-gray-800 font-mono">{fmtMoney(viewingExpense.amount, 2)}</div>
                 </div>
                 {viewingExpense.payment_reference && (
                   <div>
-                    <div className="text-[11px] uppercase font-medium text-gray-400">Reference</div>
-                    <div className="text-[15px] font-medium text-gray-800 font-mono">{viewingExpense.payment_reference}</div>
+                    <div className="text-[9px] uppercase font-medium text-gray-400">Reference</div>
+                    <div className="text-[12px] font-medium text-gray-800 font-mono">{viewingExpense.payment_reference}</div>
                   </div>
                 )}
                 {viewingExpense.description && (
                   <div className="col-span-2 md:col-span-4">
-                    <div className="text-[11px] uppercase font-medium text-gray-400">Description</div>
-                    <div className="text-[14px] text-gray-700 whitespace-pre-wrap leading-relaxed">{viewingExpense.description}</div>
+                    <div className="text-[9px] uppercase font-medium text-gray-400">Description</div>
+                    <div className="text-[11px] text-gray-600 whitespace-pre-wrap leading-snug">{viewingExpense.description}</div>
                   </div>
                 )}
               </div>
@@ -3586,19 +3586,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 ['Expense Total', brokerTotals.expenseTotal, 'text-gray-900'],
               ];
               return (
-                <div className="px-6 py-4 border-b border-gray-100">
-                  <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Broker Invoice Summary</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
+                <div className="px-4 py-2 border-b border-gray-100">
+                  <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Broker Invoice Summary</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1">
                     {rows.map(([label, value, tint]) => (
                       <div key={label}>
-                        <div className="text-[11px] uppercase font-medium text-gray-400">{label}</div>
-                        <div className={`text-[15px] font-medium font-mono ${tint}`}>{fmtMoney(value)}</div>
+                        <div className="text-[9px] uppercase font-medium text-gray-400">{label}</div>
+                        <div className={`text-[12px] font-medium font-mono ${tint}`}>{fmtMoney(value)}</div>
                       </div>
                     ))}
                   </div>
-                  <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
-                    <span className="text-[11px] font-semibold text-green-700 uppercase tracking-wide">Final Cash Payable</span>
-                    <span className="text-[18px] font-bold font-mono text-green-800">{fmtMoney(brokerTotals.finalCashPayable, 2)}</span>
+                  <div className="mt-1.5 flex items-center justify-between border-t border-gray-100 pt-1.5">
+                    <span className="text-[10px] font-semibold text-green-700 uppercase tracking-wide">Final Cash Payable</span>
+                    <span className="text-[15px] font-bold font-mono text-green-800">{fmtMoney(brokerTotals.finalCashPayable, 2)}</span>
                   </div>
                 </div>
               );
@@ -3606,24 +3606,24 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
             {/* ── TAX SECTION (only if tax rows exist) ── */}
             {taxRows.length > 0 && (
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Tax Summary</h3>
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] uppercase font-medium text-gray-400">Invoice</span>
-                    <span className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(viewingExpense.amount)}</span>
+              <div className="px-4 py-2 border-b border-gray-100">
+                <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tax Summary</h3>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] uppercase font-medium text-gray-400">Invoice</span>
+                    <span className="text-[12px] font-medium font-mono text-gray-800">{fmtMoney(viewingExpense.amount)}</span>
                   </div>
                   {taxRows.map((row) => (
-                    <div key={row.label} className="flex items-center gap-1.5">
-                      <span className="text-gray-300 text-base font-light">{row.value < 0 ? '−' : '+'}</span>
-                      <span className="text-[11px] uppercase font-medium text-gray-400">{row.label}</span>
-                      <span className={`text-[15px] font-medium font-mono ${row.tint}`}>{fmtMoney(Math.abs(row.value))}</span>
+                    <div key={row.label} className="flex items-center gap-1">
+                      <span className="text-gray-300 text-sm font-light">{row.value < 0 ? '−' : '+'}</span>
+                      <span className="text-[9px] uppercase font-medium text-gray-400">{row.label}</span>
+                      <span className={`text-[12px] font-medium font-mono ${row.tint}`}>{fmtMoney(Math.abs(row.value))}</span>
                     </div>
                   ))}
-                  <span className="text-gray-300 text-base font-light">=</span>
-                  <div className="ml-auto flex items-center gap-2 px-3 py-1 border border-green-200 bg-green-50 rounded-lg">
-                    <span className="text-[11px] font-semibold text-green-700 uppercase">Net Payable</span>
-                    <span className="text-[15px] font-bold font-mono text-green-800">{fmtMoney(netPayable, 2)}</span>
+                  <span className="text-gray-300 text-sm font-light">=</span>
+                  <div className="ml-auto flex items-center gap-1.5 px-2 py-0.5 border border-green-200 bg-green-50 rounded">
+                    <span className="text-[9px] font-semibold text-green-700 uppercase">Net Payable</span>
+                    <span className="text-[12px] font-bold font-mono text-green-800">{fmtMoney(netPayable, 2)}</span>
                   </div>
                 </div>
               </div>
@@ -3631,18 +3631,18 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
             {/* ── SALARY ADVANCE APPLICATIONS (only for salary with advances) ── */}
             {isSalary && salaryAdvanceApplications.length > 0 && (
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Salary Advance Applications</h3>
-                <div className="space-y-2">
+              <div className="px-4 py-2 border-b border-gray-100">
+                <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Salary Advance Applications</h3>
+                <div className="space-y-1">
                   {salaryAdvanceApplications.map((application) => (
-                    <div key={application.application_id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-[13px]">
+                    <div key={application.application_id} className="flex flex-wrap items-center justify-between gap-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px]">
                       <span className="text-gray-700">
                         Advance {application.advance_voucher_number || application.advance_payment_voucher_id} → Settlement {application.settlement_voucher_number || application.settlement_payment_voucher_id}
                       </span>
-                      <span className="flex items-center gap-3">
+                      <span className="flex items-center gap-2">
                         <span className="font-mono font-semibold text-gray-900">{fmtMoney(application.applied_amount)}</span>
                         {onViewPaymentVoucher && (
-                          <button type="button" onClick={() => onViewPaymentVoucher(application.settlement_payment_voucher_id)} className="text-blue-600 hover:underline text-[12px] font-medium">View Payment</button>
+                          <button type="button" onClick={() => onViewPaymentVoucher(application.settlement_payment_voucher_id)} className="text-blue-600 hover:underline text-[11px] font-medium">View Payment</button>
                         )}
                       </span>
                     </div>
@@ -3653,19 +3653,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
             {/* ── BROKER REIMBURSEMENT TABLE ── */}
             {viewingExpense.broker_items && viewingExpense.broker_items.length > 0 && (
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Reimbursement Lines</h3>
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
-                  <table className="w-full text-xs">
-                    <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
+              <div className="px-4 py-2 border-b border-gray-100">
+                <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Reimbursement Lines</h3>
+                <div className="overflow-x-auto rounded border border-gray-200">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-gray-50 text-[9px] uppercase text-gray-500">
                       <tr>
-                        <th className="px-3 py-2 text-left font-medium">Supplier</th>
-                        <th className="px-3 py-2 text-left font-medium">Invoice No</th>
-                        <th className="px-3 py-2 text-left font-medium">Tax Invoice</th>
-                        <th className="px-3 py-2 text-left font-medium">Invoice Date</th>
-                        <th className="px-3 py-2 text-right font-medium">DPP</th>
-                        <th className="px-3 py-2 text-right font-medium">PPN</th>
-                        <th className="px-3 py-2 text-right font-medium">Line Total</th>
+                        <th className="px-2 py-1 text-left font-medium">Supplier</th>
+                        <th className="px-2 py-1 text-left font-medium">Invoice No</th>
+                        <th className="px-2 py-1 text-left font-medium">Tax Invoice</th>
+                        <th className="px-2 py-1 text-left font-medium">Date</th>
+                        <th className="px-2 py-1 text-right font-medium">DPP</th>
+                        <th className="px-2 py-1 text-right font-medium">PPN</th>
+                        <th className="px-2 py-1 text-right font-medium">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3674,21 +3674,21 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         const supplierName = item.supplier_id ? suppliers.find(s => s.id === item.supplier_id)?.company_name : null;
                         return (
                           <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
-                            <td className="px-3 py-2 text-gray-700 truncate max-w-[140px]">{supplierName || '—'}</td>
-                            <td className="px-3 py-2 text-gray-600 font-mono">{item.invoice_number || '—'}</td>
-                            <td className="px-3 py-2 text-gray-600 font-mono">{item.tax_invoice_number || '—'}</td>
-                            <td className="px-3 py-2 text-gray-600 font-mono">{formatDate(item.invoice_date || '')}</td>
-                            <td className="px-3 py-2 text-right font-mono text-gray-700">{fmtMoney(item.dpp_amount ?? 0)}</td>
-                            <td className="px-3 py-2 text-right font-mono text-blue-700">{fmtMoney(item.ppn_amount || 0)}</td>
-                            <td className="px-3 py-2 text-right font-mono text-gray-900 font-medium">{fmtMoney(total)}</td>
+                            <td className="px-2 py-1 text-gray-700 truncate max-w-[120px]">{supplierName || '—'}</td>
+                            <td className="px-2 py-1 text-gray-600 font-mono">{item.invoice_number || '—'}</td>
+                            <td className="px-2 py-1 text-gray-600 font-mono">{item.tax_invoice_number || '—'}</td>
+                            <td className="px-2 py-1 text-gray-600 font-mono">{formatDate(item.invoice_date || '')}</td>
+                            <td className="px-2 py-1 text-right font-mono text-gray-700">{fmtMoney(item.dpp_amount ?? 0)}</td>
+                            <td className="px-2 py-1 text-right font-mono text-blue-700">{fmtMoney(item.ppn_amount || 0)}</td>
+                            <td className="px-2 py-1 text-right font-mono text-gray-900 font-medium">{fmtMoney(total)}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-gray-200 bg-gray-50">
-                        <td colSpan={6} className="px-3 py-2 text-right text-[11px] font-semibold text-gray-600 uppercase">Total</td>
-                        <td className="px-3 py-2 text-right font-mono font-bold text-gray-900">
+                        <td colSpan={6} className="px-2 py-1 text-right text-[10px] font-semibold text-gray-600 uppercase">Total</td>
+                        <td className="px-2 py-1 text-right font-mono font-bold text-gray-900">
                           {fmtMoney(viewingExpense.broker_items.reduce((sum, item) => sum + brokerLineTotal(item), 0))}
                         </td>
                       </tr>
@@ -3701,88 +3701,88 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             {/* ── PAYMENT + BANK RECONCILIATION (2-col on desktop) ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 border-b border-gray-100">
               {/* Payment */}
-              <div className="px-6 py-4 md:border-r border-gray-100">
-                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Payment</h3>
-                <div className="space-y-2">
+              <div className="px-4 py-2 md:border-r border-gray-100">
+                <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Payment</h3>
+                <div className="space-y-0.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] uppercase font-medium text-gray-400">Method</span>
+                    <span className="text-[9px] uppercase font-medium text-gray-400">Method</span>
                     {viewingExpense.payment_method === null ? (
-                      <span className="px-2 py-0.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded">A/P Outstanding</span>
+                      <span className="px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded">A/P Outstanding</span>
                     ) : (
-                      <span className="text-[15px] font-medium text-gray-800 capitalize">{viewingExpense.payment_method?.replace('_', ' ')}</span>
+                      <span className="text-[12px] font-medium text-gray-800 capitalize">{viewingExpense.payment_method?.replace('_', ' ')}</span>
                     )}
                   </div>
                   {viewingExpense.bank_accounts && (
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] uppercase font-medium text-gray-400">Bank</span>
-                      <span className="text-[14px] font-medium text-gray-800">
+                      <span className="text-[9px] uppercase font-medium text-gray-400">Bank</span>
+                      <span className="text-[11px] font-medium text-gray-800">
                         {viewingExpense.bank_accounts.alias || viewingExpense.bank_accounts.bank_name} · {viewingExpense.bank_accounts.account_number}
                         {viewingExpense.bank_accounts.currency && viewingExpense.bank_accounts.currency !== 'IDR' && (
-                          <span className="ml-1 text-[11px] text-gray-500 font-semibold">({viewingExpense.bank_accounts.currency})</span>
+                          <span className="ml-1 text-[10px] text-gray-500 font-semibold">({viewingExpense.bank_accounts.currency})</span>
                         )}
                       </span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] uppercase font-medium text-gray-400">Amount Paid</span>
-                    <span className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(supplierPaid)}</span>
+                    <span className="text-[9px] uppercase font-medium text-gray-400">Paid</span>
+                    <span className="text-[12px] font-medium font-mono text-gray-800">{fmtMoney(supplierPaid)}</span>
                   </div>
                   {canonicalCashPayable > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] uppercase font-medium text-gray-400">Remaining Balance</span>
-                      <span className={`text-[15px] font-bold font-mono ${balance > 0 ? 'text-red-600' : 'text-green-700'}`}>{fmtMoney(balance)}</span>
+                      <span className="text-[9px] uppercase font-medium text-gray-400">Balance</span>
+                      <span className={`text-[12px] font-bold font-mono ${balance > 0 ? 'text-red-600' : 'text-green-700'}`}>{fmtMoney(balance)}</span>
                     </div>
                   )}
                 </div>
 
                 {/* Payment breakdown lines */}
                 {hasPaymentBreakdown && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
+                  <div className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-0.5">
                     {(() => {
                       const badge = (paid: number, target: number) => {
                         if (target <= 0) return null;
-                        if (paid <= 0) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">Pending</span>;
-                        if (paid >= target - 1) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">Paid</span>;
-                        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">Partial</span>;
+                        if (paid <= 0) return <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-600">Pending</span>;
+                        if (paid >= target - 1) return <span className="text-[9px] px-1 py-0.5 rounded bg-green-50 text-green-700 border border-green-200">Paid</span>;
+                        return <span className="text-[9px] px-1 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">Partial</span>;
                       };
                       return (
                         <>
                           {(canonicalCashPayable > 0 || supplierPaid > 0) && (
-                            <div className="flex items-center justify-between text-[12px]">
+                            <div className="flex items-center justify-between text-[11px]">
                               <span className="text-gray-600">Supplier</span>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1.5">
                                 <span className="font-mono text-gray-800">{fmtMoney(supplierPaid)} / {fmtMoney(canonicalCashPayable)}</span>
                                 {badge(supplierPaid, canonicalCashPayable)}
                               </div>
                             </div>
                           )}
                           {(pphTarget > 0 || pphPaid > 0) && (
-                            <div className="flex items-center justify-between text-[12px]">
+                            <div className="flex items-center justify-between text-[11px]">
                               <span className="text-gray-600">PPh Withholding</span>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1.5">
                                 <span className="font-mono text-gray-800">{fmtMoney(pphPaid)} / {fmtMoney(pphTarget)}</span>
                                 {badge(pphPaid, pphTarget)}
                               </div>
                             </div>
                           )}
                           {(allocs.length + bslLines.length) > 1 && (
-                            <div className="mt-2 overflow-x-auto">
-                              <table className="w-full text-[11px]">
-                                <thead className="text-gray-500 text-[10px] uppercase">
+                            <div className="mt-1 overflow-x-auto">
+                              <table className="w-full text-[10px]">
+                                <thead className="text-gray-500 text-[9px] uppercase">
                                   <tr className="border-t border-gray-100">
-                                    <th className="text-left font-medium py-1">Date</th>
-                                    <th className="text-left font-medium py-1">Ref</th>
-                                    <th className="text-right font-medium py-1">Amount</th>
-                                    <th className="text-right font-medium py-1">Kind</th>
+                                    <th className="text-left font-medium py-0.5">Date</th>
+                                    <th className="text-left font-medium py-0.5">Ref</th>
+                                    <th className="text-right font-medium py-0.5">Amount</th>
+                                    <th className="text-right font-medium py-0.5">Kind</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {allocs.map((a) => (
                                     <tr key={`va-${a.id}`} className="border-t border-gray-100">
-                                      <td className="py-1 text-gray-700">{a.payment_vouchers?.payment_date ? formatDate(a.payment_vouchers.payment_date) : '—'}</td>
-                                      <td className="py-1 text-gray-700 font-mono">{a.payment_vouchers?.voucher_number || 'PV'}</td>
-                                      <td className="py-1 text-right font-mono">{fmtMoney(a.allocated_amount)}</td>
-                                      <td className="py-1 text-right text-gray-500 capitalize">{a.payment_kind || 'supplier'}</td>
+                                      <td className="py-0.5 text-gray-700">{a.payment_vouchers?.payment_date ? formatDate(a.payment_vouchers.payment_date) : '—'}</td>
+                                      <td className="py-0.5 text-gray-700 font-mono">{a.payment_vouchers?.voucher_number || 'PV'}</td>
+                                      <td className="py-0.5 text-right font-mono">{fmtMoney(a.allocated_amount)}</td>
+                                      <td className="py-0.5 text-right text-gray-500 capitalize">{a.payment_kind || 'supplier'}</td>
                                     </tr>
                                   ))}
                                   {bslLines.map((b) => {
@@ -3791,10 +3791,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                     const fmtLine = (n: number) => formatCurrency(n, lineCurrency, { minimumFractionDigits: lineCurrency === 'IDR' ? 0 : 2, maximumFractionDigits: lineCurrency === 'IDR' ? 0 : 2 });
                                     return (
                                       <tr key={`bsl-${b.id}`} className="border-t border-gray-100">
-                                        <td className="py-1 text-gray-700">{formatDate(b.transaction_date)}</td>
-                                        <td className="py-1 text-gray-700 truncate max-w-[120px]">{b.description || 'Bank'}</td>
-                                        <td className="py-1 text-right font-mono">{fmtLine(lineAmount)}</td>
-                                        <td className="py-1 text-right text-gray-500 capitalize">{b.payment_kind || 'supplier'}</td>
+                                        <td className="py-0.5 text-gray-700">{formatDate(b.transaction_date)}</td>
+                                        <td className="py-0.5 text-gray-700 truncate max-w-[100px]">{b.description || 'Bank'}</td>
+                                        <td className="py-0.5 text-right font-mono">{fmtLine(lineAmount)}</td>
+                                        <td className="py-0.5 text-right text-gray-500 capitalize">{b.payment_kind || 'supplier'}</td>
                                       </tr>
                                     );
                                   })}
@@ -3810,42 +3810,42 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </div>
 
               {/* Bank Reconciliation */}
-              <div className="px-6 py-4 bg-gray-50/50">
-                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Bank Reconciliation</h3>
+              <div className="px-4 py-2 bg-gray-50/50">
+                <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Bank Reconciliation</h3>
                 {bslLines.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     {bslLines.map((line) => {
                       const lineCurrency = line.bank_accounts?.currency ?? currency;
                       const fmtLine = (n: number) => formatCurrency(n, lineCurrency);
                       const bankAmount = line.debit_amount || line.credit_amount || 0;
                       const diff = bankAmount - viewingExpense.amount;
                       return (
-                        <div key={line.id} className="px-3 py-2 bg-white border border-gray-200 rounded-lg">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200">
-                              <CheckCircle className="w-3 h-3" /> Linked
+                        <div key={line.id} className="px-2 py-1.5 bg-white border border-gray-200 rounded">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-green-50 text-green-700 border border-green-200">
+                              <CheckCircle className="w-2.5 h-2.5" /> Linked
                             </span>
                           </div>
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px]">
-                            <div>
-                              <div className="text-[10px] uppercase font-medium text-gray-400">Date</div>
-                              <div className="text-gray-800">{formatDate(line.transaction_date)}</div>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] uppercase font-medium text-gray-400">Date</span>
+                              <span className="text-gray-800">{formatDate(line.transaction_date)}</span>
                             </div>
-                            <div>
-                              <div className="text-[10px] uppercase font-medium text-gray-400">Reference</div>
-                              <div className="text-gray-800 truncate">{line.description?.slice(0, 24) || '—'}</div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] uppercase font-medium text-gray-400">Ref</span>
+                              <span className="text-gray-800 truncate max-w-[80px]">{line.description?.slice(0, 20) || '—'}</span>
                             </div>
-                            <div>
-                              <div className="text-[10px] uppercase font-medium text-gray-400">Bank Transaction</div>
-                              <div className="font-mono font-semibold text-gray-900">{fmtLine(bankAmount)}</div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] uppercase font-medium text-gray-400">Bank Txn</span>
+                              <span className="font-mono font-semibold text-gray-900">{fmtLine(bankAmount)}</span>
                             </div>
-                            <div>
-                              <div className="text-[10px] uppercase font-medium text-gray-400">Matched Amount</div>
-                              <div className="font-mono font-semibold text-gray-900">{fmtMoney(viewingExpense.amount, 2)}</div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] uppercase font-medium text-gray-400">Matched</span>
+                              <span className="font-mono font-semibold text-gray-900">{fmtMoney(viewingExpense.amount, 2)}</span>
                             </div>
-                            <div>
-                              <div className="text-[10px] uppercase font-medium text-gray-400">Difference</div>
-                              <div className={`font-mono font-medium ${Math.abs(diff) < 1 ? 'text-green-700' : 'text-orange-600'}`}>{fmtLine(diff)}</div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] uppercase font-medium text-gray-400">Diff</span>
+                              <span className={`font-mono font-medium ${Math.abs(diff) < 1 ? 'text-green-700' : 'text-orange-600'}`}>{fmtLine(diff)}</span>
                             </div>
                           </div>
                         </div>
@@ -3853,8 +3853,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     })}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 px-3 py-3 bg-white border border-gray-200 rounded-lg text-[12px] text-gray-500">
-                    <Link2 className="w-4 h-4 text-gray-400" />
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-gray-200 rounded text-[11px] text-gray-500">
+                    <Link2 className="w-3.5 h-3.5 text-gray-400" />
                     Not linked to a bank transaction
                   </div>
                 )}
@@ -3864,46 +3864,46 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             {/* ── DOCUMENTS + RELATED RECORDS (2-col on desktop) ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 border-b border-gray-100">
               {/* Documents */}
-              <div className="px-6 py-4 md:border-r border-gray-100">
-                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">
+              <div className="px-4 py-2 md:border-r border-gray-100">
+                <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                   Documents {viewingExpense.document_urls && viewingExpense.document_urls.length > 0 && `(${viewingExpense.document_urls.length})`}
                 </h3>
                 {viewingExpense.document_urls && viewingExpense.document_urls.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     {viewingExpense.document_urls.map((url, index) => {
                       const isImage = /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(url);
                       const fileName = url.split('/').pop()?.split('?')[0] || `Document ${index + 1}`;
                       return (
-                        <div key={index} className="border border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 hover:shadow-sm transition-all">
+                        <div key={index} className="border border-gray-200 rounded overflow-hidden hover:border-blue-300 hover:shadow-sm transition-all">
                           {isImage ? (
                             <div className="cursor-pointer" onClick={() => openDocument(url)}>
                               <img
                                 src={signedUrlCache[url] || url}
                                 alt={fileName}
-                                className="w-full h-32 object-cover border-b border-gray-200"
+                                className="w-full h-16 object-cover border-b border-gray-200"
                               />
                             </div>
                           ) : (
-                            <div className="h-32 flex items-center justify-center bg-gray-50 border-b border-gray-200">
-                              <FileText className="w-8 h-8 text-gray-400" />
+                            <div className="h-16 flex items-center justify-center bg-gray-50 border-b border-gray-200">
+                              <FileText className="w-6 h-6 text-gray-400" />
                             </div>
                           )}
-                          <div className="px-2 py-2">
-                            <p className="text-[11px] text-gray-700 font-medium truncate" title={fileName}>{fileName}</p>
-                            <div className="mt-1.5 flex items-center gap-1">
+                          <div className="px-1.5 py-1">
+                            <p className="text-[10px] text-gray-700 font-medium truncate" title={fileName}>{fileName}</p>
+                            <div className="mt-0.5 flex items-center gap-0.5">
                               <button
                                 type="button"
                                 onClick={() => openDocument(url)}
-                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-blue-600 hover:bg-blue-50 rounded"
+                                className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 rounded"
                               >
-                                <Eye className="w-3 h-3" /> View
+                                <Eye className="w-2.5 h-2.5" /> View
                               </button>
                               <button
                                 type="button"
                                 onClick={() => downloadDocument(url, fileName)}
-                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-600 hover:bg-gray-100 rounded"
+                                className="flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium text-gray-600 hover:bg-gray-100 rounded"
                               >
-                                <Download className="w-3 h-3" /> Download
+                                <Download className="w-2.5 h-2.5" /> DL
                               </button>
                             </div>
                           </div>
@@ -3912,26 +3912,26 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     })}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 px-3 py-3 bg-gray-50 border border-gray-200 rounded-lg text-[12px] text-gray-500">
-                    <FileText className="w-4 h-4 text-gray-400" />
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded text-[11px] text-gray-500">
+                    <FileText className="w-3.5 h-3.5 text-gray-400" />
                     No documents attached
                   </div>
                 )}
               </div>
 
               {/* Related Records */}
-              <div className="px-6 py-4 bg-gray-50/50">
-                <h3 className="text-[14px] font-semibold text-gray-700 mb-3">Related Records</h3>
+              <div className="px-4 py-2 bg-gray-50/50">
+                <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Related Records</h3>
                 {hasRelated ? (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {viewingExpense.batches && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-[12px] text-gray-700">
-                        <Package className="w-3.5 h-3.5 text-gray-500" /> Batch {viewingExpense.batches.batch_number}
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white border border-gray-200 text-[11px] text-gray-700">
+                        <Package className="w-3 h-3 text-gray-500" /> Batch {viewingExpense.batches.batch_number}
                       </span>
                     )}
                     {viewingExpense.import_containers && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-[12px] text-gray-700">
-                        <Package className="w-3.5 h-3.5 text-gray-500" /> {viewingExpense.import_containers.container_ref}
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white border border-gray-200 text-[11px] text-gray-700">
+                        <Package className="w-3 h-3 text-gray-500" /> {viewingExpense.import_containers.container_ref}
                       </span>
                     )}
                     {viewingExpense.delivery_challans && (
@@ -3939,21 +3939,21 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         type="button"
                         onClick={openLinkedDCQuickView}
                         disabled={linkedDCQuickViewLoading}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-[12px] text-blue-600 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white border border-gray-200 text-[11px] text-blue-600 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50"
                       >
-                        <Truck className="w-3.5 h-3.5" /> DC {viewingExpense.delivery_challans.challan_number}
+                        <Truck className="w-3 h-3" /> DC {viewingExpense.delivery_challans.challan_number}
                         {linkedDCQuickViewLoading && ' …'}
                       </button>
                     )}
                     {viewingExpense.voucher_number && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-[12px] text-gray-700">
-                        <Clipboard className="w-3.5 h-3.5 text-gray-500" /> {viewingExpense.voucher_number}
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white border border-gray-200 text-[11px] text-gray-700">
+                        <Clipboard className="w-3 h-3 text-gray-500" /> {viewingExpense.voucher_number}
                       </span>
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 px-3 py-3 bg-white border border-gray-200 rounded-lg text-[12px] text-gray-500">
-                    <Link2 className="w-4 h-4 text-gray-400" />
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-gray-200 rounded text-[11px] text-gray-500">
+                    <Link2 className="w-3.5 h-3.5 text-gray-400" />
                     No related records
                   </div>
                 )}
@@ -3965,49 +3965,49 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   <button
                     type="button"
                     onClick={() => setAccountingExpanded(!accountingExpanded)}
-                    className="w-full px-6 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                    className="w-full px-4 py-1.5 flex items-center justify-between hover:bg-gray-50 transition-colors"
                   >
-                    <span className="text-[14px] font-semibold text-gray-700 flex items-center gap-2">
-                      <Banknote className="w-4 h-4 text-gray-500" />
+                    <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                      <Banknote className="w-3.5 h-3.5 text-gray-400" />
                       Accounting Impact
                     </span>
-                    <span className="text-gray-400 text-xs">{accountingExpanded ? 'Collapse' : 'Expand'}</span>
+                    <span className="text-gray-400 text-[10px]">{accountingExpanded ? 'Collapse' : 'Expand'}</span>
                   </button>
                   {accountingExpanded && (
-                    <div className="px-6 pb-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
+                    <div className="px-4 pb-2 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1">
                       <div>
-                        <div className="text-[11px] uppercase font-medium text-gray-400">Expenses (P&L)</div>
-                        <div className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(canonicalExpenseTotal)}</div>
+                        <div className="text-[9px] uppercase font-medium text-gray-400">Expenses (P&L)</div>
+                        <div className="text-[12px] font-medium font-mono text-gray-800">{fmtMoney(canonicalExpenseTotal)}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase font-medium text-gray-400">Cash Paid</div>
-                        <div className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(supplierPaid)}</div>
+                        <div className="text-[9px] uppercase font-medium text-gray-400">Cash Paid</div>
+                        <div className="text-[12px] font-medium font-mono text-gray-800">{fmtMoney(supplierPaid)}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase font-medium text-gray-400">Liabilities (A/P)</div>
-                        <div className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(Math.max(0, balance))}</div>
+                        <div className="text-[9px] uppercase font-medium text-gray-400">Liabilities (A/P)</div>
+                        <div className="text-[12px] font-medium font-mono text-gray-800">{fmtMoney(Math.max(0, balance))}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase font-medium text-gray-400">Assets (Recoverable)</div>
-                        <div className="text-[15px] font-medium font-mono text-gray-800">{fmtMoney(viewingExpense.ppn_amount || 0)}</div>
+                        <div className="text-[9px] uppercase font-medium text-gray-400">Assets (Recoverable)</div>
+                        <div className="text-[12px] font-medium font-mono text-gray-800">{fmtMoney(viewingExpense.ppn_amount || 0)}</div>
                       </div>
                     </div>
                   )}
                 </div>
 
             {/* ── FOOTER ── */}
-            <div className="px-6 py-3 flex justify-end gap-2">
+            <div className="px-4 py-2 flex justify-end gap-2">
               {canManage && (
                 <button
                   onClick={() => { handleEdit(viewingExpense); setViewModalOpen(false); setViewingExpense(null); }}
-                  className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50"
+                  className="px-2.5 py-1 text-[11px] font-medium text-blue-700 bg-white border border-blue-300 rounded hover:bg-blue-50"
                 >
                   Edit
                 </button>
               )}
               <button
                 onClick={() => { setViewModalOpen(false); setViewingExpense(null); setLinkedDCQuickView(null); }}
-                className="px-3 py-1.5 text-xs font-medium bg-gray-700 text-white rounded-lg hover:bg-gray-800"
+                className="px-2.5 py-1 text-[11px] font-medium bg-gray-700 text-white rounded hover:bg-gray-800"
               >
                 Close
               </button>
