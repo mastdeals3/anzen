@@ -367,7 +367,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     // New supplier invoice fields
     supplier_id: '',
     invoice_number: '',
-    due_date: '',
+    due_date: getDueDateFromTerms(new Date().toISOString().split('T')[0], 30),
     // PIB Import breakdown (only used when expense_category = 'pib_import')
     pib_bm_amount: 0,
     pib_ppn_amount: 0,
@@ -1573,7 +1573,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       document_urls: [],
       supplier_id: '',
       invoice_number: '',
-      due_date: '',
+      due_date: getDueDateFromTerms(new Date().toISOString().split('T')[0], 30),
       pib_bm_amount: 0,
       pib_ppn_amount: 0,
       pib_pph_amount: 0,
@@ -1615,9 +1615,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         if (mode === 'standard' && sup.pkp_status && (sup.tax_preference === 'ppn_only' || sup.tax_preference === 'ppn_pph') && !prev.ppn_manual_override) {
           updates.ppn_amount = calculatePPN(prev.amount, true);
         }
-        // Auto-fill due_date from payment terms
-        if (prev.expense_date && sup.payment_terms_days) {
-          updates.due_date = getDueDateFromTerms(prev.expense_date, sup.payment_terms_days);
+        // Auto-fill due_date from payment terms (default 30 days)
+        if (prev.expense_date) {
+          updates.due_date = getDueDateFromTerms(prev.expense_date, sup.payment_terms_days ?? 30);
         }
       }
       return { ...prev, ...updates };
@@ -2469,11 +2469,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               const rules   = getCategoryFieldRules(formData.expense_category);
               const taxCfg  = selectedDocType ? DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType] : null;
               const isBroker = formData.expense_category === 'import_broker';
-              const isOverdue = !!formData.due_date && formData.due_date < new Date().toISOString().split('T')[0];
               return (
                 <div className="pb-2 mb-1 border-b border-gray-200 flex flex-col gap-1">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Basic Information</p>
-                  {/* ── Row A: Category · Doc Date · Due Date · Supplier ── */}
+                  {/* ── Row A: Category · Doc Date · Supplier · Invoice No ── */}
                   <SapRow>
                     <SapField label="Category" required span={3}>
                       <SearchableSelect
@@ -2511,17 +2510,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           const d = e.target.value;
                           setFormData(prev => ({
                             ...prev, expense_date: d,
-                            due_date: selectedSupplier?.payment_terms_days ? getDueDateFromTerms(d, selectedSupplier.payment_terms_days) : prev.due_date,
+                            due_date: getDueDateFromTerms(d, selectedSupplier?.payment_terms_days ?? 30),
                           }));
                         }}
                         className={SAP_INPUT} required
                         title={rules.billingMonth === 'show' ? 'Date printed on the utility bill' : undefined} />
                     </SapField>
-                    <SapField label="Due Date" span={3}
-                      right={isOverdue ? <span className="text-[9px] text-red-600 font-semibold px-1">⚠ Overdue</span> : null}>
-                      <input type="date" value={formData.due_date}
-                        onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                        className={SAP_INPUT + (isOverdue ? ' !border-red-400 !bg-red-50' : '')} />
+                    <SapField
+                      label={rules.billingMonth === 'show' ? 'Billing Reference' : 'Supplier Invoice Number'}
+                      span={3}
+                    >
+                      <input type="text" value={formData.invoice_number}
+                        onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
+                        className={SAP_INPUT}
+                        placeholder={rules.billingMonth === 'show' ? 'Bill number / account ref' : 'Enter invoice number'} />
                     </SapField>
                     <SapField
                       label={rules.staff === 'show' ? 'Staff' : rules.utility === 'show' ? 'Utility' : (isBroker ? 'Broker' : 'Supplier')}
@@ -2964,10 +2966,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     const grid = 'grid grid-cols-[24px_minmax(0,2.5fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_52px_minmax(0,1.3fr)_minmax(0,1.3fr)_28px]';
                     return (
                       <div className="mb-2">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="text-[11px] text-gray-500">
-                            <span className="font-semibold text-gray-800 text-sm">Reimbursement Lines</span>
-                            <span className="ml-2">Sub-suppliers only affect the Input PPN report — parent supplier stays as the payable.</span>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-[10px] text-gray-500">
+                            <span className="font-semibold text-gray-800 text-xs">Reimbursement Lines</span>
+                            <span className="ml-1.5">Sub-suppliers only affect Input PPN report</span>
                           </div>
                           <button type="button" onClick={addLine}
                             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:text-blue-900">
@@ -2983,7 +2985,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               <div className="px-1.5 py-1 border-r border-gray-300">Supplier</div>
                               <div className="px-1.5 py-1 border-r border-gray-300">Invoice Number</div>
                               <div className="px-1.5 py-1 border-r border-gray-300">Tax Invoice #</div>
-                              <div className="px-1.5 py-1 border-r border-gray-300">Invoice Date</div>
+                              <div className="px-1.5 py-1 border-r border-gray-300 text-[9px]">Invoice Date</div>
                               <div className="px-1.5 py-1 border-r border-gray-300 text-right">Amount</div>
                               <div className="px-1.5 py-1 border-r border-gray-300 text-right">DPP</div>
                               <div className="px-1 py-1 border-r border-gray-300 text-center">PPN %</div>
