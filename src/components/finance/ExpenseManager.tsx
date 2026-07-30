@@ -294,6 +294,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [linkedDCQuickView, setLinkedDCQuickView] = useState<{ challan: any; items: any[] } | null>(null);
   const [linkedDCQuickViewLoading, setLinkedDCQuickViewLoading] = useState(false);
+  const [accountingExpanded, setAccountingExpanded] = useState(false);
   const [signedUrlCache, setSignedUrlCache] = useState<Record<string, string>>({});
   const [filterType, setFilterType] = useState<'all' | 'import' | 'sales' | 'staff' | 'operations' | 'admin'>('all');
   const [reconFilter, setReconFilter] = useState<'all' | 'reconciled' | 'not_reconciled'>('all');
@@ -3960,22 +3961,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             </div>
 
             {/* ── ACCOUNTING SUMMARY (collapsible, hidden by default) ── */}
-            {(() => {
-              const [expanded, setExpanded] = useState(false);
-              return (
-                <div className="border-b border-gray-100">
+            <div className="border-b border-gray-100">
                   <button
                     type="button"
-                    onClick={() => setExpanded(!expanded)}
+                    onClick={() => setAccountingExpanded(!accountingExpanded)}
                     className="w-full px-6 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
                   >
                     <span className="text-[14px] font-semibold text-gray-700 flex items-center gap-2">
                       <Banknote className="w-4 h-4 text-gray-500" />
                       Accounting Impact
                     </span>
-                    <span className="text-gray-400 text-xs">{expanded ? 'Collapse' : 'Expand'}</span>
+                    <span className="text-gray-400 text-xs">{accountingExpanded ? 'Collapse' : 'Expand'}</span>
                   </button>
-                  {expanded && (
+                  {accountingExpanded && (
                     <div className="px-6 pb-4 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
                       <div>
                         <div className="text-[11px] uppercase font-medium text-gray-400">Expenses (P&L)</div>
@@ -3996,8 +3994,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </div>
                   )}
                 </div>
-              );
-            })()}
 
             {/* ── FOOTER ── */}
             <div className="px-6 py-3 flex justify-end gap-2">
