@@ -233,6 +233,7 @@ export default function PartyLedger() {
           .from('finance_expenses')
           .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount, transaction_currency, currency_code, exchange_rate')
           .eq('supplier_id', selectedParty)
+          .neq('expense_category', 'import_broker')
           .is('payment_method', null)
           .eq('approval_status', 'approved'),
         'expense_date',
@@ -251,6 +252,32 @@ export default function PartyLedger() {
             credit: toFunctionalIDR(bill.amount, currency, bill.exchange_rate),
             running_balance: 0,
             type: 'invoice',
+          });
+        });
+      }
+
+      // Customs broker ledgers are sourced from the canonical journal lines.
+      // This includes the broker supplier and every reimbursement supplier;
+      // raw finance_expenses.amount is intentionally not used for this flow.
+      const brokerLinesQuery = supabase
+        .from('journal_entry_lines')
+        .select('id, entry_date:journal_entries!inner(entry_date), debit, credit, description, journal_entry_id, journal_entries!inner(reference_number, transaction_category, is_posted)')
+        .eq('supplier_id', selectedParty)
+        .eq('journal_entries.transaction_category', 'import_broker')
+        .eq('journal_entries.is_posted', true);
+      const brokerLines = await dateRange(brokerLinesQuery, 'journal_entries.entry_date');
+      if (brokerLines.data) {
+        brokerLines.data.forEach((line: any) => {
+          const entryDate = line.entry_date?.entry_date || line.journal_entries?.entry_date;
+          entries.push({
+            id: `${line.journal_entry_id}:${line.id}`,
+            entry_date: entryDate,
+            particulars: line.description || 'Customs Broker Invoice',
+            reference: line.journal_entries?.reference_number || '',
+            debit: Number(line.debit || 0),
+            credit: Number(line.credit || 0),
+            running_balance: 0,
+            type: line.credit > 0 ? 'payment' : 'invoice',
           });
         });
       }

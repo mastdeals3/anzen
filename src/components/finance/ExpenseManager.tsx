@@ -3571,7 +3571,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 ['Broker Invoice Amount', totals.brokerInvoiceAmount, 'text-gray-900'],
                 ['Reimbursement Total', totals.reimbursementTotal, 'text-gray-900'],
                 ['Reimbursement DPP', totals.reimbursementDpp, 'text-gray-700'],
-                ['Total PPN', totals.totalPpn, 'text-blue-700'],
+                ['Recoverable PPN', totals.recoverableInputPpn, 'text-blue-700'],
                 ['PPh Withheld', totals.pphWithheld, 'text-orange-700'],
                 ['Stamp Duty', totals.stampDuty, 'text-gray-700'],
                 ['Expense Total', totals.expenseTotal, 'text-gray-900'],

@@ -182,7 +182,9 @@ export interface BrokerExpenseTotals {
   reimbursementDpp: number;
   reimbursementPpn: number;
   totalPpn: number;
+  recoverableInputPpn: number;
   pphWithheld: number;
+  pph23Withheld: number;
   stampDuty: number;
   expenseTotal: number;
   finalCashPayable: number;
@@ -202,7 +204,7 @@ export function brokerLineExpenseBase(item: BrokerItem): number {
   const amount = Number(item.amount) || 0;
   const dpp = Number(item.dpp_amount) || 0;
   const ppn = Number(item.ppn_amount) || 0;
-  return amount + dpp - (dpp > 0 ? 0 : item.ppn_treatment === 'included' ? ppn : 0);
+  return amount + dpp;
 }
 
 export function calculateBrokerReimbursementTotal(items: BrokerItem[] | null | undefined): number {
@@ -219,7 +221,7 @@ export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): Bro
   const totalPpn = (Number(exp.ppn_amount) || 0) + reimbursementPpn;
   const pphWithheld = Number(exp.pph_amount) || 0;
   const stampDuty = Number(exp.stamp_duty_amount) || 0;
-  const expenseTotal = brokerInvoiceAmount + items.reduce((sum, item) => sum + brokerLineExpenseBase(item), 0) + stampDuty;
+  const expenseTotal = brokerInvoiceAmount + reimbursementTotal + stampDuty;
   const finalCashPayable = expenseTotal + totalPpn - pphWithheld;
 
   return {
@@ -229,7 +231,9 @@ export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): Bro
     reimbursementDpp,
     reimbursementPpn,
     totalPpn,
+    recoverableInputPpn: totalPpn,
     pphWithheld,
+    pph23Withheld: pphWithheld,
     stampDuty,
     expenseTotal,
     finalCashPayable,
