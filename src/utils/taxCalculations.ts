@@ -184,13 +184,17 @@ export interface BrokerExpenseTotals {
   totalPpn: number;
   pphWithheld: number;
   stampDuty: number;
+  expenseTotal: number;
+  finalCashPayable: number;
   totalPayable: number;
 }
 
 export function brokerLineTotal(item: BrokerItem): number {
-  return (Number(item.amount) || 0)
-    + (Number(item.dpp_amount) || 0)
-    + (Number(item.ppn_amount) || 0);
+  const amount = Number(item.amount) || 0;
+  const ppn = Number(item.ppn_amount) || 0;
+  // Amount is the reimbursement invoice base. For legacy inclusive rows the
+  // stored amount is gross, so PPN is removed from the expense base.
+  return amount + (item.ppn_treatment === 'included' ? 0 : ppn);
 }
 
 export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): BrokerExpenseTotals {
@@ -203,6 +207,13 @@ export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): Bro
   const totalPpn = (Number(exp.ppn_amount) || 0) + reimbursementPpn;
   const pphWithheld = Number(exp.pph_amount) || 0;
   const stampDuty = Number(exp.stamp_duty_amount) || 0;
+  const expenseTotal = brokerInvoiceAmount + items.reduce((sum, item) => {
+    const amount = Number(item.amount) || 0;
+    return sum + (item.ppn_treatment === 'included'
+      ? Math.max(0, amount - (Number(item.ppn_amount) || 0))
+      : amount);
+  }, 0) + stampDuty;
+  const finalCashPayable = expenseTotal + totalPpn - pphWithheld;
 
   return {
     brokerInvoiceAmount,
@@ -213,8 +224,9 @@ export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): Bro
     totalPpn,
     pphWithheld,
     stampDuty,
-    totalPayable: brokerInvoiceAmount + brokerInvoiceDpp + reimbursementTotal
-      + reimbursementDpp + totalPpn - pphWithheld + stampDuty,
+    expenseTotal,
+    finalCashPayable,
+    totalPayable: finalCashPayable,
   };
 }
 

@@ -1924,11 +1924,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   );
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
+    if (!dateString) return '—';
+    const [year, month, day] = dateString.slice(0, 10).split('-');
+    return `${day}/${month}/${year?.slice(-2)}`;
   };
 
   return (
@@ -2926,18 +2924,17 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     // ─── Read-only derivations — never written back to state ───
                     const brokerTotals = calculateBrokerExpenseTotals({ ...formData, broker_items: brokerItems });
                     const {
-                      brokerInvoiceAmount, brokerInvoiceDpp: brokerHeaderDdp,
+                      brokerInvoiceAmount,
                       reimbursementTotal: reimbAmount, reimbursementDpp: reimbDpp,
                       reimbursementPpn: reimbPpn,
                       totalPpn, pphWithheld: parentPph, stampDuty: parentStamp,
-                      totalPayable: grandPayable,
                     } = brokerTotals;
                     const fmt = (n: number) => formatCurrency(n, expenseFormCurrency, {
                       minimumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
                       maximumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
                     });
                     // Excel density — 10 data cells per row + delete.
-                    const cellInputCls = 'w-full h-[30px] px-1.5 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none rounded-none text-[11px] bg-transparent';
+                    const cellInputCls = 'w-full h-[26px] px-1 border-0 focus:ring-1 focus:ring-blue-400 focus:outline-none rounded-none text-[10px] bg-transparent';
                     // # | Supplier | Inv# | Tax Inv# | Inv Date | Amount | DDP | PPN% | PPN Amt | Total | Del
                     const grid = 'grid grid-cols-[24px_minmax(0,2.5fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_52px_minmax(0,1.3fr)_minmax(0,1.3fr)_28px]';
                     return (
@@ -2979,7 +2976,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               return (
                                 <div key={idx}
                                   className={`${grid} items-stretch border-b border-gray-200 last:border-b-0 hover:bg-blue-50/40 group`}>
-                                  <div className="border-r border-gray-200 flex items-center justify-center h-[30px] text-[10px] text-gray-500 font-medium">
+                                  <div className="border-r border-gray-200 flex items-center justify-center h-[26px] text-[10px] text-gray-500 font-medium">
                                     {idx + 1}
                                   </div>
                                   {/* Supplier */}
@@ -3045,11 +3042,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                     )}
                                   </div>
                                   {/* Total = Amount + DDP + PPN (per user brief) */}
-                                  <div className="border-r border-gray-200 flex items-center justify-end px-2 h-[30px] font-mono text-[11px] font-semibold text-gray-900">
+                                  <div className="border-r border-gray-200 flex items-center justify-end px-1 h-[26px] font-mono text-[10px] font-semibold text-gray-900">
                                     {lineTotal ? lineTotal.toLocaleString('id-ID') : ''}
                                   </div>
                                   {/* Delete */}
-                                  <div className="flex items-center justify-center h-[30px]">
+                                  <div className="flex items-center justify-center h-[26px]">
                                     <button type="button" onClick={() => removeLine(idx)}
                                       className="text-red-500 hover:text-red-700 p-0.5" title="Remove line" tabIndex={-1}>
                                       <Trash2 className="w-3 h-3" />
@@ -3069,7 +3066,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{reimbDpp.toLocaleString('id-ID')}</div>
                               <div className="border-r border-gray-300 px-1 py-1"></div>
                               <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-blue-700">{reimbPpn.toLocaleString('id-ID')}</div>
-                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{(reimbAmount + reimbDpp + reimbPpn).toLocaleString('id-ID')}</div>
+                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{(reimbAmount + reimbPpn).toLocaleString('id-ID')}</div>
                               <div></div>
                             </div>
                           </div>
@@ -3080,10 +3077,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           type FormulaCell = { label: string; value: number; valueColor: string; op?: string };
                           const cells: FormulaCell[] = [
                             { label: 'Broker Invoice Amount', value: brokerInvoiceAmount, valueColor: 'text-gray-900', op: '+' },
-                            { label: 'Invoice DPP',           value: brokerHeaderDdp,     valueColor: 'text-gray-700', op: '+' },
                             { label: 'Reimbursement Total',   value: reimbAmount,         valueColor: 'text-gray-900', op: '+' },
-                            { label: 'Reimbursement DPP',     value: reimbDpp,            valueColor: 'text-gray-700', op: '+' },
-                            { label: 'Total PPN',              value: totalPpn,            valueColor: 'text-blue-700', op: '+' },
+                            { label: 'Expense Total',         value: brokerTotals.expenseTotal, valueColor: 'text-gray-900', op: '+' },
+                            { label: 'Recoverable PPN',       value: totalPpn,            valueColor: 'text-blue-700', op: '+' },
                             { label: 'PPh Withheld',          value: parentPph,           valueColor: 'text-orange-700', op: '−' },
                             { label: 'Stamp Duty',            value: parentStamp,         valueColor: 'text-gray-900' },
                           ];
@@ -3103,8 +3099,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                 ))}
                                 <div className="flex items-center px-1.5 text-xs font-bold text-gray-400 bg-gray-50 select-none">=</div>
                                 <div className="flex flex-col justify-center px-4 py-2 bg-emerald-50 border-l-2 border-emerald-400 min-w-[110px]">
-                                  <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">TOTAL PAYABLE</span>
-                                  <span className="text-sm font-bold font-mono text-emerald-900 mt-0.5">{fmt(grandPayable)}</span>
+                                  <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">FINAL CASH PAYABLE</span>
+                                  <span className="text-sm font-bold font-mono text-emerald-900 mt-0.5">{fmt(brokerTotals.finalCashPayable)}</span>
                                 </div>
                               </div>
                             </div>
@@ -3231,7 +3227,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 {formData.payment_method === null && formData.due_date && (
                   <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs">
                     <span className="font-semibold text-amber-800">Due: </span>
-                    <span className="text-amber-900">{new Date(formData.due_date + 'T00:00:00').toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                    <span className="text-amber-900">{formatDate(formData.due_date)}</span>
                     <span className="ml-1.5 text-[9px] text-amber-600">Settle via Payment Voucher</span>
                   </div>
                 )}
@@ -3431,7 +3427,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             setLinkedDCQuickView(null);
           }}
           title="Expense Details"
-          size="lg"
+          size="xl"
         >
           <div className="space-y-3">
             {/* ── Expense Summary (compact single card) ── */}
@@ -3444,7 +3440,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   )}
                 </div>
                 <span className="text-xs text-gray-700">
-                  {new Date(viewingExpense.expense_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {formatDate(viewingExpense.expense_date)}
                 </span>
               </div>
               <div className="px-3 py-2 grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
@@ -3485,7 +3481,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 {viewingExpense.due_date && (
                   <div>
                     <div className="text-[10px] uppercase font-medium text-gray-400">Due Date</div>
-                    <div className="text-gray-900 text-xs">{new Date(viewingExpense.due_date).toLocaleDateString('id-ID')}</div>
+                    <div className="text-gray-900 text-xs">{formatDate(viewingExpense.due_date)}</div>
                   </div>
                 )}
                 {viewingExpense.payment_reference && (
@@ -3578,6 +3574,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 ['Total PPN', totals.totalPpn, 'text-blue-700'],
                 ['PPh Withheld', totals.pphWithheld, 'text-orange-700'],
                 ['Stamp Duty', totals.stampDuty, 'text-gray-700'],
+                ['Expense Total', totals.expenseTotal, 'text-gray-900'],
               ];
               return (
                 <div className="border border-gray-200 rounded-lg bg-white">
@@ -3590,8 +3587,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       </div>
                     ))}
                     <div className="col-span-2 md:col-span-4 flex items-center justify-between border-t border-gray-100 pt-2">
-                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">Final Total Payable</span>
-                      <span className="font-mono font-bold text-emerald-900">{fmtMoney(totals.totalPayable, 2)}</span>
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">Final Cash Payable</span>
+                      <span className="font-mono font-bold text-emerald-900">{fmtMoney(totals.finalCashPayable, 2)}</span>
                     </div>
                   </div>
                 </div>
@@ -3629,7 +3626,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           <td className="px-2 py-1 text-gray-700 truncate max-w-[160px]">{supplierName || '—'}</td>
                           <td className="px-2 py-1 text-gray-600 font-mono">{item.invoice_number || '—'}</td>
                           <td className="px-2 py-1 text-gray-600 font-mono">{item.tax_invoice_number || '—'}</td>
-                          <td className="px-2 py-1 text-gray-600 font-mono">{item.invoice_date || '—'}</td>
+                          <td className="px-2 py-1 text-gray-600 font-mono">{formatDate(item.invoice_date || '')}</td>
                           <td className="px-2 py-1 text-right font-mono text-gray-900">{fmtMoney(item.amount)}</td>
                           <td className="px-2 py-1 text-right font-mono text-gray-700">{fmtMoney(dpp)}</td>
                           <td className="px-2 py-1 text-center font-mono text-gray-700">{rate || 0}%</td>
@@ -3744,7 +3741,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         <tbody>
                           {allocs.map((a) => (
                             <tr key={`va-${a.id}`} className="border-t border-gray-100">
-                              <td className="py-1 text-gray-700">{a.payment_vouchers?.payment_date ? new Date(a.payment_vouchers.payment_date).toLocaleDateString('id-ID') : '—'}</td>
+                              <td className="py-1 text-gray-700">{a.payment_vouchers?.payment_date ? formatDate(a.payment_vouchers.payment_date) : '—'}</td>
                               <td className="py-1 text-gray-700 font-mono">{a.payment_vouchers?.voucher_number || 'PV'}</td>
                               <td className="py-1 text-right font-mono">{fmtMoney(a.allocated_amount)}</td>
                               <td className="py-1 text-right text-gray-600 capitalize">{a.payment_kind || 'supplier'}</td>
@@ -3759,7 +3756,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             });
                             return (
                               <tr key={`bsl-${b.id}`} className="border-t border-gray-100">
-                                <td className="py-1 text-gray-700">{new Date(b.transaction_date).toLocaleDateString('id-ID')}</td>
+                                <td className="py-1 text-gray-700">{formatDate(b.transaction_date)}</td>
                                 <td className="py-1 text-gray-700 truncate max-w-[180px]">{b.description || 'Bank'}</td>
                                 <td className="py-1 text-right font-mono">{fmtLine(lineAmount)}</td>
                                 <td className="py-1 text-right text-gray-600 capitalize">{b.payment_kind || 'supplier'}</td>
@@ -3821,7 +3818,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <div className="text-xs text-gray-500 uppercase font-medium">Date</div>
-                        <div className="font-medium">{new Date(linkedDCQuickView.challan.challan_date).toLocaleDateString('id-ID')}</div>
+                        <div className="font-medium">{formatDate(linkedDCQuickView.challan.challan_date)}</div>
                       </div>
                       <div>
                         <div className="text-xs text-gray-500 uppercase font-medium">Customer</div>
@@ -3881,7 +3878,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                           <span className="text-gray-700">
                             <span className="text-[10px] uppercase font-medium text-gray-500 mr-1">Date</span>
-                            {new Date(line.transaction_date).toLocaleDateString('id-ID')}
+                            {formatDate(line.transaction_date)}
                           </span>
                           <span className="text-gray-700">
                             <span className="text-[10px] uppercase font-medium text-gray-500 mr-1">Ref</span>
