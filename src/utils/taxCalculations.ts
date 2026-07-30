@@ -329,6 +329,31 @@ export function calculateExpenseTotals(exp: ExpenseTotalsInput): ExpenseTotals {
   };
 }
 
+/**
+ * Canonical expense value for expense-facing screens.
+ * Customs broker rows use the derived expense total; all other rows retain
+ * their normal expense amount. Broker invoice amount is a breakdown value,
+ * never the main expense-list amount.
+ */
+export function calculateCanonicalExpenseTotal(
+  exp: ExpenseTotalsInput & BrokerExpenseTotalsInput,
+): number {
+  if (exp.expense_category === 'import_broker') {
+    return calculateBrokerExpenseTotals(exp).expenseTotal;
+  }
+  return Number(exp.amount) || 0;
+}
+
+/** Cash target used by payment status and settlement displays. */
+export function calculateCanonicalCashPayable(
+  exp: ExpenseTotalsInput & BrokerExpenseTotalsInput,
+): number {
+  if (exp.expense_category === 'import_broker') {
+    return calculateBrokerExpenseTotals(exp).finalCashPayable;
+  }
+  return calculateExpenseTotals(exp).netPayable;
+}
+
 /** Input for outstanding calculation — same as totals plus paid_amount. */
 export interface OutstandingInput extends ExpenseTotalsInput {
   paid_amount?: number | null;

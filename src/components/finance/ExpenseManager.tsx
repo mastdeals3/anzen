@@ -101,6 +101,8 @@ import {
   type DocumentType,
   calculatePPN,
   calculateExpenseTotals,
+  calculateCanonicalExpenseTotal,
+  calculateCanonicalCashPayable,
   calculateBrokerExpenseTotals,
   brokerLineTotal,
   computeBrokerLinePpn,
@@ -1735,7 +1737,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     if (exp.approval_status === 'pending_approval') return 0;
     if (exp.approval_status === 'rejected') return 1;
     if (exp.payment_method === null) {
-      const balance = (exp.amount || 0) - (exp.paid_amount ?? 0);
+      const balance = calculateCanonicalCashPayable(exp) - (exp.paid_amount ?? 0);
       if (balance > 0.01 && (exp.paid_amount ?? 0) > 0) return 2; // Partial
       if (balance > 0.01) return 2; // Approved but Outstanding
       return 3; // Paid (A/P settled)
@@ -1766,8 +1768,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       aValue = aCat?.label?.toLowerCase() || '';
       bValue = bCat?.label?.toLowerCase() || '';
     } else if (key === 'amount') {
-      aValue = Number(a.amount) || 0;
-      bValue = Number(b.amount) || 0;
+      aValue = calculateCanonicalExpenseTotal(a);
+      bValue = calculateCanonicalExpenseTotal(b);
     } else if (key === 'description') {
       aValue = (a.description || '').toLowerCase();
       bValue = (b.description || '').toLowerCase();
@@ -1785,7 +1787,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       // Sort by payment status: Outstanding(0) < Partial(1) < Paid(2)
       const payRank = (e: FinanceExpense) => {
         if (e.payment_method !== null) return 2;
-        const bal = (e.amount || 0) - (e.paid_amount ?? 0);
+        const bal = calculateCanonicalCashPayable(e) - (e.paid_amount ?? 0);
         if (bal <= 0.01) return 2;
         if ((e.paid_amount ?? 0) > 0) return 1;
         return 0;
@@ -1818,7 +1820,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       'Description',
       'Linked To',
       'Currency',
-      'Amount',
+      'Expense Total',
       'Payment Method',
       'Bank Account',
       'Payment Status',
@@ -1839,7 +1841,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       // Payment status (independent of reconciliation)
       let paymentStatus = 'Paid';
       if (exp.payment_method === null) {
-        const balance = (exp.amount || 0) - (exp.paid_amount ?? 0);
+        const balance = calculateCanonicalCashPayable(exp) - (exp.paid_amount ?? 0);
         if (balance > 0.01 && (exp.paid_amount ?? 0) > 0) paymentStatus = 'Partial';
         else if (balance > 0.01) paymentStatus = 'Outstanding';
       }
@@ -1866,7 +1868,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         })(),
         linkedTo,
         getExpenseCurrency(exp),
-        exp.amount.toString(),
+        calculateCanonicalExpenseTotal(exp).toString(),
         (exp.payment_method || '').replace(/_/g, ' '),
         bankInfo,
         paymentStatus,
@@ -1907,7 +1909,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const formatExpenseTotals = (expensesToTotal: FinanceExpense[]) => {
     const totals = expensesToTotal.reduce<Record<string, number>>((result, expense) => {
       const currency = getExpenseCurrency(expense);
-      result[currency] = (result[currency] || 0) + Number(expense.amount || 0);
+      result[currency] = (result[currency] || 0) + calculateCanonicalExpenseTotal(expense);
       return result;
     }, {});
     return Object.entries(totals)
@@ -1937,7 +1939,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           <h2 className="text-sm font-semibold text-gray-800 whitespace-nowrap">Expenses</h2>
           <div className="flex gap-1.5">
             <div className="bg-white/20 rounded px-1.5 py-0.5">
-              <span className="text-blue-100 text-[9px] mr-1">TOTAL</span>
+            <span className="text-blue-100 text-[9px] mr-1">EXPENSE TOTAL</span>
               <span className="text-[11px] font-bold">
                 {formatExpenseTotals(filteredExpenses) || formatCurrency(0)}
               </span>
@@ -2120,7 +2122,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 className="px-2 py-1.5 text-right text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
               >
                 <div className="flex items-center justify-end gap-1">
-                  Amount
+                  Expense Total
                   {sortConfig?.key === 'amount' && (
                     <span className="text-blue-600 text-sm">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                   )}
@@ -2232,7 +2234,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-right">
                       <div className="text-xs font-semibold text-gray-900">
-                        {formatCurrency(expense.amount, getExpenseCurrency(expense), {
+                        {formatCurrency(calculateCanonicalExpenseTotal(expense), getExpenseCurrency(expense), {
                           minimumFractionDigits: getExpenseCurrency(expense) === 'IDR' ? 0 : 2,
                           maximumFractionDigits: getExpenseCurrency(expense) === 'IDR' ? 0 : 2,
                         })}
@@ -2260,7 +2262,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             </span>
                           );
                         }
-                        const billBalance = (expense.amount || 0) - (expense.paid_amount ?? 0);
+                        const billBalance = calculateCanonicalCashPayable(expense) - (expense.paid_amount ?? 0);
                         if (billBalance <= 0.01) {
                           return (
                             <span
@@ -2275,7 +2277,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           return (
                             <span
                               className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-100 text-yellow-700"
-                              title={`Partial · Paid ${formatCurrency(expense.paid_amount ?? 0, getExpenseCurrency(expense))} of ${formatCurrency(expense.amount || 0, getExpenseCurrency(expense))} · ${formatCurrency(billBalance, getExpenseCurrency(expense))} left`}
+                              title={`Partial · Paid ${formatCurrency(expense.paid_amount ?? 0, getExpenseCurrency(expense))} of ${formatCurrency(calculateCanonicalCashPayable(expense), getExpenseCurrency(expense))} · ${formatCurrency(billBalance, getExpenseCurrency(expense))} left`}
                             >
                               <Banknote className="w-3 h-3" />
                             </span>
@@ -3418,6 +3420,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             maximumFractionDigits: decimals,
           });
         };
+        const canonicalExpenseTotal = calculateCanonicalExpenseTotal(viewingExpense);
+        const canonicalCashPayable = calculateCanonicalCashPayable(viewingExpense);
         return (
         <Modal
           isOpen={viewModalOpen}
@@ -3469,8 +3473,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   );
                 })()}
                 <div>
-                  <div className="text-[10px] uppercase font-medium text-gray-400">Amount</div>
-                  <div className="text-base font-bold text-gray-900 font-mono">{fmtMoney(viewingExpense.amount, 2)}</div>
+                  <div className="text-[10px] uppercase font-medium text-gray-400">Expense Total</div>
+                  <div className="text-base font-bold text-gray-900 font-mono">{fmtMoney(canonicalExpenseTotal, 2)}</div>
                 </div>
                 {viewingExpense.invoice_number && (
                   <div>
@@ -3568,11 +3572,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             {viewingExpense.expense_category === 'import_broker' && (() => {
               const totals = calculateBrokerExpenseTotals(viewingExpense);
               const rows: Array<[string, number, string]> = [
-                ['Broker Invoice Amount', totals.brokerInvoiceAmount, 'text-gray-900'],
-                ['Reimbursement Total', totals.reimbursementTotal, 'text-gray-900'],
+                ['Broker Invoice', totals.brokerInvoiceAmount, 'text-gray-900'],
+                ['Reimbursements', totals.reimbursementTotal, 'text-gray-900'],
                 ['Reimbursement DPP', totals.reimbursementDpp, 'text-gray-700'],
                 ['Recoverable PPN', totals.recoverableInputPpn, 'text-blue-700'],
-                ['PPh Withheld', totals.pphWithheld, 'text-orange-700'],
+                ['PPh23', totals.pph23Withheld, 'text-orange-700'],
                 ['Stamp Duty', totals.stampDuty, 'text-gray-700'],
                 ['Expense Total', totals.expenseTotal, 'text-gray-900'],
               ];
@@ -3643,7 +3647,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             {/* ── Payment Information (only shows fields that exist) ── */}
             {(viewingExpense.payment_method !== undefined || viewingExpense.bank_accounts) && (() => {
               const isOutstanding = viewingExpense.payment_method === null;
-              const balance = (viewingExpense.amount || 0) - (viewingExpense.paid_amount ?? 0);
+              const balance = canonicalCashPayable - (viewingExpense.paid_amount ?? 0);
               return (
                 <div className="border border-gray-200 rounded-lg bg-white">
                   <div className="px-3 py-1.5 border-b border-gray-100 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Payment</div>
@@ -3667,7 +3671,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         </span>
                       </span>
                     )}
-                    {isOutstanding && (viewingExpense.amount || 0) > 0 && (
+                    {isOutstanding && canonicalCashPayable > 0 && (
                       <span className="ml-auto flex items-center gap-1">
                         <span className="text-[10px] uppercase font-medium text-gray-400">Balance</span>
                         <span className={`font-mono font-bold ${balance > 0 ? 'text-red-600' : 'text-green-700'}`}>
@@ -3689,7 +3693,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               const bslLines = viewingExpense.bank_statement_lines || [];
               // Only render when there's actual settlement data.
               if (allocs.length === 0 && bslLines.length === 0) return null;
-              const supplierTarget = calculateExpenseTotals(viewingExpense).netPayable;
+              const supplierTarget = canonicalCashPayable;
               const supplierPaid = viewingExpense.paid_amount ?? 0;
               const pphTarget = viewingExpense.pph_amount || 0;
               const pphPaid = viewingExpense.pph_paid_amount ?? 0;
