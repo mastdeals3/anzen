@@ -200,14 +200,14 @@ export function KunalCustomerQuoteModal({ isOpen, onClose, inquiry, option }: Pr
           gmail_thread_id: result.threadId,
           inquiry_id: inquiry.id,
           link_type: 'generic',
-        }).then(() => {}).catch(() => {});
+        }).then(() => {}, () => {});
         supabase.from('crm_inquiry_timeline').insert({
           inquiry_id: inquiry.id,
           event_type: 'email_sent',
           event_title: 'Customer quotation sent',
           event_description: `Quotation sent to ${toList.join(', ')}${attachments.length ? ` with ${attachments.length} attachment(s)` : ''}`,
           performed_by: user.id,
-        }).then(() => {}).catch(() => {});
+        }).then(() => {}, () => {});
       }
 
       showToast({ type: 'success', title: 'Quotation sent', message: `Sent to ${toList.join(', ')}.` });

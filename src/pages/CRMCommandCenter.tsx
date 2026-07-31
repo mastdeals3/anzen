@@ -214,7 +214,7 @@ export function CRMCommandCenter() {
 
       // If multi-product, create N separate inquiries in crm_inquiries with .1, .2, .3 suffixes
       // All common fields are copied to each inquiry
-      let inquiry: Inquiry;
+      let inquiry: Inquiry | null = null;
 
       if (formData.isMultiProduct && formData.products && formData.products.length > 0) {
         const inquiriesToInsert = formData.products.map((product) => ({
@@ -274,6 +274,10 @@ export function CRMCommandCenter() {
           throw inquiryError;
         }
         inquiry = singleInquiry;
+      }
+
+      if (!inquiry) {
+        throw new Error('Inquiry creation returned no record');
       }
 
       await supabase

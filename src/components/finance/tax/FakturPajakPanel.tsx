@@ -63,6 +63,9 @@ function customerDisplay(c: Customer | undefined): string {
 
 const FAKTUR_PDF_KINDS = [{ value: 'pdf', label: 'Official PDF' }] as const;
 
+const firstRelation = <T,>(value: T | T[] | null | undefined): T | null =>
+  Array.isArray(value) ? value[0] ?? null : value ?? null;
+
 function RecordFakturModal({
   invoice, existing, busy, onClose, onSave,
 }: {
@@ -247,7 +250,12 @@ export function FakturPajakPanel() {
       alert('Failed to load Faktur Pajak invoices: ' + invErr.message);
       return;
     }
-    const loaded = (inv as SalesInvoice[] | null) ?? [];
+    const loaded = ((inv ?? []) as unknown as Array<Omit<SalesInvoice, 'customer'> & {
+      customer: Customer | Customer[] | null;
+    }>).map(invoice => ({
+      ...invoice,
+      customer: firstRelation(invoice.customer),
+    }));
     setInvoices(loaded);
 
     const invIds = loaded.map(i => i.id);
@@ -263,7 +271,14 @@ export function FakturPajakPanel() {
           .from('faktur_pajak')
           .select('id, sales_invoice_id, faktur_number, issue_date, customer_id, dpp_amount, ppn_amount, status, reported_at, notes')
           .in('sales_invoice_id', invIds);
-        fs = legacy.data;
+        fs = (legacy.data ?? []).map(row => ({
+          ...row,
+          linked_invoice_id: null,
+          official_djp_number: null,
+          invoice_amount: null,
+          uploaded_by: null,
+          uploaded_at: null,
+        }));
         fakturError = legacy.error;
       }
       if (fakturError) alert('Failed to load recorded Faktur: ' + fakturError.message);
@@ -273,7 +288,7 @@ export function FakturPajakPanel() {
     }
     setLoading(false);
   }
-  useEffect(() => { void refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dateRange?.startDate, dateRange?.endDate]);
+  useEffect(() => { void refresh();   }, [dateRange?.startDate, dateRange?.endDate]);
 
   const waitingCount = useMemo(
     () => invoices.filter(i => workflowStatus(i, fakturs[i.id]) === 'waiting').length,

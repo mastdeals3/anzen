@@ -28,6 +28,8 @@ interface DeliveryChallan {
   driver_name: string | null;
   notes: string | null;
   approval_status: 'pending_approval' | 'approved' | 'rejected';
+  status?: string;
+  sales_order_id?: string | null;
   invoicing_status?: 'not_invoiced' | 'partially_invoiced' | 'fully_invoiced';
   total_items?: number;
   invoiced_items?: number;
@@ -232,7 +234,7 @@ export function DeliveryChallan() {
 
       // Fetch product names for all challans so search by product name works
       const challanIds = enrichedBase.map((c: any) => c.id);
-      let productNamesMap = new Map<string, string>();
+      const productNamesMap = new Map<string, string>();
       if (challanIds.length > 0) {
         const { data: itemsData } = await supabase
           .from('delivery_challan_items')
@@ -1084,10 +1086,14 @@ export function DeliveryChallan() {
               </div>
             )}
             {challan.approval_status === 'approved' && (
-              <CheckCircle className="w-4 h-4 text-green-600 ml-1" title="Approved" />
+              <span title="Approved">
+                <CheckCircle className="w-4 h-4 text-green-600 ml-1" />
+              </span>
             )}
             {challan.approval_status === 'rejected' && (
-              <XCircle className="w-4 h-4 text-red-600 ml-1" title="Rejected" />
+              <span title="Rejected">
+                <XCircle className="w-4 h-4 text-red-600 ml-1" />
+              </span>
             )}
           </div>
         );
@@ -1131,7 +1137,7 @@ export function DeliveryChallan() {
             <span className={`inline-block px-1.5 py-0.5 rounded-full text-[11px] leading-tight font-medium ${statusColors[status]}`}>
               {statusLabels[status]}
             </span>
-            {challan.total_items > 0 && status !== 'fully_invoiced' && (
+            {(challan.total_items ?? 0) > 0 && status !== 'fully_invoiced' && (
               <div className="text-xs text-gray-500">
                 {challan.invoiced_items || 0}/{challan.total_items} items invoiced
               </div>
@@ -1598,8 +1604,8 @@ export function DeliveryChallan() {
 
         {viewModalOpen && selectedChallan && (
           <DeliveryChallanView
-            challan={selectedChallan}
-            items={challanItems}
+            challan={selectedChallan as any}
+            items={challanItems as any}
             onClose={() => setViewModalOpen(false)}
             companyProfile={(selectedChallan as any).company_snapshot ?? undefined}
           />

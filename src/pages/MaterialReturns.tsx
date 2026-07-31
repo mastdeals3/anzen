@@ -18,6 +18,9 @@ interface MaterialReturn {
   return_type: string;
   return_reason: string;
   status: string;
+  customer_id: string;
+  original_dc_id: string;
+  notes?: string | null;
   customers: {
     company_name: string;
   };
@@ -179,9 +182,14 @@ export default function MaterialReturns() {
 
       if (error) throw error;
 
-      setChallanItems(data || []);
+      const normalizedItems: ChallanItem[] = (data || []).map((item) => ({
+        ...item,
+        products: Array.isArray(item.products) ? item.products[0] : item.products,
+        batches: Array.isArray(item.batches) ? item.batches[0] : item.batches,
+      })) as ChallanItem[];
+      setChallanItems(normalizedItems);
 
-      const items: ReturnItem[] = (data || []).map((item) => {
+      const items: ReturnItem[] = normalizedItems.map((item) => {
         const batch = item.batches;
         let unitPrice = 0;
 

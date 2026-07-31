@@ -192,7 +192,7 @@ export function Batches() {
           import_container_id,
           cost_locked
         `;
-      let query = supabase
+      const query = supabase
         .from('batches')
         .select(`
           ${batchColumns},
@@ -206,8 +206,12 @@ export function Batches() {
 
       if (error) throw error;
 
+      const batchRows = (data ?? []) as unknown as Array<Record<string, any> & {
+        id: string;
+        stock_reservations?: Array<{ status: string }>;
+      }>;
       const batchesWithDocCount = await Promise.all(
-        (data || []).map(async (batch) => {
+        batchRows.map(async (batch) => {
           const { count } = await supabase
             .from('batch_documents')
             .select('*', { count: 'exact', head: true })
@@ -219,7 +223,7 @@ export function Batches() {
         })
       );
 
-      setBatches(batchesWithDocCount);
+      setBatches(batchesWithDocCount as unknown as Batch[]);
     } catch (error) {
       console.error('Error loading batches:', error);
     } finally {
@@ -2013,7 +2017,7 @@ export function Batches() {
           challan={quickViewDC.challan}
           items={quickViewDC.items}
           onClose={() => setQuickViewDC(null)}
-          companySettings={companySettings}
+          companyProfile={companySettings}
         />
       )}
 

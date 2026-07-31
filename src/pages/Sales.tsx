@@ -257,7 +257,7 @@ export function Sales() {
 
       // Find a common SO from the DCs
       const soIds = Array.from(new Set((dcData || []).map((d: any) => d.sales_order_id).filter(Boolean)));
-      let soItemPriceMap: Record<string, number> = {};
+      const soItemPriceMap: Record<string, number> = {};
 
       if (soIds.length === 1) {
         // All DCs link to the same SO — auto-link it
@@ -656,7 +656,7 @@ export function Sales() {
 
       // Fetch product names for each DC
       const challanIds = (data || []).map(dc => dc.challan_id);
-      let productNameMap: Record<string, string> = {};
+      const productNameMap: Record<string, string> = {};
       if (challanIds.length > 0) {
         const { data: items } = await supabase
           .from('delivery_challan_items')
@@ -973,6 +973,7 @@ export function Sales() {
       invoice_date: new Date().toISOString().split('T')[0],
       payment_terms: '30',
       discount: 0,
+      stamp_duty_amount: 0,
       delivery_challan_number: data.challanNumber,
       po_number: '',
       notes: `Created from Delivery Challan: ${data.challanNumber}`,
@@ -1112,7 +1113,7 @@ export function Sales() {
 
       // Calculate due date based on payment terms
       const invoiceDate = new Date(formData.invoice_date);
-      let dueDate = new Date(invoiceDate);
+      const dueDate = new Date(invoiceDate);
       let paymentTermsDays = 30;
 
       if (formData.payment_terms === 'advance' || formData.payment_terms === '50-50') {
@@ -1124,7 +1125,7 @@ export function Sales() {
         }
       }
 
-      let invoice;
+      let invoice: any;
 
       if (editingInvoice) {
         // HARDENING FIX #1: Use atomic RPC to prevent race conditions
@@ -2109,8 +2110,8 @@ export function Sales() {
 
         {viewModalOpen && selectedInvoice && (
           <InvoiceView
-            invoice={selectedInvoice}
-            items={invoiceItems}
+            invoice={selectedInvoice as any}
+            items={invoiceItems as any}
             onClose={() => {
               setViewModalOpen(false);
               setSelectedInvoice(null);

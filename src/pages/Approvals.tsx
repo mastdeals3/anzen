@@ -41,7 +41,7 @@ interface TransactionDetails {
 }
 
 export default function Approvals() {
-  const { user, userProfile } = useAuth();
+  const { user, profile: userProfile } = useAuth();
   const { t } = useLanguage();
   const [approvals, setApprovals] = useState<ApprovalWorkflow[]>([]);
   const [filteredApprovals, setFilteredApprovals] = useState<ApprovalWorkflow[]>([]);
@@ -109,7 +109,7 @@ export default function Approvals() {
         .single();
 
       if (error) throw error;
-      return data;
+      return data as unknown as TransactionDetails;
     } catch (error: any) {
       console.error('Error fetching transaction details:', error);
       return null;
@@ -149,7 +149,7 @@ export default function Approvals() {
         })
         .eq('id', approvalId);
 
-      let updateData: any = { status: 'approved', approved_by: user?.id };
+      const updateData: any = { status: 'approved', approved_by: user?.id };
 
       if (transactionType === 'material_return') {
         await supabase

@@ -183,7 +183,7 @@ export function KunalInternalReplyModal({ isOpen, onClose, inquiry, draft, sourc
           gmail_thread_id: threadId,
           inquiry_id: inquiry.id,
           link_type: 'generic',
-        }).then(() => {}).catch(() => {});
+        }).then(() => {}, () => {});
       }
 
       // Record timeline event (event_type must be from the CHECK allowlist;
@@ -194,7 +194,7 @@ export function KunalInternalReplyModal({ isOpen, onClose, inquiry, draft, sourc
         event_title: 'Kunal internal price reply sent',
         event_description: `Internal pricing reply sent to ${toList.join(', ')}`,
         performed_by: user.id,
-      }).then(() => {}).catch(() => {});
+      }).then(() => {}, () => {});
 
       showToast({ type: 'success', title: 'Sent', message: 'Internal price reply sent successfully.' });
       onClose();

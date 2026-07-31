@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, X, File, FileText, Image as ImageIcon, AlertCircle, Clipboard } from 'lucide-react';
+import { Upload, X, File as FileIcon, FileText, Image as ImageIcon, AlertCircle, Clipboard } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface UploadedFile {
@@ -128,7 +128,7 @@ export function FileUpload({
           const blob = item.getAsFile();
           if (blob) {
             const fileName = `pasted-image-${Date.now()}.png`;
-            const file = new File([blob], fileName, { type: blob.type });
+            const file = new window.File([blob], fileName, { type: blob.type });
             pastedFiles.push(file);
           }
         }
@@ -211,7 +211,7 @@ export function FileUpload({
     if (ext === 'pdf') {
       return <FileText className="w-5 h-5 text-red-600" />;
     }
-    return <File className="w-5 h-5 text-gray-600" />;
+    return <FileIcon className="w-5 h-5 text-gray-600" />;
   };
 
   const formatFileSize = (bytes: number) => {

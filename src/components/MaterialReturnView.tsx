@@ -55,6 +55,11 @@ interface MaterialReturnViewProps {
 export function MaterialReturnView({ materialReturn, items, onClose, companyProfile }: MaterialReturnViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { ready: logoReady } = useResolvedCompanyLogo(companyProfile?.company_logo_url);
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
 
   // Refuse to render with FALLBACK_COMPANY — misprinting a
   // customer document with placeholder company header would
@@ -70,11 +75,6 @@ export function MaterialReturnView({ materialReturn, items, onClose, companyProf
     );
   }
   const co = companyProfile;
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);

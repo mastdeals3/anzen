@@ -102,9 +102,9 @@ export function SalesPipelineChart() {
             <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} tickLine={false} axisLine={false} allowDecimals={false} />
             <Tooltip
               contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }}
-              formatter={(value: number, name: string) => {
-                if (name === 'count') return [value, 'Orders'];
-                return [value, name];
+              formatter={(value: number | undefined, name: string | undefined) => {
+                if (name === 'count') return [value ?? 0, 'Orders'];
+                return [value ?? 0, name ?? ''];
               }}
               labelStyle={{ fontWeight: 600, color: '#111827' }}
             />

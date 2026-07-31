@@ -19,6 +19,10 @@ interface StockRejection {
   status: string;
   financial_loss: number;
   disposition: string;
+  product_id: string;
+  batch_id: string;
+  inspection_report?: string | null;
+  unit_cost: number;
   photos: any[];
   product: {
     product_name: string;
@@ -45,7 +49,7 @@ interface Batch {
 }
 
 export default function StockRejections() {
-  const { user, userProfile } = useAuth();
+  const { user, profile } = useAuth();
   const { t } = useLanguage();
   const [rejections, setRejections] = useState<StockRejection[]>([]);
   const [filteredRejections, setFilteredRejections] = useState<StockRejection[]>([]);

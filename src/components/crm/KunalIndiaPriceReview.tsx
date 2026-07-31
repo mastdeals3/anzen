@@ -927,7 +927,7 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
                   <button
-                    onClick={analyzeOne}
+                    onClick={() => void analyzeOne()}
                     disabled={!isManager || analyzingBatch}
                     className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                     title="Run the LLM relevance judge on this email and create/update its review row"

@@ -5,7 +5,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 interface Column<T> {
   key: string;
   label: string;
-  render?: (value: unknown, item: T) => React.ReactNode;
+  render?: ((value: any, item: T) => React.ReactNode) | ((item: T) => React.ReactNode);
   sortable?: boolean;
   thClassName?: string;
   tdClassName?: string;
@@ -21,7 +21,7 @@ interface DataTableProps<T> {
   compact?: boolean;
 }
 
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T extends object>({
   data,
   columns,
   onRowClick,
@@ -44,7 +44,10 @@ export function DataTable<T extends Record<string, unknown>>({
     setSortConfig({ key, direction });
   };
 
-  const getSearchableValues = (obj: Record<string, unknown>): string[] => {
+  const getValue = (item: T, key: string): unknown =>
+    (item as Record<string, unknown>)[key];
+
+  const getSearchableValues = (obj: T): string[] => {
     const values: string[] = [];
 
     const extractValues = (value: unknown) => {
@@ -61,7 +64,7 @@ export function DataTable<T extends Record<string, unknown>>({
       }
     };
 
-    Object.values(obj).forEach(extractValues);
+    Object.values(obj as Record<string, unknown>).forEach(extractValues);
     return values;
   };
 
@@ -78,11 +81,17 @@ export function DataTable<T extends Record<string, unknown>>({
 
     if (sortConfig) {
       result.sort((a, b) => {
-        const aValue = a[sortConfig.key];
-        const bValue = b[sortConfig.key];
+        const aValue = getValue(a, sortConfig.key);
+        const bValue = getValue(b, sortConfig.key);
+        const aComparable = typeof aValue === 'number' || typeof aValue === 'string'
+          ? aValue
+          : String(aValue ?? '');
+        const bComparable = typeof bValue === 'number' || typeof bValue === 'string'
+          ? bValue
+          : String(bValue ?? '');
 
-        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        if (aComparable < bComparable) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aComparable > bComparable) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
       });
     }
@@ -170,11 +179,23 @@ export function DataTable<T extends Record<string, unknown>>({
                   onClick={() => onRowClick?.(item)}
                   className={onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''}
                 >
-                  {columns.map((column) => (
-                    <td key={column.key} className={`${compact ? 'px-3 py-2' : 'px-6 py-4'} whitespace-nowrap text-sm text-gray-900 ${column.tdClassName || ''}`}>
-                      {column.render ? column.render(item[column.key], item) : item[column.key]}
-                    </td>
-                  ))}
+                  {columns.map((column) => {
+                    const value = getValue(item, column.key);
+                    const rendered = column.render
+                      ? column.render.length >= 2
+                        ? (column.render as (cellValue: unknown, row: T) => React.ReactNode)(value, item)
+                        : (column.render as (row: T) => React.ReactNode)(item)
+                      : value == null || typeof value === 'boolean'
+                        ? String(value ?? '')
+                        : typeof value === 'string' || typeof value === 'number'
+                          ? value
+                          : JSON.stringify(value);
+                    return (
+                      <td key={column.key} className={`${compact ? 'px-3 py-2' : 'px-6 py-4'} whitespace-nowrap text-sm text-gray-900 ${column.tdClassName || ''}`}>
+                        {rendered}
+                      </td>
+                    );
+                  })}
                   {actions && (
                     <td className={`${compact ? 'px-2 py-2' : 'px-6 py-4'} whitespace-nowrap text-sm`}>
                       {actions(item)}

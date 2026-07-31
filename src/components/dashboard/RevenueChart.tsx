@@ -122,7 +122,7 @@ export function RevenueChart() {
             <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} tickLine={false} axisLine={false} tickFormatter={formatValue} width={50} />
             <Tooltip
               contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }}
-              formatter={(value: number) => [`Rp ${value.toLocaleString('id-ID')}`, 'Revenue']}
+              formatter={(value: number | undefined) => [`Rp ${(value ?? 0).toLocaleString('id-ID')}`, 'Revenue']}
               labelStyle={{ fontWeight: 600, color: '#111827' }}
             />
             <Area type="monotone" dataKey="revenue" stroke="#059669" strokeWidth={2.5} fill="url(#revenueGradient)" />

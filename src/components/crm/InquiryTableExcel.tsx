@@ -929,7 +929,7 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
           // D/M/YY or DD/MM/YY format (e.g., 4/10/25, 10/11/25)
           const twoDigitYear = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
           if (twoDigitYear) {
-            let [, day, month, year] = twoDigitYear;
+            const [, day, month, year] = twoDigitYear;
             // Convert 2-digit year to 4-digit (00-29 = 2000s, 30-99 = 1900s)
             const fullYear = parseInt(year) < 30 ? `20${year}` : `19${year}`;
             return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;

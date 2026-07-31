@@ -470,7 +470,8 @@ export async function findInquiryCandidatesWithContext(
     }
 
     // Forwarded subjects contain product name
-    if (ctx.product_name && ctx.forwardedSubjects?.some(s => textContainsWord(s, ctx.product_name))) {
+    const productName = ctx.product_name;
+    if (productName && ctx.forwardedSubjects?.some(s => textContainsWord(s, productName))) {
       raw += WEIGHTS.SUBJECT_HAS_PRODUCT;
       if (!reasons.includes('Subject → product')) reasons.push('Fwd subject → product');
     }
@@ -508,8 +509,8 @@ export async function findInquiryCandidatesWithContext(
 
     // Quantity overlap (partial — just checks if any numeric part matches)
     if (ctx.qty && c.quantity) {
-      const qNums = ctx.qty.match(/\d+/g) || [];
-      const cNums = c.quantity.match(/\d+/g) || [];
+      const qNums: string[] = ctx.qty.match(/\d+/g) ?? [];
+      const cNums: string[] = c.quantity.match(/\d+/g) ?? [];
       if (qNums.some(n => cNums.includes(n))) {
         raw += WEIGHTS.QTY_OVERLAP;
         reasons.push('Qty overlap');

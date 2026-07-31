@@ -490,18 +490,18 @@ export function Settings() {
       await saveToDb({
         low_stock_threshold: formData.low_stock_threshold,
         expiry_alert_days: formData.expiry_alert_days,
-        email_host: formData.email_host || null,
+        email_host: formData.email_host || undefined,
         email_port: formData.email_port,
-        email_username: formData.email_username || null,
+        email_username: formData.email_username || undefined,
         rounding_tolerance_amount: formData.rounding_tolerance_amount,
-        rounding_writeoff_account_id: formData.rounding_writeoff_account_id || null,
-        rounding_gain_account_id: formData.rounding_gain_account_id || null,
+        rounding_writeoff_account_id: formData.rounding_writeoff_account_id || undefined,
+        rounding_gain_account_id: formData.rounding_gain_account_id || undefined,
         bulk_email_batch_size: formData.bulk_email_batch_size,
         bulk_email_batch_delay_seconds: formData.bulk_email_batch_delay_seconds,
         bulk_email_worker_url:
-          formData.bulk_email_worker_url || settings?.bulk_email_worker_url || null,
+          formData.bulk_email_worker_url || settings?.bulk_email_worker_url || undefined,
         bulk_email_worker_secret:
-          formData.bulk_email_worker_secret || settings?.bulk_email_worker_secret || null,
+          formData.bulk_email_worker_secret || settings?.bulk_email_worker_secret || undefined,
         default_language: formData.default_language,
       });
       alert('Settings saved successfully!');

@@ -231,7 +231,7 @@ export function JournalEntryViewer({ canManage }: JournalEntryViewerProps) {
               </div>
               <div>
                 <span className="text-gray-500">Posted:</span>
-                <span className="ml-2">{new Date(selectedEntry.posted_at).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <span className="ml-2">{new Date(selectedEntry.posted_at).toLocaleString('id-ID')}</span>
               </div>
             </div>
 

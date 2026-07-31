@@ -53,18 +53,26 @@ interface ProformaInvoiceViewProps {
   };
   items: SalesOrderItem[];
   onClose: () => void;
+  companyProfile?: CompanySnapshot | null;
 }
 
-export function ProformaInvoiceView({ salesOrder, items, onClose }: ProformaInvoiceViewProps) {
+export function ProformaInvoiceView({ salesOrder, items, onClose, companyProfile }: ProformaInvoiceViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { t, language } = useLanguage();
-  const { ready: logoReady } = useResolvedCompanyLogo(salesOrder.company_snapshot?.company_logo_url);
+  const companySnapshot = companyProfile ?? salesOrder.company_snapshot;
+  const { ready: logoReady } = useResolvedCompanyLogo(companySnapshot?.company_logo_url);
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
 
   // Refuse to render with FALLBACK_COMPANY — misprinting a
   // customer document with placeholder company header would
   // misrepresent it. Backfill migration 20260714210000 restores
   // NULL snapshots in bulk; one-off legacy rows must be repaired manually.
-  if (!salesOrder.company_snapshot) {
+  if (!companySnapshot) {
     return (
       <SnapshotMissingError
         documentType={"Sales Order"}
@@ -73,12 +81,7 @@ export function ProformaInvoiceView({ salesOrder, items, onClose }: ProformaInvo
       />
     );
   }
-  const co = salesOrder.company_snapshot;
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
+  const co = companySnapshot;
 
   const currency = salesOrder.currency || 'IDR';
   const currencySymbol = currency === 'IDR' ? 'Rp' : currency === 'USD' ? '$' : currency;

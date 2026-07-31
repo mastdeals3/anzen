@@ -6,6 +6,7 @@
 -- 3. Standalone Petty Cash inflows require a balancing source account.
 -- 4. One standalone Petty Cash source row can create at most one journal.
 -- 5. Posted Fund Transfer accounting fields are immutable.
+-- 6. Sales can read sourcing recipients while writes remain manager/admin only.
 
 ALTER TABLE public.petty_cash_transactions
   ADD COLUMN IF NOT EXISTS source_account_id uuid
@@ -513,6 +514,18 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+DROP POLICY IF EXISTS "sourcing_recipients_read"
+  ON public.sourcing_email_recipients;
+
+CREATE POLICY "sourcing_recipients_read"
+  ON public.sourcing_email_recipients
+  FOR SELECT TO authenticated
+  USING (
+    public.current_user_has_pricing_role(
+      ARRAY['admin', 'manager', 'sales']
+    )
+  );
 
 DROP TRIGGER IF EXISTS trg_protect_posted_fund_transfer_accounting
   ON public.fund_transfers;

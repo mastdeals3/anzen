@@ -19,7 +19,7 @@ interface StockRejectionViewProps {
     status: string;
     financial_loss: number;
     disposition: string;
-    inspection_report?: string;
+    inspection_report?: string | null;
     unit_cost: number;
     photos?: any[];
     product: {
@@ -39,6 +39,11 @@ interface StockRejectionViewProps {
 export function StockRejectionView({ rejection, onClose, companyProfile }: StockRejectionViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { ready: logoReady } = useResolvedCompanyLogo(companyProfile?.company_logo_url);
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
 
   // Refuse to render with FALLBACK_COMPANY — misprinting a
   // customer document with placeholder company header would
@@ -54,11 +59,6 @@ export function StockRejectionView({ rejection, onClose, companyProfile }: Stock
     );
   }
   const co = companyProfile;
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);

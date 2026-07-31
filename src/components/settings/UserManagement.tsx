@@ -29,6 +29,7 @@ interface UserManagementProps {
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
+  manager: 'Manager',
   sales: 'Sales',
   accounts: 'Accounts',
   warehouse: 'Warehouse',
@@ -37,6 +38,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const ROLE_COLORS: Record<UserRole, string> = {
   admin: 'bg-blue-100 text-blue-800 border-blue-300',
+  manager: 'bg-purple-100 text-purple-800 border-purple-300',
   sales: 'bg-green-100 text-green-800 border-green-300',
   accounts: 'bg-amber-100 text-amber-800 border-amber-300',
   warehouse: 'bg-orange-100 text-orange-800 border-orange-300',

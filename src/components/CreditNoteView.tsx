@@ -55,6 +55,11 @@ export function CreditNoteView({ creditNote, items, onClose, companyProfile }: C
   const printRef = useRef<HTMLDivElement>(null);
   const { language } = useLanguage();
   const { ready: logoReady } = useResolvedCompanyLogo(companyProfile?.company_logo_url);
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
 
   // Refuse to render with FALLBACK_COMPANY — misprinting a
   // customer document with placeholder company header would
@@ -70,11 +75,6 @@ export function CreditNoteView({ creditNote, items, onClose, companyProfile }: C
     );
   }
   const co = companyProfile;
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
 
   const formatCurrency = (amount: number | undefined | null) => {
     if (amount === undefined || amount === null) return 'Rp 0,00';

@@ -7,6 +7,14 @@ export interface Email {
   received_date: string;
   is_processed: boolean;
   is_inquiry: boolean;
+  parsed_data?: ParsedEmailData | null;
+  converted_to_inquiry?: string | null;
+}
+
+export interface ParsedProduct {
+  productName: string;
+  specification?: string;
+  quantity?: string;
 }
 
 export interface ParsedEmailData {
@@ -16,8 +24,8 @@ export interface ParsedEmailData {
   supplierName?: string;
   supplierCountry?: string;
   companyName: string;
-  contactPerson?: string;
-  contactEmail: string;
+  contactPerson?: string | { name?: string } | Array<string | { name?: string }>;
+  contactEmail: string | { email?: string } | Array<string | { email?: string }>;
   contactPhone?: string;
   coaRequested: boolean;
   msdsRequested: boolean;
@@ -33,6 +41,7 @@ export interface ParsedEmailData {
   detectedLanguage: string;
   autoDetectedCompany: boolean;
   autoDetectedContact: boolean;
+  products?: ParsedProduct[];
 }
 
 export interface Inquiry {

@@ -15,6 +15,10 @@ export interface ProductItem {
   productName: string;
   specification: string;
   quantity: string;
+  supplierName?: string;
+  supplierCountry?: string;
+  deliveryDate?: string;
+  deliveryTerms?: string;
 }
 
 export interface InquiryFormData {
@@ -65,13 +69,15 @@ export function InquiryFormPanel({ email, parsedData, onSave, saving }: InquiryF
       if (typeof contactPerson === 'object' && !Array.isArray(contactPerson)) {
         contactPerson = contactPerson.name || '';
       } else if (Array.isArray(contactPerson)) {
-        contactPerson = contactPerson[0]?.name || contactPerson[0] || '';
+        const first = contactPerson[0];
+        contactPerson = typeof first === 'string' ? first : first?.name || '';
       }
 
       if (typeof contactEmail === 'object' && !Array.isArray(contactEmail)) {
         contactEmail = contactEmail.email || '';
       } else if (Array.isArray(contactEmail)) {
-        contactEmail = contactEmail[0]?.email || contactEmail[0] || '';
+        const first = contactEmail[0];
+        contactEmail = typeof first === 'string' ? first : first?.email || '';
       }
 
       // Strip HTML tags if present and extract all emails

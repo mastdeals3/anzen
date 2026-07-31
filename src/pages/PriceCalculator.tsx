@@ -68,7 +68,7 @@ function loadSavedInputs() {
   try {
     const raw = localStorage.getItem('pc_inputs_v3');
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch { /* Ignore malformed or unavailable local storage. */ }
   return {
     fcl: {
       purchase_currency: 'USD' as PurchaseCurrency,
@@ -325,7 +325,7 @@ export function PriceCalculator() {
             merged = JSON.parse(JSON.stringify(merged));
             merged.general.inr_usd_cached_rate = live;
             merged.general.inr_usd_cached_at = Date.now();
-          } catch {}
+          } catch { /* Continue with the last cached exchange rate. */ }
         }
 
         setConfig(merged);

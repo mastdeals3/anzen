@@ -232,7 +232,7 @@ export function CompactInquiryForm({ onSubmit, onCancel, initialData, isEditing 
   const removeProduct = (index: number) => {
     setFormData({
       ...formData,
-      products: formData.products.filter((_, i) => i !== index)
+      products: formData.products.filter((_item: (typeof formData.products)[number], i: number) => i !== index)
     });
   };
 

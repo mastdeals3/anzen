@@ -36,7 +36,10 @@ export function StockUpdateEmailComposer({ onClose, onComplete }: Props) {
       supabase.from('crm_contacts').select('id,company_name,email,contact_person').not('email', 'is', null).neq('email', ''),
       supabase.from('customers').select('id,company_name,email,contact_person').not('email', 'is', null).neq('email', '').eq('is_active', true),
     ]);
-    const stockRows = ((b.data || []) as StockRow[]).filter(s => (s.current_stock - (s.reserved_stock || 0)) > 0);
+    const stockRows = ((b.data || []) as unknown as StockRow[]).map(row => ({
+      ...row,
+      products: Array.isArray(row.products) ? row.products[0] : row.products,
+    })).filter(s => (s.current_stock - (s.reserved_stock || 0)) > 0);
     setStocks(stockRows);
     const all: Recipient[] = [
       ...((cc.data || []) as ContactRow[]).map((r) => ({ id: `crm-${r.id}`, sourceId: r.id, label: `[CRM] ${r.company_name}`, company_name: r.company_name, email: r.email, contact_person: r.contact_person, source: 'crm_contact' as const })),

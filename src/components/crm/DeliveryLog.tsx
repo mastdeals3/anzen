@@ -205,7 +205,7 @@ export function DeliveryLog() {
   useEffect(() => {
     setInitialLoading(true);
     loadAllCampaigns().finally(() => setInitialLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Focus email input when edit mode opens
   useEffect(() => {
@@ -241,10 +241,11 @@ export function DeliveryLog() {
         )
         .in('id', activeCampaignIds);
 
-      if (data?.length && !pauseAutoRefreshRef.current) {
+      const campaignUpdates = (data ?? []) as unknown as Array<Record<string, unknown> & { id: string }>;
+      if (campaignUpdates.length && !pauseAutoRefreshRef.current) {
         setCampaigns(prev => {
           const updated = prev.map(c => {
-            const u = data.find(d => d.id === c.id);
+            const u = campaignUpdates.find(d => d.id === c.id);
             return u ? { ...c, ...u } : c;
           });
           campaignsRef.current = updated;

@@ -647,7 +647,7 @@ export function CustomerDatabaseExcel() {
     return Array.from(selectedRows)
       .map(id => customers.find(c => c.id === id))
       .filter((c): c is Customer => !!c && !!c.email)
-      .map(c => ({ id: c.id, company_name: c.company_name, email: c.email, contact_person: c.contact_person }));
+      .map(c => ({ id: c.id, company_name: c.company_name, email: c.email!, contact_person: c.contact_person }));
   };
 
   if (loading) {

@@ -116,7 +116,7 @@ export function PaymentOverview() {
                 </Pie>
                 <Tooltip
                   contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}
-                  formatter={(value: number) => [formatCurrency(value), 'Amount']}
+                  formatter={(value: number | undefined) => [formatCurrency(value ?? 0), 'Amount']}
                 />
               </PieChart>
             </ResponsiveContainer>

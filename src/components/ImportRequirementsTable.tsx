@@ -12,13 +12,29 @@ export interface ImportRequirement {
   shortage_quantity: number;
   required_delivery_date: string;
   priority: 'high' | 'medium' | 'low';
-  status: 'pending' | 'ordered' | 'partially_received' | 'received' | 'cancelled';
+  status:
+    | 'pending'
+    | 'rfq_sent'
+    | 'po_created'
+    | 'supplier_confirmed'
+    | 'in_production'
+    | 'ready_to_ship'
+    | 'ordered'
+    | 'in_transit'
+    | 'customs_clearance'
+    | 'partially_received'
+    | 'received'
+    | 'cancelled';
   lead_time_days: number;
+  ordered_qty?: number;
+  import_container_id?: string | null;
   notes?: string;
   products?: { product_name: string; product_code: string };
   sales_orders?: { so_number: string };
   customers?: { company_name: string };
 }
+
+export type ImportStatus = ImportRequirement['status'];
 
 export const STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending', color: 'text-gray-600', bgColor: 'bg-gray-50' },
@@ -30,6 +46,7 @@ export const STATUS_OPTIONS = [
 
 interface ImportRequirementsTableProps {
   requirements: ImportRequirement[];
+  containers?: unknown[];
   onRefresh: () => void;
   canEdit: boolean;
 }

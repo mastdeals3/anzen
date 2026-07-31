@@ -261,7 +261,7 @@ export function PricingWorksheet() {
     setAllInquiries(baseRows);
 
     let grouped: Record<string, PricingOption[]> = {};
-    let pricedIds = new Set<string>();
+    const pricedIds = new Set<string>();
     if (baseRows.length > 0) {
       const { data: opts } = await supabase
         .from('crm_inquiry_pricing_options')

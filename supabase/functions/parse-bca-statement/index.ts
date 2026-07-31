@@ -166,7 +166,7 @@ async function extractTextFromPDF(pdfData: Uint8Array): Promise<string> {
   // Simple PDF text extraction
   // Convert bytes to string and extract text between content streams
   const decoder = new TextDecoder("latin1");
-  let text = decoder.decode(pdfData);
+  const text = decoder.decode(pdfData);
   
   // Extract text from PDF content streams
   const contentRegex = /BT\s+(.+?)\s+ET/gs;

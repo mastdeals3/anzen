@@ -96,7 +96,7 @@ export function Tasks() {
     try {
       setLoading(true);
 
-      let query = supabase
+      const query = supabase
         .from('tasks')
         .select(`
           *,
@@ -592,7 +592,7 @@ export function Tasks() {
                             {formatDeadline(task.deadline)}
                           </div>
 
-                          {task.comment_count > 0 && (
+                          {(task.comment_count ?? 0) > 0 && (
                             <div className="flex items-center gap-1 text-sm text-gray-600">
                               <MessageSquare className="w-4 h-4" />
                               {task.comment_count}

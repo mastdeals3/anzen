@@ -192,8 +192,8 @@ export function SalesDashboard() {
       ]);
 
       setPriceReady(activeOnly((priceRes.data || []) as PriceReadyRow[]));
-      setOverdueFollowUps((overdueRes.data || []) as FollowUpRow[]);
-      setTodayReminders((todayRes.data || []) as FollowUpRow[]);
+      setOverdueFollowUps((overdueRes.data || []) as unknown as FollowUpRow[]);
+      setTodayReminders((todayRes.data || []) as unknown as FollowUpRow[]);
       setPendingReplies(activeOnly((replyRes.data || []) as PendingReplyRow[]));
       setDeliveryAlerts(alerts);
       setLastRefreshed(new Date());

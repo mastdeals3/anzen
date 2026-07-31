@@ -296,9 +296,11 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.refresh_salary_advance_status(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.get_outstanding_salary_advances(uuid, date) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.get_salary_advance_applications(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.apply_salary_advances_to_expense(uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.refresh_salary_advance_status(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_outstanding_salary_advances(uuid, date),
   public.get_salary_advance_applications(uuid),
   public.apply_salary_advances_to_expense(uuid, boolean) TO authenticated, service_role;
@@ -356,5 +358,8 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.validate_salary_advance_payment_purpose() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.save_payment_voucher_with_purpose(uuid,jsonb,jsonb,text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.validate_salary_advance_payment_purpose() TO service_role;
 GRANT EXECUTE ON FUNCTION public.save_payment_voucher_with_purpose(uuid,jsonb,jsonb,text) TO authenticated, service_role;
 NOTIFY pgrst, 'reload schema';

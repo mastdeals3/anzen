@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "finance:repair": "node scripts/finance-historical-repair-report.mjs",
+    "verify:finance-imports": "node scripts/verify-finance-import-templates.mjs",
+    "verify:finance-release": "node scripts/finance-v1-release-regression.mjs",
     "verify:finance-navigation": "node scripts/verify-finance-navigation.mjs"
   },
   "dependencies": {

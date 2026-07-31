@@ -386,7 +386,7 @@ export function BankReconciliationEnhanced({
           );
           const defaultId = bcaAccount?.id || data[0].id;
           setSelectedBank(defaultId);
-          try { localStorage.setItem('bank_recon_selected_bank', defaultId); } catch {}
+          try { localStorage.setItem('bank_recon_selected_bank', defaultId); } catch { /* Storage may be unavailable. */ }
         }
       }
     } catch (err) {
@@ -481,7 +481,7 @@ export function BankReconciliationEnhanced({
         if (expenses && expenseIds.length !== new Set(expenses.map(e => e.id)).size) {
           const returnedIds = new Set(expenses.map(e => e.id));
           const missing = expenseIds.filter(id => !returnedIds.has(id));
-          // eslint-disable-next-line no-console
+
           console.warn('[BRE-DIAG] finance_expenses missing:', { requested: expenseIds, returned: [...returnedIds], missing });
         }
       }
@@ -523,7 +523,7 @@ export function BankReconciliationEnhanced({
         if (receipts && receiptIds.length !== new Set(receipts.map(r => r.id)).size) {
           const returnedIds = new Set(receipts.map(r => r.id));
           const missing = receiptIds.filter(id => !returnedIds.has(id));
-          // eslint-disable-next-line no-console
+
           console.warn('[BRE-DIAG] receipt_vouchers missing:', { requested: receiptIds, returned: [...returnedIds], missing });
         }
       }
@@ -541,7 +541,7 @@ export function BankReconciliationEnhanced({
         const returnedIds = new Set((returned || []).map(r => r.id));
         const missing = requested.filter(id => !returnedIds.has(id));
         if (missing.length === 0) return;
-        // eslint-disable-next-line no-console
+
         console.warn(`[BRE-DIAG] ${table}: requested=${requested.length}, returned=${returnedIds.size}, missing=${missing.length}`, {
           table,
           requestedIds: requested,
@@ -1647,9 +1647,9 @@ export function BankReconciliationEnhanced({
       if (error) throw error;
       setShowImportResultModal(false);
       setImportResult(null);
-      try { await loadStatementLines(); } catch {}
+      try { await loadStatementLines(); } catch { /* Import succeeded; refresh can be retried. */ }
       if (inserted?.length) {
-        try { await autoMatchTransactions(); } catch {}
+        try { await autoMatchTransactions(); } catch { /* Auto-match failure does not invalidate import. */ }
       }
       alert(`✅ Force import complete! ${inserted?.length || 0} entries added.`);
     } catch (err: any) {
@@ -2029,13 +2029,14 @@ export function BankReconciliationEnhanced({
 
       // Fetch candidate vouchers in the window. The finance_staff_master embed
       // requires the staff-accounting migration; fall back without it.
-      let { data: vouchers, error: pvErr } = await supabase
+      const { data: initialVouchers, error: pvErr } = await supabase
         .from('payment_vouchers')
         .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, bank_amount, payment_currency, journal_entry_id, bank_account_id, payment_method, suppliers(company_name), finance_staff_master(full_name)')
         .gte('voucher_date', from.toISOString().split('T')[0])
         .lte('voucher_date', to.toISOString().split('T')[0])
         .order('voucher_date', { ascending: false })
         .limit(500);
+      let vouchers = initialVouchers;
       if (pvErr && /finance_staff_master|staff_id/i.test(pvErr.message || '')) {
         const fb = await supabase
           .from('payment_vouchers')
@@ -2606,7 +2607,7 @@ export function BankReconciliationEnhanced({
           {/* Bank Account Selector */}
           <select
             value={selectedBank}
-            onChange={(e) => { setSelectedBank(e.target.value); try { localStorage.setItem('bank_recon_selected_bank', e.target.value); } catch {} }}
+            onChange={(e) => { setSelectedBank(e.target.value); try { localStorage.setItem('bank_recon_selected_bank', e.target.value); } catch { /* Storage may be unavailable. */ } }}
             className="px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium"
           >
             {bankAccounts.map(bank => (

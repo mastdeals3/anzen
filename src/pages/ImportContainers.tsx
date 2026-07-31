@@ -133,9 +133,10 @@ export default function ImportContainers() {
 
       if (error) throw error;
 
+      const containerRows = (containersData ?? []) as unknown as ImportContainer[];
       const containersWithExpenses = canViewCosting
         ? await Promise.all(
-            (containersData || []).map(async (container) => {
+            containerRows.map(async (container) => {
               const { data: expenses } = await supabase
                 .from('finance_expenses')
                 .select('amount, expense_category, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items')
@@ -144,7 +145,7 @@ export default function ImportContainers() {
               return { ...container, linked_expenses_total: linkedExpensesTotal };
             })
           )
-        : containersData || [];
+        : containerRows;
 
       setContainers(containersWithExpenses);
     } catch (error: any) {
@@ -260,6 +261,7 @@ export default function ImportContainers() {
       duty_bm: 0, ppn_import: 0, pph_import: 0, freight_charges: 0,
       clearing_forwarding: 0, port_charges: 0, container_handling: 0,
       transportation: 0, other_import_costs: 0, notes: ''
+      , loading_import: 0, bpom_ski_fees: 0
     });
     setLinkedExpenses([]);
   };

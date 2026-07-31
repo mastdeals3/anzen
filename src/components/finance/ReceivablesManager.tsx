@@ -39,6 +39,9 @@ interface BankAccount {
   alias: string | null;
 }
 
+const firstRelation = <T,>(value: T | T[] | null | undefined): T | null =>
+  Array.isArray(value) ? value[0] ?? null : value ?? null;
+
 export function ReceivablesManager({ canManage }: { canManage: boolean }) {
   const { setCurrentPage } = useNavigation();
   const [view, setView] = useState<'invoices' | 'payments' | 'ageing'>('invoices');
@@ -153,14 +156,14 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       const invoicesWithPaidAmount = (invoicesRes.data || []).map((invoice) => ({
         ...invoice,
         paid_amount: paidByInvoice.get(invoice.id) || 0,
-        customers: invoice.customers || null,
+        customers: firstRelation(invoice.customers),
       }));
 
       const paymentsWithAllocations = (paymentsRes.data || []).map((voucher) => ({
         ...voucher,
         allocations: allocationsByVoucher.get(voucher.id) || [],
-        customers: voucher.customers || null,
-        bank_accounts: voucher.bank_accounts || null,
+        customers: firstRelation(voucher.customers),
+        bank_accounts: firstRelation(voucher.bank_accounts),
       }));
 
       setInvoices(invoicesWithPaidAmount);

@@ -20,7 +20,7 @@ interface StatementLine {
   debit: number;
   credit: number;
   balance: number;
-  status: 'matched' | 'needs_review' | 'unmatched' | 'recorded';
+  status: 'matched' | 'needs_review' | 'unmatched' | 'recorded' | 'suggested';
   matchedEntry?: string;
   notes?: string;
 }

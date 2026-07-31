@@ -871,14 +871,14 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
     }
   };
 
-  if (!isOpen) return null;
-
-  const isMulti = allInquiries.length > 1;
-  const modeLabel = mode === 'price' ? 'Send Price Quotation' : mode === 'coa' ? 'Send COA / MSDS' : mode === 'india' ? 'Send To India' : 'New Message';
   const sanitizedPreviewBody = useMemo(() => DOMPurify.sanitize(body, {
     ADD_ATTR: ['target'],
   }), [body]);
 
+  if (!isOpen) return null;
+
+  const isMulti = allInquiries.length > 1;
+  const modeLabel = mode === 'price' ? 'Send Price Quotation' : mode === 'coa' ? 'Send COA / MSDS' : mode === 'india' ? 'Send To India' : 'New Message';
   const windowCls = fullscreen
     ? 'fixed inset-4 z-50 flex flex-col bg-white rounded-xl shadow-2xl border border-gray-200'
     : 'fixed bottom-0 right-6 z-50 flex flex-col bg-white rounded-t-xl shadow-2xl border border-gray-200 w-[620px]';

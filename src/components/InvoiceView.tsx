@@ -57,12 +57,14 @@ interface InvoiceViewProps {
   };
   items: InvoiceItem[];
   onClose: () => void;
+  companyProfile?: CompanySnapshot | null;
 }
 
-export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
+export function InvoiceView({ invoice, items, onClose, companyProfile }: InvoiceViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { t, language } = useLanguage();
-  const { ready: logoReady } = useResolvedCompanyLogo(invoice.company_snapshot?.company_logo_url);
+  const companySnapshot = companyProfile ?? invoice.company_snapshot;
+  const { ready: logoReady } = useResolvedCompanyLogo(companySnapshot?.company_logo_url);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -74,7 +76,7 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
   // invoice with placeholder company header would misrepresent the
   // legal document. Backfill migration 20260714210000 restores NULL
   // snapshots in bulk; one-off legacy rows must be repaired manually.
-  if (!invoice.company_snapshot) {
+  if (!companySnapshot) {
     return (
       <SnapshotMissingError
         documentType="Sales Invoice"
@@ -83,7 +85,7 @@ export function InvoiceView({ invoice, items, onClose }: InvoiceViewProps) {
       />
     );
   }
-  const co = invoice.company_snapshot;
+  const co = companySnapshot;
 
   const formatCurrency = (amount: number | undefined | null) => {
     if (amount === undefined || amount === null) return 'Rp 0,00';

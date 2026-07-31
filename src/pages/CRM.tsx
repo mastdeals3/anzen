@@ -576,7 +576,7 @@ export function CRM() {
             {activeTab === 'pipeline' && (
               <PipelineBoard
                 canManage={canManage}
-                onInquiryClick={(inquiry) => handleEdit(inquiry as Inquiry)}
+                onInquiryClick={(inquiry) => handleEdit(inquiry as unknown as Inquiry)}
               />
             )}
 

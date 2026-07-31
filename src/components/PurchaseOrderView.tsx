@@ -59,6 +59,13 @@ interface PurchaseOrderViewProps {
 export function PurchaseOrderView({ purchaseOrder: po, items, onClose, companyProfile }: PurchaseOrderViewProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const { ready: logoReady } = useResolvedCompanyLogo(companyProfile?.company_logo_url);
+  const { t, language } = useLanguage();
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
 
   // Refuse to render with FALLBACK_COMPANY — misprinting a
   // customer document with placeholder company header would
@@ -74,13 +81,6 @@ export function PurchaseOrderView({ purchaseOrder: po, items, onClose, companyPr
     );
   }
   const co = companyProfile;
-  const { t, language } = useLanguage();
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
 
   const formatCurrency = (amount: number | undefined | null) => {
     if (amount === undefined || amount === null) return po.currency === 'USD' ? '$ 0.00' : 'Rp 0';
