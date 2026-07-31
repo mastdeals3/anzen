@@ -46,6 +46,12 @@ export interface PaymentPayload {
   bank_account_id?: string | null;
   reference_number?: string | null;
   amount: number;
+  invoice_currency?: FinanceCurrency;
+  invoice_amount?: number;
+  payment_amount?: number;
+  bank_currency?: FinanceCurrency;
+  converted_amount?: number;
+  actual_bank_debit?: number;
   pph_amount?: number;
   pph_code_id?: string | null;
   description?: string | null;

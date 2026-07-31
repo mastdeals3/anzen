@@ -8,6 +8,7 @@ import html2canvas from 'html2canvas';
 import { useFinance } from '../../contexts/FinanceContext';
 import { FINANCE_RECONCILIATION_REFRESH_EVENT } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
+import { calculateCanonicalCashPayable } from '../../utils/taxCalculations';
 
 interface Party {
   id: string;
@@ -231,7 +232,7 @@ export default function PartyLedger() {
       const { data: expenseBills } = await dateRange(
         supabase
           .from('finance_expenses')
-          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount, transaction_currency, currency_code, exchange_rate')
+          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items, paid_amount, transaction_currency, currency_code, exchange_rate')
           .eq('supplier_id', selectedParty)
           .neq('expense_category', 'import_broker')
           .is('payment_method', null)
@@ -241,15 +242,16 @@ export default function PartyLedger() {
 
       if (expenseBills) {
         expenseBills.forEach(bill => {
-          const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
+          const payable = calculateCanonicalCashPayable(bill);
+          const outstanding = payable - (bill.paid_amount ?? 0);
           const currency = bill.transaction_currency || bill.currency_code || 'IDR';
           entries.push({
             id: bill.id,
             entry_date: bill.expense_date,
-            particulars: `Expense Bill - ${(bill.expense_category || '').replace(/_/g, ' ')}${outstanding <= 0.01 ? ' (Paid)' : ''}${currencyDetail(bill.amount, currency, bill.exchange_rate)}`,
+            particulars: `Expense Bill - ${(bill.expense_category || '').replace(/_/g, ' ')}${outstanding <= 0.01 ? ' (Paid)' : ''}${currencyDetail(payable, currency, bill.exchange_rate)}`,
             reference: bill.invoice_number || bill.voucher_number || '',
             debit: 0,
-            credit: toFunctionalIDR(bill.amount, currency, bill.exchange_rate),
+            credit: toFunctionalIDR(payable, currency, bill.exchange_rate),
             running_balance: 0,
             type: 'invoice',
           });
@@ -316,7 +318,7 @@ export default function PartyLedger() {
       const { data: bills } = await dateRange(
         supabase
           .from('finance_expenses')
-          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, paid_amount, transaction_currency, currency_code, exchange_rate')
+          .select('id, expense_date, invoice_number, voucher_number, amount, expense_category, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items, paid_amount, transaction_currency, currency_code, exchange_rate')
           .eq('staff_id', selectedParty)
           .neq('expense_category', 'staff_advance')
           .is('payment_method', null)
@@ -326,15 +328,16 @@ export default function PartyLedger() {
 
       if (bills) {
         bills.forEach(bill => {
-          const outstanding = (bill.amount || 0) - (bill.paid_amount ?? 0);
+          const payable = calculateCanonicalCashPayable(bill);
+          const outstanding = payable - (bill.paid_amount ?? 0);
           const currency = bill.transaction_currency || bill.currency_code || 'IDR';
           entries.push({
             id: bill.id,
             entry_date: bill.expense_date,
-            particulars: `${(bill.expense_category || '').replace(/_/g, ' ')} Bill${outstanding <= 0.01 ? ' (Paid)' : ''}${currencyDetail(bill.amount, currency, bill.exchange_rate)}`,
+            particulars: `${(bill.expense_category || '').replace(/_/g, ' ')} Bill${outstanding <= 0.01 ? ' (Paid)' : ''}${currencyDetail(payable, currency, bill.exchange_rate)}`,
             reference: bill.invoice_number || bill.voucher_number || '',
             debit: 0,
-            credit: toFunctionalIDR(bill.amount, currency, bill.exchange_rate),
+            credit: toFunctionalIDR(payable, currency, bill.exchange_rate),
             running_balance: 0,
             type: 'invoice',
           });

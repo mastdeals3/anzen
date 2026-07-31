@@ -203,7 +203,6 @@ export function brokerLineTotal(item: BrokerItem): number {
 export function brokerLineExpenseBase(item: BrokerItem): number {
   const amount = Number(item.amount) || 0;
   const dpp = Number(item.dpp_amount) || 0;
-  const ppn = Number(item.ppn_amount) || 0;
   return amount + dpp;
 }
 

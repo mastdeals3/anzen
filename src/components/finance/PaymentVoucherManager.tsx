@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { useLanguage } from '../../contexts/LanguageContext';
 import { Search, ArrowUpCircle, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
@@ -71,6 +70,8 @@ interface PaymentVoucher {
   bank_account_id: string | null;
   reference_number: string | null;
   amount: number;
+  invoice_amount?: number | null;
+  payment_amount?: number | null;
   pph_amount: number;
   pph_code_id: string | null;
   net_amount: number;
@@ -78,6 +79,9 @@ interface PaymentVoucher {
   exchange_rate: number | null;
   bank_amount: number | null;
   bank_charge: number | null;
+  bank_currency?: string | null;
+  converted_amount?: number | null;
+  actual_bank_debit?: number | null;
   description: string | null;
   is_posted: boolean;
   journal_entry_id: string | null;
@@ -170,7 +174,6 @@ function fmt(amount: number, currency: string) {
 
 
 export function PaymentVoucherManager({ canManage, initialViewVoucherId, onInitialViewHandled, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice, onViewExpense, prefillFromBankReconciliation, onBankReconciliationPrefillConsumed }: PaymentVoucherManagerProps) {
-  const { t } = useLanguage();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const [cancelPostingTarget, setCancelPostingTarget] = useState<PaymentVoucher | null>(null);
@@ -377,7 +380,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
           .from('salary_advance_applications')
           .select('advance_payment_voucher_id, salary_expense_id, applied_amount, finance_expenses(voucher_number)')
           .in('advance_payment_voucher_id', voucherIds);
-        for (const application of (advanceApplications || []) as Array<{
+        for (const application of (advanceApplications || []) as unknown as Array<{
           advance_payment_voucher_id: string;
           salary_expense_id: string;
           applied_amount: number;
@@ -416,8 +419,8 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
 
       const enriched = (data || []).map((v: PaymentVoucher) => {
         const bankCcy = v.bank_accounts?.currency || 'IDR';
-        const isCross = v.bank_amount != null && v.bank_amount > 0 && Math.abs((v.exchange_rate || 1) - 1) > 0.0001;
-        const invCcy = allocCcyMap[v.id] || v.payment_currency || (isCross ? 'USD' : bankCcy);
+        const isCross = (v.invoice_currency || allocCcyMap[v.id] || bankCcy) !== bankCcy;
+        const invCcy = v.invoice_currency || allocCcyMap[v.id] || (isCross ? 'USD' : bankCcy);
         const bankLine = v.journal_entry_id ? bankLineMap.get(v.journal_entry_id) || null : null;
         return {
           ...v,
@@ -519,7 +522,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
   };
 
   const invoiceCurrency = pendingInvoices.length > 0 ? (pendingInvoices[0].currency || 'IDR') : 'IDR';
-  const bankCurrency = formData.payment_currency;
+  const bankCurrency = selectedBank?.currency || formData.payment_currency || 'IDR';
   const isCrossCurrency = pendingInvoices.length > 0 && invoiceCurrency !== bankCurrency;
 
   // Bank accounts split by whether they match the invoice currency
@@ -531,13 +534,13 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
     isCrossCurrency &&
     selectedBank !== null &&
     formData.exchange_rate <= 1;
-  const invoiceInIDR = isCrossCurrency ? formData.amount * formData.exchange_rate : formData.amount;
+  const effectiveRate = isCrossCurrency ? formData.exchange_rate : 1;
+  const invoiceInBankCurrency = formData.amount * effectiveRate;
   const bankCharge = formData.bank_charge || 0;
-  const totalBankDebit = invoiceInIDR + bankCharge;
   const netInvoiceAmount = formData.amount - formData.pph_amount;
-  const netBankDebit = isCrossCurrency
-    ? netInvoiceAmount * formData.exchange_rate + bankCharge
-    : netInvoiceAmount + bankCharge;
+  const convertedPaymentAmount = netInvoiceAmount * effectiveRate;
+  const totalBankDebit = convertedPaymentAmount + bankCharge;
+  const netBankDebit = totalBankDebit;
   const totalAllocated = allocations.reduce((sum, a) => sum + a.amount, 0);
   const totalExpenseBillAllocated = expenseBillAllocations.reduce((sum, a) => sum + a.amount, 0);
 
@@ -859,6 +862,12 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
         bank_account_id: formData.bank_account_id || null,
         reference_number: formData.reference_number || null,
         amount: formData.amount,
+        invoice_currency: invoiceCurrency as 'IDR' | 'USD',
+        invoice_amount: formData.amount,
+        payment_amount: netInvoiceAmount,
+        bank_currency: bankCurrency as 'IDR' | 'USD',
+        converted_amount: convertedPaymentAmount,
+        actual_bank_debit: totalBankDebit,
         pph_amount: formData.pph_amount,
         pph_code_id: formData.pph_code_id || null,
         description: formData.description || null,
@@ -1256,7 +1265,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                   <label className="block text-[10px] font-medium text-gray-500 mb-1">Converted ({bankCurrency})</label>
                   <input
                     readOnly
-                    value={invoiceInIDR.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
+                    value={invoiceInBankCurrency.toLocaleString('id-ID', { minimumFractionDigits: 0 })}
                     className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded bg-green-50 text-green-800 font-medium"
                   />
                 </div>
@@ -1616,7 +1625,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <div className="text-xs text-gray-500">Invoice Amount ({invCcy})</div>
-                      <div className="font-semibold text-gray-900">{fmt(viewingVoucher.amount || 0, invCcy)}</div>
+                      <div className="font-semibold text-gray-900">{fmt(viewingVoucher.invoice_amount ?? viewingVoucher.amount ?? 0, invCcy)}</div>
                     </div>
                     {isCross && viewingVoucher.exchange_rate && viewingVoucher.exchange_rate !== 1 && (
                       <div>
@@ -1634,7 +1643,9 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                       <div className="text-xs text-gray-500">Bank Debit ({bankCcy})</div>
                       <div className="font-semibold text-blue-700">
                         {fmt(
-                          viewingVoucher.bank_amount && viewingVoucher.bank_amount > 0
+                          viewingVoucher.actual_bank_debit && viewingVoucher.actual_bank_debit > 0
+                            ? viewingVoucher.actual_bank_debit
+                            : viewingVoucher.bank_amount && viewingVoucher.bank_amount > 0
                             ? viewingVoucher.bank_amount
                             : (viewingVoucher.amount || 0) + (viewingVoucher.bank_charge || 0),
                           bankCcy,
