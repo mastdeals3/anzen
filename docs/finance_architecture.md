@@ -1,5 +1,9 @@
 # finance_architecture.md — Anzen Finance Module
 
+> The permanent normative reference is
+> [finance_bible.md](finance_bible.md). This document provides supplementary
+> implementation detail and must remain consistent with the Bible.
+
 This document is the source of truth for how Finance works in Anzen. Read
 [finance_rules.md](finance_rules.md) first; this document explains how
 those rules are implemented.

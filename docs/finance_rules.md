@@ -1,5 +1,9 @@
 # finance_rules.md — Anzen Finance Constitution
 
+> Normative consolidation: [finance_bible.md](finance_bible.md). This file is a
+> concise constitutional companion. If wording conflicts, verify the applied
+> database and update both documents in the same change.
+
 Immutable rules that govern the Anzen Finance module. Every change to
 Finance-adjacent code MUST respect these. If a rule genuinely needs to
 change, it needs an explicit design discussion and an update to this file

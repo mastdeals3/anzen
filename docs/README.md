@@ -6,25 +6,28 @@ logic, and keep the Finance module's accounting invariants intact.
 
 ## Load order
 
-1. **[finance_rules.md](finance_rules.md)** — The constitution. Immutable
+1. **[finance_bible.md](finance_bible.md)** — The normative Finance Version 1.0
+   technical and accounting reference. Read this first for every Finance
+   change.
+2. **[finance_rules.md](finance_rules.md)** — The constitution. Immutable
    accounting invariants that MUST NOT be violated. Read this first.
-2. **[system_architecture.md](system_architecture.md)** — End-to-end flow
+3. **[system_architecture.md](system_architecture.md)** — End-to-end flow
    across CRM → Sales → Inventory → Finance → Tax → Reports.
-3. **[finance_architecture.md](finance_architecture.md)** — Chart of
+4. **[finance_architecture.md](finance_architecture.md)** — Chart of
    Accounts, all Finance flows, RPCs, triggers, and how modules post to
    the ledger.
-4. **[tax_compliance.md](tax_compliance.md)** — Indonesian tax
+5. **[tax_compliance.md](tax_compliance.md)** — Indonesian tax
    (PPN/PPh/Faktur Pajak) and the Tax Compliance Centre.
-5. **[database.md](database.md)** — Per-table reference (purpose, FKs,
+6. **[database.md](database.md)** — Per-table reference (purpose, FKs,
    triggers, RLS, RPCs, which UI uses it).
-6. **[changelog.md](changelog.md)** — Major project milestones.
-7. **[finance_v1_hardening.md](finance_v1_hardening.md)** — Version 1.0
+7. **[changelog.md](changelog.md)** — Major project milestones.
+8. **[finance_v1_hardening.md](finance_v1_hardening.md)** — Version 1.0
    hardening evidence, regression matrix, open gates, and baseline plan.
-8. **[finance_v1_reference.md](finance_v1_reference.md)** — frozen Finance
+9. **[finance_v1_reference.md](finance_v1_reference.md)** — frozen Finance
    posting, payment, receipt, broker, currency, tax, and UI flows.
-9. **[finance_v1_release_notes.md](finance_v1_release_notes.md)** — release
+10. **[finance_v1_release_notes.md](finance_v1_release_notes.md)** — release
    notes, production checklist, scores, and release risks.
-10. **[migration_reconciliation_plan.md](migration_reconciliation_plan.md)** —
+11. **[migration_reconciliation_plan.md](migration_reconciliation_plan.md)** —
     local/remote drift evidence and the safe baseline strategy.
 
 ## Golden rules for AI sessions editing this project
