@@ -20,6 +20,12 @@ logic, and keep the Finance module's accounting invariants intact.
 6. **[changelog.md](changelog.md)** — Major project milestones.
 7. **[finance_v1_hardening.md](finance_v1_hardening.md)** — Version 1.0
    hardening evidence, regression matrix, open gates, and baseline plan.
+8. **[finance_v1_reference.md](finance_v1_reference.md)** — frozen Finance
+   posting, payment, receipt, broker, currency, tax, and UI flows.
+9. **[finance_v1_release_notes.md](finance_v1_release_notes.md)** — release
+   notes, production checklist, scores, and release risks.
+10. **[migration_reconciliation_plan.md](migration_reconciliation_plan.md)** —
+    local/remote drift evidence and the safe baseline strategy.
 
 ## Golden rules for AI sessions editing this project
 
