@@ -12,7 +12,9 @@ in the same commit.
 - **Sales Invoices** post via `post_sales_invoice_journal()` trigger.
 - **Purchase Invoices** post via `post_purchase_invoice_journal()` trigger.
 - **Receipt Vouchers** post via `post_receipt_voucher_journal()` trigger.
-- **Payment Vouchers** post via `post_payment_voucher_journal()` trigger.
+- **Payment Vouchers** are saved through `save_payment_voucher_command` and
+  posted through the canonical `post_payment_voucher(uuid, uuid)` RPC. The
+  legacy insert trigger remains only for backward compatibility.
 - **Petty Cash Vouchers** post via `post_petty_cash_journal()` trigger.
 - **Finance Expenses** post via `auto_post_expense_accounting()` trigger.
 - **Tax Payments** post via the `record_tax_payment(...)` RPC (not a

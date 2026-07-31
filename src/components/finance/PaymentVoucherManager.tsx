@@ -11,7 +11,7 @@ import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { formatCurrency } from '../../utils/currency';
-import { getReportingUsdRate, linkBankStatementLine, savePaymentVoucher } from '../../services/financeCommands';
+import { linkBankStatementLine, savePaymentVoucher } from '../../services/financeCommands';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
 import { FinanceActionButton, FinanceBadge } from './FinanceUI';
 import {
@@ -312,13 +312,19 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       if (bank) {
         setSelectedBank(bank);
         if (!editingVoucher) {
-          setFormData(prev => ({ ...prev, payment_currency: bank.currency || 'IDR', exchange_rate: 1 }));
+          setFormData(prev => {
+            const invoiceCcy = pendingInvoices[0]?.currency || 'IDR';
+            const bankCcy = bank.currency || 'IDR';
+            const nextRate = invoiceCcy === bankCcy ? 1 : 0;
+            if (prev.payment_currency === bankCcy && prev.exchange_rate === nextRate) return prev;
+            return { ...prev, payment_currency: bankCcy, exchange_rate: nextRate };
+          });
         }
       }
     } else {
       setSelectedBank(null);
     }
-  }, [formData.bank_account_id, bankAccounts, editingVoucher]);
+  }, [formData.bank_account_id, bankAccounts, editingVoucher, pendingInvoices]);
 
   useEffect(() => {
     if (formData.pph_code_id && formData.amount > 0) {
@@ -533,7 +539,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
   const currencyMismatchWithoutRate =
     isCrossCurrency &&
     selectedBank !== null &&
-    formData.exchange_rate <= 1;
+    formData.exchange_rate <= 0;
   const effectiveRate = isCrossCurrency ? formData.exchange_rate : 1;
   const invoiceInBankCurrency = formData.amount * effectiveRate;
   const bankCharge = formData.bank_charge || 0;
@@ -841,17 +847,15 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       );
       return;
     }
-      if (isCrossCurrency && formData.exchange_rate <= 1) {
-        alert(`Cross-currency payment requires an exchange rate greater than 1. Please enter the rate in the Currency Conversion panel.`);
+      if (isCrossCurrency && formData.exchange_rate <= 0) {
+        alert(`Cross-currency payment requires a positive exchange rate. Please enter the rate in the Currency Conversion panel.`);
         return;
       }
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-      const effectiveExchangeRate = formData.payment_currency === 'IDR'
-        ? 1
-        : (formData.exchange_rate > 1 ? formData.exchange_rate : await getReportingUsdRate());
+      const effectiveExchangeRate = isCrossCurrency ? formData.exchange_rate : 1;
 
       const payload = {
         voucher_date: formData.voucher_date,
@@ -1256,7 +1260,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                     step="0.000001"
                     min="0.000001"
                     value={formData.exchange_rate || ''}
-                    onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 1 })}
+                    onChange={(e) => setFormData({ ...formData, exchange_rate: parseFloat(e.target.value) || 0 })}
                     className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white focus:ring-1 focus:ring-amber-400"
                     placeholder="e.g. 16200"
                   />

@@ -40,9 +40,11 @@ journal_entries + journal_entry_lines
       └─▶ landed cost push-down to batches
 ```
 
-Payment against a PI: PaymentVoucherManager.tsx → payment_vouchers INSERT
-→ post_payment_voucher_journal() → Dr AP, [Dr PPh Payable if withholding],
-Cr Bank. Allocation via `voucher_allocations` (invoice-level).
+Payment against a PI: PaymentVoucherManager.tsx → `save_payment_voucher_command`
+→ `payment_vouchers` → explicit `post_payment_voucher(uuid, uuid)` → Dr AP,
+Cr Bank, Cr PPh Payable when withholding applies. Allocation via
+`voucher_allocations` (invoice-level). The legacy insert trigger remains for
+backward compatibility, but new UI posting uses the canonical RPC.
 
 Delete: `delete_purchase_invoice(uuid)` (2026-07-09) reverses the JE,
 unallocated payment vouchers, and rolls back any orphaned rec items.
@@ -87,12 +89,15 @@ PPh period for the Tax Compliance views.
 
 ## 5. Payment Flow (Payment Voucher)
 
-`post_payment_voucher_journal()` — see migration
-`20260208180627_fix_journal_entry_number_generation_atomic.sql`:
+`post_payment_voucher(uuid, uuid)` — canonical posting RPC defined by
+`20260731140000_canonical_payment_currency_model.sql`:
 
 - Dr AP (2110)
-- Dr PPh Payable (2132) if `pph_amount > 0`
+- Cr PPh Payable (2132) if `pph_amount > 0`
 - Cr Bank (bank_accounts.coa_id or 1111 fallback, or 1101 if cash)
+- Bank charges are debited to 7100.
+- Cross-currency payments post functional IDR amounts and preserve source
+  amounts/rates on journal lines; any residual is posted to FX gain/loss 7300.
 
 ## 6. Receipt Flow (Receipt Voucher)
 
@@ -263,7 +268,8 @@ Delegated to [tax_compliance.md](tax_compliance.md). Key points:
 | `post_sales_invoice_journal()` (trigger) | Post JE for a sales invoice |
 | `post_purchase_invoice_journal()` (trigger) | Post JE + landed cost |
 | `post_receipt_voucher_journal()` (trigger) | Post JE for a receipt |
-| `post_payment_voucher_journal()` (trigger) | Post JE + PPh withholding |
+| `save_payment_voucher_command(uuid, jsonb, jsonb)` | Save canonical payment currencies and allocations |
+| `post_payment_voucher(uuid, uuid)` | Post JE + PPh withholding, bank charges, and FX adjustment |
 | `post_petty_cash_journal()` (trigger) | Post JE for petty cash voucher |
 | `auto_post_expense_accounting()` (trigger) | Post JE for finance_expense |
 | `delete_purchase_invoice(uuid)` | Safe reverse+delete for a PI |
@@ -288,7 +294,8 @@ Delegated to [tax_compliance.md](tax_compliance.md). Key points:
 | sales_invoices | trg_post_sales_invoice | post_sales_invoice_journal |
 | purchase_invoices | trg_post_purchase_invoice | post_purchase_invoice_journal |
 | receipt_vouchers | trg_post_receipt_voucher | post_receipt_voucher_journal |
-| payment_vouchers | trg_post_payment_voucher | post_payment_voucher_journal |
+| payment_vouchers | `trg_post_payment_voucher` (legacy compatibility) | `post_payment_voucher_journal` |
+| payment_vouchers | explicit UI/RPC posting path | `post_payment_voucher` |
 | petty_cash_vouchers | trg_post_petty_cash | post_petty_cash_journal |
 | finance_expenses | trg_auto_post_expense | auto_post_expense_accounting |
 | sales_invoices | trg_lock_sales_invoices_by_period | enforce_tax_period_lock |

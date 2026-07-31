@@ -18,6 +18,8 @@ logic, and keep the Finance module's accounting invariants intact.
 5. **[database.md](database.md)** — Per-table reference (purpose, FKs,
    triggers, RLS, RPCs, which UI uses it).
 6. **[changelog.md](changelog.md)** — Major project milestones.
+7. **[finance_v1_hardening.md](finance_v1_hardening.md)** — Version 1.0
+   hardening evidence, regression matrix, open gates, and baseline plan.
 
 ## Golden rules for AI sessions editing this project
 

@@ -17,6 +17,13 @@ BEGIN
     RAISE EXCEPTION 'USD to IDR conversion regression: %, %', v_converted, v_actual;
   END IF;
 
+  -- Rates are directional: IDR -> USD is a positive fractional rate.
+  IF 21000 * 16990 <> 356790000
+     OR 356790000 * (1.0 / 16990) <> 21000
+     OR 1000000 * 0.000058858151 <> 58.858151 THEN
+    RAISE EXCEPTION 'Bidirectional currency conversion regression';
+  END IF;
+
   SELECT invoice_currency, bank_currency, converted_amount, actual_bank_debit
     INTO v_invoice_currency, v_bank_currency, v_converted, v_actual
   FROM public.payment_vouchers WHERE voucher_number='PV/25-26/004';
