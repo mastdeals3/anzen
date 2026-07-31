@@ -2624,7 +2624,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </div>
                   )}
 
-                  {/* ── Row C: Amount · DPP · PPN · PPh ── */}
+                  {/* ── Row C: Amount · DPP · PPN · PPh · PPh Code · Stamp · Bank Chg · Container · DC · Asset ── */}
                   <SapRow>
                     <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={3}>
                       <MoneyInput value={formData.amount} required placeholder="0.00"
@@ -2735,10 +2735,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           className={SAP_INPUT + ' !text-right !font-mono text-orange-700'} />
                       </SapField>
                     )}
-                  </SapRow>
-
-                  {/* ── Row D: PPh Code · Stamp Duty · Bank Charges · Import Container ── */}
-                  <SapRow>
                     {(taxCfg?.pph23 || taxCfg?.pph21) && (
                       <SapField label="PPh Code" span={3}>
                         <SearchableSelect
