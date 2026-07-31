@@ -903,7 +903,10 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       loadVouchers();
     } catch (error: unknown) {
       console.error('Error saving voucher:', error);
-      alert('Failed to save: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      const msg = (error instanceof Error ? error.message : null)
+        ?? (error && typeof error === 'object' && 'message' in error ? String((error as { message: unknown }).message) : null)
+        ?? 'Unknown error';
+      alert('Failed to save: ' + msg);
     }
   };
 
