@@ -490,12 +490,12 @@ export function BankReconciliationEnhanced({
       if (paymentIds.length > 0) {
         const { data: payments } = await supabase
           .from('payment_vouchers')
-          .select('id, amount, voucher_date, voucher_number, supplier_id, staff_id, suppliers(company_name), finance_staff_master(full_name)')
+          .select('id, amount, bank_amount, payment_currency, voucher_date, voucher_number, supplier_id, staff_id, suppliers(company_name), finance_staff_master(full_name)')
           .in('id', paymentIds);
         payments?.forEach(payment => {
           paymentMap.set(payment.id, {
             id: payment.id,
-            amount: payment.amount,
+            amount: payment.bank_amount && Number(payment.bank_amount) > 0 ? payment.bank_amount : payment.amount,
             voucher_date: payment.voucher_date,
             voucher_number: payment.voucher_number,
             supplier_name: (payment.suppliers as any)?.company_name,
@@ -2031,7 +2031,7 @@ export function BankReconciliationEnhanced({
       // requires the staff-accounting migration; fall back without it.
       let { data: vouchers, error: pvErr } = await supabase
         .from('payment_vouchers')
-        .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, journal_entry_id, bank_account_id, payment_method, suppliers(company_name), finance_staff_master(full_name)')
+        .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, bank_amount, payment_currency, journal_entry_id, bank_account_id, payment_method, suppliers(company_name), finance_staff_master(full_name)')
         .gte('voucher_date', from.toISOString().split('T')[0])
         .lte('voucher_date', to.toISOString().split('T')[0])
         .order('voucher_date', { ascending: false })
@@ -2039,7 +2039,7 @@ export function BankReconciliationEnhanced({
       if (pvErr && /finance_staff_master|staff_id/i.test(pvErr.message || '')) {
         const fb = await supabase
           .from('payment_vouchers')
-          .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, journal_entry_id, bank_account_id, payment_method, suppliers(company_name)')
+          .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, bank_amount, payment_currency, journal_entry_id, bank_account_id, payment_method, suppliers(company_name)')
           .gte('voucher_date', from.toISOString().split('T')[0])
           .lte('voucher_date', to.toISOString().split('T')[0])
           .order('voucher_date', { ascending: false })
@@ -2077,10 +2077,16 @@ export function BankReconciliationEnhanced({
 
       // Prefer amount matches within 5% tolerance (gross OR net-of-PPh);
       // fall back to top 20 available candidates when nothing matches.
-      const filtered = available.filter((pv: any) =>
-        Math.abs((pv.net_amount ?? pv.amount) - amount) < amount * 0.05 ||
-        Math.abs(pv.amount - amount) < amount * 0.05,
-      );
+      const filtered = available.filter((pv: any) => {
+        const bankAmt = pv.bank_amount && Number(pv.bank_amount) > 0 ? Number(pv.bank_amount) : null;
+        const netAmt = Number(pv.net_amount ?? pv.amount);
+        const grossAmt = Number(pv.amount);
+        const tolerance = amount * 0.05;
+        if (bankAmt && Math.abs(bankAmt - amount) < tolerance) return true;
+        if (Math.abs(netAmt - amount) < tolerance) return true;
+        if (Math.abs(grossAmt - amount) < tolerance) return true;
+        return false;
+      });
       setSupplierPayments(filtered.length > 0 ? filtered : available.slice(0, 20));
     } catch (err) {
       console.error('Error loading supplier payments:', err);
@@ -3394,8 +3400,9 @@ export function BankReconciliationEnhanced({
                                 <div className="text-xs text-gray-400">{new Date(pv.voucher_date).toLocaleDateString('id-ID')}</div>
                               </div>
                               <div className="text-right">
-                                <div className="font-medium text-red-600">{formatCurrency(pv.net_amount, recordingLine.currency)}</div>
-                                {pv.pph_amount > 0 && <div className="text-xs text-orange-500">Gross: {formatCurrency(pv.amount, recordingLine.currency)}</div>}
+                                <div className="font-medium text-red-600">{formatCurrency(pv.bank_amount && Number(pv.bank_amount) > 0 ? pv.bank_amount : pv.net_amount, recordingLine.currency)}</div>
+                                {pv.bank_amount && Number(pv.bank_amount) > 0 && Number(pv.bank_amount) !== Number(pv.amount) && <div className="text-xs text-blue-500">Invoice: {formatCurrency(pv.amount, pv.payment_currency || 'USD')}</div>}
+                                {pv.pph_amount > 0 && <div className="text-xs text-orange-500">PPh: {formatCurrency(pv.pph_amount, recordingLine.currency)}</div>}
                               </div>
                             </button>
                           ))
