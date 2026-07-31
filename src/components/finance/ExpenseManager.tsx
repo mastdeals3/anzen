@@ -2472,8 +2472,32 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               return (
                 <div className="pb-2 mb-1 border-b border-gray-200 flex flex-col gap-1">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Basic Information</p>
-                  {/* ── Row A: Category · Doc Date · Supplier · Invoice No ── */}
+                  {/* ── Row A: Date · Invoice No · Category · Supplier ── */}
                   <SapRow>
+                    <SapField
+                      label={rules.billingMonth === 'show' ? 'Billing Date' : 'Date'}
+                      required span={3}
+                    >
+                      <input type="date" value={formData.expense_date}
+                        onChange={(e) => {
+                          const d = e.target.value;
+                          setFormData(prev => ({
+                            ...prev, expense_date: d,
+                            due_date: getDueDateFromTerms(d, selectedSupplier?.payment_terms_days ?? 30),
+                          }));
+                        }}
+                        className={SAP_INPUT} required
+                        title={rules.billingMonth === 'show' ? 'Date printed on the utility bill' : undefined} />
+                    </SapField>
+                    <SapField
+                      label={rules.billingMonth === 'show' ? 'Billing Reference' : 'Supplier Invoice Number'}
+                      span={3}
+                    >
+                      <input type="text" value={formData.invoice_number}
+                        onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
+                        className={SAP_INPUT}
+                        placeholder={rules.billingMonth === 'show' ? 'Bill number / account ref' : 'Enter invoice number'} />
+                    </SapField>
                     <SapField label="Category" required span={3}>
                       <SearchableSelect
                         value={formData.expense_category}
@@ -2500,30 +2524,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         )}
                         placeholder="Select category"
                       />
-                    </SapField>
-                    <SapField
-                      label={rules.billingMonth === 'show' ? 'Billing Date' : 'Doc Date'}
-                      required span={3}
-                    >
-                      <input type="date" value={formData.expense_date}
-                        onChange={(e) => {
-                          const d = e.target.value;
-                          setFormData(prev => ({
-                            ...prev, expense_date: d,
-                            due_date: getDueDateFromTerms(d, selectedSupplier?.payment_terms_days ?? 30),
-                          }));
-                        }}
-                        className={SAP_INPUT} required
-                        title={rules.billingMonth === 'show' ? 'Date printed on the utility bill' : undefined} />
-                    </SapField>
-                    <SapField
-                      label={rules.billingMonth === 'show' ? 'Billing Reference' : 'Supplier Invoice Number'}
-                      span={3}
-                    >
-                      <input type="text" value={formData.invoice_number}
-                        onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
-                        className={SAP_INPUT}
-                        placeholder={rules.billingMonth === 'show' ? 'Bill number / account ref' : 'Enter invoice number'} />
                     </SapField>
                     <SapField
                       label={rules.staff === 'show' ? 'Staff' : rules.utility === 'show' ? 'Utility' : (isBroker ? 'Broker' : 'Supplier')}
@@ -2570,37 +2570,24 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </SapField>
                   </SapRow>
 
-                  {/* ── Row B: Inv No · Period · Reference ── */}
-                  <SapRow>
-                    <SapField
-                      label={rules.billingMonth === 'show' ? 'Billing Reference' : 'Supplier Invoice Number'}
-                      span={3}
-                    >
-                      <input type="text" value={formData.invoice_number}
-                        onChange={(e) => setFormData({ ...formData, invoice_number: e.target.value })}
-                        className={SAP_INPUT}
-                        placeholder={rules.billingMonth === 'show' ? 'Bill number / account ref' : 'Enter invoice number'} />
-                    </SapField>
-                    {rules.salaryMonth === 'show' ? (
-                      <SapField label="Salary Month" required span={3}>
-                        <input type="month" value={periodLabel}
-                          onChange={(e) => setPeriodLabel(e.target.value)}
-                          className={SAP_INPUT} />
-                      </SapField>
-                    ) : rules.billingMonth === 'show' ? (
-                      <SapField label="Billing Month" required span={3}>
-                        <input type="month" value={periodLabel}
-                          onChange={(e) => setPeriodLabel(e.target.value)}
-                          className={SAP_INPUT} title="The month this bill covers" />
-                      </SapField>
-                    ) : (
-                      <SapField label="Reference / Cheque No." span={3}>
-                        <input type="text" value={formData.payment_reference}
-                          onChange={(e) => setFormData({ ...formData, payment_reference: e.target.value })}
-                          className={SAP_INPUT} placeholder="TT ref / cheque #" />
-                      </SapField>
-                    )}
-                  </SapRow>
+                  {/* ── Row B: Period (conditional — salary / billing month only) ── */}
+                  {(rules.salaryMonth === 'show' || rules.billingMonth === 'show') && (
+                    <SapRow>
+                      {rules.salaryMonth === 'show' ? (
+                        <SapField label="Salary Month" required span={3}>
+                          <input type="month" value={periodLabel}
+                            onChange={(e) => setPeriodLabel(e.target.value)}
+                            className={SAP_INPUT} />
+                        </SapField>
+                      ) : (
+                        <SapField label="Billing Month" required span={3}>
+                          <input type="month" value={periodLabel}
+                            onChange={(e) => setPeriodLabel(e.target.value)}
+                            className={SAP_INPUT} title="The month this bill covers" />
+                        </SapField>
+                      )}
+                    </SapRow>
+                  )}
 
                   {rules.staff === 'show' && formData.expense_category === 'salary' && selectedStaffId && salaryAdvances.length > 0 && (
                     <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">
@@ -2637,7 +2624,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </div>
                   )}
 
-                  {/* ── Row C: Invoice Amount · Invoice DPP (broker) · PPN · PPh · Stamp · Bank Chg ── */}
+                  {/* ── Row C: Amount · DPP · PPN · PPh ── */}
                   <SapRow>
                     <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={3}>
                       <MoneyInput value={formData.amount} required placeholder="0.00"
@@ -2658,7 +2645,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       <SapField label="Invoice DPP (Tax Base)" span={3}>
                         <MoneyInput value={formData.dpp_amount} placeholder="0.00"
                           onChange={(dpp) => setFormData(prev => {
-                            // If a preset PPN rate is active (not manual), recompute PPN from new DPP.
                             const rate = prev.ppn_rate ?? 11;
                             const isManual = prev.ppn_calc_mode === 'manual';
                             const ppn = isManual ? prev.ppn_amount : Math.round(dpp * rate / 100);
@@ -2728,7 +2714,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             readOnly={isBroker && formData.ppn_calc_mode !== 'manual'}
                             onChange={(v) => setFormData(prev => {
                               if (prev.expense_category === 'import_broker') {
-                                // Broker: manual-only mode allows edit; preset modes are read-only above.
                                 return { ...prev, ppn_amount: v };
                               }
                               return {
@@ -2744,35 +2729,35 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       </>
                     )}
                     {(taxCfg?.pph23 || taxCfg?.pph21) && (
-                      <>
-                        <SapField label={taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'} span={3}>
-                          <MoneyInput value={formData.pph_amount} placeholder="0.00"
-                            onChange={(v) => setFormData({ ...formData, pph_amount: v })}
-                            className={SAP_INPUT + ' !text-right !font-mono text-orange-700'} />
-                        </SapField>
-                        <SapField label="PPh Code" span={3}>
-                          <SearchableSelect
-                            value={formData.pph_code_id}
-                            onChange={(val) => {
-                              const tc = taxCodes.find(t => t.id === val);
-                              setFormData(prev => ({
-                                ...prev,
-                                pph_code_id: val,
-                                // Only auto-calc when rate > 0. PPh21 codes carry rate=0 because
-                                // the actual withholding is bracket-based and entered manually.
-                                // Clearing the code (val='') resets amount to 0.
-                                // Preserving the existing amount avoids wiping a manually entered value.
-                                pph_amount: !val ? 0 : (tc && tc.rate > 0) ? Math.round(prev.amount * tc.rate / 100) : prev.pph_amount,
-                              }));
-                            }}
-                            options={[{ value: '', label: 'None' }, ...taxCodes.map(tc => ({
-                              value: tc.id,
-                              label: tc.tax_type === 'PPh21' ? `${tc.code} (Manual)` : `${tc.code} — ${tc.rate}%`,
-                            }))]}
-                            placeholder="None"
-                          />
-                        </SapField>
-                      </>
+                      <SapField label={taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'} span={3}>
+                        <MoneyInput value={formData.pph_amount} placeholder="0.00"
+                          onChange={(v) => setFormData({ ...formData, pph_amount: v })}
+                          className={SAP_INPUT + ' !text-right !font-mono text-orange-700'} />
+                      </SapField>
+                    )}
+                  </SapRow>
+
+                  {/* ── Row D: PPh Code · Stamp Duty · Bank Charges · Import Container ── */}
+                  <SapRow>
+                    {(taxCfg?.pph23 || taxCfg?.pph21) && (
+                      <SapField label="PPh Code" span={3}>
+                        <SearchableSelect
+                          value={formData.pph_code_id}
+                          onChange={(val) => {
+                            const tc = taxCodes.find(t => t.id === val);
+                            setFormData(prev => ({
+                              ...prev,
+                              pph_code_id: val,
+                              pph_amount: !val ? 0 : (tc && tc.rate > 0) ? Math.round(prev.amount * tc.rate / 100) : prev.pph_amount,
+                            }));
+                          }}
+                          options={[{ value: '', label: 'None' }, ...taxCodes.map(tc => ({
+                            value: tc.id,
+                            label: tc.tax_type === 'PPh21' ? `${tc.code} (Manual)` : `${tc.code} — ${tc.rate}%`,
+                          }))]}
+                          placeholder="None"
+                        />
+                      </SapField>
                     )}
                     {taxCfg?.stamp && (
                       <SapField label="Stamp Duty" span={3}>
@@ -2788,43 +2773,37 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           className={SAP_INPUT + ' !text-right !font-mono'} />
                       </SapField>
                     )}
+                    {(requiresContainer || isBroker) && (
+                      <SapField label="Import Container" required={requiresContainer} span={3}>
+                        <SearchableSelect
+                          value={formData.import_container_id}
+                          onChange={(val) => setFormData({ ...formData, import_container_id: val })}
+                          options={[{ value: '', label: 'Select import container' }, ...containers.map(c => ({ value: c.id, label: c.container_ref }))]}
+                          placeholder="Select import container"
+                        />
+                      </SapField>
+                    )}
+                    {requiresDC && (
+                      <SapField label="DC" span={3}>
+                        <SearchableSelect
+                          value={formData.delivery_challan_id}
+                          onChange={(val) => setFormData({ ...formData, delivery_challan_id: val })}
+                          options={[{ value: '', label: 'None' }, ...challans.map(ch => ({ value: ch.id, label: `${ch.challan_number} — ${new Date(ch.challan_date).toLocaleDateString('en-GB')} — ${ch.customers?.company_name || ''}` }))]}
+                          placeholder="None"
+                        />
+                      </SapField>
+                    )}
+                    {formData.expense_category === 'fixed_asset' && (
+                      <SapField label="Asset Acct" required span={3}>
+                        <SearchableSelect
+                          value={formData.fixed_asset_account_id}
+                          onChange={(val) => setFormData({ ...formData, fixed_asset_account_id: val })}
+                          options={[{ value: '', label: 'Select account' }, ...coaAssets.map(a => ({ value: a.id, label: `${a.code} — ${a.name}` }))]}
+                          placeholder="Select account"
+                        />
+                      </SapField>
+                    )}
                   </SapRow>
-
-                  {/* ── Row D: Contextual — Container · DC · Fixed Asset ── */}
-                  {((requiresContainer || isBroker) || requiresDC || formData.expense_category === 'fixed_asset') && (
-                    <SapRow>
-                      {(requiresContainer || isBroker) && (
-                        <SapField label="Import Container" required={requiresContainer} span={3}>
-                          <SearchableSelect
-                            value={formData.import_container_id}
-                            onChange={(val) => setFormData({ ...formData, import_container_id: val })}
-                            options={[{ value: '', label: 'Select import container' }, ...containers.map(c => ({ value: c.id, label: c.container_ref }))]}
-                            placeholder="Select import container"
-                          />
-                        </SapField>
-                      )}
-                      {requiresDC && (
-                        <SapField label="DC" span={3}>
-                          <SearchableSelect
-                            value={formData.delivery_challan_id}
-                            onChange={(val) => setFormData({ ...formData, delivery_challan_id: val })}
-                            options={[{ value: '', label: 'None' }, ...challans.map(ch => ({ value: ch.id, label: `${ch.challan_number} — ${new Date(ch.challan_date).toLocaleDateString('en-GB')} — ${ch.customers?.company_name || ''}` }))]}
-                            placeholder="None"
-                          />
-                        </SapField>
-                      )}
-                      {formData.expense_category === 'fixed_asset' && (
-                        <SapField label="Asset Acct" required span={3}>
-                          <SearchableSelect
-                            value={formData.fixed_asset_account_id}
-                            onChange={(val) => setFormData({ ...formData, fixed_asset_account_id: val })}
-                            options={[{ value: '', label: 'Select account' }, ...coaAssets.map(a => ({ value: a.id, label: `${a.code} — ${a.name}` }))]}
-                            placeholder="Select account"
-                          />
-                        </SapField>
-                      )}
-                    </SapRow>
-                  )}
 
                   {/* ── Row E: Description (full width) ── */}
                   <SapRow>
