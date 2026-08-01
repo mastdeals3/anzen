@@ -58,6 +58,33 @@ BEGIN
   PERFORM public.unmatch_bank_line(v_line);
   PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
 
+  -- Finance V1.1.1 lifecycle: cancelling, editing and re-approving must create
+  -- exactly one new canonical journal. Linking payment metadata must not
+  -- regenerate that journal or leave matched_entry_id stale.
+  PERFORM public.unmatch_bank_line(v_line);
+  PERFORM public.cancel_expense_posting(v_expense,v_user,'Finance V1.1.1 rollback regression');
+  UPDATE public.finance_expenses SET description=description WHERE id=v_expense;
+  SELECT count(*) INTO v_count FROM public.journal_entries
+   WHERE source_module='expenses' AND reference_id=v_expense
+     AND is_posted=true AND COALESCE(is_reversed,false)=false;
+  IF v_count<>0 THEN RAISE EXCEPTION 'Draft Broker Expense edit created % active journals',v_count; END IF;
+  PERFORM public.approve_finance_expense(v_expense,v_user);
+  SELECT id INTO v_je FROM public.journal_entries
+   WHERE source_module='expenses' AND reference_id=v_expense
+     AND is_posted=true AND COALESCE(is_reversed,false)=false
+   ORDER BY created_at DESC LIMIT 1;
+  PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
+  PERFORM 1 FROM public.bank_statement_lines
+   WHERE id=v_line AND matched_expense_id=v_expense AND matched_entry_id=v_je
+     AND reconciliation_status='matched';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Edited Broker Expense link retained a stale journal reference'; END IF;
+  PERFORM public.unmatch_bank_line(v_line);
+  PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
+  SELECT count(*) INTO v_count FROM public.journal_entries
+   WHERE source_module='expenses' AND reference_id=v_expense
+     AND is_posted=true AND COALESCE(is_reversed,false)=false;
+  IF v_count<>1 THEN RAISE EXCEPTION 'Broker Expense relink produced % active journals',v_count; END IF;
+
   UPDATE public.finance_staff_master SET monthly_salary=2000000,salary_type='monthly',
     pph21_applicable=true,pph21_method='percentage',pph21_percentage=5,
     default_payment_method='bank_transfer' WHERE id=v_staff;
@@ -181,7 +208,8 @@ try {
   const response=JSON.parse(stdout.slice(stdout.indexOf('{')));
   if(response.error) throw new Error(response.error.message ?? JSON.stringify(response.error));
   console.log(JSON.stringify({status:'passed',transaction:'rolled_back',checks:[
-    'expense_split_journal_bank_link_unlink_relink','payment_create_edit_multiple_attachments',
+    'expense_split_journal_bank_link_unlink_relink','expense_cancel_edit_reapprove_stable_journal',
+    'payment_create_edit_multiple_attachments',
     'payment_bank_link_unlink_relink_document_identity','staff_salary_master_calculation',
     'usd_21000_to_idr_356840000_cross_currency_payment',
     'salary_advance_fifo_settlement_after_pph21','salary_journal_and_withholding_liability',

@@ -3995,7 +3995,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         <Modal isOpen={cancelPostingModalOpen} onClose={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }} title="Cancel Expense Posting" size="sm">
           <div className="space-y-4">
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
-              <p className="font-semibold mb-1">{cancelPostingTarget.expense_category} — {formatCurrency(cancelPostingTarget.amount, getExpenseCurrency(cancelPostingTarget))}</p>
+              <p className="font-semibold mb-1">{cancelPostingTarget.expense_category} — {formatCurrency(calculateCanonicalExpenseTotal(cancelPostingTarget), getExpenseCurrency(cancelPostingTarget))}</p>
               <p>This will delete the posted journal entry and return the expense to Draft. Edit and re-approve to repost.</p>
               <p className="mt-1 text-xs flex items-center gap-1"><Lock className="w-3 h-3" /> Not allowed if the accounting period is closed.</p>
             </div>
