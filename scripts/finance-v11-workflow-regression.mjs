@@ -1,0 +1,197 @@
+import { execFileSync } from 'node:child_process';
+
+const sql = `
+BEGIN;
+SELECT set_config('request.jwt.claim.sub',(
+  SELECT id::text FROM public.user_profiles
+   WHERE role IN ('admin','accounts') AND is_active=true
+   ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END,id LIMIT 1),true);
+SELECT set_config('request.jwt.claim.role','authenticated',true);
+SET LOCAL ROLE authenticated;
+
+DO $regression$
+DECLARE
+  v_user uuid:=auth.uid();
+  v_staff uuid;
+  v_bank uuid;
+  v_upload uuid;
+  v_line uuid;
+  v_expense uuid;
+  v_payment uuid;
+  v_fx_payment uuid;
+  v_supplier uuid;
+  v_salary uuid;
+  v_saved jsonb;
+  v_calc jsonb;
+  v_applied jsonb;
+  v_pph21 uuid;
+  v_je uuid;
+  v_count bigint;
+BEGIN
+  SELECT id INTO v_staff FROM public.finance_staff_master WHERE status='active' ORDER BY created_at,id LIMIT 1;
+  SELECT id INTO v_pph21 FROM public.tax_codes WHERE upper(code)='PPH21' LIMIT 1;
+  SELECT id INTO v_expense FROM public.finance_expenses WHERE voucher_number='EXP/26-26/113';
+  SELECT bank_account_id INTO v_bank FROM public.finance_expenses WHERE id=v_expense;
+  SELECT id INTO v_supplier FROM public.suppliers ORDER BY created_at,id LIMIT 1;
+  IF v_user IS NULL OR v_staff IS NULL OR v_bank IS NULL OR v_pph21 IS NULL OR v_expense IS NULL OR v_supplier IS NULL THEN
+    RAISE EXCEPTION 'Finance V1.1 authenticated fixtures are incomplete';
+  END IF;
+
+  INSERT INTO public.bank_statement_uploads(
+    bank_account_id,statement_period,statement_start_date,statement_end_date,currency,uploaded_by,status)
+  VALUES(v_bank,'Finance V1.1 rollback regression',current_date,current_date,'IDR',v_user,'completed')
+  RETURNING id INTO v_upload;
+
+  -- The production broker journal has five bank credits. Their selected-bank
+  -- total, not any individual line, must validate against the bank debit.
+  INSERT INTO public.bank_statement_lines(
+    upload_id,bank_account_id,transaction_date,description,debit_amount,credit_amount,currency,created_by)
+  SELECT v_upload,fe.bank_account_id,fe.expense_date,'V1.1 split broker regression',
+         accounting.final_cash_payable,0,'IDR',v_user
+    FROM public.finance_expenses fe
+    JOIN public.vw_customs_broker_accounting accounting ON accounting.expense_id=fe.id
+   WHERE fe.id=v_expense
+  RETURNING id INTO v_line;
+  PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
+  PERFORM 1 FROM public.bank_statement_lines WHERE id=v_line AND matched_expense_id=v_expense AND reconciliation_status='matched';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Split broker Expense bank link failed'; END IF;
+  PERFORM public.unmatch_bank_line(v_line);
+  PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
+
+  UPDATE public.finance_staff_master SET monthly_salary=2000000,salary_type='monthly',
+    pph21_applicable=true,pph21_method='percentage',pph21_percentage=5,
+    default_payment_method='bank_transfer' WHERE id=v_staff;
+
+  -- Salary Advance uses the existing Payment command and carries attachments.
+  v_saved:=public.save_payment_voucher_with_purpose(NULL,jsonb_build_object(
+    'voucher_date',current_date,'staff_id',v_staff,'payment_method','bank_transfer',
+    'bank_account_id',v_bank,'amount',500000,'invoice_amount',500000,
+    'payment_amount',500000,'payment_currency','IDR','invoice_currency','IDR',
+    'exchange_rate',1,'bank_amount',500000,'actual_bank_debit',500000,
+    'description','Finance V1.1 Salary Advance regression','created_by',v_user,
+    'document_urls',jsonb_build_array('https://example.invalid/finance-v11-regression.pdf')),
+    '[]'::jsonb,'salary_advance');
+  v_payment:=(v_saved->>'id')::uuid;
+  v_saved:=public.save_payment_voucher_with_purpose(v_payment,jsonb_build_object(
+    'voucher_date',current_date,'staff_id',v_staff,'payment_method','bank_transfer',
+    'bank_account_id',v_bank,'amount',500000,'invoice_amount',500000,
+    'payment_amount',500000,'payment_currency','IDR','invoice_currency','IDR',
+    'exchange_rate',1,'bank_amount',500000,'actual_bank_debit',500000,
+    'description','Finance V1.1 edited Salary Advance regression','created_by',v_user,
+    'document_urls',jsonb_build_array(
+      'https://example.invalid/finance-v11-regression.pdf',
+      'https://example.invalid/finance-v11-regression-2.pdf')),
+    '[]'::jsonb,'salary_advance');
+  PERFORM public.post_payment_voucher(v_payment,v_user);
+  PERFORM 1 FROM public.payment_vouchers WHERE id=v_payment AND
+    document_urls=ARRAY[
+      'https://example.invalid/finance-v11-regression.pdf',
+      'https://example.invalid/finance-v11-regression-2.pdf']::text[];
+  IF NOT FOUND THEN RAISE EXCEPTION 'Payment attachment was not persisted by the canonical command'; END IF;
+
+  INSERT INTO public.bank_statement_lines(
+    upload_id,bank_account_id,transaction_date,description,debit_amount,credit_amount,currency,created_by)
+  VALUES(v_upload,v_bank,current_date,'V1.1 Payment link regression',500000,0,'IDR',v_user)
+  RETURNING id INTO v_line;
+  PERFORM public.link_bank_statement_line(v_line,'payment',v_payment,'supplier');
+  PERFORM 1 FROM public.bank_statement_lines WHERE id=v_line AND matched_payment_id=v_payment;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Payment link did not preserve Payment document identity'; END IF;
+  PERFORM public.unmatch_bank_line(v_line);
+  PERFORM public.link_bank_statement_line(v_line,'payment',v_payment,'supplier');
+
+  -- Permanent production scenario: USD 21,000 invoice paid from an IDR bank.
+  v_saved:=public.save_payment_voucher_with_purpose(NULL,jsonb_build_object(
+    'voucher_date',current_date,'supplier_id',v_supplier,'payment_method','bank_transfer',
+    'bank_account_id',v_bank,'amount',21000,'invoice_currency','USD','invoice_amount',21000,
+    'payment_amount',21000,'payment_currency','IDR','bank_currency','IDR',
+    'exchange_rate',16990,'converted_amount',356790000,'bank_charge',50000,
+    'actual_bank_debit',356840000,'bank_amount',356840000,
+    'description','Finance V1.1 USD to IDR regression','created_by',v_user,'document_urls','[]'::jsonb),
+    '[]'::jsonb,'general');
+  v_fx_payment:=(v_saved->>'id')::uuid;
+  PERFORM public.post_payment_voucher(v_fx_payment,v_user);
+  PERFORM 1 FROM public.payment_vouchers WHERE id=v_fx_payment
+    AND invoice_currency='USD' AND invoice_amount=21000
+    AND payment_currency='IDR' AND bank_currency='IDR' AND exchange_rate=16990
+    AND converted_amount=356790000 AND bank_charge=50000 AND actual_bank_debit=356840000;
+  IF NOT FOUND THEN RAISE EXCEPTION 'USD 21,000 to IDR canonical Payment values were not preserved'; END IF;
+  SELECT journal_entry_id INTO v_je FROM public.payment_vouchers WHERE id=v_fx_payment;
+  PERFORM 1 FROM public.journal_entry_lines jel JOIN public.bank_accounts ba ON ba.coa_id=jel.account_id
+   WHERE jel.journal_entry_id=v_je AND ba.id=v_bank AND jel.credit=356840000;
+  IF NOT FOUND THEN RAISE EXCEPTION 'USD to IDR bank journal does not equal actual cash outflow: %',
+    (SELECT jsonb_agg(jsonb_build_object('code',coa.code,'debit',jel.debit,'credit',jel.credit,
+      'transaction_currency',jel.transaction_currency,'transaction_debit',jel.transaction_debit,
+      'transaction_credit',jel.transaction_credit,'description',jel.description))
+     FROM public.journal_entry_lines jel JOIN public.chart_of_accounts coa ON coa.id=jel.account_id
+     WHERE jel.journal_entry_id=v_je); END IF;
+  INSERT INTO public.bank_statement_lines(
+    upload_id,bank_account_id,transaction_date,description,debit_amount,credit_amount,currency,created_by)
+  VALUES(v_upload,v_bank,current_date,'V1.1 cross-currency Payment link',356840000,0,'IDR',v_user)
+  RETURNING id INTO v_line;
+  PERFORM public.link_bank_statement_line(v_line,'payment',v_fx_payment,'supplier');
+  PERFORM 1 FROM public.bank_statement_lines WHERE id=v_line AND matched_payment_id=v_fx_payment AND matched_entry_id=v_je;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Cross-currency Payment bank link failed'; END IF;
+
+  v_calc:=public.calculate_staff_salary(v_staff,current_date,NULL);
+  IF (v_calc->>'gross_salary')::numeric<>2000000
+     OR (v_calc->>'outstanding_salary_advances')::numeric<>500000
+     OR (v_calc->>'pph21_amount')::numeric<>100000
+     OR (v_calc->>'net_salary_payable')::numeric<>1400000 THEN
+    RAISE EXCEPTION 'Canonical salary calculation failed: %',v_calc;
+  END IF;
+
+  v_salary:=public.save_finance_expense(NULL,jsonb_build_object(
+    'expense_date',current_date,'expense_category','salary','expense_type','admin',
+    'amount',2000000,'staff_id',v_staff,'description','Finance V1.1 Salary regression',
+    'approval_status','pending_approval','transaction_currency','IDR','exchange_rate',1,
+    'pph_amount',100000,'pph_code_id',v_pph21,'created_by',v_user,'document_urls','[]'::jsonb));
+  PERFORM public.approve_finance_expense(v_salary,v_user);
+  v_applied:=public.apply_salary_advances_to_expense(v_salary,true);
+  IF (v_applied->>'total_applied')::numeric<>500000 OR (v_applied->>'remaining_salary')::numeric<>1400000 THEN
+    RAISE EXCEPTION 'Salary Advance settlement did not reconcile to net salary: %',v_applied;
+  END IF;
+
+  SELECT id INTO v_je FROM public.journal_entries WHERE reference_id=v_salary
+    AND source_module IN ('expense','expenses') AND is_posted=true AND COALESCE(is_reversed,false)=false
+    ORDER BY created_at DESC LIMIT 1;
+  PERFORM 1 FROM public.journal_entries WHERE id=v_je AND abs(total_debit-total_credit)<=0.01;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Salary journal is absent or unbalanced'; END IF;
+  PERFORM 1 FROM public.journal_entry_lines WHERE journal_entry_id=v_je
+    AND account_id=(SELECT id FROM public.chart_of_accounts WHERE code='2131' LIMIT 1) AND credit=100000;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Salary PPh21 did not post to withholding liability: %',
+    (SELECT jsonb_agg(jsonb_build_object('code',coa.code,'debit',jel.debit,'credit',jel.credit,'description',jel.description))
+       FROM public.journal_entry_lines jel JOIN public.chart_of_accounts coa ON coa.id=jel.account_id
+      WHERE jel.journal_entry_id=v_je); END IF;
+
+  SELECT count(*) INTO v_count FROM public.journal_entries je WHERE je.is_posted=true AND
+    abs(COALESCE((SELECT sum(debit) FROM public.journal_entry_lines WHERE journal_entry_id=je.id),0)-
+        COALESCE((SELECT sum(credit) FROM public.journal_entry_lines WHERE journal_entry_id=je.id),0))>0.01;
+  IF v_count<>0 THEN RAISE EXCEPTION '% posted journals are unbalanced',v_count; END IF;
+  SELECT count(*) INTO v_count FROM public.bank_statement_lines WHERE matched_payment_id IS NOT NULL AND matched_entry_id IS NULL;
+  IF v_count<>0 THEN RAISE EXCEPTION '% Payment bank links have stale journal references',v_count; END IF;
+END;
+$regression$;
+ROLLBACK;
+`;
+
+try {
+  const stdout=execFileSync('supabase',['db','query','--linked','--output-format','json',sql],{
+    cwd:process.cwd(),encoding:'utf8',stdio:['ignore','pipe','inherit'],maxBuffer:100*1024*1024,
+  });
+  const response=JSON.parse(stdout.slice(stdout.indexOf('{')));
+  if(response.error) throw new Error(response.error.message ?? JSON.stringify(response.error));
+  console.log(JSON.stringify({status:'passed',transaction:'rolled_back',checks:[
+    'expense_split_journal_bank_link_unlink_relink','payment_create_edit_multiple_attachments',
+    'payment_bank_link_unlink_relink_document_identity','staff_salary_master_calculation',
+    'usd_21000_to_idr_356840000_cross_currency_payment',
+    'salary_advance_fifo_settlement_after_pph21','salary_journal_and_withholding_liability',
+    'all_posted_journals_balanced','no_stale_payment_bank_links',
+  ]},null,2));
+} catch(error) {
+  if(error && typeof error==='object') {
+    if('stdout' in error && error.stdout) process.stderr.write(String(error.stdout));
+    if('stderr' in error && error.stderr) process.stderr.write(String(error.stderr));
+  }
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode=1;
+}

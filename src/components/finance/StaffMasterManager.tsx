@@ -26,6 +26,12 @@ interface Staff {
   default_gl_code: string | null;
   default_gl_name: string | null;
   npwp: string | null;
+  monthly_salary: number;
+  salary_type: 'monthly' | 'daily' | 'hourly';
+  pph21_applicable: boolean;
+  pph21_method: 'percentage' | 'manual';
+  pph21_percentage: number;
+  default_payment_method: 'cash' | 'bank_transfer' | 'check' | 'giro' | 'other';
   status: 'active' | 'inactive';
   notes: string | null;
   created_at: string;
@@ -48,6 +54,12 @@ export function StaffMasterManager({ canManage }: Props) {
     default_gl_code: '',
     default_gl_name: '',
     npwp: '',
+    monthly_salary: 0,
+    salary_type: 'monthly' as Staff['salary_type'],
+    pph21_applicable: false,
+    pph21_method: 'percentage' as Staff['pph21_method'],
+    pph21_percentage: 0,
+    default_payment_method: 'bank_transfer' as Staff['default_payment_method'],
     status: 'active' as 'active' | 'inactive',
     notes: '',
   });
@@ -71,6 +83,8 @@ export function StaffMasterManager({ canManage }: Props) {
       full_name: '', employee_code: '', department: '',
       default_gl_code: '', default_gl_name: '',
       npwp: '', status: 'active', notes: '',
+      monthly_salary: 0, salary_type: 'monthly', pph21_applicable: false,
+      pph21_method: 'percentage', pph21_percentage: 0, default_payment_method: 'bank_transfer',
     });
   };
 
@@ -83,6 +97,12 @@ export function StaffMasterManager({ canManage }: Props) {
       default_gl_code: r.default_gl_code || '',
       default_gl_name: r.default_gl_name || '',
       npwp: r.npwp || '',
+      monthly_salary: Number(r.monthly_salary || 0),
+      salary_type: r.salary_type || 'monthly',
+      pph21_applicable: Boolean(r.pph21_applicable),
+      pph21_method: r.pph21_method || 'percentage',
+      pph21_percentage: Number(r.pph21_percentage || 0),
+      default_payment_method: r.default_payment_method || 'bank_transfer',
       status: r.status,
       notes: r.notes || '',
     });
@@ -102,6 +122,12 @@ export function StaffMasterManager({ canManage }: Props) {
       default_gl_code: form.default_gl_code.trim() || null,
       default_gl_name: form.default_gl_name.trim() || null,
       npwp: form.npwp.trim() || null,
+      monthly_salary: form.monthly_salary,
+      salary_type: form.salary_type,
+      pph21_applicable: form.pph21_applicable,
+      pph21_method: form.pph21_method,
+      pph21_percentage: form.pph21_applicable ? form.pph21_percentage : 0,
+      default_payment_method: form.default_payment_method,
       status: form.status,
       notes: form.notes.trim() || null,
     };
@@ -172,6 +198,7 @@ export function StaffMasterManager({ canManage }: Props) {
           { header: 'Name', cell: (row) => <span className="font-medium text-gray-900">{row.full_name}</span> },
           { header: 'Code', cell: (row) => <span className="font-mono">{row.employee_code || '—'}</span> },
           { header: 'Department', cell: (row) => row.department || '—' },
+          { header: 'Monthly Salary', align: 'right', cell: (row) => <span className="font-mono">Rp {Number(row.monthly_salary || 0).toLocaleString('id-ID')}</span> },
           { header: 'Default GL', cell: (row) => <span className="font-mono">{row.default_gl_code ? `${row.default_gl_code}${row.default_gl_name ? ` — ${row.default_gl_name}` : ''}` : '—'}</span> },
           { header: 'NPWP', cell: (row) => <span className="font-mono">{row.npwp || '—'}</span> },
           { header: 'Status', align: 'center', cell: (row) => <FinanceBadge status={row.status === 'active' ? 'approved' : 'draft'}>{row.status}</FinanceBadge> },
@@ -226,6 +253,48 @@ export function StaffMasterManager({ canManage }: Props) {
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
+              </SapField>
+            </SapRow>
+            <SapRow>
+              <SapField label="Monthly Salary" required span={4}>
+                <input type="number" min="0" step="1" required value={form.monthly_salary || ''}
+                  onChange={e => setForm({ ...form, monthly_salary: Number(e.target.value) || 0 })}
+                  className={SAP_INPUT + ' !text-right !font-mono'} />
+              </SapField>
+              <SapField label="Salary Type" required span={4}>
+                <select value={form.salary_type} onChange={e => setForm({ ...form, salary_type: e.target.value as Staff['salary_type'] })} className={SAP_INPUT}>
+                  <option value="monthly">Monthly</option>
+                  <option value="daily">Daily</option>
+                  <option value="hourly">Hourly</option>
+                </select>
+              </SapField>
+              <SapField label="Default Payment" required span={4}>
+                <select value={form.default_payment_method} onChange={e => setForm({ ...form, default_payment_method: e.target.value as Staff['default_payment_method'] })} className={SAP_INPUT}>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="cash">Cash</option>
+                  <option value="check">Check</option>
+                  <option value="giro">Giro</option>
+                  <option value="other">Other</option>
+                </select>
+              </SapField>
+            </SapRow>
+            <SapRow>
+              <SapField label="PPh21 Applicable" span={4}>
+                <select value={form.pph21_applicable ? 'yes' : 'no'} onChange={e => setForm({ ...form, pph21_applicable: e.target.value === 'yes' })} className={SAP_INPUT}>
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </SapField>
+              <SapField label="PPh21 Method" span={4}>
+                <select disabled={!form.pph21_applicable} value={form.pph21_method} onChange={e => setForm({ ...form, pph21_method: e.target.value as Staff['pph21_method'] })} className={SAP_INPUT}>
+                  <option value="percentage">Percentage</option>
+                  <option value="manual">Manual per Salary</option>
+                </select>
+              </SapField>
+              <SapField label="PPh21 %" span={4}>
+                <input type="number" min="0" max="100" step="0.0001" disabled={!form.pph21_applicable || form.pph21_method !== 'percentage'}
+                  value={form.pph21_percentage || ''} onChange={e => setForm({ ...form, pph21_percentage: Number(e.target.value) || 0 })}
+                  className={SAP_INPUT + ' !text-right !font-mono'} />
               </SapField>
             </SapRow>
             <SapRow>

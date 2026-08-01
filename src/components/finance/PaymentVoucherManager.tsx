@@ -20,6 +20,7 @@ import {
   notifyFinanceReconciliationRefresh,
   unlinkBankTransaction,
 } from './bankTransactionLinking';
+import { FinanceDocumentAttachments, uploadFinanceDocuments } from './FinanceDocumentAttachments';
 
 interface Supplier {
   id: string;
@@ -30,6 +31,7 @@ interface StaffMember {
   id: string;
   full_name: string;
   employee_code: string | null;
+  default_payment_method?: string | null;
 }
 
 interface BankAccount {
@@ -83,6 +85,7 @@ interface PaymentVoucher {
   converted_amount?: number | null;
   actual_bank_debit?: number | null;
   description: string | null;
+  document_urls: string[] | null;
   is_posted: boolean;
   journal_entry_id: string | null;
   bank_statement_line_id?: string | null;
@@ -196,6 +199,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
   const [editingVoucher, setEditingVoucher] = useState<PaymentVoucher | null>(null);
   const [viewingVoucher, setViewingVoucher] = useState<PaymentVoucher | null>(null);
   const [bankReconStatementLineId, setBankReconStatementLineId] = useState<string | null>(null);
+  const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
   const [viewAllocations, setViewAllocations] = useState<Array<{ invoice_id: string; invoice_number: string; invoice_date: string; allocated_amount: number; allocated_currency: string; is_expense_bill?: boolean; expense_id?: string }>>([]);
 
   const [formData, setFormData] = useState({
@@ -212,6 +216,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
     pph_code_id: '',
     pph_amount: 0,
     description: '',
+    document_urls: [] as string[],
     payment_currency: 'IDR',
     exchange_rate: 1,
   });
@@ -453,7 +458,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
   const loadStaff = async () => {
     const { data } = await supabase
       .from('finance_staff_master')
-      .select('id, full_name, employee_code')
+      .select('id, full_name, employee_code, default_payment_method')
       .eq('status', 'active')
       .order('full_name');
     setStaffList(data || []);
@@ -565,6 +570,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       pph_code_id: '',
       pph_amount: 0,
       description: '',
+      document_urls: [],
       payment_currency: 'IDR',
       exchange_rate: 1,
     });
@@ -575,6 +581,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
     setSelectedBank(null);
     setEditingVoucher(null);
     setBankReconStatementLineId(null);
+    setUploadingFiles([]);
   };
 
   const handlePostVoucher = async (v: PaymentVoucher) => {
@@ -645,6 +652,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       pph_code_id: v.pph_code_id || '',
       pph_amount: v.pph_amount || 0,
       description: v.description || '',
+      document_urls: v.document_urls || [],
       payment_currency: v.payment_currency || 'IDR',
       exchange_rate: v.exchange_rate || 1,
     });
@@ -780,7 +788,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
     try {
       await linkBankTransaction({
         bankStatementLineId: transaction.id,
-        matchedJournalEntryId: voucher.journal_entry_id,
+        matchedPaymentId: voucher.id,
         note: `Linked to supplier payment ${voucher.voucher_number}`,
       });
 
@@ -856,6 +864,9 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       const effectiveExchangeRate = isCrossCurrency ? formData.exchange_rate : 1;
+      const uploadedUrls = uploadingFiles.length > 0
+        ? await uploadFinanceDocuments(uploadingFiles, `payments/${editingVoucher?.id || 'new'}`)
+        : [];
 
       const payload = {
         voucher_date: formData.voucher_date,
@@ -875,6 +886,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
         pph_amount: formData.pph_amount,
         pph_code_id: formData.pph_code_id || null,
         description: formData.description || null,
+        document_urls: [...formData.document_urls, ...uploadedUrls],
         payment_currency: formData.payment_currency,
         exchange_rate: effectiveExchangeRate,
         bank_amount: isCrossCurrency ? totalBankDebit : null,
@@ -1101,7 +1113,14 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
               {formData.payee_type === 'staff' ? (
                 <SearchableSelect
                   value={formData.staff_id}
-                  onChange={(val) => setFormData({ ...formData, staff_id: val })}
+                  onChange={(val) => {
+                    const staff = staffList.find((item) => item.id === val);
+                    setFormData({
+                      ...formData,
+                      staff_id: val,
+                      payment_method: staff?.default_payment_method || formData.payment_method,
+                    });
+                  }}
                   options={staffList.map(s => ({ value: s.id, label: s.employee_code ? `${s.full_name} (${s.employee_code})` : s.full_name }))}
                   placeholder="Select staff"
                 />
@@ -1129,6 +1148,15 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
               </select>
             </SapField>
           </SapRow>
+
+          <FinanceDocumentAttachments
+            documentUrls={formData.document_urls}
+            pendingFiles={uploadingFiles}
+            onDocumentUrlsChange={(document_urls) => setFormData((previous) => ({ ...previous, document_urls }))}
+            onPendingFilesChange={setUploadingFiles}
+            active={modalOpen}
+            compact
+          />
 
           {formData.payee_type === 'staff' && (
             <SapRow>
@@ -1750,6 +1778,10 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                 <div className="text-gray-700 whitespace-pre-wrap">{viewingVoucher.description}</div>
               </div>
             )}
+            <FinanceDocumentAttachments
+              documentUrls={viewingVoucher.document_urls || []}
+              readOnly
+            />
           </div>
         </Modal>
       )}

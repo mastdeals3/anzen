@@ -38,6 +38,7 @@ interface LoadUnmatchedDebitOptions {
 interface LinkBankTransactionOptions {
   bankStatementLineId: string;
   matchedExpenseId?: string | null;
+  matchedPaymentId?: string | null;
   matchedJournalEntryId?: string | null;
   note?: string | null;
   paymentKind?: 'supplier' | 'pph23';
@@ -109,18 +110,19 @@ export async function loadUnmatchedDebitBankTransactions({
 export async function linkBankTransaction({
   bankStatementLineId,
   matchedExpenseId,
+  matchedPaymentId,
   matchedJournalEntryId,
   note,
   paymentKind = 'supplier',
 }: LinkBankTransactionOptions): Promise<void> {
-  if (!matchedExpenseId && !matchedJournalEntryId) {
-    throw new Error('A bank transaction must be linked to an expense or journal entry.');
+  if (!matchedExpenseId && !matchedPaymentId && !matchedJournalEntryId) {
+    throw new Error('A bank transaction must be linked to a Finance document or journal entry.');
   }
 
   await linkBankStatementLine(
     bankStatementLineId,
-    matchedExpenseId ? 'expense' : 'journal',
-    (matchedExpenseId || matchedJournalEntryId) as string,
+    matchedExpenseId ? 'expense' : matchedPaymentId ? 'payment' : 'journal',
+    (matchedExpenseId || matchedPaymentId || matchedJournalEntryId) as string,
     paymentKind,
   );
   if (note) {

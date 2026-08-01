@@ -7,6 +7,7 @@ export interface FinanceExpensePayload {
   expense_category: string;
   amount: number;
   description?: string | null;
+  document_urls?: string[];
   transaction_currency: FinanceCurrency;
   functional_currency?: 'IDR';
   exchange_rate: number;
@@ -55,6 +56,7 @@ export interface PaymentPayload {
   pph_amount?: number;
   pph_code_id?: string | null;
   description?: string | null;
+  document_urls?: string[];
   payment_currency: FinanceCurrency;
   exchange_rate: number;
   bank_amount?: number | null;

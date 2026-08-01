@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, Upload, X, ExternalLink, Download, Eye, CheckCircle, XCircle, Clipboard, ClipboardCheck, Lock, RotateCcw, UserPlus, AlertCircle, Banknote, Link2 } from 'lucide-react';
+import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, X, Download, Eye, CheckCircle, XCircle, Clipboard, ClipboardCheck, Lock, RotateCcw, UserPlus, AlertCircle, Banknote, Link2 } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
@@ -17,6 +17,7 @@ import {
   notifyFinanceReconciliationRefresh,
   unlinkBankTransaction,
 } from './bankTransactionLinking';
+import { FinanceDocumentAttachments, uploadFinanceDocuments } from './FinanceDocumentAttachments';
 
 // Tiny inline helper used inside the SAP header PPN cell — a 3-state
 // selector rendered as a right-side chip so it doesn't consume a column.
@@ -301,7 +302,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [approvalFilter, setApprovalFilter] = useState<'all' | 'approved' | 'pending_approval'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
-  const [showPasteHint, setShowPasteHint] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
   const [coaAssets, setCoaAssets] = useState<COAAccount[]>([]);
@@ -327,6 +327,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     available_amount: number;
   }>>([]);
   const [applySalaryAdvance, setApplySalaryAdvance] = useState(true);
+  const [salaryCalculation, setSalaryCalculation] = useState<{
+    gross_salary: number;
+    outstanding_salary_advances: number;
+    pph21_amount: number;
+    bpjs_amount: number;
+    net_salary_payable: number;
+    pph21_method: 'percentage' | 'manual';
+    pph21_applicable: boolean;
+    default_payment_method: string;
+  } | null>(null);
   const [selectedUtilityId, setSelectedUtilityId] = useState<string>('');
   const [periodLabel, setPeriodLabel] = useState<string>('');   // Salary Month / Billing Month
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
@@ -337,8 +347,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [quickAddSupplierType, setQuickAddSupplierType] = useState('General');
   const [quickAddSupplierPKP, setQuickAddSupplierPKP] = useState(false);
   const [quickAddSupplierTerms, setQuickAddSupplierTerms] = useState(30);
-  // Attachments collapse
-  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   // Health Check panel
   const [healthCheckOpen, setHealthCheckOpen] = useState(false);
   const [healthLoading, setHealthLoading] = useState(false);
@@ -458,23 +466,46 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   useEffect(() => {
     if (formData.expense_category !== 'salary' || !selectedStaffId) {
       setSalaryAdvances([]);
+      setSalaryCalculation(null);
       setApplySalaryAdvance(true);
       return;
     }
-    void supabase.rpc('get_outstanding_salary_advances', {
-      p_staff_id: selectedStaffId,
-      p_as_of_date: formData.expense_date,
-    }).then(({ data, error }) => {
-      if (error) {
-        // The feature may be awaiting its migration during a rolling deploy.
-        console.error('Unable to load salary advances:', error.message);
+    void Promise.all([
+      supabase.rpc('get_outstanding_salary_advances', {
+        p_staff_id: selectedStaffId,
+        p_as_of_date: formData.expense_date,
+      }),
+      supabase.rpc('calculate_staff_salary', {
+        p_staff_id: selectedStaffId,
+        p_salary_date: formData.expense_date,
+        p_gross_override: editingExpense ? formData.amount : null,
+        p_pph21_override: formData.pph_amount,
+      }),
+    ]).then(([advancesResult, calculationResult]) => {
+      if (advancesResult.error || calculationResult.error) {
+        console.error('Unable to load canonical salary calculation:', advancesResult.error?.message || calculationResult.error?.message);
         setSalaryAdvances([]);
+        setSalaryCalculation(null);
         return;
       }
-      setSalaryAdvances((data || []) as typeof salaryAdvances);
+      const calculation = calculationResult.data as typeof salaryCalculation;
+      setSalaryAdvances((advancesResult.data || []) as typeof salaryAdvances);
+      setSalaryCalculation(calculation);
       setApplySalaryAdvance(true);
+      if (!editingExpense && calculation) {
+        const pph21Code = taxCodes.find((code) => code.code.toUpperCase() === 'PPH21');
+        setFormData((previous) => ({
+          ...previous,
+          amount: calculation.gross_salary,
+          pph_amount: calculation.pph21_method === 'percentage' ? calculation.pph21_amount : previous.pph_amount,
+          pph_code_id: calculation.pph21_applicable && pph21Code ? pph21Code.id : previous.pph_code_id,
+          payment_method: ['cash','bank_transfer'].includes(calculation.default_payment_method)
+            ? calculation.default_payment_method
+            : previous.payment_method,
+        }));
+      }
     });
-  }, [formData.expense_category, formData.expense_date, selectedStaffId]);
+  }, [formData.expense_category, formData.expense_date, formData.pph_amount, selectedStaffId, editingExpense, taxCodes]);
 
   useEffect(() => {
     if (!viewingExpense || viewingExpense.expense_category !== 'salary') {
@@ -599,41 +630,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     table: 'bank_statement_lines',
     onEvent: patchBankLine,
   });
-
-  // Paste handler for images
-  useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
-      if (!modalOpen) return;
-
-      const items = e.clipboardData?.items;
-      if (!items) return;
-
-      const pastedFiles: File[] = [];
-
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-
-        if (item.type.indexOf('image') !== -1) {
-          e.preventDefault();
-          const blob = item.getAsFile();
-          if (blob) {
-            const fileName = `pasted-image-${Date.now()}.png`;
-            const file = new File([blob], fileName, { type: blob.type });
-            pastedFiles.push(file);
-          }
-        }
-      }
-
-      if (pastedFiles.length > 0) {
-        setUploadingFiles([...uploadingFiles, ...pastedFiles]);
-        setShowPasteHint(true);
-        setTimeout(() => setShowPasteHint(false), 2000);
-      }
-    };
-
-    document.addEventListener('paste', handlePaste);
-    return () => document.removeEventListener('paste', handlePaste);
-  }, [modalOpen, uploadingFiles]);
 
   useEffect(() => {
     if (!initialViewExpenseId) return;
@@ -898,44 +894,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       }
 
       // Upload new files first
-      const uploadedUrls: string[] = [];
-      if (uploadingFiles.length > 0) {
-        console.log('=== UPLOADING', uploadingFiles.length, 'FILES ===');
-
-        for (const file of uploadingFiles) {
-          console.log('Uploading file:', file.name, '(', file.size, 'bytes)');
-
-          const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-          const filePath = `${formData.expense_category}/${fileName}`;
-
-          console.log('Storage path:', filePath);
-
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('expense-documents')
-            .upload(filePath, file, {
-              cacheControl: '3600',
-              upsert: false
-            });
-
-          if (uploadError) {
-            console.error('Upload error:', uploadError);
-            throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
-          }
-
-          console.log('Upload successful:', uploadData);
-
-          const { data: { publicUrl } } = supabase.storage
-            .from('expense-documents')
-            .getPublicUrl(filePath);
-
-          console.log('Public URL:', publicUrl);
-          uploadedUrls.push(publicUrl);
-        }
-
-        console.log('All uploads complete. Uploaded URLs:', uploadedUrls);
-      } else {
-        console.log('No new files to upload');
-      }
+      const uploadedUrls = uploadingFiles.length > 0
+        ? await uploadFinanceDocuments(uploadingFiles, `expenses/${formData.expense_category}`)
+        : [];
 
       // Combine existing URLs with newly uploaded ones
       const allDocumentUrls = [...formData.document_urls, ...uploadedUrls];
@@ -1535,17 +1496,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     }
   };
 
-  const handleRemoveDocument = (urlToRemove: string) => {
-    setFormData({
-      ...formData,
-      document_urls: formData.document_urls.filter(url => url !== urlToRemove)
-    });
-  };
-
-  const handleRemoveUploadingFile = (indexToRemove: number) => {
-    setUploadingFiles(uploadingFiles.filter((_, index) => index !== indexToRemove));
-  };
-
   const resetForm = () => {
     setEditingExpense(null);
     setUploadingFiles([]);
@@ -1554,6 +1504,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     setBrokerItems([]);
     setSelectedStaffId('');
     setSalaryAdvances([]);
+    setSalaryCalculation(null);
     setApplySalaryAdvance(true);
     setSelectedUtilityId('');
     setPeriodLabel('');
@@ -2589,45 +2540,37 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </SapRow>
                   )}
 
-                  {rules.staff === 'show' && formData.expense_category === 'salary' && selectedStaffId && salaryAdvances.length > 0 && (
+                  {rules.staff === 'show' && formData.expense_category === 'salary' && selectedStaffId && salaryCalculation && (
                     <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <div className="text-xs font-semibold text-amber-900">Outstanding Salary Advance</div>
-                          <div className="text-[10px] text-amber-700">Applied oldest first. Any balance beyond this salary remains outstanding.</div>
+                          <div className="text-xs font-semibold text-amber-900">Canonical Salary Calculation</div>
+                          <div className="text-[10px] text-amber-700">Outstanding advances are applied automatically, oldest first.</div>
                         </div>
-                        <label className="flex items-center gap-1.5 text-xs font-medium text-amber-900">
-                          <input
-                            type="checkbox"
-                            checked={applySalaryAdvance}
-                            onChange={(e) => setApplySalaryAdvance(e.target.checked)}
-                            className="rounded border-amber-400 text-amber-600"
-                          />
-                          Apply Advance
-                        </label>
+                        <span className="text-[10px] font-semibold text-emerald-700">Automatic FIFO</span>
                       </div>
-                      <div className="mt-2 space-y-1 text-xs">
+                      {salaryAdvances.length > 0 && <div className="mt-2 space-y-1 text-xs">
                         {salaryAdvances.map((advance) => (
                           <div key={advance.advance_id} className="flex items-center justify-between border-t border-amber-100 pt-1 text-amber-900">
                             <span>{advance.voucher_number} · {new Date(advance.voucher_date).toLocaleDateString('en-GB')}</span>
                             <span className="font-mono">Available {formatCurrency(advance.available_amount, expenseFormCurrency)}</span>
                           </div>
                         ))}
+                      </div>}
+                      <div className="mt-2 grid grid-cols-5 gap-2 border-t border-amber-200 pt-2 text-xs">
+                        <div><span className="text-amber-700">Monthly Salary</span><div className="font-mono font-semibold text-amber-950">{formatCurrency(salaryCalculation.gross_salary, expenseFormCurrency)}</div></div>
+                        <div><span className="text-amber-700">Less Advance</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.outstanding_salary_advances, expenseFormCurrency)}</div></div>
+                        <div><span className="text-amber-700">Less PPh21</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.pph21_amount, expenseFormCurrency)}</div></div>
+                        <div><span className="text-amber-700">Less BPJS</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.bpjs_amount, expenseFormCurrency)}</div></div>
+                        <div><span className="text-amber-700">Net Payable</span><div className="font-mono font-bold text-emerald-800">{formatCurrency(salaryCalculation.net_salary_payable, expenseFormCurrency)}</div></div>
                       </div>
-                      {applySalaryAdvance && (
-                        <div className="mt-2 grid grid-cols-3 gap-2 border-t border-amber-200 pt-2 text-xs">
-                          <div><span className="text-amber-700">Gross Salary</span><div className="font-mono font-semibold text-amber-950">{formatCurrency(formData.amount, expenseFormCurrency)}</div></div>
-                          <div><span className="text-amber-700">Less Salary Advance</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(Math.min(formData.amount || 0, salaryAdvances.reduce((sum, item) => sum + item.available_amount, 0)), expenseFormCurrency)}</div></div>
-                          <div><span className="text-amber-700">Net Payable</span><div className="font-mono font-bold text-emerald-800">{formatCurrency(Math.max((formData.amount || 0) - Math.min(formData.amount || 0, salaryAdvances.reduce((sum, item) => sum + item.available_amount, 0)), 0), expenseFormCurrency)}</div></div>
-                        </div>
-                      )}
                     </div>
                   )}
 
                   {/* ── Row C: Amount · DPP · PPN · PPh · PPh Code · Stamp · Bank Chg · Container · DC · Asset ── */}
                   <SapRow>
                     <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={3}>
-                      <MoneyInput value={formData.amount} required placeholder="0.00"
+                      <MoneyInput value={formData.amount} required placeholder="0.00" readOnly={formData.expense_category === 'salary' && !!salaryCalculation}
                         onChange={(amt) => {
                           setFormData(prev => {
                             const mode = prev.ppn_calc_mode || 'standard';
@@ -3237,53 +3180,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               </div>
 
               {/* RIGHT: Attachments */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Attachments</p>
-                  <button type="button" onClick={() => setAttachmentsExpanded(e => !e)}
-                    className="text-[10px] text-blue-600 hover:text-blue-800">
-                    {formData.document_urls.length + uploadingFiles.length > 0
-                      ? `${formData.document_urls.length + uploadingFiles.length} file(s) ${attachmentsExpanded ? '▲' : '▼'}`
-                      : attachmentsExpanded ? 'Hide ▲' : 'Add files ▼'}
-                  </button>
-                </div>
-
-                {(attachmentsExpanded || formData.document_urls.length > 0 || uploadingFiles.length > 0) && (
-                  <>
-                    {formData.document_urls.map((url, i) => (
-                      <div key={i} className="flex items-center gap-1.5 p-1.5 bg-green-50 border border-green-200 rounded text-xs">
-                        <FileText className="w-3 h-3 text-green-600 flex-shrink-0" />
-                        <button type="button" onClick={() => openDocument(url)} className="flex-1 text-green-700 truncate text-left">Doc {i + 1}</button>
-                        <button type="button" onClick={() => openDocument(url)} className="p-0.5 text-green-600 hover:bg-green-100 rounded"><ExternalLink className="w-3 h-3" /></button>
-                        <button type="button" onClick={() => handleRemoveDocument(url)} className="p-0.5 text-red-600 hover:bg-red-100 rounded"><X className="w-3 h-3" /></button>
-                      </div>
-                    ))}
-                    {uploadingFiles.map((file, i) => (
-                      <div key={i} className="flex items-center gap-1.5 p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
-                        <Upload className="w-3 h-3 text-blue-600 flex-shrink-0" />
-                        <span className="flex-1 text-blue-700 truncate">{file.name}</span>
-                        <span className="text-[9px] text-blue-500">{(file.size/1024).toFixed(0)}KB</span>
-                        <button type="button" onClick={() => handleRemoveUploadingFile(i)} className="p-0.5 text-red-600 hover:bg-red-100 rounded"><X className="w-3 h-3" /></button>
-                      </div>
-                    ))}
-                    <div className="border-2 border-dashed border-gray-300 rounded p-3 text-center hover:border-gray-400 transition-colors"
-                      onMouseEnter={() => setShowPasteHint(true)} onMouseLeave={() => setShowPasteHint(false)}>
-                      <input type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-                        onChange={(e) => { if (e.target.files?.length) setUploadingFiles([...uploadingFiles, ...Array.from(e.target.files)]); }}
-                        className="hidden" id="expense-file-upload" />
-                      <label htmlFor="expense-file-upload" className="cursor-pointer flex flex-col items-center gap-1">
-                        <Upload className="w-5 h-5 text-gray-400" />
-                        <span className="text-xs text-blue-600">Click to upload</span>
-                      </label>
-                      {showPasteHint && (
-                        <div className="flex items-center justify-center gap-1 text-[10px] text-green-600 font-medium mt-1 animate-pulse">
-                          <Clipboard className="w-3 h-3" /> Ctrl+V paste
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+              <FinanceDocumentAttachments
+                documentUrls={formData.document_urls}
+                pendingFiles={uploadingFiles}
+                onDocumentUrlsChange={(document_urls) => setFormData((previous) => ({ ...previous, document_urls }))}
+                onPendingFilesChange={setUploadingFiles}
+                active={modalOpen}
+                compact
+              />
             </div>
 
           </form>
