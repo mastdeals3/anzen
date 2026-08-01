@@ -559,27 +559,16 @@ export default function SalesOrders() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Update order status to approved
-      const { error: updateError } = await supabase
-        .from('sales_orders')
-        .update({
-          status: 'approved',
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', orderId);
-
-      if (updateError) throw updateError;
-
-      // Call NEW stock reservation function (v2 - only reserves, doesn't deduct)
       const { data: reserveResult, error: reserveError } = await supabase
-        .rpc('fn_reserve_stock_for_so_v2', { p_so_id: orderId });
+        .rpc('approve_sales_order_inventory_v1', {
+          p_so_id: orderId,
+          p_approved_by: user.id,
+        });
 
       if (reserveError) {
-        console.error('Error reserving stock:', reserveError);
+        console.error('Error approving and reserving stock:', reserveError);
         console.error('Supabase request failed', reserveError);
-        showToast({ type: 'warning', title: 'Warning', message: 'Order approved but stock reservation failed: ' + reserveError.message });
+        throw reserveError;
       } else if (reserveResult && reserveResult.length > 0) {
         const result = reserveResult[0];
         if (result.success) {

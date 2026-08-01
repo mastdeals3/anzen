@@ -12,7 +12,10 @@
     "finance:repair": "node scripts/finance-historical-repair-report.mjs",
     "verify:finance-imports": "node scripts/verify-finance-import-templates.mjs",
     "verify:finance-release": "node scripts/finance-v1-release-regression.mjs",
-    "verify:finance-navigation": "node scripts/verify-finance-navigation.mjs"
+    "verify:finance-navigation": "node scripts/verify-finance-navigation.mjs",
+    "verify:inventory-v1": "node scripts/verify-inventory-v1-boundaries.mjs",
+    "reconcile:inventory": "node scripts/inventory-stock-reconciliation.mjs",
+    "test:inventory-v1": "node scripts/run-inventory-v1-regression.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

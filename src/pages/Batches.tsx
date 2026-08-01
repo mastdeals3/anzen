@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Layout } from '../components/Layout';
 import { Modal } from '../components/Modal';
 import { FileUpload } from '../components/FileUpload';
@@ -99,6 +99,7 @@ export function Batches() {
   const [quickViewDC, setQuickViewDC] = useState<{ challan: any; items: any[] } | null>(null);
   const [quickViewInvoice, setQuickViewInvoice] = useState<{ invoice: any; items: any[] } | null>(null);
   const [companySettings, setCompanySettings] = useState<any>(null);
+  const batchOperationIdRef = useRef<string | null>(null);
   const [formData, setFormData] = useState({
     batch_number: '',
     product_id: '',
@@ -293,25 +294,6 @@ export function Batches() {
     }
 
     try {
-      // Calculate actual sold quantity from sales_invoice_items table
-      let soldQuantity = 0;
-      if (editingBatch) {
-        const { data: salesData, error: salesError } = await supabase
-          .from('sales_invoice_items')
-          .select('quantity')
-          .eq('batch_id', editingBatch.id);
-
-        if (salesError) throw salesError;
-
-        soldQuantity = salesData?.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0) || 0;
-
-        // Validate that new import quantity is not less than sold quantity
-        if (formData.import_quantity < soldQuantity) {
-          showToast({ type: 'error', title: 'Error', message: `Cannot reduce import quantity to ${formData.import_quantity}. You have already sold ${soldQuantity} units from this batch.` });
-          return;
-        }
-      }
-
       const importPriceIDR = canViewCosting ? formData.import_price_usd * formData.exchange_rate_usd_to_idr : 0;
 
       // Calculate actual charge amounts based on type
@@ -327,105 +309,43 @@ export function Batches() {
       const freightAmount = calculateCharge(formData.freight_charges, formData.freight_charge_type, importPriceIDR);
       const otherAmount = calculateCharge(formData.other_charges, formData.other_charge_type, importPriceIDR);
 
-      let batchId: string;
+      const batchPayload = {
+        batch_number: formData.batch_number,
+        product_id: formData.product_id,
+        import_container_id: formData.import_container_id && formData.import_container_id.trim() !== '' ? formData.import_container_id : null,
+        import_date: formData.import_date,
+        import_quantity: formData.import_quantity,
+        packaging_details: formData.packaging_details,
+        import_price: canViewCosting ? importPriceIDR : editingBatch?.import_price || 0,
+        import_price_usd: canViewCosting ? formData.import_price_usd || null : editingBatch?.import_price_usd || null,
+        exchange_rate_usd_to_idr: canViewCosting ? formData.exchange_rate_usd_to_idr || null : editingBatch?.exchange_rate_usd_to_idr || null,
+        duty_percent: canViewCosting ? formData.duty_percent || 0 : editingBatch?.duty_percent || 0,
+        duty_charges: canViewCosting ? dutyAmount : editingBatch?.duty_charges || 0,
+        duty_charge_type: 'percentage',
+        freight_charges: canViewCosting ? freightAmount : editingBatch?.freight_charges || 0,
+        freight_charge_type: canViewCosting ? formData.freight_charge_type : 'fixed',
+        other_charges: canViewCosting ? otherAmount : editingBatch?.other_charges || 0,
+        other_charge_type: canViewCosting ? formData.other_charge_type : 'fixed',
+        expiry_date: formData.expiry_date || null,
+      };
+      const operationId = batchOperationIdRef.current || crypto.randomUUID();
+      batchOperationIdRef.current = operationId;
 
-      if (editingBatch) {
-        const quantityDelta = formData.import_quantity - editingBatch.import_quantity;
+      const { data: result, error } = await supabase.rpc('save_batch_inventory_v1', {
+        p_batch_id: editingBatch?.id || null,
+        p_payload: batchPayload,
+        p_operation_id: operationId,
+      });
 
-        const batchUpdateData = {
-          batch_number: formData.batch_number,
-          product_id: formData.product_id,
-          import_container_id: formData.import_container_id && formData.import_container_id.trim() !== '' ? formData.import_container_id : null,
-          import_date: formData.import_date,
-          import_quantity: formData.import_quantity,
-          packaging_details: formData.packaging_details,
-          expiry_date: formData.expiry_date || null,
-          ...(canViewCosting ? {
-            import_price: importPriceIDR,
-            import_price_usd: formData.import_price_usd || null,
-            exchange_rate_usd_to_idr: formData.exchange_rate_usd_to_idr || null,
-            duty_percent: formData.duty_percent || 0,
-            duty_charges: dutyAmount,
-            duty_charge_type: 'percentage',
-            freight_charges: freightAmount,
-            freight_charge_type: formData.freight_charge_type,
-            other_charges: otherAmount,
-            other_charge_type: formData.other_charge_type,
-          } : {}),
-        };
-
-        const { error } = await supabase
-          .from('batches')
-          .update(batchUpdateData)
-          .eq('id', editingBatch.id);
-
-        if (error) throw error;
-        batchId = editingBatch.id;
-
-        if (quantityDelta !== 0) {
-          const { error: transError } = await supabase
-            .from('inventory_transactions')
-            .update({
-              quantity: formData.import_quantity,
-              notes: `Updated import quantity from ${editingBatch.import_quantity} to ${formData.import_quantity} (Delta: ${quantityDelta > 0 ? '+' : ''}${quantityDelta})`
-            })
-            .eq('batch_id', editingBatch.id)
-            .eq('transaction_type', 'purchase');
-
-          if (transError) {
-            console.error('Error updating purchase transaction:', transError);
-          }
-
-          const { data: allTransactions } = await supabase
-            .from('inventory_transactions')
-            .select('quantity')
-            .eq('batch_id', editingBatch.id);
-
-          const recalculatedStock = allTransactions?.reduce((sum, t) => sum + parseFloat(t.quantity || '0'), 0) || 0;
-
-          await supabase
-            .from('batches')
-            .update({ current_stock: recalculatedStock })
-            .eq('id', editingBatch.id);
-        }
-      } else {
-        // For new batches, current_stock = import_quantity
-        const batchData = {
-          batch_number: formData.batch_number,
-          product_id: formData.product_id,
-          import_container_id: formData.import_container_id && formData.import_container_id.trim() !== '' ? formData.import_container_id : null,
-          import_date: formData.import_date,
-          import_quantity: formData.import_quantity,
-          current_stock: formData.import_quantity,
-          packaging_details: formData.packaging_details,
-          import_price: canViewCosting ? importPriceIDR : 0,
-          import_price_usd: canViewCosting ? formData.import_price_usd || null : null,
-          exchange_rate_usd_to_idr: canViewCosting ? formData.exchange_rate_usd_to_idr || null : null,
-          duty_percent: canViewCosting ? formData.duty_percent || 0 : 0,
-          duty_charges: canViewCosting ? dutyAmount : 0,
-          duty_charge_type: 'percentage',
-          freight_charges: canViewCosting ? freightAmount : 0,
-          freight_charge_type: canViewCosting ? formData.freight_charge_type : 'fixed',
-          other_charges: canViewCosting ? otherAmount : 0,
-          other_charge_type: canViewCosting ? formData.other_charge_type : 'fixed',
-          expiry_date: formData.expiry_date || null,
-        };
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('Not authenticated');
-
-        const { data, error } = await supabase
-          .from('batches')
-          .insert([{ ...batchData, is_active: true, created_by: user.id }])
-          .select()
-          .single();
-
-        if (error) throw error;
-        batchId = data.id;
+      if (error) throw error;
+      if (!result?.success || !result?.batch_id) {
+        throw new Error(result?.error || 'Canonical batch save failed');
       }
+      const batchId = result.batch_id as string;
 
       await uploadFilesToBatch(batchId);
 
+      batchOperationIdRef.current = null;
       setModalOpen(false);
       resetForm();
       loadBatches();
@@ -576,83 +496,30 @@ export function Batches() {
         return;
       }
 
-      // --- Warehouse: archive only, never hard delete ---
-      if (isWarehouse) {
-        if (batch && batch.current_stock < batch.import_quantity) {
-          showToast({
-            type: 'error', title: 'Cannot Archive',
-            message: `${batchLabel} has had stock consumed (imported: ${batch.import_quantity}, remaining: ${batch.current_stock}). Contact an admin to archive.`,
-          });
-          return;
-        }
-
-        const confirmed = await showConfirm({
-          title: 'Archive Batch',
-          message: `Archive ${batchLabel}? It will be hidden from the active list. All stock history and records are preserved.`,
-          variant: 'warning',
-          confirmLabel: 'Archive',
-        });
-        if (!confirmed) return;
-
-        const { error: archiveError } = await supabase
-          .from('batches')
-          .update({ is_active: false })
-          .eq('id', id);
-
-        if (archiveError) {
-          console.error('[Batch archive] DB error:', archiveError);
-          showToast({ type: 'error', title: 'Archive Failed', message: archiveError.message || 'Archive failed. Check your permissions.' });
-          return;
-        }
-
-        // Verify the row was actually updated (RLS can silently affect 0 rows)
-        const { data: check } = await supabase
-          .from('batches')
-          .select('id, is_active')
-          .eq('id', id)
-          .maybeSingle();
-
-        if (check && check.is_active === true) {
-          console.error('[Batch archive] Silently failed — row still active:', id);
-          showToast({ type: 'error', title: 'Archive Failed', message: 'Archive not allowed for your role. Contact an administrator.' });
-          return;
-        }
-
-        showToast({ type: 'success', title: 'Archived', message: `${batchLabel} archived. Toggle "Show Archived" to view it.` });
-        await loadBatches();
-        return;
-      }
-
-      // --- Admin / Accounts: hard delete via server-side RPC ---
-      // All child deletes (batch_documents, inventory_transactions, finance_expenses,
-      // stock_reservations) and the parent batch delete run in one atomic PL/pgSQL
-      // transaction with SECURITY DEFINER. The RPC re-checks all guards server-side
-      // and returns { deleted: boolean, reason?: string } — no silent RLS gaps.
-
       const confirmed = await showConfirm({
-        title: 'Delete Batch',
-        message: `Permanently delete ${batchLabel}? This removes its documents, transactions, and expenses. This cannot be undone.`,
-        variant: 'danger',
-        confirmLabel: 'Delete Permanently',
+        title: 'Archive Batch',
+        message: `Archive ${batchLabel}? Inventory history will be preserved. A batch can only be archived after its stock and active reservations are zero.`,
+        variant: 'warning',
+        confirmLabel: 'Archive',
       });
       if (!confirmed) return;
 
       const { data: result, error: rpcError } = await supabase
-        .rpc('delete_batch_safe', { p_batch_id: id });
+        .rpc('archive_batch_inventory_v1', { p_batch_id: id });
 
       if (rpcError) {
-        console.error('[Batch delete] RPC error:', rpcError);
+        console.error('[Batch archive] RPC error:', rpcError);
         throw rpcError;
       }
 
-      if (!result?.deleted) {
-        const reason = result?.reason || 'Delete blocked by policy.';
-        console.error('[Batch delete] RPC returned deleted=false:', reason, 'batch id:', id);
-        showToast({ type: 'error', title: 'Delete Failed', message: reason });
+      if (!result?.archived) {
+        const reason = result?.reason || 'Archive blocked by policy.';
+        console.error('[Batch archive] RPC returned archived=false:', reason, 'batch id:', id);
+        showToast({ type: 'error', title: 'Archive Failed', message: reason });
         return;
       }
 
-      showToast({ type: 'success', title: 'Deleted', message: `${batchLabel} deleted successfully.` });
+      showToast({ type: 'success', title: 'Archived', message: `${batchLabel} archived. All inventory history was preserved.` });
       await loadBatches();
     } catch (error: any) {
       console.error('[Batch delete] Unexpected error:', error);
@@ -661,6 +528,7 @@ export function Batches() {
   };
 
   const resetForm = () => {
+    batchOperationIdRef.current = null;
     setEditingBatch(null);
     setUploadedFiles([]);
     setFormData({
@@ -823,21 +691,16 @@ export function Batches() {
     });
     if (!confirmed) return;
     try {
-      const { error } = await supabase
-        .from('batches')
-        .update({ is_active: false })
-        .eq('id', batchId);
+      const { data: result, error } = await supabase
+        .rpc('archive_batch_inventory_v1', { p_batch_id: batchId });
       if (error) throw error;
 
-      const { data: check } = await supabase
-        .from('batches')
-        .select('id, is_active')
-        .eq('id', batchId)
-        .maybeSingle();
-
-      if (check && check.is_active === true) {
-        console.error('[Batch archive] Silently failed — row still active:', batchId);
-        showToast({ type: 'error', title: 'Archive Failed', message: 'Archive not allowed for your role. Contact an administrator.' });
+      if (!result?.archived) {
+        showToast({
+          type: 'error',
+          title: 'Archive Failed',
+          message: result?.reason || 'Archive blocked by policy.',
+        });
         return;
       }
 

@@ -56,7 +56,7 @@
 |-----------|------------------------------|-------------|
 | CRM       | `/crm`, `/command-center`   | `inquiries`, `emails`, `follow_ups` |
 | Sales     | `/sales`, `/sales-orders`, `/delivery-challan` | `sales_orders`, `delivery_challans`, `sales_invoices`, `sales_invoice_items` |
-| Inventory | `/inventory`, `/batches`, `/stock` | `products`, `batches`, `stock_movements`, `import_requirements` |
+| Inventory | `/inventory`, `/batches`, `/stock` | `products`, `batches`, `inventory_transactions`, `stock_reservations`, `import_requirements` |
 | Finance   | `/finance/*`                | `journal_entries`, `journal_entry_lines`, `chart_of_accounts`, `purchase_invoices`, `payment_vouchers`, `receipt_vouchers`, `petty_cash_*`, `bank_accounts`, `bank_reconciliations`, `finance_expenses` |
 | Tax       | `/finance/tax`              | `tax_periods`, `tax_payments`, `tax_payment_files`, `faktur_pajak`, `faktur_pajak_files`, `tax_calendar_config` |
 | Reports   | `/finance/trial_balance` etc | Views + read-only |
@@ -70,9 +70,9 @@
 2. **Sales → Tax:** when `assign_faktur_pajak_number(sales_invoice_id)` is
    called, it also upserts `tax_periods` for the invoice's PPN period and
    sets `sales_invoices.tax_period_id`.
-3. **Finance → Inventory:** `purchase_invoices` INSERT (with items) fires
-   `post_purchase_invoice_journal()` which handles landed cost push-down
-   to `batches` and cost updates.
+3. **Import/Finance → Inventory costing only:** container and purchase data may
+   update landed-cost fields on a batch, but never physical quantity. Batch
+   Creation is the only stock IN.
 4. **Finance → Tax:** `finance_expenses` with `pph_amount > 0` or
    `ppn_amount > 0` is picked up by `vw_input_ppn_report` and
    `vw_pph_by_period_type`. Attribution to a specific tax period is via
@@ -81,6 +81,9 @@
    `source_module = 'tax_payment'`. `bank_reconciliation_items` matches
    by `journal_entry_id`. On match, `auto_reconcile_tax_payment` trigger
    flips `tax_payments.status = 'reconciled'`.
+6. **Sales → Inventory:** Sales Order approval creates FEFO reservations.
+   Delivery Challan approval is the only normal physical stock OUT. Sales
+   Invoice validates approved DC allocation and is accounting-only.
 
 ## What's NOT crossing boundaries
 

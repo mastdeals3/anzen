@@ -103,7 +103,7 @@ export function Inventory() {
   const transactionOperationIdRef = useRef<string | null>(null);
 
   const [formData, setFormData] = useState({
-    transaction_type: 'adjustment' as 'purchase' | 'sale' | 'adjustment',
+    transaction_type: 'adjustment' as const,
     product_id: '',
     batch_id: '',
     quantity: 0,
@@ -241,42 +241,22 @@ export function Inventory() {
       const operationId = transactionOperationIdRef.current || crypto.randomUUID();
       transactionOperationIdRef.current = operationId;
 
-      // HARDENING FIX #2: Use atomic DB-side stock adjustment
-      // Prevents race conditions in concurrent updates
-      if (formData.batch_id) {
-        let quantityChange = formData.quantity;
-        if (formData.transaction_type === 'sale') {
-          quantityChange = -quantityChange;
-        }
-        // For 'purchase' and 'adjustment', quantity is already positive
-
-        const { error: adjustError } = await supabase
-          .rpc('adjust_batch_stock_atomic', {
-            p_batch_id: formData.batch_id,
-            p_quantity_change: quantityChange,
-            p_transaction_type: formData.transaction_type,
-            p_reference_id: null,
-            p_notes: formData.notes || null,
-            p_created_by: user.id,
-            p_operation_id: operationId,
-          });
-
-        if (adjustError) throw adjustError;
-      } else {
-        // No batch selected - just create transaction record
-        const { error: txError } = await supabase
-          .from('inventory_transactions')
-          .insert([{
-            ...formData,
-            operation_id: operationId,
-            batch_id: null,
-            reference_number: formData.reference_number || null,
-            notes: formData.notes || null,
-            created_by: user.id,
-          }]);
-
-        if (txError) throw txError;
+      if (!formData.batch_id) {
+        throw new Error('A batch is required for every stock adjustment');
       }
+
+      const { error: adjustError } = await supabase
+        .rpc('adjust_batch_stock_atomic', {
+          p_batch_id: formData.batch_id,
+          p_quantity_change: formData.quantity,
+          p_transaction_type: 'adjustment',
+          p_reference_id: null,
+          p_notes: formData.notes || null,
+          p_created_by: user.id,
+          p_operation_id: operationId,
+        });
+
+      if (adjustError) throw adjustError;
 
       setModalOpen(false);
       resetForm();
@@ -656,13 +636,12 @@ export function Inventory() {
                 </label>
                 <select
                   value={formData.transaction_type}
-                  onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value as any })}
+                  onChange={() => undefined}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   required
+                  disabled
                 >
-                  <option value="purchase">Purchase</option>
-                  <option value="sale">Sale</option>
-                  <option value="adjustment">Adjustment</option>
+                  <option value="adjustment">Stock Adjustment</option>
                 </select>
               </div>
 
@@ -688,12 +667,13 @@ export function Inventory() {
               {formData.product_id && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Batch (Optional)
+                    Batch *
                   </label>
                   <select
                     value={formData.batch_id}
                     onChange={(e) => setFormData({ ...formData, batch_id: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
                   >
                     <option value="">Select Batch</option>
                     {availableBatches.map((batch) => (
@@ -716,8 +696,11 @@ export function Inventory() {
                     onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
-                    min="1"
+                    step="0.001"
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Use a positive quantity to add stock and a negative quantity to reduce stock.
+                  </p>
                 </div>
 
                 <div>

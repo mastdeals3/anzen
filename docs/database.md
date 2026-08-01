@@ -178,3 +178,23 @@ Each row: **Purpose · Relationships · Triggers · RLS · Where used**.
 | `vw_pph_by_period_type` | Per tax_period+type PPh total/paid/outstanding. |
 | `vw_outstanding_tax` | Any period with unpaid tax. |
 | `vw_tax_period_status` | One-row-per-period status for the calendar UI. |
+# Inventory Version 1.0 canonical objects
+
+The normative reference is `docs/inventory_bible.md`.
+
+| Object | Purpose |
+|---|---|
+| `inventory_engine_certification` | Engine version and forward-enforcement timestamp |
+| `inventory_transactions.operation_id` | Unique movement idempotency key |
+| `post_inventory_movement` | Only writer of physical batch quantity |
+| `save_batch_inventory_v1` | Canonical Batch Create/Edit |
+| `approve_sales_order_inventory_v1` | SO approval plus FEFO reservation |
+| `inventory_v1_consume_reservation` | DC-to-reservation batch enforcement |
+| `archive_batch_inventory_v1` | Zero-stock history-preserving archive |
+| `inventory_v1_stock_summary` | Canonical Stock Summary view |
+| `inventory_v1_movement_report` | Canonical Inventory Movement report RPC |
+| `inventory_v1_certification_status` | Forward integrity certification |
+
+All Inventory mutation RPCs deny anonymous execution. Direct
+`batches.current_stock` and `inventory_transactions` mutations are blocked by
+database triggers.

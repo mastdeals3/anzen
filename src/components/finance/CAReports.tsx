@@ -334,104 +334,16 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
   };
 
   const loadInventoryMovement = async () => {
-    // Transaction types that represent REAL stock movement (not duplicates):
-    // IN:  purchase, return, adjustment (positive)
-    // OUT: sale, adjustment (negative)
-    // EXCLUDED: delivery_challan (duplicate of 'sale' when invoice is created from DC)
-    //           delivery_challan_reserved (reservation only, not physical movement)
-    const COUNTED_TYPES = ['purchase', 'sale', 'return', 'adjustment'];
+    const { data, error } = await supabase.rpc(
+      'inventory_v1_movement_report',
+      {
+        p_date_from: dateRange.from,
+        p_date_to: dateRange.to,
+      },
+    );
 
-    const { data: openingTxns } = await supabase
-      .from('inventory_transactions')
-      .select('product_id, quantity, transaction_type')
-      .lt('transaction_date', dateRange.from)
-      .in('transaction_type', COUNTED_TYPES);
-
-    const { data: periodTxns } = await supabase
-      .from('inventory_transactions')
-      .select('product_id, transaction_date, quantity, transaction_type, reference_type, reference_number, reference_id, notes')
-      .gte('transaction_date', dateRange.from)
-      .lte('transaction_date', dateRange.to)
-      .in('transaction_type', COUNTED_TYPES);
-
-    const { data: products } = await supabase
-      .from('products')
-      .select('id, product_code, product_name, unit');
-
-
-    const dcLinkedInvoiceItemIds = new Set<string>();
-    const salesInvoiceItemRefIds = (periodTxns || [])
-      .filter((txn: any) => txn.reference_type === 'sales_invoice_item' && txn.reference_id)
-      .map((txn: any) => txn.reference_id);
-
-    if (salesInvoiceItemRefIds.length > 0) {
-      const { data: dcLinkedItems } = await supabase
-        .from('sales_invoice_items')
-        .select('id')
-        .in('id', salesInvoiceItemRefIds)
-        .not('delivery_challan_item_id', 'is', null);
-
-      (dcLinkedItems || []).forEach((row: any) => dcLinkedInvoiceItemIds.add(row.id));
-    }
-
-    const { data: reservations } = await supabase
-      .from('stock_reservations')
-      .select('product_id, reserved_quantity')
-      .eq('is_released', false);
-
-    if (!products) return [];
-
-    const productMap = new Map();
-
-    products.forEach(prod => {
-      productMap.set(prod.id, {
-        product_code: prod.product_code,
-        product_name: prod.product_name,
-        unit: prod.unit || 'PCS',
-        opening: 0,
-        in_qty: 0,
-        out_qty: 0,
-        reserved_qty: 0,
-        closing: 0
-      });
-    });
-
-    openingTxns?.forEach((txn: any) => {
-      if (productMap.has(txn.product_id)) {
-        const prod = productMap.get(txn.product_id);
-        prod.opening += parseFloat(txn.quantity);
-      }
-    });
-
-    periodTxns?.forEach((txn: any) => {
-      if (productMap.has(txn.product_id)) {
-        const prod = productMap.get(txn.product_id);
-        const qty = parseFloat(txn.quantity);
-        const isAccountingOnlyDcSale =
-          txn.reference_type === 'sales_invoice_item' &&
-          dcLinkedInvoiceItemIds.has(txn.reference_id);
-
-        if (qty > 0) {
-          prod.in_qty += qty;
-        } else if (!isAccountingOnlyDcSale) {
-          prod.out_qty += Math.abs(qty);
-        }
-      }
-    });
-
-    reservations?.forEach((r: any) => {
-      if (productMap.has(r.product_id)) {
-        productMap.get(r.product_id).reserved_qty += parseFloat(r.reserved_quantity || 0);
-      }
-    });
-
-    Array.from(productMap.values()).forEach(prod => {
-      prod.closing = prod.opening + prod.in_qty - prod.out_qty;
-    });
-
-    return Array.from(productMap.values())
-      .filter(prod => prod.opening !== 0 || prod.in_qty !== 0 || prod.out_qty !== 0 || prod.closing !== 0)
-      .sort((a, b) => (a.product_code || '').localeCompare(b.product_code || ''));
+    if (error) throw error;
+    return data || [];
   };
 
   const loadJournalRegister = async () => {

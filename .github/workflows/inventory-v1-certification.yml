@@ -1,0 +1,68 @@
+name: Inventory V1 Certification
+
+on:
+  pull_request:
+    paths:
+      - "src/pages/Batches.tsx"
+      - "src/pages/Inventory.tsx"
+      - "src/pages/Products.tsx"
+      - "src/pages/SalesOrders.tsx"
+      - "src/pages/Stock.tsx"
+      - "src/components/finance/CAReports.tsx"
+      - "docs/inventory_*.md"
+      - "supabase/migrations/**"
+      - "scripts/inventory-v1-*"
+      - "scripts/verify-inventory-v1-boundaries.mjs"
+      - "package.json"
+      - ".github/workflows/inventory-v1-certification.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/pages/Batches.tsx"
+      - "src/pages/Inventory.tsx"
+      - "src/pages/Products.tsx"
+      - "src/pages/SalesOrders.tsx"
+      - "src/pages/Stock.tsx"
+      - "src/components/finance/CAReports.tsx"
+      - "docs/inventory_*.md"
+      - "supabase/migrations/**"
+      - "scripts/inventory-v1-*"
+      - "scripts/verify-inventory-v1-boundaries.mjs"
+      - "package.json"
+      - ".github/workflows/inventory-v1-certification.yml"
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_DB_URL: ${{ secrets.INVENTORY_STAGING_DB_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify canonical stock boundaries
+        run: npm run verify:inventory-v1
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint -- --quiet
+
+      - name: Build production application
+        run: npm run build
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run rollback-only Inventory V1 regression
+        run: npm run test:inventory-v1

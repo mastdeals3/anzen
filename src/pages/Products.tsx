@@ -302,33 +302,30 @@ export function Products() {
         .eq('product_id', product.id);
 
       if (batches && batches.length > 0) {
-        const confirmDelete = await showConfirm({
-          title: 'Confirm',
-          message: `This product has ${batches.length} batch(es). Deleting this product will permanently remove:\n` +
-          `- ${batches.length} batches\n` +
-          `- All related inventory transactions\n` +
-          `- All related documents\n\n` +
-          `Are you absolutely sure you want to continue?`,
-          variant: 'danger',
-          confirmLabel: 'Delete'
+        showToast({
+          type: 'error',
+          title: 'Cannot Delete',
+          message: `This product has ${batches.length} batch(es) with inventory history. Deactivate the product instead.`,
         });
-
-        if (!confirmDelete) return;
-      } else {
-        if (!await showConfirm({ title: 'Confirm', message: 'Are you sure you want to delete this product?', variant: 'danger', confirmLabel: 'Delete' })) return;
+        return;
       }
 
-      if (batches && batches.length > 0) {
-        for (const batch of batches) {
-          await supabase.from('batch_documents').delete().eq('batch_id', batch.id);
-          await supabase.from('inventory_transactions').delete().eq('batch_id', batch.id);
-          await supabase.from('finance_expenses').delete().eq('batch_id', batch.id);
-        }
+      const { count: movementCount } = await supabase
+        .from('inventory_transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('product_id', product.id);
 
-        await supabase.from('batches').delete().eq('product_id', product.id);
+      if ((movementCount || 0) > 0) {
+        showToast({
+          type: 'error',
+          title: 'Cannot Delete',
+          message: 'This product has inventory history. Deactivate the product instead.',
+        });
+        return;
       }
 
-      await supabase.from('inventory_transactions').delete().eq('product_id', product.id);
+      if (!await showConfirm({ title: 'Confirm', message: 'Are you sure you want to delete this unused product?', variant: 'danger', confirmLabel: 'Delete' })) return;
+
       await supabase.from('product_files').delete().eq('product_id', product.id);
 
       const { error } = await supabase

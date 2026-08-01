@@ -39,45 +39,13 @@ export function Stock() {
   const loadStockSummary = async () => {
     try {
       const { data, error } = await supabase
-        .from('product_stock_summary')
+        .from('inventory_v1_stock_summary')
         .select('*')
         .order('product_name');
 
       if (error) throw error;
 
-      const { data: shortageData } = await supabase
-        .from('import_requirements')
-        .select('product_id, shortage_quantity')
-        .in('status', ['pending', 'ordered']);
-
-      const shortageMap = new Map<string, number>();
-      shortageData?.forEach(s => {
-        const current = shortageMap.get(s.product_id) || 0;
-        shortageMap.set(s.product_id, current + Number(s.shortage_quantity));
-      });
-
-      const productsWithReserved = await Promise.all(
-        (data || []).map(async (product) => {
-          const { data: reservedData } = await supabase
-            .from('stock_reservations')
-            .select('reserved_quantity')
-            .eq('product_id', product.product_id)
-            .eq('status', 'active');
-
-          const reserved_quantity = reservedData?.reduce((sum, r) => sum + Number(r.reserved_quantity), 0) || 0;
-          const available_quantity = product.total_current_stock - reserved_quantity;
-          const shortage_quantity = available_quantity < 0 ? shortageMap.get(product.product_id) || 0 : 0;
-
-          return {
-            ...product,
-            reserved_stock: reserved_quantity,
-            shortage_quantity,
-            available_quantity
-          };
-        })
-      );
-
-      const filteredProducts = productsWithReserved.filter(
+      const filteredProducts = (data || []).filter(
         p => p.total_current_stock > 0 || p.reserved_stock > 0 || p.shortage_quantity > 0
       );
 

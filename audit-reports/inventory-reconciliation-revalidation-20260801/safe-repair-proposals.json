@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-08-01T07:22:17.945Z",
+  "read_only": true,
+  "proposals": [
+    {
+      "batch_id": "cb7b0b87-79be-40e5-844d-b2bcfed2727e",
+      "batch_number": "4001/1101/25/A-3145",
+      "product_name": "Ibuprofen BP",
+      "current_batch_quantity": 0,
+      "canonical_document_expected_quantity": 0,
+      "action": "MARK_DUPLICATE_MOVEMENT_SUPERSEDED",
+      "target_table": "inventory_transactions",
+      "target_ids": [
+        "bcb32e37-4ce5-4660-b9ef-59fa44fa2b67"
+      ],
+      "retained_movement_id": "d3339284-bba1-4b11-9dfe-29413481c861",
+      "source_document_type": "delivery_challan_item",
+      "source_document_id": "422748c3-4595-47a5-83c7-4cd1d60df2da",
+      "source_document_quantity": 600,
+      "stock_update_required": false,
+      "proposal_only": true,
+      "preconditions": [
+        "batch current_stock remains 0",
+        "canonical document expectation remains 0",
+        "approved Delivery Challan item 422748c3-4595-47a5-83c7-4cd1d60df2da remains quantity 600",
+        "retained movement d3339284-bba1-4b11-9dfe-29413481c861 remains the sole effective DC movement for this item"
+      ],
+      "rationale": "The approved DC document and current batch balance are correct. Only duplicate audit rows should be marked superseded; batch quantity and source documents must not change."
+    },
+    {
+      "batch_id": "c20fe01a-fbe3-43ba-93cc-0a2175fee19a",
+      "batch_number": "4001/1101/25/A-3146",
+      "product_name": "Ibuprofen BP",
+      "current_batch_quantity": 50,
+      "canonical_document_expected_quantity": 50,
+      "action": "MARK_DUPLICATE_MOVEMENT_SUPERSEDED",
+      "target_table": "inventory_transactions",
+      "target_ids": [
+        "6165ec64-4f05-4038-98f0-253778bb248f",
+        "7b7fee55-8466-40b3-8097-7b72570a4572"
+      ],
+      "retained_movement_id": "6c4d2e70-c6eb-41e0-a7bd-4de5c169da34",
+      "source_document_type": "delivery_challan_item",
+      "source_document_id": "69abdea3-8975-4a3e-955d-7db7e944937d",
+      "source_document_quantity": 50,
+      "stock_update_required": false,
+      "proposal_only": true,
+      "preconditions": [
+        "batch current_stock remains 50",
+        "canonical document expectation remains 50",
+        "approved Delivery Challan item 69abdea3-8975-4a3e-955d-7db7e944937d remains quantity 50",
+        "retained movement 6c4d2e70-c6eb-41e0-a7bd-4de5c169da34 remains the sole effective DC movement for this item"
+      ],
+      "rationale": "The approved DC document and current batch balance are correct. Only duplicate audit rows should be marked superseded; batch quantity and source documents must not change."
+    }
+  ]
+}
