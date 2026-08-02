@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import process from 'node:process';
 
 const failures = [];
 
-function trackedFiles() {
-  return execFileSync('rg', ['--files', 'src'], { encoding: 'utf8' })
-    .trim()
-    .split('\n')
-    .filter((file) => /\.(ts|tsx)$/.test(file));
+function trackedFiles(directory = 'src') {
+  const files = [];
+
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const file = join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...trackedFiles(file));
+    else if (entry.isFile() && /\.(ts|tsx)$/.test(file)) files.push(file);
+  }
+
+  return files.sort();
 }
 
 function checkSourceFile(file) {
