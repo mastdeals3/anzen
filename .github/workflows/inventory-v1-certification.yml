@@ -68,4 +68,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Run rollback-only Inventory V1 regression
+        if: env.SUPABASE_DB_URL != ''
         run: npm run test:inventory-v1
+
+      - name: Report unavailable staging regression
+        if: env.SUPABASE_DB_URL == ''
+        run: echo "::notice::INVENTORY_STAGING_DB_URL is not configured; database regression was not run in CI."
