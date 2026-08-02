@@ -217,11 +217,13 @@ export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): Bro
   const reimbursementTotal = calculateBrokerReimbursementTotal(items);
   const reimbursementDpp = items.reduce((sum, item) => sum + (Number(item.dpp_amount) || 0), 0);
   const reimbursementPpn = items.reduce((sum, item) => sum + (Number(item.ppn_amount) || 0), 0);
-  const totalPpn = (Number(exp.ppn_amount) || 0) + reimbursementPpn;
+  const headerPpn = Number(exp.ppn_amount) || 0;
+  const totalPpn = headerPpn + reimbursementPpn;
   const pphWithheld = Number(exp.pph_amount) || 0;
   const stampDuty = Number(exp.stamp_duty_amount) || 0;
   const expenseTotal = brokerInvoiceAmount + reimbursementTotal + stampDuty;
-  const finalCashPayable = expenseTotal + totalPpn - pphWithheld;
+  // Reimbursement PPN is already included in the gross reimbursement total.
+  const finalCashPayable = expenseTotal + headerPpn - pphWithheld;
 
   return {
     brokerInvoiceAmount,

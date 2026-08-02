@@ -331,14 +331,13 @@ recoverable_input_ppn = header ppn_amount
 pph23_withheld = finance_expenses.pph_amount
 
 final_cash_payable = expense_total
-                   + recoverable_input_ppn
+                   + header ppn_amount
                    - pph23_withheld
 ```
 
-These names and formulas describe the Version 1.0 canonical contract. They may
-not be reinterpreted in a UI component. A future accounting-policy correction
-must change the database function, posting function, all affected tests, and
-this section together.
+`expense_total` already contains reimbursement-line PPN through each gross
+`reimbursement_line_total`. Reimbursement PPN is therefore classified once as
+Recoverable Input PPN in the journal and is not added to cash payable again.
 
 ### 9.3 Supplier separation
 
@@ -361,7 +360,7 @@ For `EXP/26-26/113`:
 | Expense Total | Rp 12,227,503 |
 | Recoverable Input PPN | Rp 457,695 |
 | PPh23 | Rp 62,000 |
-| Final Cash Payable | Rp 12,623,198 |
+| Final Cash Payable | Rp 12,165,503 |
 
 The reimbursement line totals are Rp 5,042,574, Rp 3,476,629,
 Rp 588,300, and Rp 20,000. These values are permanent regression fixtures.

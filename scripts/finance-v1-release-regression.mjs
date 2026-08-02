@@ -289,7 +289,7 @@ BEGIN
      OR v_broker.expense_total <> 12227503
      OR v_broker.recoverable_input_ppn <> 457695
      OR v_broker.pph23_withheld <> 62000
-     OR v_broker.final_cash_payable <> 12623198 THEN
+     OR v_broker.final_cash_payable <> 12165503 THEN
     RAISE EXCEPTION 'Canonical Customs Broker values do not reconcile';
   END IF;
 

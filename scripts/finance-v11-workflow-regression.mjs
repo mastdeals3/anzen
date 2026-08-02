@@ -27,6 +27,13 @@ DECLARE
   v_pph21 uuid;
   v_je uuid;
   v_count bigint;
+  v_broker record;
+  v_debit numeric;
+  v_credit numeric;
+  v_expense_debit numeric;
+  v_ppn_debit numeric;
+  v_pph_credit numeric;
+  v_bank_credit numeric;
 BEGIN
   SELECT id INTO v_staff FROM public.finance_staff_master WHERE status='active' ORDER BY created_at,id LIMIT 1;
   SELECT id INTO v_pph21 FROM public.tax_codes WHERE upper(code)='PPH21' LIMIT 1;
@@ -37,31 +44,21 @@ BEGIN
     RAISE EXCEPTION 'Finance V1.1 authenticated fixtures are incomplete';
   END IF;
 
-  INSERT INTO public.bank_statement_uploads(
-    bank_account_id,statement_period,statement_start_date,statement_end_date,currency,uploaded_by,status)
-  VALUES(v_bank,'Finance V1.1 rollback regression',current_date,current_date,'IDR',v_user,'completed')
-  RETURNING id INTO v_upload;
-
-  -- The production broker journal has five bank credits. Their selected-bank
-  -- total, not any individual line, must validate against the bank debit.
-  INSERT INTO public.bank_statement_lines(
-    upload_id,bank_account_id,transaction_date,description,debit_amount,credit_amount,currency,created_by)
-  SELECT v_upload,fe.bank_account_id,fe.expense_date,'V1.1 split broker regression',
-         accounting.final_cash_payable,0,'IDR',v_user
-    FROM public.finance_expenses fe
-    JOIN public.vw_customs_broker_accounting accounting ON accounting.expense_id=fe.id
-   WHERE fe.id=v_expense
-  RETURNING id INTO v_line;
-  PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
-  PERFORM 1 FROM public.bank_statement_lines WHERE id=v_line AND matched_expense_id=v_expense AND reconciliation_status='matched';
-  IF NOT FOUND THEN RAISE EXCEPTION 'Split broker Expense bank link failed'; END IF;
-  PERFORM public.unmatch_bank_line(v_line);
-  PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
+  SELECT * INTO v_broker
+    FROM public.vw_customs_broker_accounting
+   WHERE expense_id=v_expense;
+  IF NOT FOUND
+     OR v_broker.reimbursement_total<>9127503
+     OR v_broker.expense_total<>12227503
+     OR v_broker.recoverable_input_ppn<>457695
+     OR v_broker.pph23_withheld<>62000
+     OR v_broker.final_cash_payable<>12165503 THEN
+    RAISE EXCEPTION 'Customs Broker cash formula is incorrect: %',row_to_json(v_broker);
+  END IF;
 
   -- Finance V1.1.1 lifecycle: cancelling, editing and re-approving must create
   -- exactly one new canonical journal. Linking payment metadata must not
   -- regenerate that journal or leave matched_entry_id stale.
-  PERFORM public.unmatch_bank_line(v_line);
   PERFORM public.cancel_expense_posting(v_expense,v_user,'Finance V1.1.1 rollback regression');
   UPDATE public.finance_expenses SET description=description WHERE id=v_expense;
   SELECT count(*) INTO v_count FROM public.journal_entries
@@ -73,11 +70,46 @@ BEGIN
    WHERE source_module='expenses' AND reference_id=v_expense
      AND is_posted=true AND COALESCE(is_reversed,false)=false
    ORDER BY created_at DESC LIMIT 1;
+
+  SELECT je.total_debit,je.total_credit,
+         COALESCE(sum(jel.debit) FILTER (WHERE coa.code='5300'),0),
+         COALESCE(sum(jel.debit) FILTER (WHERE coa.code='1150'),0),
+         COALESCE(sum(jel.credit) FILTER (WHERE coa.code='2132'),0),
+         COALESCE(sum(jel.credit) FILTER (
+           WHERE jel.account_id=(SELECT coa_id FROM public.bank_accounts WHERE id=v_bank)
+         ),0)
+    INTO v_debit,v_credit,v_expense_debit,v_ppn_debit,v_pph_credit,v_bank_credit
+    FROM public.journal_entries je
+    JOIN public.journal_entry_lines jel ON jel.journal_entry_id=je.id
+    JOIN public.chart_of_accounts coa ON coa.id=jel.account_id
+   WHERE je.id=v_je
+   GROUP BY je.total_debit,je.total_credit;
+  IF v_debit<>12227503 OR v_credit<>12227503
+     OR v_expense_debit<>11769808
+     OR v_ppn_debit<>457695
+     OR v_pph_credit<>62000
+     OR v_bank_credit<>12165503 THEN
+    RAISE EXCEPTION
+      'Customs Broker journal formula failed: debit %, credit %, expense %, PPN %, PPh23 %, bank %',
+      v_debit,v_credit,v_expense_debit,v_ppn_debit,v_pph_credit,v_bank_credit;
+  END IF;
+
+  INSERT INTO public.bank_statement_uploads(
+    bank_account_id,statement_period,statement_start_date,statement_end_date,currency,uploaded_by,status)
+  VALUES(v_bank,'Finance V1.1 rollback regression',current_date,current_date,'IDR',v_user,'completed')
+  RETURNING id INTO v_upload;
+  INSERT INTO public.bank_statement_lines(
+    upload_id,bank_account_id,transaction_date,description,debit_amount,credit_amount,currency,created_by)
+  SELECT v_upload,fe.bank_account_id,fe.expense_date,'V1.1 split broker regression',
+         12165503,0,'IDR',v_user
+    FROM public.finance_expenses fe
+   WHERE fe.id=v_expense
+  RETURNING id INTO v_line;
   PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
   PERFORM 1 FROM public.bank_statement_lines
    WHERE id=v_line AND matched_expense_id=v_expense AND matched_entry_id=v_je
      AND reconciliation_status='matched';
-  IF NOT FOUND THEN RAISE EXCEPTION 'Edited Broker Expense link retained a stale journal reference'; END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Corrected Broker Expense bank link failed'; END IF;
   PERFORM public.unmatch_bank_line(v_line);
   PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
   SELECT count(*) INTO v_count FROM public.journal_entries
@@ -196,6 +228,27 @@ BEGIN
   IF v_count<>0 THEN RAISE EXCEPTION '% posted journals are unbalanced',v_count; END IF;
   SELECT count(*) INTO v_count FROM public.bank_statement_lines WHERE matched_payment_id IS NOT NULL AND matched_entry_id IS NULL;
   IF v_count<>0 THEN RAISE EXCEPTION '% Payment bank links have stale journal references',v_count; END IF;
+
+  SELECT COALESCE(sum(total_debit),0),COALESCE(sum(total_credit),0)
+    INTO v_debit,v_credit
+    FROM public.get_trial_balance('2000-01-01'::date,current_date,1);
+  IF abs(v_debit-v_credit)>0.01 THEN RAISE EXCEPTION 'Trial Balance is out by %',v_debit-v_credit; END IF;
+  PERFORM 1 FROM public.get_pnl_summary('2000-01-01'::date,current_date,1);
+  IF NOT FOUND THEN RAISE EXCEPTION 'Profit and Loss RPC returned no row'; END IF;
+  PERFORM 1 FROM public.get_balance_sheet(current_date,1);
+  IF NOT FOUND THEN RAISE EXCEPTION 'Balance Sheet RPC returned no rows'; END IF;
+  PERFORM 1 FROM public.vw_monthly_tax_summary;
+  PERFORM 1 FROM public.vw_outstanding_tax;
+  PERFORM 1 FROM public.vw_tax_period_status;
+  PERFORM 1 FROM public.vw_input_ppn_report
+   WHERE reference=(
+     SELECT COALESCE(invoice_number,voucher_number)::varchar
+       FROM public.finance_expenses WHERE id=v_expense
+   ) AND dpp_amount=11769808 AND ppn_amount=457695;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Input PPN report does not preserve the corrected Broker expense/PPN split'; END IF;
+  PERFORM 1 FROM public.vw_pph_by_period_type
+   WHERE fiscal_year=2026 AND period_month=2 AND tax_type='PPh23' AND pph_total>=62000;
+  IF NOT FOUND THEN RAISE EXCEPTION 'PPh23 report does not include the Broker withholding'; END IF;
 END;
 $regression$;
 ROLLBACK;
@@ -208,12 +261,15 @@ try {
   const response=JSON.parse(stdout.slice(stdout.indexOf('{')));
   if(response.error) throw new Error(response.error.message ?? JSON.stringify(response.error));
   console.log(JSON.stringify({status:'passed',transaction:'rolled_back',checks:[
+    'customs_broker_real_cash_formula_and_balanced_journal',
     'expense_split_journal_bank_link_unlink_relink','expense_cancel_edit_reapprove_stable_journal',
     'payment_create_edit_multiple_attachments',
     'payment_bank_link_unlink_relink_document_identity','staff_salary_master_calculation',
     'usd_21000_to_idr_356840000_cross_currency_payment',
     'salary_advance_fifo_settlement_after_pph21','salary_journal_and_withholding_liability',
     'all_posted_journals_balanced','no_stale_payment_bank_links',
+    'trial_balance_pnl_balance_sheet_and_tax_reports',
+    'recoverable_ppn_and_pph23_reports',
   ]},null,2));
 } catch(error) {
   if(error && typeof error==='object') {

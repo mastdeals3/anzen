@@ -2872,7 +2872,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       brokerInvoiceAmount,
                       reimbursementTotal: reimbAmount, reimbursementDpp: reimbDpp,
                       reimbursementPpn: reimbPpn,
-                      totalPpn, pphWithheld: parentPph, stampDuty: parentStamp,
+                      pphWithheld: parentPph, stampDuty: parentStamp,
                     } = brokerTotals;
                     const fmt = (n: number) => formatCurrency(n, expenseFormCurrency, {
                       minimumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
@@ -3017,16 +3017,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           </div>
                         )}
 
-                        {/* Payment Summary — Broker Invoice + Header DDP + Reimb Amt + Reimb DDP + PPN − PPh + Stamp = Payable */}
+                        {/* Payment Summary */}
                         {(() => {
                           type FormulaCell = { label: string; value: number; valueColor: string; op?: string };
                           const cells: FormulaCell[] = [
                             { label: 'Broker Invoice Amount', value: brokerInvoiceAmount, valueColor: 'text-gray-900', op: '+' },
                             { label: 'Reimbursement Total',   value: reimbAmount,         valueColor: 'text-gray-900', op: '+' },
-                            { label: 'Expense Total',         value: brokerTotals.expenseTotal, valueColor: 'text-gray-900', op: '+' },
-                            { label: 'Recoverable PPN',       value: totalPpn,            valueColor: 'text-blue-700', op: '+' },
-                            { label: 'PPh Withheld',          value: parentPph,           valueColor: 'text-orange-700', op: '−' },
-                            { label: 'Stamp Duty',            value: parentStamp,         valueColor: 'text-gray-900' },
+                            { label: 'Broker PPN',             value: formData.ppn_amount || 0, valueColor: 'text-blue-700', op: '+' },
+                            { label: 'Stamp Duty',            value: parentStamp,         valueColor: 'text-gray-900', op: '−' },
+                            { label: 'PPh Withheld',          value: parentPph,           valueColor: 'text-orange-700' },
                           ];
                           return (
                             <div className="mt-2">
