@@ -89,6 +89,7 @@ const chipTone: Record<string, string> = {
   open:            'bg-blue-100 text-blue-700',
   closed:          'bg-gray-200 text-gray-700',
   paid:            'bg-green-50 text-green-700',
+  partial:         'bg-amber-100 text-amber-800',
   payment_pending: 'bg-yellow-100 text-yellow-800',
   filed:           'bg-green-100 text-green-700',
   overdue:         'bg-red-100 text-red-700',
@@ -113,11 +114,25 @@ export function paymentStatusLabel(status: string | null | undefined): string {
     case 'closed':          return 'Closed';
     case 'filed':           return 'Filed';
     case 'paid':            return 'Paid';
+    case 'partial':         return 'Partial';
     case 'overdue':         return 'Overdue';
     case 'payment_pending': return 'Payment Pending';
     case 'open':            return 'Open';
     default:                return status ? status.replace(/_/g, ' ') : '—';
   }
+}
+
+/** One accountant-facing payment status shared by Register and payment UI. */
+export function taxPaymentBusinessStatus(args: {
+  paymentStatus?: string | null;
+  paidAmount?: number | null;
+  outstandingAmount?: number | null;
+}): string {
+  const outstanding = Number(args.outstandingAmount ?? 0);
+  const paid = Number(args.paidAmount ?? 0);
+  if (outstanding <= 0.01) return 'paid';
+  if (paid > 0.01) return 'partial';
+  return args.paymentStatus === 'overdue' ? 'overdue' : 'payment_pending';
 }
 
 /** Colored status pill; falls back to neutral gray for unknown statuses. */

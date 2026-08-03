@@ -23,7 +23,13 @@ const TABS: { id: TaxSubTab; label: string; icon: JSX.Element }[] = [
   { id: 'reports',  label: 'Tax Reports',    icon: <ShieldCheck className="w-4 h-4" /> },
 ];
 
-export function TaxComplianceCentre() {
+interface Props {
+  onOpenExpense?: (id: string) => void;
+  onOpenPayment?: (id: string) => void;
+  onOpenJournal?: (id: string) => void;
+}
+
+export function TaxComplianceCentre({ onOpenExpense, onOpenPayment, onOpenJournal }: Props) {
   const [active, setActive] = useState<TaxSubTab>('calendar');
 
   return (
@@ -48,7 +54,7 @@ export function TaxComplianceCentre() {
       <Suspense fallback={<div className="text-gray-500">Loading…</div>}>
         {active === 'calendar' && <TaxCalendarPanel />}
         {active === 'periods'  && <TaxPeriodsPanel />}
-        {active === 'pph'      && <PphRegisterPanel />}
+        {active === 'pph'      && <PphRegisterPanel onOpenExpense={onOpenExpense} onOpenPayment={onOpenPayment} onOpenJournal={onOpenJournal} />}
         {active === 'payments' && <TaxPaymentsPanel />}
         {active === 'faktur'   && <FakturPajakPanel />}
         {active === 'close'    && <PeriodClosePanel />}

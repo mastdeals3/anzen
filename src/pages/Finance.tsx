@@ -442,7 +442,11 @@ function FinanceContent() {
       case 'ageing':
         return <AgeingReport />;
       case 'tax':
-        return <TaxComplianceCentre />;
+        return <TaxComplianceCentre
+          onOpenExpense={(expenseId) => { setFocusExpenseId(expenseId); setActiveTab('expenses'); }}
+          onOpenPayment={(paymentId) => { setFocusPaymentId(paymentId); setActiveTab('payment'); }}
+          onOpenJournal={handleOpenJournal}
+        />;
       case 'ca_reports':
         return <CAReports onOpenJournal={handleOpenJournal} />;
       case 'integrity_monitor':

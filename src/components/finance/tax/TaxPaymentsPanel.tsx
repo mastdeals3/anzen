@@ -7,7 +7,7 @@ import { TaxAttachments } from './TaxAttachments';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
 import { FinanceModal as Modal } from '../FinanceModal';
 import { MoneyInput } from '../../MoneyInput';
-import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState, paymentStatusLabel } from './TaxUI';
+import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState, paymentStatusLabel, taxPaymentBusinessStatus } from './TaxUI';
 import { formatFinancePeriod } from '../../../utils/financePeriod';
 
 interface Period {
@@ -141,7 +141,11 @@ export function TaxPaymentsPanel() {
   // never raw internal values. Partial payments remain visible through the
   // Outstanding/Paid hint under the select.
   function paymentLabel(period: Period): string {
-    return paymentStatusLabel(period.payment_status);
+    return paymentStatusLabel(taxPaymentBusinessStatus({
+      paymentStatus: period.payment_status,
+      paidAmount: period.paid_amount,
+      outstandingAmount: period.outstanding_amount,
+    }));
   }
 
   const filteredPayments = useMemo(() => {
@@ -418,7 +422,7 @@ export function TaxPaymentsPanel() {
               >
                 {(['PPN','PPh21','PPh22','PPh23','PPh4(2)','PPh_Unifikasi'] as const).map(t => (
                   <option key={t} value={t}>
-                    {t === 'PPh21' ? 'PPh21 (Manual)' : t === 'PPh_Unifikasi' ? 'PPh Unifikasi (Consolidated)' : t}
+                    {t === 'PPh21' ? 'PPh21' : t === 'PPh_Unifikasi' ? 'PPh Unifikasi (Consolidated)' : t}
                   </option>
                 ))}
               </select>
