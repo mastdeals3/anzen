@@ -42,7 +42,7 @@ export const moduleExpenseCategories: ExpenseCategoryDef[] = [
   { value: 'other', label: 'Other', type: 'admin', icon: DollarSign, description: 'Miscellaneous expenses - EXPENSED to P&L', requiresContainer: false, group: 'Administrative' },
   { value: 'fixed_asset', label: 'Fixed Asset', type: 'admin', icon: Building2, description: 'Purchase of fixed asset (equipment, vehicle, etc.) - CAPITALIZED to asset account', requiresContainer: false, group: 'Administrative' },
   { value: 'import_broker', label: 'Customs Broker Invoice', type: 'admin', icon: FileText, description: 'Invoice from customs broker for clearing, forwarding, DO charges, port fees — EXPENSED to P&L (COA 5300)', requiresContainer: false, group: 'Supplier Invoices' },
-  { value: 'professional_services', label: 'Professional Services', type: 'admin', icon: DollarSign, description: 'Legal, accounting, consulting, or other professional fees — EXPENSED to P&L (COA 6410)', requiresContainer: false, group: 'Supplier Invoices' },
+  { value: 'professional_services', label: 'Professional Services', type: 'admin', icon: DollarSign, description: 'Legal, accounting, consulting, or other professional fees — EXPENSED to P&L (COA 6700)', requiresContainer: false, group: 'Supplier Invoices' },
 ];
 
 export const EXPENSE_CATEGORY_GROUP_ORDER: Record<string, number> = {
