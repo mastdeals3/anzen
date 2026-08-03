@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Calendar, AlertCircle, CheckCircle2, Clock, RefreshCw, FileWarning } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { formatFinancePeriodValue } from '../../../utils/financePeriod';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { formatDate } from '../../../utils/dateFormat';
 import { StatCard, StatCardGrid, SectionCard, EmptyState } from './TaxUI';
@@ -160,7 +161,7 @@ export function TaxCalendarPanel() {
           {grouped.map(([periodKey, items]) => (
             <SectionCard key={periodKey} className="overflow-hidden">
               <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-700 flex items-center justify-between border-b border-gray-100">
-                <span>Period {periodKey}</span>
+                <span>Period {formatFinancePeriodValue(periodKey)}</span>
                 <span className="text-gray-500">{items.length} tax type(s)</span>
               </div>
               <div className="overflow-x-auto">

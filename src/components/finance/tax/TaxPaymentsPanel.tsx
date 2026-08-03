@@ -7,6 +7,7 @@ import { TaxAttachments } from './TaxAttachments';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
 import { FinanceModal as Modal } from '../FinanceModal';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
+import { formatFinancePeriod } from '../../../utils/financePeriod';
 
 interface Period {
   id: string;
@@ -14,6 +15,9 @@ interface Period {
   period_month: number;
   tax_type: string;
   status: string;
+  paid_amount: number | null;
+  outstanding_amount: number | null;
+  payment_status: string | null;
 }
 interface BankAccount {
   id: string;
@@ -82,8 +86,8 @@ export function TaxPaymentsPanel() {
   async function refresh() {
     setLoading(true);
     const [p, b, tp] = await Promise.all([
-      supabase.from('tax_periods')
-        .select('id, fiscal_year, period_month, tax_type, status')
+      supabase.from('vw_tax_period_status')
+        .select('id, fiscal_year, period_month, tax_type, status, paid_amount, outstanding_amount, payment_status')
         .order('fiscal_year', { ascending: false })
         .order('period_month', { ascending: false }),
       supabase.from('bank_accounts')
@@ -103,10 +107,24 @@ export function TaxPaymentsPanel() {
   }
   useEffect(() => { void refresh(); }, []);
 
-  const openPeriods = useMemo(
-    () => periods.filter(p => p.status !== 'closed' && p.tax_type === form.tax_type),
+  const matchingPeriods = useMemo(
+    () => periods.filter(p => p.tax_type === form.tax_type),
     [periods, form.tax_type]
   );
+
+  const selectedPeriod = useMemo(
+    () => periods.find(period => period.id === form.tax_period_id) ?? null,
+    [periods, form.tax_period_id],
+  );
+
+  const selectedOutstanding = Number(selectedPeriod?.outstanding_amount ?? 0);
+  const selectedPaid = Number(selectedPeriod?.paid_amount ?? 0);
+
+  function paymentLabel(period: Period): 'Paid' | 'Partial' | 'Unpaid' {
+    if (Number(period.outstanding_amount ?? 0) <= 0.01) return 'Paid';
+    if (Number(period.paid_amount ?? 0) > 0.01) return 'Partial';
+    return 'Unpaid';
+  }
 
   const filteredPayments = useMemo(() => {
     if (!dateRange?.startDate || !dateRange?.endDate) return payments;
@@ -121,7 +139,7 @@ export function TaxPaymentsPanel() {
 
   const periodLabelById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const p of periods) map.set(p.id, `${p.fiscal_year}-${String(p.period_month).padStart(2,'0')}`);
+    for (const p of periods) map.set(p.id, formatFinancePeriod(p.fiscal_year, p.period_month));
     return map;
   }, [periods]);
 
@@ -161,6 +179,10 @@ export function TaxPaymentsPanel() {
     e.preventDefault();
     if (!form.tax_period_id || !form.bank_account_id || !form.amount) {
       alert('Period, bank account and amount are required.');
+      return;
+    }
+    if (!editingId && selectedOutstanding <= 0.01) {
+      alert('This tax period has no outstanding amount and cannot be paid again.');
       return;
     }
     setSaving(true);
@@ -372,7 +394,7 @@ export function TaxPaymentsPanel() {
               Tax Type
               <select
                 value={form.tax_type}
-                onChange={e => setForm(f => ({ ...f, tax_type: e.target.value, tax_period_id: editingId ? f.tax_period_id : '' }))}
+                onChange={e => setForm(f => ({ ...f, tax_type: e.target.value, tax_period_id: editingId ? f.tax_period_id : '', amount: editingId ? f.amount : '' }))}
                 className="mt-1 w-full border rounded px-2 py-1.5 disabled:bg-gray-100"
                 disabled={!!editingId}
               >
@@ -387,18 +409,31 @@ export function TaxPaymentsPanel() {
               Tax Period
               <select
                 value={form.tax_period_id}
-                onChange={e => setForm(f => ({ ...f, tax_period_id: e.target.value }))}
+                onChange={e => {
+                  const period = periods.find(item => item.id === e.target.value);
+                  setForm(f => ({
+                    ...f,
+                    tax_period_id: e.target.value,
+                    amount: editingId ? f.amount : period ? String(Math.max(0, Number(period.outstanding_amount ?? 0))) : '',
+                  }));
+                }}
                 className="mt-1 w-full border rounded px-2 py-1.5 disabled:bg-gray-100"
                 required
                 disabled={!!editingId}
               >
                 <option value="">— select —</option>
-                {openPeriods.map(p => (
+                {matchingPeriods.map(p => (
                   <option key={p.id} value={p.id}>
-                    {p.fiscal_year}-{String(p.period_month).padStart(2,'0')} ({p.status})
+                    {formatFinancePeriod(p.fiscal_year, p.period_month)} ({paymentLabel(p)})
                   </option>
                 ))}
               </select>
+              {selectedPeriod && (
+                <span className={`mt-1 block text-xs ${selectedOutstanding <= 0.01 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  Outstanding: Rp {selectedOutstanding.toLocaleString('id-ID')}
+                  {selectedPaid > 0.01 && selectedOutstanding > 0.01 ? ` · Paid: Rp ${selectedPaid.toLocaleString('id-ID')}` : ''}
+                </span>
+              )}
             </label>
             <label className="text-sm">
               Payment Date
@@ -476,10 +511,10 @@ export function TaxPaymentsPanel() {
             <button type="button" onClick={cancelForm} className="px-3 py-1.5 text-sm border rounded">Cancel</button>
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || (!editingId && (!selectedPeriod || selectedOutstanding <= 0.01))}
               className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
-              {saving ? (editingId ? 'Updating…' : 'Posting…') : (editingId ? 'Update & Repost' : 'Post & Journal')}
+              {saving ? (editingId ? 'Updating…' : 'Posting…') : (!editingId && selectedPeriod && selectedOutstanding <= 0.01 ? 'Already Paid' : editingId ? 'Update & Repost' : 'Post & Journal')}
             </button>
           </div>
           <p className="text-xs text-gray-500">

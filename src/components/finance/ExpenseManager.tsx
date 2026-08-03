@@ -90,7 +90,8 @@ function BrokerPpnRateSelector({ rate, isCustom, onChange }: {
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
+import { downloadStorageDocument, openStorageDocument, resolveStorageUrlCached } from '../../utils/signedUrlCache';
+import { currentFinancePeriod, formatFinancePeriodValue, normalizeSalaryPeriod, salaryPeriodOptions } from '../../utils/financePeriod';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { formatCurrency, normalizeCurrency, resolveTransactionCurrency } from '../../utils/currency';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
@@ -111,29 +112,7 @@ import {
   EXPENSE_CATEGORY_LABELS,
 } from '../../utils/taxCalculations';
 
-const SALARY_MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-] as const;
-
-const currentSalaryMonth = () => SALARY_MONTHS[new Date().getMonth()];
-
-const normalizeSalaryMonth = (value: string) => {
-  if ((SALARY_MONTHS as readonly string[]).includes(value)) return value;
-  const storedMonth = value.match(/^\d{4}-(\d{2})$/)?.[1];
-  if (storedMonth) return SALARY_MONTHS[Number(storedMonth) - 1] || currentSalaryMonth();
-  return currentSalaryMonth();
-};
+const SALARY_PERIOD_OPTIONS = salaryPeriodOptions();
 
 interface FinanceExpense {
   id: string;
@@ -831,26 +810,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     resolveStorageUrlCached(fileUrl, 3600);
 
   const openDocument = async (url: string) => {
-    const signed = await getSignedUrl(url);
-    window.open(signed, '_blank', 'noopener,noreferrer');
+    await openStorageDocument(url);
   };
 
   const downloadDocument = async (url: string, filename: string) => {
-    try {
-      const signed = await getSignedUrl(url);
-      const response = await fetch(signed);
-      if (!response.ok) throw new Error('Fetch failed');
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(blobUrl);
-    } catch {
-      // fallback: open directly
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
+    await downloadStorageDocument(url, filename);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -961,13 +925,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       if (rules.staff === 'show' && selectedStaffId) {
         const s = staffRoster.find(x => x.id === selectedStaffId);
         if (s) {
-          const tag = `[${s.full_name}${periodLabel ? ' · ' + periodLabel : ''}]`;
+          const tag = `[${s.full_name}${periodLabel ? ' · ' + formatFinancePeriodValue(periodLabel) : ''}]`;
           if (!composedDescription.startsWith(tag)) composedDescription = `${tag} ${composedDescription}`.trim();
         }
       } else if (rules.utility === 'show' && selectedUtilityId) {
         const u = utilityRoster.find(x => x.id === selectedUtilityId);
         if (u) {
-          const tag = `[${u.provider_name}${periodLabel ? ' · ' + periodLabel : ''}]`;
+          const tag = `[${u.provider_name}${periodLabel ? ' · ' + formatFinancePeriodValue(periodLabel) : ''}]`;
           if (!composedDescription.startsWith(tag)) composedDescription = `${tag} ${composedDescription}`.trim();
         }
       }
@@ -1316,7 +1280,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     if (rules.staff === 'show' && expense.staff_id) loadedStaffId = expense.staff_id;
     setSelectedStaffId(loadedStaffId);
     setSelectedUtilityId(loadedUtilityId);
-    setPeriodLabel(rules.salaryMonth === 'show' ? normalizeSalaryMonth(loadedPeriod) : loadedPeriod);
+    setPeriodLabel(rules.salaryMonth === 'show' ? normalizeSalaryPeriod(loadedPeriod, new Date(expense.expense_date).getFullYear()) : loadedPeriod);
 
     setFormData({
       expense_category: expense.expense_category,
@@ -2499,7 +2463,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             getCategoryFieldRules(cat).salaryMonth === 'show'
                             && getCategoryFieldRules(formData.expense_category).salaryMonth !== 'show'
                           ) {
-                            setPeriodLabel(currentSalaryMonth());
+                            setPeriodLabel(currentFinancePeriod());
                           }
                           setFormData(prev => ({
                             ...prev,
@@ -2575,19 +2539,23 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <SapRow>
                       {rules.salaryMonth === 'show' ? (
                         <SapField label="Salary Month" required span={3}>
-                          <select value={normalizeSalaryMonth(periodLabel)}
+                          <select value={normalizeSalaryPeriod(periodLabel || currentFinancePeriod())}
                             onChange={(e) => setPeriodLabel(e.target.value)}
                             className={SAP_INPUT}>
-                            {SALARY_MONTHS.map((month) => (
-                              <option key={month} value={month}>{month}</option>
+                            {SALARY_PERIOD_OPTIONS.map(({ value, label }) => (
+                              <option key={value} value={value}>{label}</option>
                             ))}
                           </select>
                         </SapField>
                       ) : (
                         <SapField label="Billing Month" required span={3}>
-                          <input type="month" value={periodLabel}
+                          <select value={normalizeSalaryPeriod(periodLabel || currentFinancePeriod())}
                             onChange={(e) => setPeriodLabel(e.target.value)}
-                            className={SAP_INPUT} title="The month this bill covers" />
+                            className={SAP_INPUT} title="The month this bill covers">
+                            {SALARY_PERIOD_OPTIONS.map(({ value, label }) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
+                          </select>
                         </SapField>
                       )}
                     </SapRow>

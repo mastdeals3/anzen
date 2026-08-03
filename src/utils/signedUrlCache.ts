@@ -43,17 +43,36 @@ export function invalidateSignedUrl(bucket: string, path: string) {
 export async function resolveStorageUrlCached(
   fileUrl: string,
   ttlSeconds: number,
+  options?: { download?: string | true },
 ): Promise<string> {
   try {
-    const match = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
-    const authMatch = match ? null : fileUrl.match(/\/storage\/v1\/object\/([^/]+)\/(.+)/);
+    const parsedUrl = new URL(fileUrl);
+    const storagePath = parsedUrl.pathname;
+    const match = storagePath.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/);
+    const authMatch = match ? null : storagePath.match(/\/storage\/v1\/object\/([^/]+)\/(.+)/);
     const parts = match || authMatch;
     if (!parts) return fileUrl;
     const [, bucket, rawPath] = parts;
     const path = decodeURIComponent(rawPath);
-    const signed = await getSignedUrlCached(bucket, path, ttlSeconds);
+    const signed = await getSignedUrlCached(bucket, path, ttlSeconds, options);
     return signed || fileUrl;
   } catch {
     return fileUrl;
   }
+}
+
+export async function openStorageDocument(fileUrl: string): Promise<void> {
+  const resolved = await resolveStorageUrlCached(fileUrl, 3600);
+  window.open(resolved, '_blank', 'noopener,noreferrer');
+}
+
+export async function downloadStorageDocument(fileUrl: string, filename: string): Promise<void> {
+  const resolved = await resolveStorageUrlCached(fileUrl, 3600, { download: filename });
+  const link = document.createElement('a');
+  link.href = resolved;
+  link.download = filename;
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }

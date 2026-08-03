@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Download, ExternalLink, FileText, Upload, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { downloadStorageDocument, openStorageDocument } from '../../utils/signedUrlCache';
 
 interface FinanceDocumentAttachmentsProps {
   documentUrls: string[];
@@ -86,15 +87,15 @@ export function FinanceDocumentAttachments({
           {documentUrls.map((url, index) => (
             <div key={url} className="flex items-center gap-1.5 p-1.5 bg-green-50 border border-green-200 rounded text-xs">
               <FileText className="w-3 h-3 text-green-600 shrink-0" />
-              <button type="button" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')} className="flex-1 text-green-700 truncate text-left" title={fileName(url,index)}>
+              <button type="button" onClick={() => void openStorageDocument(url)} className="flex-1 text-green-700 truncate text-left" title={fileName(url,index)}>
                 {fileName(url,index)}
               </button>
-              <a href={url} target="_blank" rel="noreferrer" className="p-0.5 text-green-600 hover:bg-green-100 rounded" title="View">
+              <button type="button" onClick={() => void openStorageDocument(url)} className="p-0.5 text-green-600 hover:bg-green-100 rounded" title="View">
                 <ExternalLink className="w-3 h-3" />
-              </a>
-              <a href={url} download={fileName(url,index)} className="p-0.5 text-green-600 hover:bg-green-100 rounded" title="Download">
+              </button>
+              <button type="button" onClick={() => void downloadStorageDocument(url, fileName(url,index))} className="p-0.5 text-green-600 hover:bg-green-100 rounded" title="Download">
                 <Download className="w-3 h-3" />
-              </a>
+              </button>
               {!readOnly && (
                 <button type="button" onClick={() => onDocumentUrlsChange?.(documentUrls.filter((item) => item !== url))} className="p-0.5 text-red-600 hover:bg-red-100 rounded" title="Remove">
                   <X className="w-3 h-3" />
