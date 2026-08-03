@@ -244,7 +244,7 @@ BEGIN
    WHERE reference=(
      SELECT COALESCE(invoice_number,voucher_number)::varchar
        FROM public.finance_expenses WHERE id=v_expense
-   ) AND dpp_amount=11769808 AND ppn_amount=457695;
+   ) AND dpp_amount=8669808 AND ppn_amount=457695;
   IF NOT FOUND THEN RAISE EXCEPTION 'Input PPN report does not preserve the corrected Broker expense/PPN split'; END IF;
   PERFORM 1 FROM public.vw_pph_by_period_type
    WHERE fiscal_year=2026 AND period_month=2 AND tax_type='PPh23' AND pph_total>=62000;

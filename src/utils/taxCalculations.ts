@@ -190,6 +190,7 @@ export interface BrokerExpenseTotals {
   pphWithheld: number;
   pph23Withheld: number;
   stampDuty: number;
+  accountingExpenseTotal: number;
   expenseTotal: number;
   finalCashPayable: number;
   totalPayable: number;
@@ -230,6 +231,9 @@ export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): Bro
   const totalPpn = headerPpn + reimbursementPpn;
   const pphWithheld = Number(exp.pph_amount) || 0;
   const stampDuty = Number(exp.stamp_duty_amount) || 0;
+  const accountingExpenseTotal = brokerInvoiceAmount - headerPpn
+    + items.reduce((sum, item) => sum + brokerLineExpenseBase(item), 0)
+    + stampDuty;
   const expenseTotal = brokerInvoiceAmount + reimbursementTotal + stampDuty;
   // Invoice Amount already represents the supplier payable. DPP and PPN are
   // reporting values only and never increase the cash target.
@@ -246,6 +250,7 @@ export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): Bro
     pphWithheld,
     pph23Withheld: pphWithheld,
     stampDuty,
+    accountingExpenseTotal,
     expenseTotal,
     finalCashPayable,
     totalPayable: finalCashPayable,
@@ -350,7 +355,7 @@ export function calculateCanonicalExpenseTotal(
   exp: ExpenseTotalsInput & BrokerExpenseTotalsInput,
 ): number {
   if (exp.expense_category === 'import_broker') {
-    return calculateBrokerExpenseTotals(exp).expenseTotal;
+    return calculateBrokerExpenseTotals(exp).accountingExpenseTotal;
   }
   return Number(exp.amount) || 0;
 }

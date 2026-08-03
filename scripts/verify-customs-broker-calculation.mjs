@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   brokerLineExpenseBase,
   brokerLineTotal,
@@ -46,6 +47,7 @@ const totals = calculateBrokerExpenseTotals({
 
 assert.equal(totals.reimbursementTotal, 5_859_070);
 assert.equal(totals.recoverableInputPpn, 158_349);
+assert.equal(totals.accountingExpenseTotal, 10_450_721);
 assert.equal(totals.expenseTotal, 10_609_070);
 assert.equal(totals.finalCashPayable, 10_514_070);
 
@@ -92,6 +94,23 @@ assert.equal(
   0,
   'New or edited lines must use stored Invoice Amount even when it is zero',
 );
+
+const expenseManagerSource = readFileSync(
+  new URL('../src/components/finance/ExpenseManager.tsx', import.meta.url),
+  'utf8',
+);
+for (const previewColumn of [
+  'Invoice Amount',
+  'DPP',
+  'PPN %',
+  'PPN Amount',
+  'Payable Amount',
+]) {
+  assert.ok(
+    expenseManagerSource.includes(`>${previewColumn}</th>`),
+    `Preview must retain the ${previewColumn} column`,
+  );
+}
 
 console.log(JSON.stringify({
   status: 'passed',

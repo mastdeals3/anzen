@@ -259,8 +259,9 @@ export default function PartyLedger() {
       }
 
       // Customs broker ledgers are sourced from the canonical journal lines.
-      // This includes the broker supplier and every reimbursement supplier;
-      // raw finance_expenses.amount is intentionally not used for this flow.
+      // Expense/Input-PPN lines retain source-supplier provenance, while the
+      // combined AP/cash credit belongs to the customs broker paid by the
+      // Payment Voucher. Raw finance_expenses.amount is not used here.
       const brokerLinesQuery = supabase
         .from('journal_entry_lines')
         .select('id, entry_date:journal_entries!inner(entry_date), debit, credit, description, journal_entry_id, journal_entries!inner(reference_number, transaction_category, is_posted)')

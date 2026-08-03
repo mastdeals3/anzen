@@ -3552,7 +3552,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 ['Recoverable PPN', brokerTotals.recoverableInputPpn, 'text-blue-700'],
                 ['PPh23', brokerTotals.pph23Withheld, 'text-orange-700'],
                 ['Stamp Duty', brokerTotals.stampDuty, 'text-gray-700'],
-                ['Expense Total', brokerTotals.expenseTotal, 'text-gray-900'],
+                ['Accounting Expense', brokerTotals.accountingExpenseTotal, 'text-gray-900'],
               ];
               return (
                 <div className="px-4 py-2 border-b border-gray-100">
@@ -3632,9 +3632,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         <th className="px-2 py-1 text-left font-medium">Invoice No</th>
                         <th className="px-2 py-1 text-left font-medium">Tax Invoice</th>
                         <th className="px-2 py-1 text-left font-medium">Date</th>
+                        <th className="px-2 py-1 text-right font-medium">Invoice Amount</th>
                         <th className="px-2 py-1 text-right font-medium">DPP</th>
-                        <th className="px-2 py-1 text-right font-medium">PPN</th>
-                        <th className="px-2 py-1 text-right font-medium">Total</th>
+                        <th className="px-2 py-1 text-right font-medium">PPN %</th>
+                        <th className="px-2 py-1 text-right font-medium">PPN Amount</th>
+                        <th className="px-2 py-1 text-right font-medium">Payable Amount</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3647,7 +3649,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             <td className="px-2 py-1 text-gray-600 font-mono">{item.invoice_number || '—'}</td>
                             <td className="px-2 py-1 text-gray-600 font-mono">{item.tax_invoice_number || '—'}</td>
                             <td className="px-2 py-1 text-gray-600 font-mono">{formatDate(item.invoice_date || '')}</td>
+                            <td className="px-2 py-1 text-right font-mono text-gray-900">{fmtMoney(item.amount || 0)}</td>
                             <td className="px-2 py-1 text-right font-mono text-gray-700">{fmtMoney(item.dpp_amount ?? 0)}</td>
+                            <td className="px-2 py-1 text-right font-mono text-gray-600">{Number(item.ppn_rate || 0).toLocaleString('id-ID')}%</td>
                             <td className="px-2 py-1 text-right font-mono text-blue-700">{fmtMoney(item.ppn_amount || 0)}</td>
                             <td className="px-2 py-1 text-right font-mono text-gray-900 font-medium">{fmtMoney(total)}</td>
                           </tr>
@@ -3656,7 +3660,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-gray-200 bg-gray-50">
-                        <td colSpan={6} className="px-2 py-1 text-right text-[10px] font-semibold text-gray-600 uppercase">Total</td>
+                        <td colSpan={8} className="px-2 py-1 text-right text-[10px] font-semibold text-gray-600 uppercase">Total Payable</td>
                         <td className="px-2 py-1 text-right font-mono font-bold text-gray-900">
                           {fmtMoney(viewingExpense.broker_items.reduce((sum, item) => sum + brokerLineTotal(item), 0))}
                         </td>
