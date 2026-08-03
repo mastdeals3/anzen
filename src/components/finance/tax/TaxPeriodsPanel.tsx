@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, ChevronDown, ChevronRight, ExternalLink, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { formatFinancePeriod } from '../../../utils/financePeriod';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
 
@@ -303,7 +302,7 @@ export function TaxPeriodsPanel() {
                       <td className="px-3 py-2 text-gray-400">
                         {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </td>
-                      <td className="px-3 py-2 font-medium">{formatFinancePeriod(r.fiscal_year, r.period_month)}</td>
+                      <td className="px-3 py-2 font-medium">{r.fiscal_year}-{String(r.period_month).padStart(2,'0')}</td>
                       <td className="px-3 py-2"><StatusChip status={r.status} /></td>
                       <td className="px-3 py-2 text-right text-red-700">{fmt(r.input_ppn_total)}</td>
                       <td className="px-3 py-2 text-right text-green-700">{fmt(r.output_ppn_total)}</td>

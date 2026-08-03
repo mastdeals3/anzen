@@ -90,8 +90,7 @@ function BrokerPpnRateSelector({ rate, isCustom, onChange }: {
 import { useFinance } from '../../contexts/FinanceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { downloadStorageDocument, openStorageDocument, resolveStorageUrlCached } from '../../utils/signedUrlCache';
-import { currentFinancePeriod, formatFinancePeriodValue, normalizeSalaryPeriod, salaryPeriodOptions } from '../../utils/financePeriod';
+import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 import { supabaseErrorMessage } from '../../utils/supabaseError';
 import { formatCurrency, normalizeCurrency, resolveTransactionCurrency } from '../../utils/currency';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
@@ -112,7 +111,29 @@ import {
   EXPENSE_CATEGORY_LABELS,
 } from '../../utils/taxCalculations';
 
-const SALARY_PERIOD_OPTIONS = salaryPeriodOptions();
+const SALARY_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+
+const currentSalaryMonth = () => SALARY_MONTHS[new Date().getMonth()];
+
+const normalizeSalaryMonth = (value: string) => {
+  if ((SALARY_MONTHS as readonly string[]).includes(value)) return value;
+  const storedMonth = value.match(/^\d{4}-(\d{2})$/)?.[1];
+  if (storedMonth) return SALARY_MONTHS[Number(storedMonth) - 1] || currentSalaryMonth();
+  return currentSalaryMonth();
+};
 
 interface FinanceExpense {
   id: string;
@@ -810,11 +831,26 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     resolveStorageUrlCached(fileUrl, 3600);
 
   const openDocument = async (url: string) => {
-    await openStorageDocument(url);
+    const signed = await getSignedUrl(url);
+    window.open(signed, '_blank', 'noopener,noreferrer');
   };
 
   const downloadDocument = async (url: string, filename: string) => {
-    await downloadStorageDocument(url, filename);
+    try {
+      const signed = await getSignedUrl(url);
+      const response = await fetch(signed);
+      if (!response.ok) throw new Error('Fetch failed');
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // fallback: open directly
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -925,13 +961,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       if (rules.staff === 'show' && selectedStaffId) {
         const s = staffRoster.find(x => x.id === selectedStaffId);
         if (s) {
-          const tag = `[${s.full_name}${periodLabel ? ' · ' + formatFinancePeriodValue(periodLabel) : ''}]`;
+          const tag = `[${s.full_name}${periodLabel ? ' · ' + periodLabel : ''}]`;
           if (!composedDescription.startsWith(tag)) composedDescription = `${tag} ${composedDescription}`.trim();
         }
       } else if (rules.utility === 'show' && selectedUtilityId) {
         const u = utilityRoster.find(x => x.id === selectedUtilityId);
         if (u) {
-          const tag = `[${u.provider_name}${periodLabel ? ' · ' + formatFinancePeriodValue(periodLabel) : ''}]`;
+          const tag = `[${u.provider_name}${periodLabel ? ' · ' + periodLabel : ''}]`;
           if (!composedDescription.startsWith(tag)) composedDescription = `${tag} ${composedDescription}`.trim();
         }
       }
@@ -1280,7 +1316,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     if (rules.staff === 'show' && expense.staff_id) loadedStaffId = expense.staff_id;
     setSelectedStaffId(loadedStaffId);
     setSelectedUtilityId(loadedUtilityId);
-    setPeriodLabel(rules.salaryMonth === 'show' ? normalizeSalaryPeriod(loadedPeriod, new Date(expense.expense_date).getFullYear()) : loadedPeriod);
+    setPeriodLabel(rules.salaryMonth === 'show' ? normalizeSalaryMonth(loadedPeriod) : loadedPeriod);
 
     setFormData({
       expense_category: expense.expense_category,
@@ -2463,7 +2499,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             getCategoryFieldRules(cat).salaryMonth === 'show'
                             && getCategoryFieldRules(formData.expense_category).salaryMonth !== 'show'
                           ) {
-                            setPeriodLabel(currentFinancePeriod());
+                            setPeriodLabel(currentSalaryMonth());
                           }
                           setFormData(prev => ({
                             ...prev,
@@ -2539,23 +2575,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <SapRow>
                       {rules.salaryMonth === 'show' ? (
                         <SapField label="Salary Month" required span={3}>
-                          <select value={normalizeSalaryPeriod(periodLabel || currentFinancePeriod())}
+                          <select value={normalizeSalaryMonth(periodLabel)}
                             onChange={(e) => setPeriodLabel(e.target.value)}
                             className={SAP_INPUT}>
-                            {SALARY_PERIOD_OPTIONS.map(({ value, label }) => (
-                              <option key={value} value={value}>{label}</option>
+                            {SALARY_MONTHS.map((month) => (
+                              <option key={month} value={month}>{month}</option>
                             ))}
                           </select>
                         </SapField>
                       ) : (
                         <SapField label="Billing Month" required span={3}>
-                          <select value={normalizeSalaryPeriod(periodLabel || currentFinancePeriod())}
+                          <input type="month" value={periodLabel}
                             onChange={(e) => setPeriodLabel(e.target.value)}
-                            className={SAP_INPUT} title="The month this bill covers">
-                            {SALARY_PERIOD_OPTIONS.map(({ value, label }) => (
-                              <option key={value} value={value}>{label}</option>
-                            ))}
-                          </select>
+                            className={SAP_INPUT} title="The month this bill covers" />
                         </SapField>
                       )}
                     </SapRow>
@@ -2579,7 +2611,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         ))}
                       </div>}
                       <div className="mt-2 grid grid-cols-5 gap-2 border-t border-amber-200 pt-2 text-xs">
-                        <div><span className="text-amber-700">Gross Salary</span><div className="font-mono font-semibold text-amber-950">{formatCurrency(salaryCalculation.gross_salary, expenseFormCurrency)}</div></div>
+                        <div><span className="text-amber-700">Salary</span><div className="font-mono font-semibold text-amber-950">{formatCurrency(salaryCalculation.gross_salary, expenseFormCurrency)}</div></div>
                         <div><span className="text-amber-700">Less Advance</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.outstanding_salary_advances, expenseFormCurrency)}</div></div>
                         <div><span className="text-amber-700">Less PPh21</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.pph21_amount, expenseFormCurrency)}</div></div>
                         <div><span className="text-amber-700">Less BPJS</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.bpjs_amount, expenseFormCurrency)}</div></div>
@@ -2590,7 +2622,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                   {/* ── Row C: Amount · DPP · PPN · PPh · PPh Code · Stamp · Bank Chg · Container · DC · Asset ── */}
                   <SapRow>
-                    <SapField label={`${isBroker ? 'Broker Invoice Amount' : formData.expense_category === 'salary' ? 'Gross Salary Amount' : 'Amount'} (${expenseFormCurrency})`} required span={3}>
+                    <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={3}>
                       <MoneyInput value={formData.amount} required placeholder="0.00"
                         onChange={(amt) => {
                           setFormData(prev => {
@@ -3350,12 +3382,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         const canonicalCashPayable = calculateCanonicalCashPayable(viewingExpense);
         const isBroker = viewingExpense.expense_category === 'import_broker';
         const isSalary = viewingExpense.expense_category === 'salary';
-        const salaryAdvanceApplied = isSalary
-          ? salaryAdvanceApplications.reduce((sum, application) => sum + Number(application.applied_amount || 0), 0)
-          : 0;
-        const salaryPaidAmount = Number(viewingExpense.paid_amount || 0);
-        const salaryCashPaid = Math.max(salaryPaidAmount - salaryAdvanceApplied, 0);
-        const salaryOutstanding = Math.max(canonicalCashPayable - salaryPaidAmount, 0);
         const staffName = (() => {
           const rules = getCategoryFieldRules(viewingExpense.expense_category);
           if (rules.staff !== 'show' || !viewingExpense.staff_id) return null;
@@ -3443,7 +3469,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 </div>
                 <div className="flex items-start gap-3">
                   <div className="text-right">
-                    <div className="text-[9px] uppercase font-medium text-gray-400 tracking-wide">{isSalary ? 'Gross Salary' : 'Total'}</div>
+                    <div className="text-[9px] uppercase font-medium text-gray-400 tracking-wide">Total</div>
                     <div className="text-[19px] font-bold text-gray-900 font-mono leading-tight">{fmtMoney(canonicalExpenseTotal, 2)}</div>
                     <div className="mt-0.5">{approvalBadge()}</div>
                   </div>
@@ -3499,7 +3525,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   </div>
                 )}
                 <div>
-                  <div className="text-[9px] uppercase font-medium text-gray-400">{isSalary ? 'Gross Salary Amount' : 'Expense Amount'}</div>
+                  <div className="text-[9px] uppercase font-medium text-gray-400">Expense Amount</div>
                   <div className="text-[12px] font-medium text-gray-800 font-mono">{fmtMoney(viewingExpense.amount, 2)}</div>
                 </div>
                 {viewingExpense.payment_reference && (
@@ -3547,30 +3573,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               );
             })()}
 
-            {isSalary && (
-              <div className="px-4 py-2 border-b border-gray-100">
-                <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Salary Settlement Summary</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1">
-                  {[
-                    ['Gross Salary', Number(viewingExpense.amount || 0)],
-                    ['Salary Advance Applied', salaryAdvanceApplied],
-                    ['PPh21', Number(viewingExpense.pph_amount || 0)],
-                    ['BPJS', 0],
-                    ['Net Payable', Math.max(canonicalCashPayable - salaryAdvanceApplied, 0)],
-                    ['Paid Amount', salaryCashPaid],
-                    ['Outstanding Balance', salaryOutstanding],
-                  ].map(([label, value]) => (
-                    <div key={String(label)}>
-                      <div className="text-[9px] uppercase font-medium text-gray-400">{label}</div>
-                      <div className="text-[12px] font-medium font-mono text-gray-800">{fmtMoney(Number(value))}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* ── TAX SECTION (only if tax rows exist) ── */}
-            {taxRows.length > 0 && !isSalary && (
+            {taxRows.length > 0 && (
               <div className="px-4 py-2 border-b border-gray-100">
                 <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tax Summary</h3>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1">

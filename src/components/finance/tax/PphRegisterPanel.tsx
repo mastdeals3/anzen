@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { formatFinancePeriod } from '../../../utils/financePeriod';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
 
@@ -315,7 +314,7 @@ export function PphRegisterPanel() {
                       <td className="px-2 py-2 text-gray-400">
                         {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </td>
-                      <td className="px-3 py-2 font-medium">{formatFinancePeriod(r.fiscal_year, r.period_month)}</td>
+                      <td className="px-3 py-2 font-medium">{r.fiscal_year}-{String(r.period_month).padStart(2,'0')}</td>
                       <td className="px-3 py-2">
                         <StatusChip status={r.payment_status ?? r.status} />
                       </td>
@@ -331,7 +330,7 @@ export function PphRegisterPanel() {
                       <tr key={`${r.tax_period_id}-detail`} className="bg-blue-50/30">
                         <td colSpan={10} className="px-6 pb-4 pt-2">
                           <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
-                            Source Documents — {active} withheld in {formatFinancePeriod(r.fiscal_year, r.period_month)}
+                            Source Documents — {active} withheld in {r.fiscal_year}-{String(r.period_month).padStart(2,'0')}
                           </h4>
                           {detailLoading ? (
                             <p className="text-xs text-gray-500">Loading source documents…</p>

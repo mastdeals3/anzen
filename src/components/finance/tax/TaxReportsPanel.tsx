@@ -5,7 +5,6 @@ import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
 import { SectionCard, EmptyState } from './TaxUI';
-import { formatFinancePeriod, formatFinancePeriodValue } from '../../../utils/financePeriod';
 
 type ReportId =
   | 'input_ppn'
@@ -43,7 +42,7 @@ const TIMESTAMP_COLS = new Set([
   'created_at', 'updated_at', 'uploaded_at', 'reported_at', 'filed_at',
   'closed_at', 'reopened_at', 'matched_at', 'Timestamp',
 ]);
-// Columns that are YYYY-MM period strings — use the Finance-wide "Jan-26" format.
+// Columns that are YYYY-MM period strings — show as "Jan 2026" etc.
 const PERIOD_COLS = new Set(['month', 'period_label']);
 
 function fmtCell(col: string, v: string | number | null): string {
@@ -61,7 +60,8 @@ function fmtCell(col: string, v: string | number | null): string {
     }
   }
   if (PERIOD_COLS.has(col) && typeof v === 'string' && /^\d{4}-\d{2}$/.test(v)) {
-    return formatFinancePeriodValue(v);
+    const [y, m] = v.split('-');
+    return new Date(Number(y), Number(m) - 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
   }
   return String(v);
 }
@@ -113,7 +113,7 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
         return ym >= startYM && ym <= endYM;
       });
       return rows.map(r => ({
-        'Period':           formatFinancePeriod(Number(r.fiscal_year), Number(r.period_month)),
+        'Period':           `${r.fiscal_year}-${String(r.period_month).padStart(2,'0')}`,
         'PPh Type':         r.tax_type as string,
         'PPh Total (Rp)':   Number(r.pph_total ?? 0),
         'Paid (Rp)':        Number(r.pph_paid_total ?? 0),

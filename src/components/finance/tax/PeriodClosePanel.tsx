@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Lock, Unlock, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { formatFinancePeriod } from '../../../utils/financePeriod';
 import { SectionCard, StatusChip, StatCard, StatCardGrid, EmptyState } from './TaxUI';
 
 interface PeriodStatus {
@@ -134,7 +133,7 @@ export function PeriodClosePanel() {
                 const canClose = p.status !== 'closed' && blockers.length === 0;
                 return (
                   <tr key={p.id} className="border-t">
-                    <td className="px-3 py-2 font-medium">{formatFinancePeriod(p.fiscal_year, p.period_month)}</td>
+                    <td className="px-3 py-2 font-medium">{p.fiscal_year}-{String(p.period_month).padStart(2,'0')}</td>
                     <td className="px-3 py-2">{p.tax_type}</td>
                     <td className="px-3 py-2"><StatusChip status={p.payment_status ?? p.status} /></td>
                     <td className="px-3 py-2 text-right">Rp {Number(amount).toLocaleString('id-ID')}</td>

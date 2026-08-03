@@ -312,9 +312,10 @@ export default function PartyLedger() {
     } else {
       // Staff ledger — one running account per staff member:
       //   Cr  salary / staff bills recorded as outstanding (company owes staff)
-      //   Dr  salary advance applications and final payments
-      // Salary Advance issuance is an asset movement, not a reduction of the
-      // employee salary payable, so it is omitted from this payable ledger.
+      //   Dr  payment vouchers paid to the staff member
+      //   Dr  advances given (staff_advance expenses, paid — staff owes company)
+      //   Dr+Cr  advance-adjustment vouchers (settle salary payable against the
+      //          advance — net zero on the running balance, shown for the trail)
       const { data: bills } = await dateRange(
         supabase
           .from('finance_expenses')
@@ -374,7 +375,7 @@ export default function PartyLedger() {
       const { data: vouchers } = await dateRange(
         supabase
           .from('payment_vouchers')
-          .select('id, voucher_date, voucher_number, amount, description, payment_method, payment_purpose, transaction_currency, payment_currency, currency_code, exchange_rate')
+          .select('id, voucher_date, voucher_number, amount, description, payment_method, transaction_currency, payment_currency, currency_code, exchange_rate')
           .eq('staff_id', selectedParty)
           .eq('is_posted', true),
         'voucher_date',
@@ -383,18 +384,17 @@ export default function PartyLedger() {
       if (vouchers) {
         vouchers.forEach(pv => {
           const isAdjustment = pv.payment_method === 'advance_adjustment';
-          if (pv.payment_purpose === 'salary_advance') return;
           const currency = pv.transaction_currency || pv.payment_currency || pv.currency_code || 'IDR';
           const functionalAmount = toFunctionalIDR(pv.amount, currency, pv.exchange_rate);
           entries.push({
             id: pv.id,
             entry_date: pv.voucher_date,
             particulars: isAdjustment
-              ? `Less Salary Advance${currencyDetail(pv.amount, currency, pv.exchange_rate)}`
+              ? `Advance Adjusted Against Salary${currencyDetail(pv.amount, currency, pv.exchange_rate)}`
               : `${pv.description || 'Payment to Staff'}${currencyDetail(pv.amount, currency, pv.exchange_rate)}`,
             reference: pv.voucher_number,
             debit: functionalAmount,
-            credit: 0,
+            credit: isAdjustment ? functionalAmount : 0,
             running_balance: 0,
             type: 'payment',
           });

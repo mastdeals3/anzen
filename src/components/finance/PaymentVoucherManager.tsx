@@ -145,15 +145,7 @@ interface ViewAllocationRow {
   allocated_amount: number | null;
   allocated_currency: string | null;
   purchase_invoices?: { id: string; invoice_number: string; invoice_date: string } | null;
-  finance_expenses?: {
-    id: string;
-    voucher_number: string | null;
-    invoice_number: string | null;
-    expense_date?: string;
-    expense_category?: string;
-    amount?: number;
-    pph_amount?: number | null;
-  } | null;
+  finance_expenses?: { id: string; voucher_number: string | null; invoice_number: string | null } | null;
 }
 
 type PaymentPurpose = 'general' | 'salary_advance' | 'salary_advance_settlement';
@@ -208,7 +200,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
   const [viewingVoucher, setViewingVoucher] = useState<PaymentVoucher | null>(null);
   const [bankReconStatementLineId, setBankReconStatementLineId] = useState<string | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
-  const [viewAllocations, setViewAllocations] = useState<Array<{ invoice_id: string; invoice_number: string; invoice_date: string; allocated_amount: number; allocated_currency: string; is_expense_bill?: boolean; expense_id?: string; expense_category?: string; gross_salary?: number; advance_applied?: number; pph21?: number }>>([]);
+  const [viewAllocations, setViewAllocations] = useState<Array<{ invoice_id: string; invoice_number: string; invoice_date: string; allocated_amount: number; allocated_currency: string; is_expense_bill?: boolean; expense_id?: string }>>([]);
 
   const [formData, setFormData] = useState({
     voucher_date: new Date().toISOString().split('T')[0],
@@ -747,20 +739,10 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
     setViewingVoucher(v);
     const { data } = await supabase
       .from('voucher_allocations')
-      .select('allocated_amount, allocated_currency, purchase_invoices(id, invoice_number, invoice_date), finance_expenses(id, voucher_number, invoice_number, expense_date, expense_category, amount, pph_amount)')
+      .select('allocated_amount, allocated_currency, purchase_invoices(id, invoice_number, invoice_date), finance_expenses(id, voucher_number, invoice_number, expense_date)')
       .eq('payment_voucher_id', v.id);
-    const salaryExpenseIds = ((data || []) as any[])
-      .filter(a => a.finance_expenses?.expense_category === 'salary')
-      .map(a => a.finance_expenses.id);
-    const { data: salaryApplications } = salaryExpenseIds.length > 0
-      ? await supabase.from('salary_advance_applications').select('salary_expense_id, applied_amount').in('salary_expense_id', salaryExpenseIds)
-      : { data: [] as Array<{ salary_expense_id: string; applied_amount: number }> };
-    const appliedBySalary = (salaryApplications || []).reduce<Record<string, number>>((totals, application) => {
-      totals[application.salary_expense_id] = (totals[application.salary_expense_id] || 0) + Number(application.applied_amount || 0);
-      return totals;
-    }, {});
     setViewAllocations(
-      ((data || []) as unknown as ViewAllocationRow[]).map((a) => ({
+      ((data || []) as unknown as (ViewAllocationRow & { finance_expenses?: { id: string; voucher_number: string | null; invoice_number: string | null; expense_date?: string } | null })[]).map((a) => ({
         invoice_id: a.purchase_invoices?.id || a.finance_expenses?.id || '',
         invoice_number: a.purchase_invoices?.invoice_number
           || (a.finance_expenses ? `${a.finance_expenses.invoice_number || a.finance_expenses.voucher_number || 'Expense Bill'}` : '—'),
@@ -769,10 +751,6 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
         allocated_currency: a.allocated_currency || 'IDR',
         is_expense_bill: !!a.finance_expenses,
         expense_id: a.finance_expenses?.id,
-        expense_category: a.finance_expenses?.expense_category,
-        gross_salary: a.finance_expenses?.amount,
-        advance_applied: a.finance_expenses ? (appliedBySalary[a.finance_expenses.id] || 0) : 0,
-        pph21: a.finance_expenses?.pph_amount || 0,
       })),
     );
   };
@@ -1674,7 +1652,6 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
               const invCcy = viewAllocations[0]?.allocated_currency || viewingVoucher.invoice_currency || 'IDR';
               const bankCcy = viewingVoucher.bank_accounts?.currency || 'IDR';
               const isCross = invCcy !== bankCcy;
-              const isAdvanceSettlement = viewingVoucher.payment_method === 'advance_adjustment';
               return (
                 <div className="rounded border border-gray-200 bg-gray-50 p-3">
                   <div className="grid grid-cols-2 gap-3">
@@ -1695,17 +1672,15 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                       </div>
                     ) : null}
                     <div>
-                      <div className="text-xs text-gray-500">{isAdvanceSettlement ? `Non-cash Settlement (${invCcy})` : `Bank Debit (${bankCcy})`}</div>
+                      <div className="text-xs text-gray-500">Bank Debit ({bankCcy})</div>
                       <div className="font-semibold text-blue-700">
                         {fmt(
-                          isAdvanceSettlement
-                            ? viewingVoucher.amount || 0
-                            : viewingVoucher.actual_bank_debit && viewingVoucher.actual_bank_debit > 0
+                          viewingVoucher.actual_bank_debit && viewingVoucher.actual_bank_debit > 0
                             ? viewingVoucher.actual_bank_debit
                             : viewingVoucher.bank_amount && viewingVoucher.bank_amount > 0
                             ? viewingVoucher.bank_amount
                             : (viewingVoucher.amount || 0) + (viewingVoucher.bank_charge || 0),
-                          isAdvanceSettlement ? invCcy : bankCcy,
+                          bankCcy,
                         )}
                       </div>
                     </div>
@@ -1715,12 +1690,10 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                         <div className="font-semibold text-gray-900">{fmt(viewingVoucher.pph_amount, invCcy)}</div>
                       </div>
                     ) : null}
-                    {!isAdvanceSettlement && (
-                      <div>
-                        <div className="text-xs text-gray-500">Net Paid ({invCcy})</div>
-                        <div className="font-semibold text-red-600">{fmt(viewingVoucher.net_amount || 0, invCcy)}</div>
-                      </div>
-                    )}
+                    <div>
+                      <div className="text-xs text-gray-500">Net Paid ({invCcy})</div>
+                      <div className="font-semibold text-red-600">{fmt(viewingVoucher.net_amount || 0, invCcy)}</div>
+                    </div>
                   </div>
                 </div>
               );
@@ -1771,28 +1744,6 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                 </div>
               </div>
             )}
-
-            {viewAllocations.some(a => a.expense_category === 'salary') && (() => {
-              const salary = viewAllocations.find(a => a.expense_category === 'salary')!;
-              const gross = Number(salary.gross_salary || 0);
-              const advance = Number(salary.advance_applied || 0);
-              const pph21 = Number(salary.pph21 || 0);
-              const netPayable = Math.max(gross - advance - pph21, 0);
-              const finalBankPayment = viewingVoucher.payment_method === 'advance_adjustment'
-                ? 0
-                : Number(viewingVoucher.actual_bank_debit || viewingVoucher.bank_amount || viewingVoucher.amount || 0);
-              return (
-                <div className="rounded border border-emerald-200 bg-emerald-50 p-3">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Salary Payment Summary</div>
-                  <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                    <div><div className="text-xs text-gray-500">Gross Salary</div><div className="font-mono font-semibold">{fmt(gross, salary.allocated_currency)}</div></div>
-                    <div><div className="text-xs text-gray-500">Advance Applied</div><div className="font-mono font-semibold">{fmt(advance, salary.allocated_currency)}</div></div>
-                    <div><div className="text-xs text-gray-500">Net Payable</div><div className="font-mono font-semibold">{fmt(netPayable, salary.allocated_currency)}</div></div>
-                    <div><div className="text-xs text-gray-500">Final Bank Payment</div><div className="font-mono font-bold text-emerald-800">{fmt(finalBankPayment, viewingVoucher.payment_currency || 'IDR')}</div></div>
-                  </div>
-                </div>
-              );
-            })()}
 
             {viewingVoucher.payment_purpose === 'salary_advance' && (
               <div className="rounded border border-amber-200 bg-amber-50 p-3">
