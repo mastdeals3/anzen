@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Search, ArrowUpCircle, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
+import { MoneyInput } from '../MoneyInput';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
@@ -1211,8 +1212,8 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
               label={`Amount${pendingInvoices.length > 0 ? ` (${invoiceCurrency})` : ''}`}
               required
               span={['cash', 'advance_adjustment'].includes(formData.payment_method) ? 12 : 4}>
-              <input type="number" required step="0.01" value={formData.amount || ''}
-                onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
+              <MoneyInput required decimal value={formData.amount}
+                onChange={(n) => setFormData({ ...formData, amount: n })}
                 className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} />
             </SapField>
             {!['cash', 'advance_adjustment'].includes(formData.payment_method) && (
@@ -1329,12 +1330,10 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                   <label className="block text-[10px] font-medium text-gray-500 mb-1">
                     Bank Transfer Charge ({bankCurrency}) — added to bank debit
                   </label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={formData.bank_charge || ''}
-                    onChange={(e) => setFormData({ ...formData, bank_charge: parseFloat(e.target.value) || 0 })}
+                  <MoneyInput
+                    decimal
+                    value={formData.bank_charge}
+                    onChange={(n) => setFormData({ ...formData, bank_charge: n })}
                     className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded bg-white"
                     placeholder="e.g. 50000"
                   />
@@ -1365,8 +1364,8 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                 </select>
               </SapField>
               <SapField label={`PPh Amt${pendingInvoices.length > 0 ? ` (${invoiceCurrency})` : ''}`} span={6}>
-                <input type="number" value={formData.pph_amount || ''}
-                  onChange={(e) => setFormData({ ...formData, pph_amount: parseFloat(e.target.value) || 0 })}
+                <MoneyInput decimal value={formData.pph_amount}
+                  onChange={(n) => setFormData({ ...formData, pph_amount: n })}
                   className={SAP_INPUT + ' !text-right !font-mono text-orange-700'} />
               </SapField>
             </SapRow>
@@ -1440,13 +1439,10 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                             )}
                           </td>
                           <td className="px-3 py-1.5 text-right">
-                            <input
-                              type="number"
-                              min={0}
-                              max={bill.balance_amount}
-                              step="1"
-                              value={thisAlloc || ''}
-                              onChange={(e) => handleExpenseBillAllocationChange(bill, parseFloat(e.target.value) || 0)}
+                            <MoneyInput
+                              decimal
+                              value={thisAlloc || 0}
+                              onChange={(n) => handleExpenseBillAllocationChange(bill, Math.min(n, bill.balance_amount))}
                               className="w-24 px-2 py-1 border border-purple-200 rounded text-right focus:border-purple-400 outline-none"
                               placeholder="0"
                             />
@@ -1510,13 +1506,10 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                               {fmt(availableBalance, invCcy)}
                             </td>
                             <td className="px-3 py-1.5 text-right">
-                              <input
-                                type="number"
-                                min={0}
-                                max={availableBalance}
-                                step="0.01"
-                                value={thisAlloc || ''}
-                                onChange={(e) => handleAllocationChange(inv, parseFloat(e.target.value) || 0)}
+                              <MoneyInput
+                                decimal
+                                value={thisAlloc || 0}
+                                onChange={(n) => handleAllocationChange(inv, Math.min(n, availableBalance))}
                                 className="w-24 px-2 py-1 border rounded text-right"
                                 placeholder="0"
                               />

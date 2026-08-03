@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { BookOpen, Download, RefreshCw } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
+import { MoneyInput } from '../MoneyInput';
 import { useFinance } from '../../contexts/FinanceContext';
 import { getSignedUrlCached } from '../../utils/signedUrlCache';
 import { formatCurrency } from '../../utils/currency';
@@ -601,13 +602,12 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Opening Balance Amount *
             </label>
-            <input
-              type="number"
+            <MoneyInput
+              decimal
               value={openingBalanceForm.balance}
-              onChange={(e) => setOpeningBalanceForm({ ...openingBalanceForm, balance: parseFloat(e.target.value) || 0 })}
+              onChange={(n) => setOpeningBalanceForm({ ...openingBalanceForm, balance: n })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               required
-              step="0.01"
             />
           </div>
 

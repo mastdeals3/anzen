@@ -4,6 +4,7 @@ import { Plus, ArrowRightLeft, CheckCircle, Clock, RotateCcw, Undo2, Landmark, A
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceModal } from './FinanceModal';
+import { MoneyInput } from '../MoneyInput';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { showToast } from '../ToastNotification';
@@ -920,9 +921,9 @@ export function FundTransferManager({
             {/* Row B: From Amount · To Type · To Bank */}
             <SapRow>
               <SapField label={`From (${getFromCurrency()})`} required span={4}>
-                <input type="number" step="0.01" min="0.01" value={formData.from_amount || ''}
-                  onChange={(e) => {
-                    const newAmount = parseFloat(e.target.value) || 0;
+                <MoneyInput decimal value={formData.from_amount}
+                  onChange={(n) => {
+                    const newAmount = n;
                     const fromCurrency = getFromCurrency();
                     const toCurrency = getToCurrency();
                     if (fromCurrency === toCurrency) {
@@ -973,8 +974,8 @@ export function FundTransferManager({
                     1 USD = {(getFromCurrency() === 'USD' ? formData.to_amount / formData.from_amount : formData.from_amount / formData.to_amount).toLocaleString('id-ID', { maximumFractionDigits: 2 })}
                   </span>
                 ) : null}>
-                <input type="number" step="0.01" min="0.01" value={formData.to_amount || ''}
-                  onChange={(e) => setFormData({ ...formData, to_amount: parseFloat(e.target.value) || 0 })}
+                <MoneyInput decimal value={formData.to_amount}
+                  onChange={(n) => setFormData({ ...formData, to_amount: n })}
                   className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} required />
               </SapField>
               {formData.from_bank_account_id && (

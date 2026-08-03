@@ -6,7 +6,8 @@ import { useFinance } from '../../../contexts/FinanceContext';
 import { TaxAttachments } from './TaxAttachments';
 import { sanitizeExportRows } from '../../../utils/csvSafe';
 import { FinanceModal as Modal } from '../FinanceModal';
-import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
+import { MoneyInput } from '../../MoneyInput';
+import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState, paymentStatusLabel } from './TaxUI';
 import { formatFinancePeriod } from '../../../utils/financePeriod';
 
 interface Period {
@@ -85,11 +86,15 @@ export function TaxPaymentsPanel() {
 
   async function refresh() {
     setLoading(true);
-    const [p, b, tp] = await Promise.all([
+    const [ppnPeriods, pphPeriods, b, tp] = await Promise.all([
       supabase.from('vw_tax_period_status')
         .select('id, fiscal_year, period_month, tax_type, status, paid_amount, outstanding_amount, payment_status')
-        .order('fiscal_year', { ascending: false })
-        .order('period_month', { ascending: false }),
+        .eq('tax_type', 'PPN'),
+      // The PPh Register is the authoritative source for PPh periods. Use its
+      // exact rows here so status/outstanding cannot diverge between screens.
+      supabase.from('vw_pph_by_period_type')
+        .select('tax_period_id, fiscal_year, period_month, tax_type, status, pph_paid_total, pph_outstanding, payment_status'),
+
       supabase.from('bank_accounts')
         .select('id, account_name, bank_name, alias, currency')
         .eq('is_active', true)
@@ -100,7 +105,18 @@ export function TaxPaymentsPanel() {
         .order('payment_date', { ascending: false })
         .limit(500),
     ]);
-    setPeriods((p.data as Period[] | null) ?? []);
+    const ppn = ((ppnPeriods.data as any[] | null) ?? []).map(p => ({ ...p, paid_amount: Number(p.paid_amount ?? 0), outstanding_amount: Number(p.outstanding_amount ?? 0) }));
+    const pph = ((pphPeriods.data as any[] | null) ?? []).map(p => ({
+      id: p.tax_period_id,
+      fiscal_year: p.fiscal_year,
+      period_month: p.period_month,
+      tax_type: p.tax_type,
+      status: p.status,
+      paid_amount: Number(p.pph_paid_total ?? 0),
+      outstanding_amount: Number(p.pph_outstanding ?? 0),
+      payment_status: p.payment_status,
+    }));
+    setPeriods([...ppn, ...pph].sort((a, b) => b.fiscal_year - a.fiscal_year || b.period_month - a.period_month));
     setBanks((b.data as BankAccount[] | null) ?? []);
     setPayments((tp.data as Payment[] | null) ?? []);
     setLoading(false);
@@ -120,10 +136,12 @@ export function TaxPaymentsPanel() {
   const selectedOutstanding = Number(selectedPeriod?.outstanding_amount ?? 0);
   const selectedPaid = Number(selectedPeriod?.paid_amount ?? 0);
 
-  function paymentLabel(period: Period): 'Paid' | 'Partial' | 'Unpaid' {
-    if (Number(period.outstanding_amount ?? 0) <= 0.01) return 'Paid';
-    if (Number(period.paid_amount ?? 0) > 0.01) return 'Partial';
-    return 'Unpaid';
+  // Exactly the engine-derived status the Tax Register shows
+  // (vw_tax_period_status.payment_status) — never a locally recomputed label,
+  // never raw internal values. Partial payments remain visible through the
+  // Outstanding/Paid hint under the select.
+  function paymentLabel(period: Period): string {
+    return paymentStatusLabel(period.payment_status);
   }
 
   const filteredPayments = useMemo(() => {
@@ -424,7 +442,7 @@ export function TaxPaymentsPanel() {
                 <option value="">— select —</option>
                 {matchingPeriods.map(p => (
                   <option key={p.id} value={p.id}>
-                    {formatFinancePeriod(p.fiscal_year, p.period_month)} ({paymentLabel(p)})
+                    {formatFinancePeriod(p.fiscal_year, p.period_month)} ({paymentLabel(p)}) · Outstanding Rp {Math.max(0, Number(p.outstanding_amount ?? 0)).toLocaleString('id-ID')}
                   </option>
                 ))}
               </select>
@@ -447,10 +465,9 @@ export function TaxPaymentsPanel() {
             </label>
             <label className="text-sm">
               Amount (Rp)
-              <input
-                type="number" step="0.01" min="0"
-                value={form.amount}
-                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+              <MoneyInput
+                value={form.amount === '' ? 0 : Number(form.amount)}
+                onChange={n => setForm(f => ({ ...f, amount: n ? String(n) : '' }))}
                 className="mt-1 w-full border rounded px-2 py-1.5"
                 required
               />

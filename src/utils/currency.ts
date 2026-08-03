@@ -93,8 +93,9 @@ export const parseIndonesianNumber = (value: string | number | null | undefined)
   const str = String(value).trim();
   if (str === '') return 0;
 
-  // Remove all spaces
-  let cleaned = str.replace(/\s/g, '');
+  // Remove spaces and any currency decoration ("Rp 187.500" → "187.500"),
+  // keeping only digits, separators and a leading minus.
+  let cleaned = str.replace(/[^\d.,-]/g, '');
 
   // Count dots and commas to determine format
   const dotCount = (cleaned.match(/\./g) || []).length;
@@ -124,8 +125,15 @@ export const parseIndonesianNumber = (value: string | number | null | undefined)
     // Otherwise it's a decimal: "20.5" stays as 20.5
   }
   else if (commaCount === 1 && dotCount === 0) {
-    // Single comma - likely decimal separator in Indonesian format
-    cleaned = cleaned.replace(/,/g, '.');
+    const parts = cleaned.split(',');
+    // Mirror the single-dot rule: exactly 3 digits after a single comma is a
+    // thousands separator ("187,500" → 187500); anything else is an
+    // Indonesian decimal ("187,50" → 187.5).
+    if (parts[1].length === 3) {
+      cleaned = cleaned.replace(/,/g, '');
+    } else {
+      cleaned = cleaned.replace(/,/g, '.');
+    }
   }
 
   const result = parseFloat(cleaned);

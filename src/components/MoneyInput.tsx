@@ -1,4 +1,5 @@
 import { forwardRef, useState } from 'react';
+import { parseIndonesianNumber } from '../utils/currency';
 
 /**
  * MoneyInput — Indonesian-formatted money input.
@@ -29,6 +30,12 @@ function formatId(n: number, decimal: boolean): string {
 }
 
 // Parse the Indonesian-formatted string back to a number.
+//
+// This is a round-trip parser for MoneyInput's OWN display format (id-ID:
+// dots are always thousands, comma is always the decimal), so it must not
+// guess separator meaning the way a freeform parser does. Freeform values
+// (any of 187500 / 187.500 / 187,500 / 1,250,000 …) enter through the paste
+// handler below, which uses the shared parseIndonesianNumber utility.
 function parseId(s: string, decimal: boolean): number {
   if (!s) return 0;
   let cleaned = s.replace(/\s/g, '');
@@ -103,6 +110,17 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function
       value={display}
       onFocus={(e) => { setFocused(true); onFocus?.(e); }}
       onBlur={(e) => { setFocused(false); onBlur?.(e); }}
+      onPaste={(e) => {
+        // Pasted values are freeform (bank portals, spreadsheets, invoices) —
+        // route them through the shared parser so 187.500 / 187,500 /
+        // 1,250,000 all resolve to the intended amount.
+        const text = e.clipboardData.getData('text');
+        if (!text) return;
+        e.preventDefault();
+        let parsed = parseIndonesianNumber(text);
+        if (!decimal) parsed = Math.round(parsed);
+        onChange(Number.isFinite(parsed) ? parsed : 0);
+      }}
       onChange={(e) => {
         const input = e.currentTarget;
         const before = input.value;

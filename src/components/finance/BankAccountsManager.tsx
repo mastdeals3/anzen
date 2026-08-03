@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DataTable } from '../DataTable';
 import { FinanceModal as Modal } from './FinanceModal';
+import { MoneyInput } from '../MoneyInput';
 import { FinancePage } from './FinancePage';
 import { FinanceActionButton, FinanceBadge, FinanceButton } from './FinanceUI';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
@@ -268,9 +269,9 @@ export function BankAccountsManager({ canManage }: Props) {
           </SapRow>
           <SapRow>
             <SapField label="Open Bal" span={6}>
-              <input type="number" step="0.01" placeholder="0"
-                value={formData.opening_balance === 0 ? '' : formData.opening_balance}
-                onChange={(e) => setFormData({ ...formData, opening_balance: e.target.value === '' ? 0 : Number(e.target.value) })}
+              <MoneyInput decimal placeholder="0"
+                value={formData.opening_balance}
+                onChange={(n) => setFormData({ ...formData, opening_balance: n })}
                 className={SAP_INPUT + ' !text-right !font-mono'} />
             </SapField>
             <SapField label="Open Date" required span={6}>

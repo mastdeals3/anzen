@@ -4,7 +4,7 @@ import { supabase } from '../../../lib/supabase';
 import { formatFinancePeriodValue } from '../../../utils/financePeriod';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { formatDate } from '../../../utils/dateFormat';
-import { StatCard, StatCardGrid, SectionCard, EmptyState } from './TaxUI';
+import { StatCard, StatCardGrid, SectionCard, EmptyState, paymentStatusLabel } from './TaxUI';
 
 interface PeriodStatus {
   id: string;
@@ -30,12 +30,13 @@ interface PeriodStatus {
 function statusChip(period: PeriodStatus): { color: string; icon: JSX.Element; label: string } {
   // Single derived status from the engine — Calendar now matches Register /
   // Period Close / Dashboard exactly (no re-deriving overdue from stale status).
+  const label = paymentStatusLabel(period.payment_status ?? 'open');
   switch (period.payment_status) {
-    case 'closed':          return { color: 'bg-green-100 text-green-800', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Closed' };
-    case 'filed':           return { color: 'bg-green-100 text-green-700', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Filed' };
-    case 'paid':            return { color: 'bg-green-50 text-green-700',  icon: <CheckCircle2 className="w-3 h-3" />, label: 'Paid' };
-    case 'overdue':         return { color: 'bg-red-100 text-red-800',     icon: <AlertCircle className="w-3 h-3" />, label: 'Overdue' };
-    case 'payment_pending': return { color: 'bg-yellow-100 text-yellow-800', icon: <Clock className="w-3 h-3" />, label: 'Payment pending' };
+    case 'closed':          return { color: 'bg-green-100 text-green-800', icon: <CheckCircle2 className="w-3 h-3" />, label };
+    case 'filed':           return { color: 'bg-green-100 text-green-700', icon: <CheckCircle2 className="w-3 h-3" />, label };
+    case 'paid':            return { color: 'bg-green-50 text-green-700',  icon: <CheckCircle2 className="w-3 h-3" />, label };
+    case 'overdue':         return { color: 'bg-red-100 text-red-800',     icon: <AlertCircle className="w-3 h-3" />, label };
+    case 'payment_pending': return { color: 'bg-yellow-100 text-yellow-800', icon: <Clock className="w-3 h-3" />, label };
     default:                return { color: 'bg-gray-100 text-gray-700',   icon: <Clock className="w-3 h-3" />, label: 'Open' };
   }
 }

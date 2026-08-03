@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, ArrowDownCircle, ArrowUpCircle, Upload, X, FileText, Image, Eye, CreditCard as Edit2, Trash2, ExternalLink, Download, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
+import { MoneyInput } from '../MoneyInput';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { FinanceActionButton, FinanceBadge } from './FinanceUI';
@@ -1573,9 +1574,9 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
               right={formData.amount > 0 && formData.amount < 100 ? (
                 <span className="text-[9px] text-amber-700 font-semibold">? Rp {(formData.amount * 1000).toLocaleString('id-ID')}?</span>
               ) : null}>
-              <input type="number" value={formData.amount || ''}
-                onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} required min="1" step="1" />
+              <MoneyInput value={formData.amount}
+                onChange={(n) => setFormData({ ...formData, amount: n })}
+                className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} required />
             </SapField>
           </SapRow>
 

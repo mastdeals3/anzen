@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DataTable } from '../DataTable';
 import { FinanceModal as Modal } from './FinanceModal';
+import { MoneyInput } from '../MoneyInput';
 import { TrendingUp, RefreshCw, BarChart2 } from 'lucide-react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { formatDate } from '../../utils/dateFormat';
@@ -768,14 +769,12 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rp) *</label>
-              <input
-                type="number"
-                value={formData.amount === 0 ? '' : formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value === '' ? 0 : Number(e.target.value) })}
+              <MoneyInput
+                decimal
+                value={formData.amount}
+                onChange={(n) => setFormData({ ...formData, amount: n })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 required
-                min="0"
-                step="0.01"
               />
             </div>
 
@@ -876,25 +875,21 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
                       </div>
                       {isSelected && (
                         <div className="ml-3 w-32">
-                          <input
-                            type="number"
-                            value={allocatedAmount || ''}
-                            onChange={(e) => {
-                              const value = parseFloat(e.target.value) || 0;
-                              if (value > balance) {
+                          <MoneyInput
+                            decimal
+                            value={allocatedAmount || 0}
+                            onChange={(n) => {
+                              if (n > balance) {
                                 alert('Cannot allocate more than balance');
                                 return;
                               }
                               setSelectedAllocations(prev => ({
                                 ...prev,
-                                [invoice.id]: value
+                                [invoice.id]: n
                               }));
                             }}
                             className="w-full px-2 py-1 border rounded text-sm"
                             placeholder="Amount"
-                            min="0"
-                            max={balance}
-                            step="0.01"
                           />
                         </div>
                       )}

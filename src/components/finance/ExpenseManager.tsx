@@ -491,7 +491,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         // Amount is prefilled from Staff Master on selection, but remains the
         // authoritative gross value after the user edits it.
         p_gross_override: formData.amount,
-        p_pph21_override: formData.pph_amount,
       }),
     ]).then(([advancesResult, calculationResult]) => {
       if (cancelled) return;
@@ -520,7 +519,25 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     return () => {
       cancelled = true;
     };
-  }, [formData.expense_category, formData.expense_date, formData.amount, formData.pph_amount, selectedStaffId, taxCodes]);
+  }, [formData.expense_category, formData.expense_date, formData.amount, selectedStaffId, taxCodes]);
+
+  // A deliberate PPh21 edit is a UI override, not a new payroll calculation.
+  // Keep the canonical advances/BPJS result and update only the displayed
+  // deduction/net so the panel immediately reflects the value that will save.
+  useEffect(() => {
+    if (formData.expense_category !== 'salary') return;
+    setSalaryCalculation(current => current ? {
+      ...current,
+      pph21_amount: formData.pph_amount,
+      net_salary_payable: Math.max(
+        current.gross_salary
+          - current.outstanding_salary_advances
+          - formData.pph_amount
+          - current.bpjs_amount,
+        0,
+      ),
+    } : current);
+  }, [formData.expense_category, formData.pph_amount]);
 
   useEffect(() => {
     if (!viewingExpense || viewingExpense.expense_category !== 'salary') {
@@ -2502,7 +2519,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               ...prev,
                               supplier_id: '',
                               ...(prev.expense_category === 'salary' && staff
-                                ? { amount: Number(staff.monthly_salary) || 0 }
+                                // Fresh staff selection: gross from Staff Master and a
+                                // clean PPh21 override so the canonical calculator
+                                // repopulates from the new staff's configuration
+                                // instead of carrying the previous staff's value.
+                                ? { amount: Number(staff.monthly_salary) || 0, pph_amount: 0 }
                                 : {}),
                             }));
                             setSelectedSupplier(null);

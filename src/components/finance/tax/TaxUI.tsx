@@ -103,6 +103,23 @@ const chipTone: Record<string, string> = {
   draft:           'bg-gray-100 text-gray-600',
 };
 
+/**
+ * Accountant-facing label for the engine-derived payment_status
+ * (vw_tax_period_status). Register, Calendar and the Record Tax Payment
+ * dialog must all use this same mapping — never raw internal values.
+ */
+export function paymentStatusLabel(status: string | null | undefined): string {
+  switch ((status ?? '').toLowerCase()) {
+    case 'closed':          return 'Closed';
+    case 'filed':           return 'Filed';
+    case 'paid':            return 'Paid';
+    case 'overdue':         return 'Overdue';
+    case 'payment_pending': return 'Payment Pending';
+    case 'open':            return 'Open';
+    default:                return status ? status.replace(/_/g, ' ') : '—';
+  }
+}
+
 /** Colored status pill; falls back to neutral gray for unknown statuses. */
 export function StatusChip({ status }: { status: string | null | undefined }) {
   const key = (status ?? '').toLowerCase();

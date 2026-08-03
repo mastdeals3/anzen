@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, Search } from 'lucide-react';
 import { FinanceModal } from './FinanceModal';
+import { MoneyInput } from '../MoneyInput';
 import { FinancePage } from './FinancePage';
 import { FinanceTable } from './FinanceTable';
 import { FinanceActionButton, FinanceBadge, FinanceButton } from './FinanceUI';
@@ -257,8 +258,8 @@ export function StaffMasterManager({ canManage }: Props) {
             </SapRow>
             <SapRow>
               <SapField label="Monthly Salary" required span={4}>
-                <input type="number" min="0" step="1" required value={form.monthly_salary || ''}
-                  onChange={e => setForm({ ...form, monthly_salary: Number(e.target.value) || 0 })}
+                <MoneyInput required value={form.monthly_salary}
+                  onChange={n => setForm({ ...form, monthly_salary: n })}
                   className={SAP_INPUT + ' !text-right !font-mono'} />
               </SapField>
               <SapField label="Salary Type" required span={4}>

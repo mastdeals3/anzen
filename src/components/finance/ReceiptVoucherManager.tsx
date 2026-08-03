@@ -5,6 +5,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { Search, ArrowDownCircle, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
+import { MoneyInput } from '../MoneyInput';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
@@ -749,8 +750,8 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
 
           <SapRow>
             <SapField label={`Amount (${formCurrency})`} required span={formData.payment_method === 'cash' ? 12 : 4}>
-              <input type="number" required min="0" step="0.01" value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
+              <MoneyInput required decimal value={formData.amount}
+                onChange={(n) => setFormData({ ...formData, amount: n })}
                 className={SAP_INPUT + ' !text-right !font-mono !font-semibold'} />
             </SapField>
             {formData.payment_method !== 'cash' && (
@@ -842,12 +843,10 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
                             {formatCurrency(balance, formCurrency)}
                           </td>
                           <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={allocations.find(a => a.targetId === target.id)?.amount || ''}
-                              onChange={(e) => handleAllocationChange(target.id, target.type, parseFloat(e.target.value) || 0)}
+                            <MoneyInput
+                              decimal
+                              value={allocations.find(a => a.targetId === target.id)?.amount || 0}
+                              onChange={(n) => handleAllocationChange(target.id, target.type, n)}
                               className="w-28 px-2 py-1 border rounded text-right text-xs"
                               placeholder="0"
                             />

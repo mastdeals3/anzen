@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Plus, Search, FileText, X, AlertCircle, CreditCard } from 'lucide-react';
 import { showConfirm } from '../ConfirmDialog';
 import { FinanceModal as Modal } from './FinanceModal';
+import { MoneyInput } from '../MoneyInput';
 import { FinanceModal } from './FinanceModal';
 import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { SapField, SAP_INPUT } from './SapLayout';
@@ -1005,15 +1006,10 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
                       <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
                         Rate *
                       </label>
-                      <input
-                        type="number"
-                        step="0.0001"
-                        min="0"
-                        value={item.unit_price === 0 ? '' : item.unit_price}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          handleLineChange(index, 'unit_price', Number.isFinite(val) ? val : 0);
-                        }}
+                      <MoneyInput
+                        decimal
+                        value={item.unit_price}
+                        onChange={(n) => handleLineChange(index, 'unit_price', n)}
                         placeholder="0.00"
                         className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
                       />
@@ -1056,12 +1052,9 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-gray-600">Bea Meterai:</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1000"
-                  value={stampDutyAmount === 0 ? '' : stampDutyAmount}
-                  onChange={(e) => setStampDutyAmount(parseFloat(e.target.value) || 0)}
+                <MoneyInput
+                  value={stampDutyAmount}
+                  onChange={(n) => setStampDutyAmount(n)}
                   placeholder="0"
                   className="w-28 text-right px-2 py-0.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                 />

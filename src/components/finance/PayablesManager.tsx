@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { DataTable } from '../DataTable';
 import { FinanceModal as Modal } from './FinanceModal';
+import { MoneyInput } from '../MoneyInput';
 import { Plus, CreditCard as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
 import { formatDate } from '../../utils/dateFormat';
 import { EXPENSE_CATEGORY_LABELS } from '../../utils/taxCalculations';
@@ -919,14 +920,12 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Amount (Rp) *
               </label>
-              <input
-                type="number"
-                value={billFormData.amount === 0 ? '' : billFormData.amount}
-                onChange={(e) => setBillFormData({ ...billFormData, amount: e.target.value === '' ? 0 : Number(e.target.value) })}
+              <MoneyInput
+                decimal
+                value={billFormData.amount}
+                onChange={(n) => setBillFormData({ ...billFormData, amount: n })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 required
-                min="0"
-                step="0.01"
               />
             </div>
 
@@ -934,13 +933,11 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Tax Amount (Rp)
               </label>
-              <input
-                type="number"
-                value={billFormData.tax_amount === 0 ? '' : billFormData.tax_amount}
-                onChange={(e) => setBillFormData({ ...billFormData, tax_amount: e.target.value === '' ? 0 : Number(e.target.value) })}
+              <MoneyInput
+                decimal
+                value={billFormData.tax_amount}
+                onChange={(n) => setBillFormData({ ...billFormData, tax_amount: n })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                min="0"
-                step="0.01"
               />
             </div>
 
@@ -1042,14 +1039,12 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Amount (Rp) *
               </label>
-              <input
-                type="number"
-                value={paymentFormData.amount === 0 ? '' : paymentFormData.amount}
-                onChange={(e) => setPaymentFormData({ ...paymentFormData, amount: e.target.value === '' ? 0 : Number(e.target.value) })}
+              <MoneyInput
+                decimal
+                value={paymentFormData.amount}
+                onChange={(n) => setPaymentFormData({ ...paymentFormData, amount: n })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 required
-                min="0"
-                step="0.01"
               />
             </div>
 

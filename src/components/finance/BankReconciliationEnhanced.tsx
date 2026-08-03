@@ -4,6 +4,7 @@ import { Upload, RefreshCw, CheckCircle2, AlertCircle, XCircle, Plus, Calendar, 
 import * as XLSX from 'xlsx';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
+import { MoneyInput } from '../MoneyInput';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
@@ -13,7 +14,7 @@ import {
   FINANCE_RECONCILIATION_REFRESH_EVENT,
   notifyFinanceReconciliationRefresh,
 } from './bankTransactionLinking';
-import { formatCurrency } from '../../utils/currency';
+import { formatCurrency, parseIndonesianNumber } from '../../utils/currency';
 import { FinanceActionButton } from './FinanceUI';
 import {
   approveFinanceExpense,
@@ -655,24 +656,6 @@ export function BankReconciliationEnhanced({
       setStatementLines([]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const parseIndonesianNumber = (str: string): number => {
-    if (!str) return 0;
-    const cleaned = str.replace(/[^\d,\.]/g, '');
-    if (cleaned.includes(',') && cleaned.includes('.')) {
-      const lastComma = cleaned.lastIndexOf(',');
-      const lastDot = cleaned.lastIndexOf('.');
-      if (lastComma > lastDot) {
-        return parseFloat(cleaned.replace(/\./g, '').replace(/,/g, '.')) || 0;
-      } else {
-        return parseFloat(cleaned.replace(/,/g, '')) || 0;
-      }
-    } else if (cleaned.includes(',')) {
-      return parseFloat(cleaned.replace(/,/g, '.')) || 0;
-    } else {
-      return parseFloat(cleaned.replace(/,/g, '')) || 0;
     }
   };
 
@@ -3243,14 +3226,14 @@ export function BankReconciliationEnhanced({
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Principal *</label>
-                        <input type="number" min="0" step="0.01" value={repaymentPrincipal || ''}
-                          onChange={(e) => setRepaymentPrincipal(Number(e.target.value) || 0)}
+                        <MoneyInput decimal value={repaymentPrincipal}
+                          onChange={(n) => setRepaymentPrincipal(n)}
                           className="w-full px-3 py-2 border rounded-lg text-right" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Interest</label>
-                        <input type="number" min="0" step="0.01" value={repaymentInterest || ''}
-                          onChange={(e) => setRepaymentInterest(Number(e.target.value) || 0)}
+                        <MoneyInput decimal value={repaymentInterest}
+                          onChange={(n) => setRepaymentInterest(n)}
                           className="w-full px-3 py-2 border rounded-lg text-right" />
                       </div>
                     </div>
@@ -3311,13 +3294,10 @@ export function BankReconciliationEnhanced({
                                     </td>
                                     <td className="px-2 py-1.5 text-right">
                                       {alloc && (
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          max={bill.balance_amount}
-                                          step="1"
-                                          value={alloc.amount || ''}
-                                          onChange={(e) => setBillAllocationAmount(bill.id, parseFloat(e.target.value) || 0)}
+                                        <MoneyInput
+                                          decimal
+                                          value={alloc.amount}
+                                          onChange={(n) => setBillAllocationAmount(bill.id, Math.min(n, bill.balance_amount))}
                                           className="w-24 px-2 py-1 border border-emerald-300 rounded text-right focus:border-emerald-500 outline-none"
                                         />
                                       )}
@@ -3789,16 +3769,13 @@ export function BankReconciliationEnhanced({
                                   <span className="text-red-500 ml-1">Bal: {formatCurrency(inv.balance_amount, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                 </div>
                                 {isChecked && (
-                                  <input
-                                    type="number"
-                                    value={receiptAllocations[inv.id] || ''}
-                                    onChange={(e) => {
-                                      const val = parseFloat(e.target.value) || 0;
-                                      setReceiptAllocations(prev => ({ ...prev, [inv.id]: Math.min(val, inv.balance_amount) }));
+                                  <MoneyInput
+                                    decimal
+                                    value={receiptAllocations[inv.id] || 0}
+                                    onChange={(n) => {
+                                      setReceiptAllocations(prev => ({ ...prev, [inv.id]: Math.min(n, inv.balance_amount) }));
                                     }}
                                     className="w-24 px-1 py-0.5 border rounded text-right text-xs"
-                                    min={0}
-                                    max={inv.balance_amount}
                                   />
                                 )}
                               </div>
@@ -4309,11 +4286,10 @@ export function BankReconciliationEnhanced({
                 <label className="block text-sm font-medium text-red-700 mb-1">
                   Debit Amount
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
+                <MoneyInput
+                  decimal
                   value={editFormData.debit}
-                  onChange={(e) => setEditFormData({ ...editFormData, debit: parseFloat(e.target.value) || 0, credit: 0 })}
+                  onChange={(n) => setEditFormData({ ...editFormData, debit: n, credit: 0 })}
                   className="w-full px-3 py-2 border border-red-300 rounded-lg"
                 />
                 <p className="text-xs text-gray-500 mt-1">Money OUT (expenses)</p>
@@ -4323,11 +4299,10 @@ export function BankReconciliationEnhanced({
                 <label className="block text-sm font-medium text-green-700 mb-1">
                   Credit Amount
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
+                <MoneyInput
+                  decimal
                   value={editFormData.credit}
-                  onChange={(e) => setEditFormData({ ...editFormData, credit: parseFloat(e.target.value) || 0, debit: 0 })}
+                  onChange={(n) => setEditFormData({ ...editFormData, credit: n, debit: 0 })}
                   className="w-full px-3 py-2 border border-green-300 rounded-lg"
                 />
                 <p className="text-xs text-gray-500 mt-1">Money IN (receipts)</p>
