@@ -2850,9 +2850,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   {/* ══════════════════════════════════════════════════════════════
                        BROKER CALCULATION ENGINE — 2026-07-08 spec
                        ══════════════════════════════════════════════════════════════
-                       Broker Invoice, Header DDP, and every Reimbursement Line are
-                       INDEPENDENT inputs. NOTHING rolls up into anything else.
-                       They only meet inside the Total Payable formula.
+                       Broker Invoice and every Reimbursement Line are independent
+                       payables. DPP and PPN are independent tax-reporting inputs.
 
                        Line columns (per user brief):
                          # | Supplier | Invoice No | Tax Inv # | Inv Date |
@@ -2861,7 +2860,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                        Per-line formulas:
                          PPN Amount (Auto)  = round(DDP × PPN%)
                          PPN Amount (Manual) = user-typed value; NOT overwritten
-                         Line Total          = Amount + DDP + PPN Amount
+                         Line Total          = Amount
 
                        Auto vs Manual (Excel semantics, per row):
                          • Editing DDP or PPN%   → Auto (recompute PPN Amount).
@@ -2870,21 +2869,23 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                            dedicated `ppn_treatment` alias to avoid a schema change.
 
                        Total Payable:
-                         Broker Invoice          (header, independent)
-                         + Header DDP            (header, independent)
-                         + Σ Line.Amount         (all lines)
-                         + Σ Line.DDP            (all lines)
-                         + Σ Line.PPN Amount     (all lines)
-                         + Broker PPN            (header, independent)
-                         − Broker PPh            (header, independent)
+                         Broker Invoice          (actual header payable)
+                         + Σ Line.Amount         (actual reimbursement payable)
+                         − Broker PPh            (header withholding)
                          + Broker Stamp Duty     (header, independent)
+
+                       DPP and PPN remain independent reporting values and are
+                       never added to Invoice Amount.
                      ══════════════════════════════════════════════════════════════ */}
                   {taxCfg.brokerItems && (() => {
                     // ─── updateLine — pure line mutator, NEVER touches header state.
                     const updateLine = (idx: number, patch: Partial<BrokerItem>) => {
                       setBrokerItems(prev => prev.map((it, i) => {
                         if (i !== idx) return it;
-                        const merged = { ...it, ...patch };
+                        // Any user edit promotes the line to the corrected
+                        // model. Its stored Invoice Amount (including zero) is
+                        // authoritative from this point onward.
+                        const merged = { ...it, ...patch, invoice_amount_authoritative: true };
                         const inManualMode = merged.ppn_treatment === 'included'; // 'included' = manual PPN flag (repurposed to avoid new schema field)
                         const explicitPpn = 'ppn_amount' in patch;
                         const dppChanged  = 'dpp_amount' in patch;
@@ -2912,6 +2913,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     };
                     const addLine = () => setBrokerItems(prev => [...prev, {
                       type: 'other', description: '', amount: 0,
+                      invoice_amount_authoritative: true,
                       supplier_id: null, invoice_number: '',
                       tax_invoice_number: '', invoice_date: '',
                       ppn_treatment: 'excluded', ppn_amount: 0,
@@ -2965,10 +2967,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               <div className="px-0.5 py-1 text-center">✕</div>
                             </div>
                             {brokerItems.map((item, idx) => {
-                              // Line Total (per user brief) = Amount + DDP + PPN Amount.
-                              // NO conditionals — every line uses the same formula so what the
-                              // user sees is what the Payable calc uses.
+                              // Line Total = Invoice Amount. DPP and PPN remain
+                              // independent tax-reporting values.
                               const lineTotal = brokerLineTotal(item);
+                              const taxBreakdownExceedsAmount = item.invoice_amount_authoritative === true
+                                && (Number(item.amount) || 0) < (Number(item.dpp_amount) || 0) + (Number(item.ppn_amount) || 0);
                               const rateDisplay = item.ppn_rate ?? 0;
                               const isManual = item.ppn_treatment === 'included';
                               return (
@@ -3039,8 +3042,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                                       <span className="absolute right-1 top-0.5 text-[8px] font-bold text-amber-600 uppercase tracking-wide pointer-events-none">M</span>
                                     )}
                                   </div>
-                                  {/* Total = Amount + DDP + PPN (per user brief) */}
-                                  <div className="border-r border-gray-200 flex items-center justify-end px-1 h-[26px] font-mono text-[10px] font-semibold text-gray-900">
+                                  {/* Total = Invoice Amount; mismatch is warning-only. */}
+                                  <div
+                                    className={`border-r border-gray-200 flex items-center justify-end gap-1 px-1 h-[26px] font-mono text-[10px] font-semibold ${taxBreakdownExceedsAmount ? 'text-amber-700' : 'text-gray-900'}`}
+                                    title={taxBreakdownExceedsAmount ? 'Warning: Invoice Amount is lower than DPP + PPN. Values are preserved without adjustment.' : 'Line Total equals Invoice Amount'}
+                                  >
+                                    {taxBreakdownExceedsAmount && <AlertCircle className="w-3 h-3 flex-none" />}
                                     {lineTotal ? lineTotal.toLocaleString('id-ID') : ''}
                                   </div>
                                   {/* Delete */}
@@ -3064,7 +3071,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{reimbDpp.toLocaleString('id-ID')}</div>
                               <div className="border-r border-gray-300 px-1 py-1"></div>
                               <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-blue-700">{reimbPpn.toLocaleString('id-ID')}</div>
-                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{(reimbAmount + reimbPpn).toLocaleString('id-ID')}</div>
+                              <div className="border-r border-gray-300 px-1.5 py-1 text-right font-mono text-gray-900">{reimbAmount.toLocaleString('id-ID')}</div>
                               <div></div>
                             </div>
                           </div>
@@ -3076,7 +3083,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           const cells: FormulaCell[] = [
                             { label: 'Broker Invoice Amount', value: brokerInvoiceAmount, valueColor: 'text-gray-900', op: '+' },
                             { label: 'Reimbursement Total',   value: reimbAmount,         valueColor: 'text-gray-900', op: '+' },
-                            { label: 'Broker PPN',             value: formData.ppn_amount || 0, valueColor: 'text-blue-700', op: '+' },
                             { label: 'Stamp Duty',            value: parentStamp,         valueColor: 'text-gray-900', op: '−' },
                             { label: 'PPh Withheld',          value: parentPph,           valueColor: 'text-orange-700' },
                           ];

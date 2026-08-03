@@ -113,6 +113,10 @@ export interface BrokerItem {
   type: BrokerItemType;
   description: string;
   amount: number;
+  // Present on every line created or edited by the corrected calculation
+  // engine. Unmarked rows are historical and may use the legacy empty-amount
+  // compatibility fallback.
+  invoice_amount_authoritative?: boolean;
   // ── Optional multi-supplier / PPN fields (added 2026-07-03) ──
   // NOTE: this per-line supplier_id is used ONLY for tax-invoice display and the
   // PPN register (vw_input_ppn_report Branch 5). It NEVER replaces or overrides
@@ -191,19 +195,24 @@ export interface BrokerExpenseTotals {
   totalPayable: number;
 }
 
-/** Tax-inclusive reimbursement line total used by every broker presentation/AP view. */
+/**
+ * Actual reimbursement payable used by every broker presentation/AP view.
+ *
+ * Invoice Amount is authoritative. DPP and PPN are independent tax-reporting
+ * values and must never be added to a populated Invoice Amount. The fallback
+ * preserves historical rows created before Invoice Amount became mandatory.
+ */
 export function brokerLineTotal(item: BrokerItem): number {
   const amount = Number(item.amount) || 0;
   const dpp = Number(item.dpp_amount) || 0;
   const ppn = Number(item.ppn_amount) || 0;
-  return amount + dpp + ppn;
+  if (item.invoice_amount_authoritative === true) return amount;
+  return amount !== 0 ? amount : dpp + ppn;
 }
 
 /** Expense base for a reimbursement line; recoverable PPN is never expensed. */
 export function brokerLineExpenseBase(item: BrokerItem): number {
-  const amount = Number(item.amount) || 0;
-  const dpp = Number(item.dpp_amount) || 0;
-  return amount + dpp;
+  return brokerLineTotal(item) - (Number(item.ppn_amount) || 0);
 }
 
 export function calculateBrokerReimbursementTotal(items: BrokerItem[] | null | undefined): number {
@@ -222,8 +231,9 @@ export function calculateBrokerExpenseTotals(exp: BrokerExpenseTotalsInput): Bro
   const pphWithheld = Number(exp.pph_amount) || 0;
   const stampDuty = Number(exp.stamp_duty_amount) || 0;
   const expenseTotal = brokerInvoiceAmount + reimbursementTotal + stampDuty;
-  // Reimbursement PPN is already included in the gross reimbursement total.
-  const finalCashPayable = expenseTotal + headerPpn - pphWithheld;
+  // Invoice Amount already represents the supplier payable. DPP and PPN are
+  // reporting values only and never increase the cash target.
+  const finalCashPayable = expenseTotal - pphWithheld;
 
   return {
     brokerInvoiceAmount,
