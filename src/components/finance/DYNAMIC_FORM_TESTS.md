@@ -18,7 +18,8 @@ Masters:     `finance_staff_master`, `finance_utility_master`
 | Field                | Visible? | Notes                                    |
 | -------------------- | -------- | ---------------------------------------- |
 | Staff picker         | ✓        | required, sourced from Staff Master      |
-| Salary Month         | ✓        | HTML `<input type="month">`              |
+| Salary Month         | ✓        | January–December dropdown; current month by default |
+| Amount               | ✓        | Prefilled from Staff Master, then freely editable |
 | Supplier picker      | ✗        | hidden — staff aren't suppliers          |
 | Utility picker       | ✗        | hidden                                   |
 | Container            | ✗        | hidden (not import)                      |
@@ -31,6 +32,8 @@ Also covered: `staff_overtime`, `staff_welfare`, `travel_conveyance`.
 - `finance_expenses.description` gets prefixed with `[<Staff.full_name> · <Month>]`
   for ledger traceability.
 - `handleSubmit` blocks the save with an alert if no Staff row is picked.
+- The canonical salary calculation uses the current Amount value, including
+  manual overrides, without changing FIFO, tax, BPJS, or posting logic.
 
 **On re-open (Edit):**
 - The description prefix is parsed by `handleEdit()` — regex

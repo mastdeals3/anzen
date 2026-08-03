@@ -111,6 +111,30 @@ import {
   EXPENSE_CATEGORY_LABELS,
 } from '../../utils/taxCalculations';
 
+const SALARY_MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+
+const currentSalaryMonth = () => SALARY_MONTHS[new Date().getMonth()];
+
+const normalizeSalaryMonth = (value: string) => {
+  if ((SALARY_MONTHS as readonly string[]).includes(value)) return value;
+  const storedMonth = value.match(/^\d{4}-(\d{2})$/)?.[1];
+  if (storedMonth) return SALARY_MONTHS[Number(storedMonth) - 1] || currentSalaryMonth();
+  return currentSalaryMonth();
+};
+
 interface FinanceExpense {
   id: string;
   expense_category: string;
@@ -315,7 +339,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   // column stays as-is (utilities resolve through the linked supplier;
   // staff rows leave supplier_id null and prefix the description with the
   // staff name for traceability).
-  const [staffRoster, setStaffRoster] = useState<Array<{ id: string; full_name: string; department: string | null; default_gl_code: string | null }>>([]);
+  const [staffRoster, setStaffRoster] = useState<Array<{
+    id: string;
+    full_name: string;
+    department: string | null;
+    default_gl_code: string | null;
+    monthly_salary: number;
+  }>>([]);
   const [utilityRoster, setUtilityRoster] = useState<Array<{ id: string; provider_name: string; utility_type: string; supplier_id: string | null; default_gl_code: string | null }>>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>('');
   const [salaryAdvances, setSalaryAdvances] = useState<Array<{
@@ -470,6 +500,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       setApplySalaryAdvance(true);
       return;
     }
+    let cancelled = false;
     void Promise.all([
       supabase.rpc('get_outstanding_salary_advances', {
         p_staff_id: selectedStaffId,
@@ -478,10 +509,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       supabase.rpc('calculate_staff_salary', {
         p_staff_id: selectedStaffId,
         p_salary_date: formData.expense_date,
-        p_gross_override: editingExpense ? formData.amount : null,
+        // Amount is prefilled from Staff Master on selection, but remains the
+        // authoritative gross value after the user edits it.
+        p_gross_override: formData.amount,
         p_pph21_override: formData.pph_amount,
       }),
     ]).then(([advancesResult, calculationResult]) => {
+      if (cancelled) return;
       if (advancesResult.error || calculationResult.error) {
         console.error('Unable to load canonical salary calculation:', advancesResult.error?.message || calculationResult.error?.message);
         setSalaryAdvances([]);
@@ -492,11 +526,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       setSalaryAdvances((advancesResult.data || []) as typeof salaryAdvances);
       setSalaryCalculation(calculation);
       setApplySalaryAdvance(true);
-      if (!editingExpense && calculation) {
+      if (calculation) {
         const pph21Code = taxCodes.find((code) => code.code.toUpperCase() === 'PPH21');
         setFormData((previous) => ({
           ...previous,
-          amount: calculation.gross_salary,
           pph_amount: calculation.pph21_method === 'percentage' ? calculation.pph21_amount : previous.pph_amount,
           pph_code_id: calculation.pph21_applicable && pph21Code ? pph21Code.id : previous.pph_code_id,
           payment_method: ['cash','bank_transfer'].includes(calculation.default_payment_method)
@@ -505,7 +538,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         }));
       }
     });
-  }, [formData.expense_category, formData.expense_date, formData.pph_amount, selectedStaffId, editingExpense, taxCodes]);
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.expense_category, formData.expense_date, formData.amount, formData.pph_amount, selectedStaffId, taxCodes]);
 
   useEffect(() => {
     if (!viewingExpense || viewingExpense.expense_category !== 'salary') {
@@ -770,7 +806,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       if (staffRoster.length === 0) {
         const { data: staff } = await supabase
           .from('finance_staff_master')
-          .select('id, full_name, department, default_gl_code')
+          .select('id, full_name, department, default_gl_code, monthly_salary')
           .eq('status', 'active')
           .order('full_name');
         if (staff) setStaffRoster(staff);
@@ -1280,7 +1316,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     if (rules.staff === 'show' && expense.staff_id) loadedStaffId = expense.staff_id;
     setSelectedStaffId(loadedStaffId);
     setSelectedUtilityId(loadedUtilityId);
-    setPeriodLabel(loadedPeriod);
+    setPeriodLabel(rules.salaryMonth === 'show' ? normalizeSalaryMonth(loadedPeriod) : loadedPeriod);
 
     setFormData({
       expense_category: expense.expense_category,
@@ -2459,6 +2495,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                             if (cats.includes(cat)) { dt = docType; break; }
                           }
                           setSelectedDocType(dt);
+                          if (
+                            getCategoryFieldRules(cat).salaryMonth === 'show'
+                            && getCategoryFieldRules(formData.expense_category).salaryMonth !== 'show'
+                          ) {
+                            setPeriodLabel(currentSalaryMonth());
+                          }
                           setFormData(prev => ({
                             ...prev,
                             expense_category: cat,
@@ -2491,7 +2533,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           value={selectedStaffId}
                           onChange={(val) => {
                             setSelectedStaffId(val);
-                            setFormData(prev => ({ ...prev, supplier_id: '' }));
+                            const staff = staffRoster.find((item) => item.id === val);
+                            setFormData(prev => ({
+                              ...prev,
+                              supplier_id: '',
+                              ...(prev.expense_category === 'salary' && staff
+                                ? { amount: Number(staff.monthly_salary) || 0 }
+                                : {}),
+                            }));
                             setSelectedSupplier(null);
                           }}
                           options={[{ value: '', label: '— None —' }, ...staffRoster.map(s => ({ value: s.id, label: `${s.full_name}${s.department ? ' · ' + s.department : ''}` }))]}
@@ -2526,9 +2575,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <SapRow>
                       {rules.salaryMonth === 'show' ? (
                         <SapField label="Salary Month" required span={3}>
-                          <input type="month" value={periodLabel}
+                          <select value={normalizeSalaryMonth(periodLabel)}
                             onChange={(e) => setPeriodLabel(e.target.value)}
-                            className={SAP_INPUT} />
+                            className={SAP_INPUT}>
+                            {SALARY_MONTHS.map((month) => (
+                              <option key={month} value={month}>{month}</option>
+                            ))}
+                          </select>
                         </SapField>
                       ) : (
                         <SapField label="Billing Month" required span={3}>
@@ -2558,7 +2611,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         ))}
                       </div>}
                       <div className="mt-2 grid grid-cols-5 gap-2 border-t border-amber-200 pt-2 text-xs">
-                        <div><span className="text-amber-700">Monthly Salary</span><div className="font-mono font-semibold text-amber-950">{formatCurrency(salaryCalculation.gross_salary, expenseFormCurrency)}</div></div>
+                        <div><span className="text-amber-700">Salary</span><div className="font-mono font-semibold text-amber-950">{formatCurrency(salaryCalculation.gross_salary, expenseFormCurrency)}</div></div>
                         <div><span className="text-amber-700">Less Advance</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.outstanding_salary_advances, expenseFormCurrency)}</div></div>
                         <div><span className="text-amber-700">Less PPh21</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.pph21_amount, expenseFormCurrency)}</div></div>
                         <div><span className="text-amber-700">Less BPJS</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.bpjs_amount, expenseFormCurrency)}</div></div>
@@ -2570,7 +2623,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   {/* ── Row C: Amount · DPP · PPN · PPh · PPh Code · Stamp · Bank Chg · Container · DC · Asset ── */}
                   <SapRow>
                     <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={3}>
-                      <MoneyInput value={formData.amount} required placeholder="0.00" readOnly={formData.expense_category === 'salary' && !!salaryCalculation}
+                      <MoneyInput value={formData.amount} required placeholder="0.00"
                         onChange={(amt) => {
                           setFormData(prev => {
                             const mode = prev.ppn_calc_mode || 'standard';
