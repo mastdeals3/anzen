@@ -2611,7 +2611,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         ))}
                       </div>}
                       <div className="mt-2 grid grid-cols-5 gap-2 border-t border-amber-200 pt-2 text-xs">
-                        <div><span className="text-amber-700">Salary</span><div className="font-mono font-semibold text-amber-950">{formatCurrency(salaryCalculation.gross_salary, expenseFormCurrency)}</div></div>
+                        <div><span className="text-amber-700">Gross Salary</span><div className="font-mono font-semibold text-amber-950">{formatCurrency(salaryCalculation.gross_salary, expenseFormCurrency)}</div></div>
                         <div><span className="text-amber-700">Less Advance</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.outstanding_salary_advances, expenseFormCurrency)}</div></div>
                         <div><span className="text-amber-700">Less PPh21</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.pph21_amount, expenseFormCurrency)}</div></div>
                         <div><span className="text-amber-700">Less BPJS</span><div className="font-mono font-semibold text-amber-950">−{formatCurrency(salaryCalculation.bpjs_amount, expenseFormCurrency)}</div></div>
@@ -2622,7 +2622,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
                   {/* ── Row C: Amount · DPP · PPN · PPh · PPh Code · Stamp · Bank Chg · Container · DC · Asset ── */}
                   <SapRow>
-                    <SapField label={`${isBroker ? 'Broker Invoice Amount' : 'Amount'} (${expenseFormCurrency})`} required span={3}>
+                    <SapField label={`${isBroker ? 'Broker Invoice Amount' : formData.expense_category === 'salary' ? 'Gross Salary Amount' : 'Amount'} (${expenseFormCurrency})`} required span={3}>
                       <MoneyInput value={formData.amount} required placeholder="0.00"
                         onChange={(amt) => {
                           setFormData(prev => {
@@ -3382,6 +3382,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         const canonicalCashPayable = calculateCanonicalCashPayable(viewingExpense);
         const isBroker = viewingExpense.expense_category === 'import_broker';
         const isSalary = viewingExpense.expense_category === 'salary';
+        const salaryAdvanceApplied = isSalary
+          ? salaryAdvanceApplications.reduce((sum, application) => sum + Number(application.applied_amount || 0), 0)
+          : 0;
+        const salaryPaidAmount = Number(viewingExpense.paid_amount || 0);
+        const salaryCashPaid = Math.max(salaryPaidAmount - salaryAdvanceApplied, 0);
+        const salaryOutstanding = Math.max(canonicalCashPayable - salaryPaidAmount, 0);
         const staffName = (() => {
           const rules = getCategoryFieldRules(viewingExpense.expense_category);
           if (rules.staff !== 'show' || !viewingExpense.staff_id) return null;
@@ -3469,7 +3475,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                 </div>
                 <div className="flex items-start gap-3">
                   <div className="text-right">
-                    <div className="text-[9px] uppercase font-medium text-gray-400 tracking-wide">Total</div>
+                    <div className="text-[9px] uppercase font-medium text-gray-400 tracking-wide">{isSalary ? 'Gross Salary' : 'Total'}</div>
                     <div className="text-[19px] font-bold text-gray-900 font-mono leading-tight">{fmtMoney(canonicalExpenseTotal, 2)}</div>
                     <div className="mt-0.5">{approvalBadge()}</div>
                   </div>
@@ -3525,7 +3531,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   </div>
                 )}
                 <div>
-                  <div className="text-[9px] uppercase font-medium text-gray-400">Expense Amount</div>
+                  <div className="text-[9px] uppercase font-medium text-gray-400">{isSalary ? 'Gross Salary Amount' : 'Expense Amount'}</div>
                   <div className="text-[12px] font-medium text-gray-800 font-mono">{fmtMoney(viewingExpense.amount, 2)}</div>
                 </div>
                 {viewingExpense.payment_reference && (
@@ -3573,8 +3579,30 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               );
             })()}
 
+            {isSalary && (
+              <div className="px-4 py-2 border-b border-gray-100">
+                <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Salary Settlement Summary</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1">
+                  {[
+                    ['Gross Salary', Number(viewingExpense.amount || 0)],
+                    ['Salary Advance Applied', salaryAdvanceApplied],
+                    ['PPh21', Number(viewingExpense.pph_amount || 0)],
+                    ['BPJS', 0],
+                    ['Net Payable', Math.max(canonicalCashPayable - salaryAdvanceApplied, 0)],
+                    ['Paid Amount', salaryCashPaid],
+                    ['Outstanding Balance', salaryOutstanding],
+                  ].map(([label, value]) => (
+                    <div key={String(label)}>
+                      <div className="text-[9px] uppercase font-medium text-gray-400">{label}</div>
+                      <div className="text-[12px] font-medium font-mono text-gray-800">{fmtMoney(Number(value))}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ── TAX SECTION (only if tax rows exist) ── */}
-            {taxRows.length > 0 && (
+            {taxRows.length > 0 && !isSalary && (
               <div className="px-4 py-2 border-b border-gray-100">
                 <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tax Summary</h3>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
