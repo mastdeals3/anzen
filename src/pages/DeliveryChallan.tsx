@@ -1025,7 +1025,7 @@ export function DeliveryChallan() {
     {
       key: 'challan_number',
       label: 'DO Number',
-      render: (value: any) => (
+      render: (value: any, _challan: DeliveryChallan) => (
         <span className="text-xs font-medium text-gray-700 tracking-wide">{value}</span>
       )
     },
