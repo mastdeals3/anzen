@@ -1,0 +1,31 @@
+Product Code,Product,SO Count,Total Sales Order Qty,Reserved Qty,Import Requirement Qty,Purchase Ordered Qty,Received Qty,Physical Stock,Available Stock,Difference,Result
+PROD-0007,Ammonium Chloride USP,0,0,0,0,0,0,0,0,0,OK
+PROD-0017,Cefixime Trihydrate Powder Micronized,0,0,0,0,0,0,100,100,0,OK
+PROD-0016,Cefixime USP,1,125,125,0,0,0,125,0,0,OK
+PROD-031,Cetirizine Hydrochloride EP,4,225,0,225,0,0,0,0,0,OK
+PROD-0003,Cetirizine Hydrochloride USP,0,0,0,0,0,0,100,100,0,OK
+PROD-0008,Corn Starch BP,2,5025,25,5025,0,0,25,0,0,OK
+PROD-0018,Cyproheptadine Hydrochloride USP,0,0,0,0,0,0,50,50,0,OK
+PROD-0004,Dextromethorphan Hydrobromide USP,1,30,30,0,0,0,30,0,0,OK
+PROD-032,Diclofenac Diethylamine BP,0,0,0,0,0,0,0,0,0,OK
+PROD-0020,Diclofenac Potassium,0,0,0,0,0,0,350,350,0,OK
+PROD-033,Diclofenac Sodium,0,0,0,0,0,0,0,0,0,OK
+PROD-0021,Domperidone BP,0,0,0,0,0,0,200,200,0,OK
+PROD-0005,Domperidone Maleate BP,1,25,0,25,0,0,0,0,0,OK
+PROD-0028,Ferrous Fumarate USP,3,15000,0,15000,0,0,0,0,0,OK
+PROD-0011,Ibuprofen BP,0,0,0,0,0,0,50,50,0,OK
+PROD-0025,Ibuprofen USP,0,0,0,0,0,0,0,0,0,OK
+PROD-0013,Ketoconazole USP,0,0,0,0,150,0,0,0,0,OK
+PROD-0001,Lidocaine HCL USP,1,75,0,75,0,0,0,0,0,OK
+PROD-0019,Loratadine USP,0,0,0,0,0,0,0,0,0,OK
+PROD-0015,Meloxicam,0,0,0,0,50,0,50,50,0,OK
+PROD-0009,Microcrystalline Cellulose (PH - 101),0,0,0,0,0,0,1200,1200,0,OK
+PROD-0010,Microcrystalline Cellulose (PH - 102),0,0,0,0,0,0,1150,1150,0,OK
+PROD-0002,Minoxidil EP,0,0,0,0,0,0,50,50,0,OK
+PROD-0014,Mometasone Furoate,0,0,0,0,0.25,0,0,0,0,OK
+PROD-0029,Piperazine Phosphate,1,600,0,600,0,0,0,0,0,OK
+PROD-0006,Piroxicam USP,0,0,0,0,0,0,100,100,0,OK
+PROD-034,Pregabalin,1,100,100,0,0,0,100,0,0,OK
+PROD-0023,Sulfamethoxazole USP,0,0,0,0,0,0,1750,1750,0,OK
+PROD-0024,Trimethoprim USP,0,0,0,0,0,0,400,400,0,OK
+PROD-030,Vitamin B6,0,0,0,0,0,0,0,0,0,OK
