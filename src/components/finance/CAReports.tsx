@@ -375,7 +375,7 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
       };
     });
 
-    return result.sort((a, b) => {
+    return result.sort((a: any, b: any) => {
       if (a.account_code !== b.account_code) {
         return (a.account_code || '').localeCompare(b.account_code || '');
       }

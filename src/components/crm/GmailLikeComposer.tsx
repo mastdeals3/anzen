@@ -7,7 +7,7 @@ import DOMPurify from 'dompurify';
 import { openGmailReconnectPopup } from './gmailReconnect';
 import { applyEmailTemplateVariables, getDisplayContactName, getSalutation } from '../../utils/crmEmailPersonalization';
 import { buildNormalizedBaseKey, buildUniqueDocumentNames } from '../../utils/documentNaming';
-import { escapeHtml, buildCompanySignature } from '../../utils/emailFormatting';
+import { escapeHtml, buildCompanySignature, buildIndiaRfqEmail, buildIndiaRfqSubject } from '../../utils/emailFormatting';
 import { type CompanySnapshot, FALLBACK_COMPANY } from '../../types/company';
 
 interface Inquiry {
@@ -234,61 +234,6 @@ function buildPriceTable(items: Inquiry[]): string {
   </table>`;
 }
 
-function buildIndiaTable(items: Inquiry[]): string {
-  const headerStyle = 'padding:10px 12px;border:1px solid #b7c9df;background:#073763;color:#ffffff;text-align:left;font-weight:700;font-size:13px;';
-  const cellBase = 'padding:9px 12px;border:1px solid #d1d5db;color:#1f2937;font-size:13px;vertical-align:top;';
-  const priceCell = 'padding:9px 12px;border:1px solid #d1d5db;color:#1f2937;font-size:13px;vertical-align:top;background:#fafff5;min-width:80px;';
-
-  const rows = items.map((inq, index) => {
-    const background = index % 2 === 0 ? '#ffffff' : '#f8fafc';
-    const aceRef = inq.aceerp_no?.trim() || '-';
-    const customer = inq.company_name?.trim() || '-';
-    const product = inq.product_name?.trim() || '-';
-    const spec = inq.specification?.trim() || '-';
-    const make = extractMakeFromRemarks(inq.remarks) || inq.supplier_name?.trim() || '-';
-    const qty = inq.quantity?.trim() || '-';
-    const deliveryDate = inq.delivery_date
-      ? new Date(inq.delivery_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-      : '-';
-    const docLabels: string[] = [];
-    if (inq.coa_required) docLabels.push('COA');
-    if (inq.sample_required) docLabels.push('Sample');
-    if (inq.agency_letter_required) docLabels.push('Agency Letter');
-    if (inq.others_required) docLabels.push('Others');
-    const docsRequired = docLabels.length > 0 ? docLabels.join(', ') : '-';
-    const remarks = inq.remarks?.trim() || '-';
-
-    return `<tr style="background:${background};">
-      <td style="${cellBase}font-weight:600;white-space:nowrap;">${escapeHtml(aceRef)}</td>
-      <td style="${cellBase}">${escapeHtml(customer)}</td>
-      <td style="${cellBase}font-weight:600;">${escapeHtml(product)}</td>
-      <td style="${cellBase}">${escapeHtml(spec)}</td>
-      <td style="${cellBase}">${escapeHtml(make)}</td>
-      <td style="${cellBase}white-space:nowrap;">${escapeHtml(qty)}</td>
-      <td style="${cellBase}white-space:nowrap;">${escapeHtml(deliveryDate)}</td>
-      <td style="${cellBase}">${escapeHtml(docsRequired)}</td>
-      <td style="${priceCell}">&nbsp;</td>
-      <td style="${cellBase}">${escapeHtml(remarks)}</td>
-    </tr>`;
-  }).join('');
-
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;max-width:1000px;font-family:Arial,Helvetica,sans-serif;font-size:13px;mso-table-lspace:0pt;mso-table-rspace:0pt;">
-    <thead><tr>
-      <th style="${headerStyle}">ACE ERP Ref</th>
-      <th style="${headerStyle}">Customer Name</th>
-      <th style="${headerStyle}">Product Name</th>
-      <th style="${headerStyle}">Specification</th>
-      <th style="${headerStyle}">Make</th>
-      <th style="${headerStyle}">Quantity</th>
-      <th style="${headerStyle}">Required Delivery Date</th>
-      <th style="${headerStyle}">Documents Required</th>
-      <th style="${headerStyle}">Price</th>
-      <th style="${headerStyle}">Remarks</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
-}
-
 export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 'general', defaultTo, defaultCc, replyTo }: GmailLikeComposerProps) {
   // All inquiries to include (multi-product support)
   const allInquiries = inquiries && inquiries.length > 0 ? inquiries : [inquiry];
@@ -340,8 +285,7 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
     setAttachments([]);
 
     if (mode === 'india') {
-      const refs = [...new Set(allInquiries.map(i => i.aceerp_no).filter(Boolean))].join(', ');
-      setSubject(`Pricing Request - ACE Ref ${refs}`);
+      setSubject(buildIndiaRfqSubject(allInquiries));
     } else {
       setSubject(buildSubject(inquiry, mode, replyTo));
     }
@@ -425,19 +369,7 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
     const signature = buildCompanySignature(userName, companyCo);
 
     if (emailMode === 'india') {
-      let html = `<p>Dear Team,</p>`;
-      html += `<p>Please provide your best quotation for the following requirement.</p>`;
-      html += buildIndiaTable(allInquiries);
-      html += `<div style="font-family:Arial,Helvetica,sans-serif;color:#1f2937;line-height:1.45;font-size:14px;margin-top:18px;">`;
-      html += `<p style="margin:0 0 6px 0;">Thank you.</p>`;
-      html += `<p style="margin:0 0 6px 0;">Best Regards,</p>`;
-      html += `<p style="margin:0 0 6px 0;">Kunal Lunkad</p>`;
-      html += `<p style="margin:0 0 4px 0;color:#073763;font-size:20px;font-weight:700;">${escapeHtml(companyCo.company_name)}</p>`;
-      if (companyCo.company_address) html += `<p style="margin:0 0 6px 0;">${escapeHtml(companyCo.company_address)}</p>`;
-      if (companyCo.company_email) html += `<p style="margin:0 0 2px 0;"><span style="color:#0b66c3;">📧</span> <a href="mailto:${escapeHtml(companyCo.company_email)}" style="color:#0b66c3;text-decoration:underline;">${escapeHtml(companyCo.company_email)}</a></p>`;
-      if (companyCo.company_phone) html += `<p style="margin:0 0 18px 0;color:#274e13;">📱 ${escapeHtml(companyCo.company_phone)}</p>`;
-      html += `<p style="margin:0;color:#073763;font-weight:700;font-style:italic;">APIs | Excipients | Formulations | Nutraceuticals | Herbal Extracts | Pharma Packaging Solutions | Technology Transfers</p>`;
-      html += `</div>`;
+      const html = buildIndiaRfqEmail(allInquiries, companyCo);
       logEmailHtmlEvidence('Generated India email HTML', html, { mode: emailMode, inquiryIds: allInquiries.map(i => i.id) });
       setBody(html);
       return;

@@ -27,6 +27,8 @@ import {
 } from '../services/sourcingRecipients';
 import { RecipientChips } from '../components/crm/RecipientChips';
 import { aiImproveEmail, extractProtectedTokens } from '../services/aiEmailAssistant';
+import { buildIndiaRfqEmail, buildIndiaRfqSubject } from '../utils/emailFormatting';
+import { FALLBACK_COMPANY, type CompanySnapshot } from '../types/company';
 import {
   findInquiryCandidates,
   parseSourceReplyEmail,
@@ -44,6 +46,7 @@ interface Inquiry {
   product_name: string;
   specification: string | null;
   quantity: string;
+  delivery_date: string | null;
   supplier_name: string | null;
   source_type: string | null;
   source_status: string;
@@ -342,6 +345,7 @@ export function SourcingOutbox() {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [sourceExtractionRows, setSourceExtractionRows] = useState<SourceExtractionRow[]>([]);
   const [sourceSaving, setSourceSaving] = useState(false);
+  const [companyCo, setCompanyCo] = useState<CompanySnapshot>(FALLBACK_COMPANY);
   const [replyDraft, setReplyDraft] = useState<ReplyDraft>({
     open: false,
     to: '',
@@ -357,6 +361,17 @@ export function SourcingOutbox() {
     local: { route: 'local', to: [], cc: [], bcc: [] },
   });
   const [savingDefaults, setSavingDefaults] = useState<SourcingRoute | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('company_profiles')
+      .select('company_name, company_address, company_phone, company_email, company_tax_id, company_logo_url, pbf_license, cdob_certificate')
+      .lte('effective_from', new Date().toISOString().split('T')[0])
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setCompanyCo(data as CompanySnapshot); });
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -394,7 +409,7 @@ export function SourcingOutbox() {
     setLoading(true);
     const { data, error } = await supabase
       .from('crm_inquiries')
-      .select('id,inquiry_number,aceerp_no,company_name,product_name,specification,quantity,supplier_name,source_type,source_status,document_status,kunal_price_status,quote_status,pipeline_status,purchase_price,offered_price,price_ready,reminder_count,last_sourcing_sent_at,last_reminder_sent_at,kunal_pricing_requested_at,kunal_pricing_note,remarks,coa_required,coa_sent_at,sample_required,sample_sent_at,price_required,price_sent_at,agency_letter_required,agency_letter_sent_at,others_required,others_sent_at,email_subject,mail_subject,created_at')
+      .select('id,inquiry_number,aceerp_no,company_name,product_name,specification,quantity,delivery_date,supplier_name,source_type,source_status,document_status,kunal_price_status,quote_status,pipeline_status,purchase_price,offered_price,price_ready,reminder_count,last_sourcing_sent_at,last_reminder_sent_at,kunal_pricing_requested_at,kunal_pricing_note,remarks,coa_required,coa_sent_at,sample_required,sample_sent_at,price_required,price_sent_at,agency_letter_required,agency_letter_sent_at,others_required,others_sent_at,email_subject,mail_subject,created_at')
       .order('created_at', { ascending: false })
       .limit(500);
 
@@ -975,7 +990,8 @@ export function SourcingOutbox() {
   };
 
   const buildEmailBody = (rows: Inquiry[], route: 'india' | 'china') => {
-    const sections: string[] = [`Hi ${route === 'india' ? 'India' : 'China'} Team,`];
+    if (route === 'india') return buildIndiaRfqEmail(rows, companyCo);
+    const sections: string[] = [`Hi China Team,`];
 
     const newRows = rows.filter(row => row.source_status === 'not_sent');
     const reminderRows = rows.filter(row => row.source_status !== 'not_sent' && row.document_status !== 'pending');
@@ -1010,7 +1026,7 @@ export function SourcingOutbox() {
   const previewBodies = useMemo(() => ({
     india: groups.india.length ? buildEmailBody(groups.india, 'india') : '',
     china: groups.china.length ? buildEmailBody(groups.china, 'china') : '',
-  }), [groups]);
+  }), [companyCo, groups]);
 
   const sendGroup = async (route: 'india' | 'china') => {
     const rows = groups[route];
@@ -1020,9 +1036,11 @@ export function SourcingOutbox() {
       return { ok: false, error: `No recipient email set for ${route}. Edit recipients in the preview before sending.`, route };
     }
     const hasNew = rows.some(row => row.source_status === 'not_sent');
-    const subject = hasNew
-      ? `Sourcing Request - ${rows.length} item${rows.length !== 1 ? 's' : ''}`
-      : `Reminder - ${rows.length} pending item${rows.length !== 1 ? 's' : ''}`;
+    const subject = route === 'india'
+      ? buildIndiaRfqSubject(rows)
+      : hasNew
+        ? `Sourcing Request - ${rows.length} item${rows.length !== 1 ? 's' : ''}`
+        : `Reminder - ${rows.length} pending item${rows.length !== 1 ? 's' : ''}`;
 
     const result = await sendPricingWorkflowEmail({
       workflowType: hasNew ? 'sourcing_request' : 'sourcing_reminder',
@@ -1031,7 +1049,9 @@ export function SourcingOutbox() {
       cc: recips.cc,
       bcc: recips.bcc,
       subject,
-      body: (bodyOverride[route] ?? buildEmailBody(rows, route)).replace(/\n/g, '<br/>'),
+      body: route === 'india'
+        ? (bodyOverride[route] ?? buildEmailBody(rows, route))
+        : (bodyOverride[route] ?? buildEmailBody(rows, route)).replace(/\n/g, '<br/>'),
       isHtml: true,
       senderName: profile?.full_name || '',
       recordThread: false,
@@ -1096,9 +1116,11 @@ export function SourcingOutbox() {
     if (rows.length === 0) return;
     const currentBody = bodyOverride[route] ?? buildEmailBody(rows, route);
     const hasNew = rows.some(row => row.source_status === 'not_sent');
-    const subject = hasNew
-      ? `Sourcing Request - ${rows.length} item${rows.length !== 1 ? 's' : ''}`
-      : `Reminder - ${rows.length} pending item${rows.length !== 1 ? 's' : ''}`;
+    const subject = route === 'india'
+      ? buildIndiaRfqSubject(rows)
+      : hasNew
+        ? `Sourcing Request - ${rows.length} item${rows.length !== 1 ? 's' : ''}`
+        : `Reminder - ${rows.length} pending item${rows.length !== 1 ? 's' : ''}`;
     const protectedTokens = extractProtectedTokens(currentBody);
 
     setAiBusy(route);
