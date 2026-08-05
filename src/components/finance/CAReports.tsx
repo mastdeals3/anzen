@@ -144,55 +144,35 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
     if (!cashAccounts || cashAccounts.length === 0) return [];
 
     const accountIds = cashAccounts.map(a => a.id);
+    const accountMap = new Map(cashAccounts.map(a => [a.id, a]));
 
-    const { data: entries } = await supabase
-      .from('journal_entries')
-      .select('id, entry_date, entry_number, source_module')
-      .eq('is_posted', true)
-      .eq('is_reversed', false)
-      .gte('entry_date', dateRange.from)
-      .lte('entry_date', dateRange.to)
-      .order('entry_date', { ascending: true });
-
-    if (!entries || entries.length === 0) return [];
-
-    const entryIds = entries.map(e => e.id);
-
-    const { data: lines, error } = await supabase
-      .from('journal_entry_lines')
-      .select('journal_entry_id, account_id, debit, credit, description')
-      .in('journal_entry_id', entryIds)
-      .in('account_id', accountIds);
+    const { data: lines, error } = await supabase.rpc('ca_report_journal_lines', {
+      p_date_from: dateRange.from,
+      p_date_to: dateRange.to,
+      p_account_ids: accountIds
+    });
 
     if (error) throw error;
 
-    const result = lines?.map(line => {
-      const entry = entries.find(e => e.id === line.journal_entry_id);
-      const account = cashAccounts.find(a => a.id === line.account_id);
-      return {
-        date: entry?.entry_date,
-        voucher_no: entry?.entry_number,
-        account_name: account?.name,
-        debit: line.debit,
-        credit: line.credit,
-        narration: line.description
-      };
-    }) || [];
-
-    return result;
+    return (lines || []).map((line: any) => ({
+      date: line.entry_date,
+      voucher_no: line.entry_number,
+      account_name: accountMap.get(line.line_account_id)?.name,
+      debit: line.debit,
+      credit: line.credit,
+      narration: line.line_description
+    }));
   };
 
   const loadBankLedger = async () => {
     let accountIds: string[] = [];
 
-    // If a specific bank account is selected, use only that account's COA
     if (selectedBankAccount) {
       const selectedBank = bankAccounts.find(b => b.id === selectedBankAccount);
       if (selectedBank && selectedBank.coa_id) {
         accountIds = [selectedBank.coa_id];
       }
     } else {
-      // Load all bank accounts
       const { data: allBankAccounts } = await supabase
         .from('chart_of_accounts')
         .select('id, code, name')
@@ -204,47 +184,29 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
 
     if (accountIds.length === 0) return [];
 
-    // Get account details for display
     const { data: coaAccounts } = await supabase
       .from('chart_of_accounts')
       .select('id, name')
       .in('id', accountIds);
 
-    const { data: entries } = await supabase
-      .from('journal_entries')
-      .select('id, entry_date, entry_number, source_module, reference_number')
-      .eq('is_posted', true)
-      .eq('is_reversed', false)
-      .gte('entry_date', dateRange.from)
-      .lte('entry_date', dateRange.to)
-      .order('entry_date', { ascending: true });
+    const accountMap = new Map(coaAccounts?.map(a => [a.id, a]) || []);
 
-    if (!entries || entries.length === 0) return [];
-
-    const entryIds = entries.map(e => e.id);
-
-    const { data: lines, error } = await supabase
-      .from('journal_entry_lines')
-      .select('journal_entry_id, account_id, debit, credit, description')
-      .in('journal_entry_id', entryIds)
-      .in('account_id', accountIds);
+    const { data: lines, error } = await supabase.rpc('ca_report_journal_lines', {
+      p_date_from: dateRange.from,
+      p_date_to: dateRange.to,
+      p_account_ids: accountIds
+    });
 
     if (error) throw error;
 
-    const result = lines?.map(line => {
-      const entry = entries.find(e => e.id === line.journal_entry_id);
-      const account = coaAccounts?.find(a => a.id === line.account_id);
-      return {
-        date: entry?.entry_date,
-        voucher_no: entry?.entry_number,
-        account_name: account?.name,
-        debit: line.debit,
-        credit: line.credit,
-        narration: line.description || entry?.reference_number || ''
-      };
-    }) || [];
-
-    return result;
+    return (lines || []).map((line: any) => ({
+      date: line.entry_date,
+      voucher_no: line.entry_number,
+      account_name: accountMap.get(line.line_account_id)?.name,
+      debit: line.debit,
+      credit: line.credit,
+      narration: line.line_description || line.reference_number || ''
+    }));
   };
 
   const loadSalesRegister = async () => {
@@ -273,12 +235,18 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
     const invoiceIds = (data || []).map((inv) => inv.id);
     const latestByInvoice = new Map<string, string>();
     if (invoiceIds.length > 0) {
-      const { data: allocs } = await supabase
-        .from('voucher_allocations')
-        .select('sales_invoice_id, receipt_vouchers(voucher_date)')
-        .in('sales_invoice_id', invoiceIds)
-        .eq('voucher_type', 'receipt');
-      for (const a of (allocs || []) as any[]) {
+      const CHUNK = 50;
+      const allAllocs: any[] = [];
+      for (let i = 0; i < invoiceIds.length; i += CHUNK) {
+        const chunk = invoiceIds.slice(i, i + CHUNK);
+        const { data: allocs } = await supabase
+          .from('voucher_allocations')
+          .select('sales_invoice_id, receipt_vouchers(voucher_date)')
+          .in('sales_invoice_id', chunk)
+          .eq('voucher_type', 'receipt');
+        if (allocs) allAllocs.push(...allocs);
+      }
+      for (const a of allAllocs) {
         const d = a.receipt_vouchers?.voucher_date;
         if (!d) continue;
         const prev = latestByInvoice.get(a.sales_invoice_id);
@@ -347,25 +315,14 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
   };
 
   const loadJournalRegister = async () => {
-    const { data: entries } = await supabase
-      .from('journal_entries')
-      .select('id, entry_date, entry_number, source_module, description')
-      .eq('is_posted', true)
-      .or('is_reversed.eq.false,is_reversed.is.null')
-      .gte('entry_date', dateRange.from)
-      .lte('entry_date', dateRange.to)
-      .order('entry_date', { ascending: true })
-      .order('entry_number', { ascending: true });
+    const { data: lines, error } = await supabase.rpc('ca_report_journal_lines', {
+      p_date_from: dateRange.from,
+      p_date_to: dateRange.to,
+      p_account_ids: null
+    });
 
-    if (!entries || entries.length === 0) return [];
-
-    const entryIds = entries.map(e => e.id);
-
-    const { data: lines } = await supabase
-      .from('journal_entry_lines')
-      .select('journal_entry_id, line_number, account_id, debit, credit, description')
-      .in('journal_entry_id', entryIds)
-      .order('line_number', { ascending: true });
+    if (error) throw error;
+    if (!lines || lines.length === 0) return [];
 
     const { data: accounts } = await supabase
       .from('chart_of_accounts')
@@ -373,42 +330,31 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
 
     const accountMap = new Map(accounts?.map(a => [a.id, a]) || []);
 
-    const result = lines?.map(line => {
-      const entry = entries.find(e => e.id === line.journal_entry_id);
-      const account = accountMap.get(line.account_id);
+    return lines.map((line: any) => {
+      const account = accountMap.get(line.line_account_id);
       return {
-        journal_entry_id: entry?.id,
-        entry_date: entry?.entry_date,
-        entry_number: entry?.entry_number,
-        voucher_type: entry?.source_module,
+        journal_entry_id: line.journal_entry_id,
+        entry_date: line.entry_date,
+        entry_number: line.entry_number,
+        voucher_type: line.source_module,
         account_code: account?.code,
         account_name: account?.name,
         debit: line.debit,
         credit: line.credit,
-        narration: line.description || entry?.description
+        narration: line.line_description || line.entry_description
       };
-    }) || [];
-
-    return result;
+    });
   };
 
   const loadGeneralLedger = async () => {
-    const { data: entries } = await supabase
-      .from('journal_entries')
-      .select('id, entry_date, entry_number, source_module')
-      .eq('is_posted', true)
-      .eq('is_reversed', false)
-      .gte('entry_date', dateRange.from)
-      .lte('entry_date', dateRange.to);
+    const { data: lines, error } = await supabase.rpc('ca_report_journal_lines', {
+      p_date_from: dateRange.from,
+      p_date_to: dateRange.to,
+      p_account_ids: null
+    });
 
-    if (!entries || entries.length === 0) return [];
-
-    const entryIds = entries.map(e => e.id);
-
-    const { data: lines } = await supabase
-      .from('journal_entry_lines')
-      .select('journal_entry_id, account_id, debit, credit, description')
-      .in('journal_entry_id', entryIds);
+    if (error) throw error;
+    if (!lines || lines.length === 0) return [];
 
     const { data: accounts } = await supabase
       .from('chart_of_accounts')
@@ -416,19 +362,18 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
 
     const accountMap = new Map(accounts?.map(a => [a.id, a]) || []);
 
-    const result = lines?.map(line => {
-      const entry = entries.find(e => e.id === line.journal_entry_id);
-      const account = accountMap.get(line.account_id);
+    const result = lines.map((line: any) => {
+      const account = accountMap.get(line.line_account_id);
       return {
         account_code: account?.code,
         account_name: account?.name,
-        entry_date: entry?.entry_date,
-        voucher_number: entry?.entry_number,
+        entry_date: line.entry_date,
+        voucher_number: line.entry_number,
         debit: line.debit,
         credit: line.credit,
-        description: line.description
+        description: line.line_description
       };
-    }) || [];
+    });
 
     return result.sort((a, b) => {
       if (a.account_code !== b.account_code) {
@@ -439,22 +384,13 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
   };
 
   const loadTrialBalance = async () => {
-    const { data: entries } = await supabase
-      .from('journal_entries')
-      .select('id')
-      .eq('is_posted', true)
-      .eq('is_reversed', false)
-      .gte('entry_date', dateRange.from)
-      .lte('entry_date', dateRange.to);
+    const { data: lines, error } = await supabase.rpc('ca_report_journal_lines', {
+      p_date_from: dateRange.from,
+      p_date_to: dateRange.to,
+      p_account_ids: null
+    });
 
-    if (!entries || entries.length === 0) return [];
-
-    const entryIds = entries.map(e => e.id);
-
-    const { data: lines } = await supabase
-      .from('journal_entry_lines')
-      .select('account_id, debit, credit')
-      .in('journal_entry_id', entryIds);
+    if (error) throw error;
 
     const { data: accounts } = await supabase
       .from('chart_of_accounts')
@@ -471,9 +407,9 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
       });
     });
 
-    lines?.forEach((line: any) => {
-      if (accountMap.has(line.account_id)) {
-        const acc = accountMap.get(line.account_id);
+    (lines || []).forEach((line: any) => {
+      if (accountMap.has(line.line_account_id)) {
+        const acc = accountMap.get(line.line_account_id);
         acc.debit += parseFloat(line.debit || 0);
         acc.credit += parseFloat(line.credit || 0);
       }
