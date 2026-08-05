@@ -421,22 +421,76 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
   };
 
   const loadFixedAssets = async () => {
-    const { data, error } = await supabase
+    // Fixed asset accounts live under 1200–1399:
+    //   asset accounts (1201, 1203, 1210…) carry cost as debits
+    //   contra accounts (1202, 1211…) carry accumulated depreciation as credits
+    const { data: coaRows, error: coaErr } = await supabase
       .from('chart_of_accounts')
-      .select('code, name')
-      .gte('code', '1500')
-      .lt('code', '2000')
+      .select('id, code, name, account_type')
+      .gte('code', '1200')
+      .lt('code', '1400')
+      .not('code', 'eq', '1200')
       .order('code');
 
-    if (error) throw error;
-    return data?.map(asset => ({
-      asset_code: asset.code,
-      asset_name: asset.name,
-      acquisition_date: '',
-      cost: '',
-      accumulated_depreciation: '',
-      net_book_value: ''
-    })) || [];
+    if (coaErr) throw coaErr;
+    if (!coaRows || coaRows.length === 0) return [];
+
+    const assetIds = coaRows.map(a => a.id);
+
+    // Fetch all posted journal lines for these accounts (no date filter — fixed assets are cumulative)
+    const { data: lines, error: lineErr } = await supabase.rpc('ca_report_journal_lines', {
+      p_date_from: '2000-01-01',
+      p_date_to: dateRange.to,
+      p_account_ids: assetIds
+    });
+
+    if (lineErr) throw lineErr;
+
+    // Aggregate by account
+    const balances = new Map<string, { debit: number; credit: number; first_date: string }>();
+    for (const line of (lines || []) as any[]) {
+      const prev = balances.get(line.line_account_id) || { debit: 0, credit: 0, first_date: line.entry_date };
+      balances.set(line.line_account_id, {
+        debit: prev.debit + parseFloat(line.debit || 0),
+        credit: prev.credit + parseFloat(line.credit || 0),
+        first_date: line.entry_date < prev.first_date ? line.entry_date : prev.first_date
+      });
+    }
+
+    // Build a paired list: for each asset account find its contra (next code ending in 2)
+    const assetRows = coaRows.filter(r => r.account_type === 'asset');
+    const contraRows = coaRows.filter(r => r.account_type === 'contra');
+
+    // Map contra by name heuristic: "Accumulated Depreciation - X" pairs with asset "X"
+    const contraByAssetId = new Map<string, typeof coaRows[0]>();
+    for (const contra of contraRows) {
+      const stripped = contra.name.replace(/accumulated depreciation\s*[-–]\s*/i, '').toLowerCase().trim();
+      const matched = assetRows.find(a => a.name.toLowerCase().trim() === stripped);
+      if (matched) contraByAssetId.set(matched.id, contra);
+    }
+
+    const result = assetRows.map(asset => {
+      const assetBal = balances.get(asset.id);
+      const contra = contraByAssetId.get(asset.id);
+      const contraBal = contra ? balances.get(contra.id) : null;
+
+      const cost = assetBal ? (assetBal.debit - assetBal.credit) : 0;
+      const accDep = contraBal ? (contraBal.credit - contraBal.debit) : 0;
+      const nbv = cost - accDep;
+
+      return {
+        asset_code: asset.code,
+        asset_name: asset.name,
+        acquisition_date: assetBal?.first_date || '',
+        cost,
+        accumulated_depreciation: accDep,
+        net_book_value: nbv
+      };
+    });
+
+    // Only return assets that have any cost recorded, or all if none do (so list isn't empty)
+    const withData = result.filter(r => r.cost !== 0);
+    return withData.length > 0 ? withData : result;
   };
 
   const exportToExcel = async () => {
