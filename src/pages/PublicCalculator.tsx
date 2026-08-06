@@ -11,6 +11,7 @@ import {
   getEffectiveINRRate, fetchLiveINRRate,
 } from '../services/pricingService';
 import { usdToWords, idrToWords } from '../utils/numberToWords';
+import { MoneyInput } from '../components/MoneyInput';
 import logo from '../assets/Untitled-1.svg';
 import { FALLBACK_COMPANY } from '../types/company';
 
@@ -195,11 +196,22 @@ function FreightField({ section, inputs, setInput, mode }: { section: string; in
           <option value="percent">%</option>
           {mode === 'fcl' && <option value="usd_per_container">$/cont</option>}
         </select>
-        <input
-          type="number" step="any" min="0"
-          className="w-full px-2 py-1.5 border border-l-0 border-r-0 border-gray-300 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-          value={freightValue} onChange={(e) => setInput(section, 'freight_value', e.target.value)} placeholder={placeholder}
-        />
+        {freightType === 'percent' ? (
+          <input
+            type="number" step="any" min="0"
+            className="w-full px-2 py-1.5 border border-l-0 border-r-0 border-gray-300 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+            value={freightValue} onChange={(e) => setInput(section, 'freight_value', e.target.value)} placeholder={placeholder}
+          />
+        ) : (
+          <MoneyInput
+            min={0}
+            value={num(freightValue)}
+            onChange={(amount) => setInput(section, 'freight_value', amount)}
+            maximumFractionDigits={4}
+            className="w-full px-2 py-1.5 border border-l-0 border-r-0 border-gray-300 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+            placeholder={placeholder}
+          />
+        )}
         <span className="px-2 py-1.5 border border-gray-300 rounded-r-md text-xs text-gray-500 bg-gray-50 whitespace-nowrap flex-shrink-0">{unitLabel}</span>
       </div>
       <span className="h-3" />
@@ -233,19 +245,21 @@ function PurchasePriceField({ section, inputs, setInput, inrRate }: {
         {!isINR ? (
           <>
             <span className="px-2 py-1.5 border-t border-b border-gray-300 text-xs text-gray-400 bg-gray-50 flex-shrink-0">$</span>
-            <input type="number" step="any" min="0"
+            <MoneyInput min={0}
               className="w-full px-2 py-1.5 border border-l-0 border-gray-300 rounded-r-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-              value={inputs[section].purchase_price}
-              onChange={(e) => setInput(section, 'purchase_price', e.target.value)}
+              value={num(inputs[section].purchase_price)}
+              onChange={(amount) => setInput(section, 'purchase_price', amount)}
+              maximumFractionDigits={4}
               placeholder="0.00" />
           </>
         ) : (
           <>
             <span className="px-2 py-1.5 border-t border-b border-gray-300 text-xs bg-orange-50 text-orange-500 flex-shrink-0">₹</span>
-            <input type="number" step="any" min="0"
+            <MoneyInput min={0}
               className="w-full px-2 py-1.5 border border-l-0 border-gray-300 rounded-r-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-              value={inputs[section].inr_price}
-              onChange={(e) => setInput(section, 'inr_price', e.target.value)}
+              value={num(inputs[section].inr_price)}
+              onChange={(amount) => setInput(section, 'inr_price', amount)}
+              maximumFractionDigits={4}
               placeholder="INR/kg" />
           </>
         )}

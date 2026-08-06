@@ -17,6 +17,7 @@ import { getSignedUrlCached } from '../../utils/signedUrlCache';
 import { sanitizeExportRows } from '../../utils/csvSafe';
 import { canSeeInternalPricing, canSeeFinalQuote } from '../../utils/permissions';
 import { showToast } from '../ToastNotification';
+import { MoneyInput } from '../MoneyInput';
 import { showConfirm } from '../ConfirmDialog';
 import { loadAllRouteRecipients, recipientConfigurationError } from '../../services/sourcingRecipients';
 
@@ -3026,14 +3027,13 @@ export function InquiryTableExcel({ inquiries, onRefresh, canManage, onAddInquir
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Offered Price (O.Price) *
             </label>
-            <input
-              type="number"
-              value={offeredPriceInput}
-              onChange={(e) => setOfferedPriceInput(e.target.value)}
+            <MoneyInput
+              value={Number(offeredPriceInput) || 0}
+              onChange={(amount) => setOfferedPriceInput(String(amount))}
               placeholder="Enter offered price"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              step="0.01"
               min="0"
+              maximumFractionDigits={4}
             />
             <p className="mt-1 text-xs text-gray-500">
               Enter the price you offered to the customer

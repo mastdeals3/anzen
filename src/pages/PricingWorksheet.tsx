@@ -28,6 +28,7 @@ import { KunalIndiaPriceReview } from '../components/crm/KunalIndiaPriceReview';
 import { KunalPendingPriceTracker, type TrackerBucket } from '../components/crm/KunalPendingPriceTracker';
 import type { KunalIndiaReviewRow } from '../services/kunalIndiaPrice';
 import { TableColumn, useColumnPreferences } from '../hooks/useColumnPreferences';
+import { MoneyInput } from '../components/MoneyInput';
 
 interface Inquiry {
   id: string;
@@ -838,12 +839,12 @@ export function PricingWorksheet() {
                                 >
                                   {['INR', 'USD', 'CNY', 'IDR'].map(c => <option key={c}>{c}</option>)}
                                 </select>
-                                <input
-                                  type="number"
-                                  value={draft.india_price}
-                                  onChange={e => setDraft(inq.id, { india_price: e.target.value })}
+                                <MoneyInput
+                                  value={Number(draft.india_price) || 0}
+                                  onChange={amount => setDraft(inq.id, { india_price: String(amount) })}
                                   placeholder="India price"
                                   className="w-20 border border-orange-300 rounded px-2 py-0.5 text-xs focus:bg-orange-50 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                                  maximumFractionDigits={4}
                                 />
                               </div>
                             )}
@@ -854,8 +855,8 @@ export function PricingWorksheet() {
                                 className="border border-gray-300 rounded px-1 py-0.5 text-xs w-14">
                                 {['USD', 'INR', 'CNY', 'IDR'].map(currency => <option key={currency}>{currency}</option>)}
                               </select>
-                              <input type="number" value={draft.purchase_price}
-                                onChange={e => setDraft(inq.id, { purchase_price: e.target.value })}
+                              <MoneyInput value={Number(draft.purchase_price) || 0}
+                                onChange={amount => setDraft(inq.id, { purchase_price: String(amount) })}
                                 placeholder="0.00" className="w-24 border border-gray-300 rounded px-2 py-0.5 text-xs focus:bg-yellow-50" />
                             </div>
                           </td>}
@@ -865,8 +866,8 @@ export function PricingWorksheet() {
                                 className="border border-gray-300 rounded px-1 py-0.5 text-xs w-14">
                                 {['USD', 'IDR', 'INR', 'CNY'].map(currency => <option key={currency}>{currency}</option>)}
                               </select>
-                              <input type="number" value={draft.offered_price}
-                                onChange={e => setDraft(inq.id, { offered_price: e.target.value })}
+                              <MoneyInput value={Number(draft.offered_price) || 0}
+                                onChange={amount => setDraft(inq.id, { offered_price: String(amount) })}
                                 placeholder="0.00" className="w-24 border border-blue-300 rounded px-2 py-0.5 text-xs focus:bg-yellow-50" />
                             </div>
                           </td>}
@@ -999,8 +1000,8 @@ export function PricingWorksheet() {
                                           className="border border-gray-200 rounded px-1 py-0.5 text-xs w-14">
                                           {['USD','INR','CNY','IDR'].map(currency => <option key={currency}>{currency}</option>)}
                                         </select>
-                                        <input type="number" value={opt.source_price ?? ''} onChange={e => updateOption(opt, { source_price: e.target.value ? parseFloat(e.target.value) : null })} disabled={!isManager}
-                                          placeholder="Price" className="flex-1 border border-gray-200 rounded px-2 py-0.5 text-xs" />
+                                        <MoneyInput value={opt.source_price} onChange={amount => updateOption(opt, { source_price: amount || null })} disabled={!isManager}
+                                          placeholder="Price" className="flex-1 border border-gray-200 rounded px-2 py-0.5 text-xs" maximumFractionDigits={4} />
                                       </div>
                                       <select value={opt.availability} onChange={e => updateOption(opt, { availability: e.target.value })} disabled={!isManager}
                                         className={`col-span-1 border rounded px-1 py-0.5 text-xs ${AVAIL_COLOR[opt.availability] || ''}`}>
@@ -1038,8 +1039,8 @@ export function PricingWorksheet() {
                                           className="border border-gray-200 rounded px-1 py-0.5 text-xs w-14" title="Selling currency">
                                           {['USD','INR','CNY','IDR'].map(currency => <option key={currency}>{currency}</option>)}
                                         </select>
-                                        <input type="number" value={opt.selling_price ?? ''} onChange={e => updateOption(opt, { selling_price: e.target.value ? parseFloat(e.target.value) : null })} disabled={!isManager}
-                                          placeholder="Selling price" className="flex-1 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Selling price" />
+                                        <MoneyInput value={opt.selling_price} onChange={amount => updateOption(opt, { selling_price: amount || null })} disabled={!isManager}
+                                          placeholder="Selling price" className="flex-1 border border-gray-200 rounded px-2 py-0.5 text-xs" title="Selling price" maximumFractionDigits={4} />
                                       </div>
                                     </div>
                                     </div>

@@ -11,6 +11,7 @@ import { Plus, Eye, Trash2, FileX, AlertCircle, CheckCircle, XCircle } from 'luc
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
+import { MoneyInput } from '../components/MoneyInput';
 
 interface CreditNote {
   id: string;
@@ -723,15 +724,14 @@ export function CreditNotes() {
 
                       <div>
                         <label className="block text-xs text-gray-600 mb-1">Unit Price (per Kg)</label>
-                        <input
-                          type="number"
-                          step="0.01"
+                        <MoneyInput
                           placeholder="Price per Kg"
-                          value={item.unit_price || ''}
-                          onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                          value={item.unit_price}
+                          onChange={(amount) => updateItem(index, 'unit_price', amount)}
                           required
                           min="0"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg"
+                          maximumFractionDigits={4}
                         />
                       </div>
                     </div>

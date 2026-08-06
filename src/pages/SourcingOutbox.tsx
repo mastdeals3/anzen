@@ -27,6 +27,7 @@ import {
   loadAllRouteRecipients, recipientConfigurationError, saveRouteRecipients, type RouteRecipients, type SourcingRoute,
 } from '../services/sourcingRecipients';
 import { RecipientChips } from '../components/crm/RecipientChips';
+import { MoneyInput } from '../components/MoneyInput';
 import { aiImproveEmail, extractProtectedTokens } from '../services/aiEmailAssistant';
 import { buildIndiaRfqEmail, buildIndiaRfqSubject } from '../utils/emailFormatting';
 import { FALLBACK_COMPANY, type CompanySnapshot } from '../types/company';
@@ -1534,7 +1535,7 @@ export function SourcingOutbox() {
                                       <div className="grid grid-cols-2 gap-1.5">
                                         <input value={row.offered_make || ''} onChange={e => updateSourceExtractionRow(idx, { offered_make: e.target.value || null })} placeholder="Offered Make / Manufacturer" className="border border-gray-200 rounded px-2 py-1 text-xs" />
                                         <div className="flex gap-1">
-                                          <input type="number" value={row.source_price ?? ''} onChange={e => updateSourceExtractionRow(idx, { source_price: e.target.value ? parseFloat(e.target.value) : null })} placeholder="INR Rate / Source Price" className="min-w-0 flex-1 border border-gray-200 rounded px-2 py-1 text-xs" />
+                                          <MoneyInput value={row.source_price} onChange={amount => updateSourceExtractionRow(idx, { source_price: amount || null })} placeholder="INR Rate / Source Price" className="min-w-0 flex-1 border border-gray-200 rounded px-2 py-1 text-xs" maximumFractionDigits={4} />
                                           <select value={row.source_currency} onChange={e => updateSourceExtractionRow(idx, { source_currency: e.target.value })} className="w-16 border border-gray-200 rounded px-1 py-1 text-xs">
                                             {['INR','USD','CNY','IDR','EUR','GBP'].map(currency => <option key={currency}>{currency}</option>)}
                                           </select>
@@ -2131,7 +2132,7 @@ export function SourcingOutbox() {
                 </label>
                 <label className="text-xs text-gray-600">
                   INR Price
-                  <input type="number" value={sourceDraft.source_price} onChange={e => setSourceDraft(d => ({ ...d, source_price: e.target.value }))}
+                  <MoneyInput value={Number(sourceDraft.source_price) || 0} onChange={amount => setSourceDraft(d => ({ ...d, source_price: String(amount) }))}
                     className="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-xs" placeholder="0.00" />
                 </label>
                 <label className="text-xs text-gray-600">

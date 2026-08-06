@@ -12,6 +12,7 @@ import { ExtractData } from '../components/settings/ExtractData';
 import { SuppliersManager } from '../components/settings/SuppliersManager';
 import { AboutSystem } from '../components/settings/AboutSystem';
 import { formatDate } from '../utils/dateFormat';
+import { MoneyInput } from '../components/MoneyInput';
 
 interface AppSettings {
   id: string;
@@ -1311,13 +1312,11 @@ export function Settings() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Rounding Tolerance (Rp)
                       </label>
-                      <input
-                        type="number"
+                      <MoneyInput
                         value={formData.rounding_tolerance_amount}
-                        onChange={(e) => setFormData({ ...formData, rounding_tolerance_amount: Number(e.target.value) })}
+                        onChange={(amount) => setFormData({ ...formData, rounding_tolerance_amount: amount })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                         min="0"
-                        step="0.01"
                       />
                     </div>
                     <div>

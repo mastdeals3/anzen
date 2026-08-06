@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, RefreshCw, Loader, FileText, Paperclip, AlertTriangle, CheckCircle2, Save, X, Eye, Download, FolderPlus, Sparkles } from 'lucide-react';
 import { showToast } from '../ToastNotification';
+import { MoneyInput } from '../MoneyInput';
 // Reuse the Gmail-quality renderer that Command Center's InquiryFormPanel uses.
 // Same iframe-based viewer with permissive DOMPurify, entity decoding,
 // blockquote collapse, and Gmail-style CSS — no behavior change for Command Center.
@@ -1405,8 +1406,8 @@ export function KunalIndiaPriceReview({ onChange, activeBucket, onClearBucket, o
                           </div>
                           <div>
                             <label className="block text-[10px] text-gray-500">INR Price</label>
-                            <input type="number" value={row.source_price ?? ''} onChange={e => updateExtractionRow(idx, { source_price: e.target.value ? parseFloat(e.target.value) : null })}
-                              className="w-full border border-gray-300 rounded px-1 py-0.5 text-[11px]" />
+                            <MoneyInput value={row.source_price} onChange={amount => updateExtractionRow(idx, { source_price: amount || null })}
+                              className="w-full border border-gray-300 rounded px-1 py-0.5 text-[11px]" maximumFractionDigits={4} />
                           </div>
                           <div>
                             <label className="block text-[10px] text-gray-500">Currency</label>

@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, Info, AlertTriangle, RefreshCw, TrendingDown, Database,
 } from 'lucide-react';
 import { ImportInfo } from '../components/ImportInfo';
+import { MoneyInput } from '../components/MoneyInput';
 import {
   PricingConfig, FCLPackingType, FCLCapacity, CalcResult, LCLPackingType,
   FreightType, PurchaseCurrency,
@@ -200,13 +201,25 @@ function FreightField({ section, inputs, setInput, mode }: { section: string; in
           <option value="percent">%</option>
           {mode === 'fcl' && <option value="usd_per_container">$/cont</option>}
         </select>
-        <input
-          type="number" step="any" min="0"
-          className="w-full px-2 py-1.5 border border-l-0 border-r-0 border-gray-300 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-          value={freightValue}
-          onChange={(e) => setInput(section, 'freight_value', e.target.value)}
-          placeholder={placeholder}
-        />
+        {freightType === 'percent' ? (
+          <input
+            type="number" step="any" min="0"
+            className="w-full px-2 py-1.5 border border-l-0 border-r-0 border-gray-300 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+            value={freightValue}
+            onChange={(e) => setInput(section, 'freight_value', e.target.value)}
+            placeholder={placeholder}
+          />
+        ) : (
+          <MoneyInput
+            min={0}
+            value={num(freightValue)}
+            onChange={(amount) => setInput(section, 'freight_value', amount)}
+            minimumFractionDigits={2}
+            maximumFractionDigits={4}
+            className="w-full px-2 py-1.5 border border-l-0 border-r-0 border-gray-300 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+            placeholder={placeholder}
+          />
+        )}
         <span className="px-2 py-1.5 border border-gray-300 rounded-r-md text-xs text-gray-500 bg-gray-50 whitespace-nowrap flex-shrink-0">{unitLabel}</span>
       </div>
       <span className="h-3" />
@@ -240,19 +253,21 @@ function PurchasePriceField({ section, inputs, setInput, inrRate }: {
         {!isINR ? (
           <>
             <span className="px-2 py-1.5 border-t border-b border-gray-300 text-xs text-gray-400 bg-gray-50 flex-shrink-0">$</span>
-            <input type="number" step="any" min="0"
+            <MoneyInput min={0}
               className="w-full px-2 py-1.5 border border-l-0 border-gray-300 rounded-r-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-              value={inputs[section].purchase_price}
-              onChange={(e) => setInput(section, 'purchase_price', e.target.value)}
+              value={num(inputs[section].purchase_price)}
+              onChange={(amount) => setInput(section, 'purchase_price', amount)}
+              maximumFractionDigits={4}
               placeholder="0.00" />
           </>
         ) : (
           <>
             <span className="px-2 py-1.5 border-t border-b border-gray-300 text-xs bg-orange-50 text-orange-500 flex-shrink-0">₹</span>
-            <input type="number" step="any" min="0"
+            <MoneyInput min={0}
               className="w-full px-2 py-1.5 border border-l-0 border-gray-300 rounded-r-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-              value={inputs[section].inr_price}
-              onChange={(e) => setInput(section, 'inr_price', e.target.value)}
+              value={num(inputs[section].inr_price)}
+              onChange={(amount) => setInput(section, 'inr_price', amount)}
+              maximumFractionDigits={4}
               placeholder="INR/kg" />
           </>
         )}
@@ -894,8 +909,8 @@ export function PriceCalculator() {
                   <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">{ct} Container</div>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                     <Field label="Clearance (USD)">
-                      <input type="number" step="any" className={inputCls} value={config.fcl[ct].clearance}
-                        onChange={(e) => updateConfig(['fcl', ct, 'clearance'], parseFloat(e.target.value) || 0)} />
+                      <MoneyInput className={inputCls} value={config.fcl[ct].clearance}
+                        onChange={(amount) => updateConfig(['fcl', ct, 'clearance'], amount)} />
                     </Field>
                     {FCL_PACKING_OPTIONS.map(opt => (
                       <Field key={opt.value} label={`${opt.label} (kg)`}>
@@ -927,16 +942,16 @@ export function PriceCalculator() {
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Clearance Slab (CBM based)</div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 mb-4">
                 <Field label="Base Clearance (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.lcl.clearance_base}
-                    onChange={(e) => updateConfig(['lcl', 'clearance_base'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.lcl.clearance_base}
+                    onChange={(amount) => updateConfig(['lcl', 'clearance_base'], amount)} />
                 </Field>
                 <Field label="Base Limit (CBM)">
                   <input type="number" step="any" className={inputCls} value={config.lcl.clearance_base_limit_cbm}
                     onChange={(e) => updateConfig(['lcl', 'clearance_base_limit_cbm'], parseFloat(e.target.value) || 0)} />
                 </Field>
                 <Field label="Additional / CBM after limit (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.lcl.clearance_additional_per_cbm}
-                    onChange={(e) => updateConfig(['lcl', 'clearance_additional_per_cbm'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.lcl.clearance_additional_per_cbm}
+                    onChange={(amount) => updateConfig(['lcl', 'clearance_additional_per_cbm'], amount)} maximumFractionDigits={4} />
                 </Field>
               </div>
               <div className="mb-4 text-[11px] text-gray-400 bg-gray-50 rounded px-3 py-1.5">
@@ -947,24 +962,24 @@ export function PriceCalculator() {
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Trucking Slab (Ton based)</div>
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <Field label="Trucking ≤ 2 Ton (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.lcl.trucking_2t}
-                    onChange={(e) => updateConfig(['lcl', 'trucking_2t'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.lcl.trucking_2t}
+                    onChange={(amount) => updateConfig(['lcl', 'trucking_2t'], amount)} />
                 </Field>
                 <Field label="Trucking ≤ 4 Ton (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.lcl.trucking_4t}
-                    onChange={(e) => updateConfig(['lcl', 'trucking_4t'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.lcl.trucking_4t}
+                    onChange={(amount) => updateConfig(['lcl', 'trucking_4t'], amount)} />
                 </Field>
                 <Field label="Trucking > 4 Ton (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.lcl.trucking_above_4t}
-                    onChange={(e) => updateConfig(['lcl', 'trucking_above_4t'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.lcl.trucking_above_4t}
+                    onChange={(amount) => updateConfig(['lcl', 'trucking_above_4t'], amount)} />
                 </Field>
               </div>
 
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Generic Shipment Charge</div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4">
                 <Field label="Generic Charge (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.lcl.generic_charge}
-                    onChange={(e) => updateConfig(['lcl', 'generic_charge'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.lcl.generic_charge}
+                    onChange={(amount) => updateConfig(['lcl', 'generic_charge'], amount)} />
                 </Field>
               </div>
 
@@ -996,16 +1011,16 @@ export function PriceCalculator() {
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Clearance Slab (Weight based)</div>
               <div className="grid grid-cols-3 gap-3 mb-2">
                 <Field label="Base Clearance (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.air.clearance_base}
-                    onChange={(e) => updateConfig(['air', 'clearance_base'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.air.clearance_base}
+                    onChange={(amount) => updateConfig(['air', 'clearance_base'], amount)} />
                 </Field>
                 <Field label="Min Weight Threshold (kg)">
                   <input type="number" step="any" className={inputCls} value={config.air.clearance_min_weight}
                     onChange={(e) => updateConfig(['air', 'clearance_min_weight'], parseFloat(e.target.value) || 0)} />
                 </Field>
                 <Field label="Rate / kg After Threshold (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.air.clearance_per_kg_after}
-                    onChange={(e) => updateConfig(['air', 'clearance_per_kg_after'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.air.clearance_per_kg_after}
+                    onChange={(amount) => updateConfig(['air', 'clearance_per_kg_after'], amount)} maximumFractionDigits={4} />
                 </Field>
               </div>
               <div className="mb-4 text-[11px] text-gray-400 bg-gray-50 rounded px-3 py-1.5">
@@ -1016,20 +1031,20 @@ export function PriceCalculator() {
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Trucking Slab (Weight based)</div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4">
                 <Field label="Trucking ≤ 500kg (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.air.trucking_500}
-                    onChange={(e) => updateConfig(['air', 'trucking_500'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.air.trucking_500}
+                    onChange={(amount) => updateConfig(['air', 'trucking_500'], amount)} />
                 </Field>
                 <Field label="Trucking > 500kg (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.air.trucking_above_500}
-                    onChange={(e) => updateConfig(['air', 'trucking_above_500'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.air.trucking_above_500}
+                    onChange={(amount) => updateConfig(['air', 'trucking_above_500'], amount)} />
                 </Field>
               </div>
 
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Generic Shipment Charge</div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <Field label="Generic Charge (USD)">
-                  <input type="number" step="any" className={inputCls} value={config.air.generic_charge}
-                    onChange={(e) => updateConfig(['air', 'generic_charge'], parseFloat(e.target.value) || 0)} />
+                  <MoneyInput className={inputCls} value={config.air.generic_charge}
+                    onChange={(amount) => updateConfig(['air', 'generic_charge'], amount)} />
                 </Field>
               </div>
             </div>

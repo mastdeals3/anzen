@@ -18,6 +18,7 @@ import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
 import { fetchLinkedDocumentsBundle, LinkedDocRef } from '../utils/linkedDocuments';
 import { LinkedDocsCell } from '../components/LinkedDocsCell';
+import { MoneyInput } from '../components/MoneyInput';
 
 interface SalesInvoice {
   id: string;
@@ -1823,11 +1824,9 @@ export function Sales() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Discount (Rp)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.discount === 0 ? '' : formData.discount}
-                    onChange={(e) => setFormData({ ...formData, discount: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  <MoneyInput
+                    value={formData.discount}
+                    onChange={(amount) => setFormData({ ...formData, discount: amount })}
                     className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                     min="0"
                     placeholder="0"
@@ -1946,11 +1945,9 @@ export function Sales() {
 
                       <div className="col-span-2">
                         <label className="block text-xs text-gray-600 mb-1">Unit Price *</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={item.unit_price === 0 ? '' : item.unit_price}
-                          onChange={(e) => updateItemTotal(index, { ...item, unit_price: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
+                        <MoneyInput
+                          value={item.unit_price}
+                          onChange={(amount) => updateItemTotal(index, { ...item, unit_price: amount })}
                           className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                           required
                           min="0"
@@ -2048,12 +2045,10 @@ export function Sales() {
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Bea Meterai:</span>
-                    <input
-                      type="number"
+                    <MoneyInput
                       min="0"
-                      step="1000"
-                      value={formData.stamp_duty_amount === 0 ? '' : formData.stamp_duty_amount}
-                      onChange={(e) => setFormData(prev => ({ ...prev, stamp_duty_amount: parseFloat(e.target.value) || 0 }))}
+                      value={formData.stamp_duty_amount}
+                      onChange={(amount) => setFormData(prev => ({ ...prev, stamp_duty_amount: amount }))}
                       placeholder="0"
                       className="w-28 text-right px-1.5 py-0.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                     />

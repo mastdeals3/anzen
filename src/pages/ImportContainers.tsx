@@ -6,6 +6,7 @@ import { Layout } from '../components/Layout';
 import { Package, Plus, Edit, Lock, CheckCircle, AlertCircle } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { SearchableSelect } from '../components/SearchableSelect';
+import { MoneyInput } from '../components/MoneyInput';
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
@@ -353,10 +354,9 @@ export default function ImportContainers() {
   const numInput = (label: string, field: keyof typeof formData, required = false) => (
     <div>
       <label className="block text-xs font-medium text-gray-700 mb-1">{label}{required && <span className="text-red-500 ml-1">*</span>}</label>
-      <input
-        type="number" step="0.01"
+      <MoneyInput
         value={(formData as any)[field]}
-        onChange={(e) => setFormData({ ...formData, [field]: parseFloat(e.target.value) || 0 })}
+        onChange={(amount) => setFormData({ ...formData, [field]: amount })}
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
       />
     </div>
@@ -514,8 +514,8 @@ export default function ImportContainers() {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{t('importContainers.invoiceValue')} <span className="text-red-500">*</span></label>
-                    <input type="number" step="0.01" value={formData.import_invoice_value}
-                      onChange={(e) => setFormData({ ...formData, import_invoice_value: parseFloat(e.target.value) || 0 })}
+                    <MoneyInput value={formData.import_invoice_value}
+                      onChange={(amount) => setFormData({ ...formData, import_invoice_value: amount })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required
                     />
                   </div>
@@ -538,8 +538,9 @@ export default function ImportContainers() {
                           {t('importContainers.otherImportCosts')}
                           <span className="text-xs text-blue-600 ml-2">✓ {t('importContainers.autoCalculated')}</span>
                         </label>
-                        <input type="number" step="0.01" value={formData.other_import_costs} readOnly disabled
+                        <MoneyInput value={formData.other_import_costs} readOnly disabled hideZero={false}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-100 cursor-not-allowed"
+                          onChange={() => undefined}
                         />
                       </div>
                     </div>

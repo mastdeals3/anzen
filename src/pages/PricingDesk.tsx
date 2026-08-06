@@ -3,6 +3,7 @@ import { Layout } from '../components/Layout';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Save, CheckCircle2 } from 'lucide-react';
+import { MoneyInput } from '../components/MoneyInput';
 
 interface DeskItem {
   id: string;
@@ -235,9 +236,9 @@ export function PricingDesk() {
                               <select value={e.currency} onChange={ev => setEditing(ed => ({ ...ed, [item.id]: { ...ed[item.id], currency: ev.target.value } }))} className="border border-gray-300 rounded px-1 py-0.5 text-xs w-14">
                                 {['USD', 'IDR', 'INR', 'CNY'].map(c => <option key={c} value={c}>{c}</option>)}
                               </select>
-                              <input autoFocus type="number" value={e.price} onChange={ev => setEditing(ed => ({ ...ed, [item.id]: { ...ed[item.id], price: ev.target.value } }))}
+                              <MoneyInput autoFocus value={Number(e.price) || 0} onChange={amount => setEditing(ed => ({ ...ed, [item.id]: { ...ed[item.id], price: String(amount) } }))}
                                 onKeyDown={ev => { if (ev.key === 'Enter') saveItem(item); if (ev.key === 'Escape') setEditing(ed => { const n = { ...ed }; delete n[item.id]; return n; }); }}
-                                placeholder="Price" className="w-24 border border-blue-400 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                placeholder="Price" className="w-24 border border-blue-400 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" maximumFractionDigits={4} />
                             </div>
                           ) : (
                             <button onClick={() => startEdit(item)} className="text-xs text-blue-600 hover:text-blue-700 font-medium">Enter price</button>

@@ -13,6 +13,7 @@ import { InvoiceView } from '../components/InvoiceView';
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
+import { MoneyInput } from '../components/MoneyInput';
 import { canSeeInventoryCosting } from '../utils/permissions';
 import { resolveStorageUrlCached } from '../utils/signedUrlCache';
 
@@ -1427,14 +1428,13 @@ export function Batches() {
                       <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         Import Price (USD)
                       </label>
-                      <input
-                        type="number"
-                        value={formData.import_price_usd === 0 ? '' : formData.import_price_usd}
-                        onChange={(e) => setFormData({ ...formData, import_price_usd: e.target.value === '' ? 0 : Number(e.target.value) })}
+                      <MoneyInput
+                        value={formData.import_price_usd}
+                        onChange={(amount) => setFormData({ ...formData, import_price_usd: amount })}
                         className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                         min="0"
-                        step="0.01"
                         placeholder="0.00"
+                        maximumFractionDigits={4}
                       />
                     </div>
 
@@ -1505,15 +1505,27 @@ export function Batches() {
                           Freight
                         </label>
                         <div className="flex gap-0.5">
-                          <input
-                            type="number"
-                            value={formData.freight_charges === 0 ? '' : formData.freight_charges}
-                            onChange={(e) => setFormData({ ...formData, freight_charges: e.target.value === '' ? 0 : Number(e.target.value) })}
-                            className="flex-1 px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                            min="0"
-                            step="0.01"
-                            placeholder="0"
-                          />
+                          {formData.freight_charge_type === 'fixed' ? (
+                            <MoneyInput
+                              value={formData.freight_charges}
+                              onChange={(amount) => setFormData({ ...formData, freight_charges: amount })}
+                              className="flex-1 px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              min="0"
+                              placeholder="0"
+                              maximumFractionDigits={4}
+                            />
+                          ) : (
+                            <input
+                              data-non-currency="percentage"
+                              type="number"
+                              value={formData.freight_charges === 0 ? '' : formData.freight_charges}
+                              onChange={(e) => setFormData({ ...formData, freight_charges: e.target.value === '' ? 0 : Number(e.target.value) })}
+                              className="flex-1 px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              min="0"
+                              step="0.01"
+                              placeholder="0"
+                            />
+                          )}
                           <select
                             value={formData.freight_charge_type}
                             onChange={(e) => setFormData({ ...formData, freight_charge_type: e.target.value as 'percentage' | 'fixed' })}
@@ -1535,15 +1547,27 @@ export function Batches() {
                           Other
                         </label>
                         <div className="flex gap-0.5">
-                          <input
-                            type="number"
-                            value={formData.other_charges === 0 ? '' : formData.other_charges}
-                            onChange={(e) => setFormData({ ...formData, other_charges: e.target.value === '' ? 0 : Number(e.target.value) })}
-                            className="flex-1 px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                            min="0"
-                            step="0.01"
-                            placeholder="0"
-                          />
+                          {formData.other_charge_type === 'fixed' ? (
+                            <MoneyInput
+                              value={formData.other_charges}
+                              onChange={(amount) => setFormData({ ...formData, other_charges: amount })}
+                              className="flex-1 px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              min="0"
+                              placeholder="0"
+                              maximumFractionDigits={4}
+                            />
+                          ) : (
+                            <input
+                              data-non-currency="percentage"
+                              type="number"
+                              value={formData.other_charges === 0 ? '' : formData.other_charges}
+                              onChange={(e) => setFormData({ ...formData, other_charges: e.target.value === '' ? 0 : Number(e.target.value) })}
+                              className="flex-1 px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              min="0"
+                              step="0.01"
+                              placeholder="0"
+                            />
+                          )}
                           <select
                             value={formData.other_charge_type}
                             onChange={(e) => setFormData({ ...formData, other_charge_type: e.target.value as 'percentage' | 'fixed' })}

@@ -3,6 +3,7 @@ import { Layout } from '../components/Layout';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate } from '../utils/dateFormat';
+import { MoneyInput } from '../components/MoneyInput';
 import {
   ArrowLeft, Plus, Save, Clock, CheckCircle2, FileText, MessageSquare,
   Send, Mail, AlertCircle, RefreshCw,
@@ -201,16 +202,16 @@ function ItemRow({ item, onSave }: { item: PRItem; onSave: (updated: Partial<PRI
               <select value={form.source_currency} onChange={e => setForm(f => ({ ...f, source_currency: e.target.value }))} className="border border-gray-300 rounded px-1.5 py-1 text-xs w-16 focus:outline-none focus:ring-1 focus:ring-blue-500">
                 {['USD', 'INR', 'CNY', 'IDR'].map(c => <option key={c} value={c}>{c}</option>)}
               </select>
-              <input type="number" value={form.source_price || ''} onChange={e => setForm(f => ({ ...f, source_price: e.target.value ? +e.target.value : null }))} placeholder="0.00" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              <MoneyInput value={form.source_price} onChange={amount => setForm(f => ({ ...f, source_price: amount || null }))} placeholder="0.00" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" maximumFractionDigits={4} />
             </div>
           </div>
           <div>
             <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Target Price</label>
-            <input type="number" value={form.target_price || ''} onChange={e => setForm(f => ({ ...f, target_price: e.target.value ? +e.target.value : null }))} className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="USD" />
+            <MoneyInput value={form.target_price} onChange={amount => setForm(f => ({ ...f, target_price: amount || null }))} className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="USD" maximumFractionDigits={4} />
           </div>
           <div>
             <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Competitor Price</label>
-            <input type="number" value={form.competitor_price || ''} onChange={e => setForm(f => ({ ...f, competitor_price: e.target.value ? +e.target.value : null }))} className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="USD" />
+            <MoneyInput value={form.competitor_price} onChange={amount => setForm(f => ({ ...f, competitor_price: amount || null }))} className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="USD" maximumFractionDigits={4} />
           </div>
           <div className="col-span-2">
             <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Remarks</label>
@@ -692,7 +693,7 @@ function SourceReplyModal({
                               className="border border-gray-300 rounded px-1.5 py-1 text-xs w-14 focus:outline-none focus:ring-1 focus:ring-blue-500">
                               {['USD', 'INR', 'CNY', 'IDR'].map(c => <option key={c}>{c}</option>)}
                             </select>
-                            <input autoFocus type="number" value={r.source_price} onChange={e => updateReply(item.id, 'source_price', e.target.value)}
+                            <MoneyInput autoFocus value={Number(r.source_price) || 0} onChange={amount => updateReply(item.id, 'source_price', String(amount))}
                               placeholder="0.00" className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
                           </div>
                         </div>

@@ -8,6 +8,7 @@ import { FileText, Plus, Search, Eye, Edit, Trash2, CheckCircle, XCircle, Downlo
 import { Modal } from '../components/Modal';
 import { PurchaseOrderView } from '../components/PurchaseOrderView';
 import { SearchableSelect } from '../components/SearchableSelect';
+import { MoneyInput } from '../components/MoneyInput';
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
@@ -857,15 +858,15 @@ export default function PurchaseOrders() {
                             />
                           </td>
                           <td className="px-2 py-1">
-                            <input
-                              type="number"
+                            <MoneyInput
                               value={item.unit_price}
-                              onChange={(e) => {
+                              onChange={(amount) => {
                                 const newItems = [...poItems];
-                                newItems[index].unit_price = parseFloat(e.target.value) || 0;
+                                newItems[index].unit_price = amount;
                                 calculateLineTotal(index, newItems);
                                 setPOItems(newItems);
                               }}
+                              min={0}
                               className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 text-right"
                               required
                             />

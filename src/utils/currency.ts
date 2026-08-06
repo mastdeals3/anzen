@@ -80,12 +80,17 @@ export const formatPercentage = (value: number | string | null | undefined, deci
 };
 
 /** Format a normalized currency-input value using Indonesian separators. */
-export const formatIndonesianMoneyInput = (value: number, decimal = true): string => {
+export const formatIndonesianMoneyInput = (
+  value: number,
+  decimal = true,
+  minimumFractionDigits = 2,
+  maximumFractionDigits = Math.max(2, minimumFractionDigits),
+): string => {
   if (!Number.isFinite(value)) return '';
   if (!decimal) return value.toLocaleString('id-ID', { maximumFractionDigits: 0 });
   return value.toLocaleString('id-ID', {
-    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits,
+    maximumFractionDigits,
   });
 };
 

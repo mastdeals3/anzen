@@ -6,6 +6,7 @@ import {
 } from '../../services/sourceReplyParser';
 import { showToast } from '../ToastNotification';
 import { useAuth } from '../../contexts/AuthContext';
+import { MoneyInput } from '../MoneyInput';
 
 interface Props {
   open: boolean;
@@ -259,10 +260,10 @@ export function SourceReplyReviewModal({ open, onClose, onSaved, email, sourceTy
                       className="border border-gray-200 rounded px-1 py-1 text-xs w-14" disabled={r.saved}>
                       {['INR','USD','CNY','IDR','EUR','GBP'].map(c => <option key={c}>{c}</option>)}
                     </select>
-                    <input type="number" value={r.source_price ?? ''}
-                      onChange={e => updateRow(idx, { source_price: e.target.value ? parseFloat(e.target.value) : null })}
+                    <MoneyInput value={r.source_price}
+                      onChange={amount => updateRow(idx, { source_price: amount || null })}
                       placeholder="Price"
-                      className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs" disabled={r.saved} />
+                      className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs" disabled={r.saved} maximumFractionDigits={4} />
                   </div>
                   <select value={r.availability}
                     onChange={e => updateRow(idx, { availability: e.target.value as 'available' | 'partial' | 'na' })}

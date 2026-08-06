@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Modal } from '../Modal';
 import { supabase } from '../../lib/supabase';
 import { XCircle } from 'lucide-react';
+import { MoneyInput } from '../MoneyInput';
 
 interface LostReasonModalProps {
   isOpen: boolean;
@@ -125,13 +126,12 @@ export function LostReasonModal({
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Competitor Price (USD) <span className="text-gray-400">(optional)</span>
           </label>
-          <input
-            type="number"
-            step="0.01"
-            value={competitorPrice}
-            onChange={(e) => setCompetitorPrice(e.target.value)}
+          <MoneyInput
+            value={Number(competitorPrice) || 0}
+            onChange={(amount) => setCompetitorPrice(String(amount))}
             placeholder="0.00"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            maximumFractionDigits={4}
           />
         </div>
 
