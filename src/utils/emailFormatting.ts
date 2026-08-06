@@ -13,11 +13,18 @@ export interface IndiaRfqRow {
   supplier_name?: string | null;
   quantity: string;
   delivery_date?: string | null;
+  created_at?: string | null;
   coa_required?: boolean | null;
   sample_required?: boolean | null;
   agency_letter_required?: boolean | null;
   others_required?: boolean | null;
   remarks?: string | null;
+}
+
+function calcAgeing(createdAt?: string | null): string {
+  if (!createdAt) return '-';
+  const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+  return days <= 0 ? '0d' : `${days}d`;
 }
 
 function extractMakeFromRemarks(remarks?: string | null): string {
@@ -71,6 +78,7 @@ export function buildIndiaRfqEmail(rows: IndiaRfqRow[], company?: CompanySnapsho
     const deliveryDate = row.delivery_date
       ? new Date(row.delivery_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
       : '-';
+    const ageing = calcAgeing(row.created_at);
     return `<tr style="background:${background};">
       <td style="${cellBase}font-weight:600;white-space:nowrap;">${escapeHtml(row.aceerp_no?.trim() || '-')}</td>
       <td style="${cellBase}">${escapeHtml(row.company_name?.trim() || '-')}</td>
@@ -79,6 +87,7 @@ export function buildIndiaRfqEmail(rows: IndiaRfqRow[], company?: CompanySnapsho
       <td style="${cellBase}">${escapeHtml(extractMakeFromRemarks(row.remarks) || row.supplier_name?.trim() || '-')}</td>
       <td style="${cellBase}white-space:nowrap;">${escapeHtml(row.quantity?.trim() || '-')}</td>
       <td style="${cellBase}white-space:nowrap;">${escapeHtml(deliveryDate)}</td>
+      <td style="${cellBase}text-align:center;font-weight:600;color:${parseInt(ageing) > 30 ? '#b91c1c' : parseInt(ageing) > 14 ? '#d97706' : '#059669'};">${escapeHtml(ageing)}</td>
       <td style="${cellBase}">${escapeHtml(documents.length > 0 ? documents.join(', ') : '-')}</td>
       <td style="${priceCell}">&nbsp;</td>
       <td style="${cellBase}">${escapeHtml(row.remarks?.trim() || '-')}</td>
@@ -87,7 +96,7 @@ export function buildIndiaRfqEmail(rows: IndiaRfqRow[], company?: CompanySnapsho
 
   const table = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;max-width:1000px;font-family:Arial,Helvetica,sans-serif;font-size:13px;mso-table-lspace:0pt;mso-table-rspace:0pt;">
     <thead><tr>
-      <th style="${headerStyle}">ACE ERP Ref</th><th style="${headerStyle}">Customer Name</th><th style="${headerStyle}">Product Name</th><th style="${headerStyle}">Specification</th><th style="${headerStyle}">Make</th><th style="${headerStyle}">Quantity</th><th style="${headerStyle}">Required Delivery Date</th><th style="${headerStyle}">Documents Required</th><th style="${headerStyle}">Price</th><th style="${headerStyle}">Remarks</th>
+      <th style="${headerStyle}">ACE ERP Ref</th><th style="${headerStyle}">Customer Name</th><th style="${headerStyle}">Product Name</th><th style="${headerStyle}">Specification</th><th style="${headerStyle}">Make</th><th style="${headerStyle}">Quantity</th><th style="${headerStyle}">Required Delivery Date</th><th style="${headerStyle}">Ageing (Days)</th><th style="${headerStyle}">Documents Required</th><th style="${headerStyle}">Price</th><th style="${headerStyle}">Remarks</th>
     </tr></thead><tbody>${body}</tbody>
   </table>`;
   const c = company ?? FALLBACK_COMPANY;

@@ -12,6 +12,7 @@ import {
   FileText,
   Loader,
   Mail,
+  Maximize2,
   Paperclip,
   RefreshCw,
   Search,
@@ -305,6 +306,7 @@ export function SourcingOutbox() {
   const [hasGmail, setHasGmail] = useState<boolean | null>(null);
   const [sending, setSending] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [fullscreenRoute, setFullscreenRoute] = useState<'india' | 'china' | null>(null);
   const [search, setSearch] = useState('');
   const [routeFilter, setRouteFilter] = useState<RouteFilter>('all');
   const [customerFilter, setCustomerFilter] = useState('all');
@@ -404,6 +406,21 @@ export function SourcingOutbox() {
       setAiNotes({ india: null, china: null });
     }
   }, [previewOpen]);
+
+  // Auto-populate China TO from saved defaults when preview opens
+  useEffect(() => {
+    if (previewOpen && groups.china.length > 0 && routeRecipients.china.to.length === 0) {
+      const defaults = routeRecipients.china;
+      const defaultTo = [defaults.default_to, defaults.to].flat().filter(Boolean);
+      const defaultCc = [defaults.default_cc, defaults.cc].flat().filter(Boolean);
+      if (defaultTo.length > 0) {
+        setRouteRecipients(prev => ({
+          ...prev,
+          china: { ...prev.china, to: defaultTo, cc: defaultCc.length > 0 ? defaultCc : prev.china.cc },
+        }));
+      }
+    }
+  }, [previewOpen, groups.china.length, routeRecipients.china]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1846,14 +1863,25 @@ export function SourcingOutbox() {
                       <div className="border-t border-gray-200">
                         <div className="px-3 py-1.5 bg-gray-50 flex items-center justify-between">
                           <span className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">Email body</span>
-                          {hasRows && (
-                            <button onClick={() => improveWithAi(route)} disabled={aiBusy === route || !isManager}
-                              title="Only improves wording. It does not scan inbox or update pricing."
-                              className="text-[11px] text-purple-600 hover:underline disabled:opacity-50 flex items-center gap-1">
-                              <Sparkles className="w-3 h-3" />
-                              {aiBusy === route ? 'Polishing…' : 'Polish Email Text'}
-                            </button>
-                          )}
+                          <div className="flex items-center gap-3">
+                            {route === 'india' && hasRows && (previewBodies[route] || bodyOverride[route]) && (
+                              <button
+                                onClick={() => setFullscreenRoute(route)}
+                                title="View full screen"
+                                className="text-[11px] text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                              >
+                                <Maximize2 className="w-3 h-3" /> Expand
+                              </button>
+                            )}
+                            {hasRows && (
+                              <button onClick={() => improveWithAi(route)} disabled={aiBusy === route || !isManager}
+                                title="Only improves wording. It does not scan inbox or update pricing."
+                                className="text-[11px] text-purple-600 hover:underline disabled:opacity-50 flex items-center gap-1">
+                                <Sparkles className="w-3 h-3" />
+                                {aiBusy === route ? 'Polishing…' : 'Polish Email Text'}
+                              </button>
+                            )}
+                          </div>
                         </div>
                         {route === 'india' ? (
                           <div className="relative">
@@ -1899,6 +1927,20 @@ export function SourcingOutbox() {
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
                   <Send className="w-3.5 h-3.5" /> {sending ? 'Sending...' : 'Confirm Send'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {fullscreenRoute && (
+          <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-2xl max-w-5xl w-full max-h-[92vh] overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-900">Email Preview — {fullscreenRoute === 'india' ? 'India' : 'China'} Full Screen</h2>
+                <button onClick={() => setFullscreenRoute(null)} className="p-1 rounded hover:bg-gray-100"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="overflow-auto p-6 flex-1">
+                <div dangerouslySetInnerHTML={{ __html: bodyOverride[fullscreenRoute] ?? previewBodies[fullscreenRoute] ?? '' }} />
               </div>
             </div>
           </div>
