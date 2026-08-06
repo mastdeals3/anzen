@@ -6,10 +6,20 @@ SELECT set_config('request.jwt.claim.sub',(
   SELECT id::text FROM public.user_profiles WHERE role IN ('admin','accounts') AND is_active=true
   ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END,id LIMIT 1),true);
 SELECT set_config('request.jwt.claim.role','authenticated',true);
+-- The attribution helper is intentionally internal in production. Grant it
+-- only inside this rollback transaction so the authenticated workflow checks
+-- can verify the canonical date directly.
+GRANT EXECUTE ON FUNCTION public.get_expense_pph_period_date(uuid) TO authenticated;
 SET LOCAL ROLE authenticated;
 
 DO $regression$
-DECLARE v_count bigint;
+DECLARE
+  v_count bigint;
+  v_expense_id uuid;
+  v_line_id uuid;
+  v_payment_date date;
+  v_fallback_date date;
+  v_journal_count bigint;
 BEGIN
   IF (SELECT settlement_amount FROM public.finance_expenses
        WHERE expense_category='utilities' AND amount=115128 AND COALESCE(bank_charges_amount,0)=3000 LIMIT 1)
@@ -64,8 +74,8 @@ BEGIN
   THEN RAISE EXCEPTION 'PPh Register is not sourced exclusively from approved source documents'; END IF;
 
   WITH source AS (
-    SELECT EXTRACT(YEAR FROM fe.expense_date)::int fiscal_year,
-           EXTRACT(MONTH FROM fe.expense_date)::int period_month,
+    SELECT EXTRACT(YEAR FROM public.get_expense_pph_period_date(fe.id))::int fiscal_year,
+           EXTRACT(MONTH FROM public.get_expense_pph_period_date(fe.id))::int period_month,
            tc.tax_type, fe.pph_amount amount
       FROM public.finance_expenses fe
       LEFT JOIN public.tax_codes tc ON tc.id=fe.pph_code_id
@@ -79,8 +89,8 @@ BEGIN
       LEFT JOIN public.tax_codes tc ON tc.id=pv.pph_code_id
      WHERE COALESCE(pv.is_posted,false) AND pv.pph_amount>0
     UNION ALL
-    SELECT EXTRACT(YEAR FROM fe.expense_date)::int,
-           EXTRACT(MONTH FROM fe.expense_date)::int,
+    SELECT EXTRACT(YEAR FROM public.get_expense_pph_period_date(fe.id))::int,
+           EXTRACT(MONTH FROM public.get_expense_pph_period_date(fe.id))::int,
            'PPh22',
            CASE WHEN fe.expense_category='pib_import' THEN fe.pib_pph_amount ELSE fe.amount END
       FROM public.finance_expenses fe
@@ -102,6 +112,97 @@ BEGIN
    WHERE tp.tax_type<>'PPN'
      AND tp.pph_total IS DISTINCT FROM COALESCE(e.total,0);
   IF v_count<>0 THEN RAISE EXCEPTION '% PPh periods differ from approved source documents',v_count; END IF;
+
+  -- Canonical period precedence: latest linked supplier payment, then due
+  -- date, then the legacy document date. Government PPh remittance links do
+  -- not move the original withholding period.
+  SELECT count(*) INTO v_count
+  FROM public.finance_expenses fe
+  WHERE public.get_expense_pph_period_date(fe.id) IS DISTINCT FROM COALESCE(
+    (
+      SELECT MAX(d)
+      FROM (
+        SELECT pv.voucher_date d
+        FROM public.voucher_allocations va
+        JOIN public.payment_vouchers pv ON pv.id=va.payment_voucher_id
+        WHERE va.finance_expense_id=fe.id
+          AND COALESCE(va.payment_kind,'supplier')='supplier'
+          AND COALESCE(pv.is_posted,false)
+        UNION ALL
+        SELECT bsl.transaction_date
+        FROM public.bank_statement_lines bsl
+        WHERE bsl.matched_expense_id=fe.id
+          AND COALESCE(bsl.payment_kind,'supplier')='supplier'
+      ) linked_dates
+    ), fe.due_date, fe.expense_date
+  );
+  IF v_count<>0 THEN RAISE EXCEPTION '% expenses have an incorrect canonical PPh period date',v_count; END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.compute_tax_due_dates('PPh23',2026,5)
+    WHERE payment_due_date='2026-06-10' AND filing_due_date='2026-06-20'
+  ) THEN RAISE EXCEPTION 'PPh due dates are not derived from the PPh period'; END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+    JOIN pg_class c ON c.oid=t.tgrelid
+    WHERE c.relname='bank_statement_lines'
+      AND t.tgname='trg_recompute_pph_from_bank_line'
+      AND NOT t.tgisinternal
+  ) OR NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+    JOIN pg_class c ON c.oid=t.tgrelid
+    WHERE c.relname='voucher_allocations'
+      AND t.tgname='trg_recompute_pph_from_voucher_allocation'
+      AND NOT t.tgisinternal
+  ) THEN RAISE EXCEPTION 'PPh payment-link recompute triggers are missing'; END IF;
+
+  -- Exercise a real linked expense entirely inside this rollback transaction:
+  -- unlink moves it to its due-date month, relink restores the actual payment
+  -- month, and neither operation creates accounting entries.
+  SELECT fe.id, bsl.id, bsl.transaction_date, COALESCE(fe.due_date,fe.expense_date)
+    INTO v_expense_id, v_line_id, v_payment_date, v_fallback_date
+  FROM public.finance_expenses fe
+  JOIN public.bank_statement_lines bsl ON bsl.matched_expense_id=fe.id
+  WHERE fe.approval_status='approved'
+    AND (COALESCE(fe.pph_amount,0)>0 OR COALESCE(fe.pib_pph_amount,0)>0 OR fe.expense_category='pph_import')
+    AND COALESCE(bsl.payment_kind,'supplier')='supplier'
+    AND bsl.transaction_date<>COALESCE(fe.due_date,fe.expense_date)
+    AND public.get_expense_pph_period_date(fe.id)=bsl.transaction_date
+    AND NOT EXISTS (
+      SELECT 1 FROM public.bank_statement_lines other
+      WHERE other.matched_expense_id=fe.id AND other.id<>bsl.id
+        AND COALESCE(other.payment_kind,'supplier')='supplier'
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.voucher_allocations va
+      JOIN public.payment_vouchers pv ON pv.id=va.payment_voucher_id
+      WHERE va.finance_expense_id=fe.id
+        AND COALESCE(va.payment_kind,'supplier')='supplier'
+        AND COALESCE(pv.is_posted,false)
+    )
+  ORDER BY fe.expense_date DESC
+  LIMIT 1;
+
+  IF v_expense_id IS NOT NULL THEN
+    SELECT count(*) INTO v_journal_count FROM public.journal_entries;
+    UPDATE public.bank_statement_lines
+       SET matched_expense_id=NULL, manually_unlinked=true
+     WHERE id=v_line_id;
+    IF public.get_expense_pph_period_date(v_expense_id) IS DISTINCT FROM v_fallback_date THEN
+      RAISE EXCEPTION 'Unlinked PPh expense did not return to its due-date period';
+    END IF;
+
+    UPDATE public.bank_statement_lines
+       SET matched_expense_id=v_expense_id, manually_unlinked=false
+     WHERE id=v_line_id;
+    IF public.get_expense_pph_period_date(v_expense_id) IS DISTINCT FROM v_payment_date THEN
+      RAISE EXCEPTION 'Relinked PPh expense did not return to its payment-date period';
+    END IF;
+    IF (SELECT count(*) FROM public.journal_entries)<>v_journal_count THEN
+      RAISE EXCEPTION 'PPh period unlink/relink changed journal entries';
+    END IF;
+  END IF;
 
   SELECT count(*) INTO v_count FROM (
     SELECT fiscal_year,period_month,tax_type,count(*)
@@ -130,5 +231,6 @@ try {
   if (stdout.trim()) console.log(stdout.trim());
   console.log('Finance canonical settlement regression passed.');
 } catch (error) {
+  if (error.stdout?.trim()) console.error(error.stdout.trim());
   process.exit(error.status || 1);
 }

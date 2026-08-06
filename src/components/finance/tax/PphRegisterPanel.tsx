@@ -37,6 +37,7 @@ interface SourceLine {
   id: string;
   doc_number: string;
   doc_date: string;
+  period_date: string;
   party: string;
   description: string | null;
   pph_code: string | null;
@@ -71,12 +72,10 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const lastDay = new Date(yr, mo, 0).getDate();
   const endDate = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
 
-  const [feRes, pvRes, importRes] = await Promise.all([
+  const [feRes, pvRes, importRes, bankPaymentRes, allocationRes, linkedVoucherRes] = await Promise.all([
     supabase
       .from('finance_expenses')
-      .select('id, voucher_number, expense_date, pph_amount, description, payment_method, expense_category, approval_status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:paid_by_staff_id(full_name)')
-      .gte('expense_date', startDate)
-      .lte('expense_date', endDate)
+      .select('id, voucher_number, expense_date, due_date, pph_amount, description, payment_method, expense_category, approval_status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
       .gt('pph_amount', 0),
     supabase
       .from('payment_vouchers')
@@ -88,16 +87,56 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
     // Mirrors compute_period_ppn's import branch. Always PPh22.
     supabase
       .from('finance_expenses')
-      .select('id, voucher_number, expense_date, amount, pib_pph_amount, description, expense_category, approval_status, suppliers:supplier_id(company_name)')
-      .gte('expense_date', startDate)
-      .lte('expense_date', endDate)
+      .select('id, voucher_number, expense_date, due_date, amount, pib_pph_amount, description, expense_category, approval_status, suppliers:supplier_id(company_name)')
       .in('expense_category', ['pib_import', 'pph_import']),
+    supabase
+      .from('bank_statement_lines')
+      .select('matched_expense_id, transaction_date, payment_kind')
+      .not('matched_expense_id', 'is', null),
+    supabase
+      .from('voucher_allocations')
+      .select('finance_expense_id, payment_voucher_id, payment_kind')
+      .not('finance_expense_id', 'is', null),
+    supabase
+      .from('payment_vouchers')
+      .select('id, voucher_date, is_posted'),
   ]);
 
+  // Mirror get_expense_pph_period_date(): latest linked supplier payment,
+  // otherwise due date, otherwise the legacy document date.
+  const linkedVouchers = new Map<string, any>(
+    ((linkedVoucherRes.data ?? []) as any[]).map(v => [v.id, v]),
+  );
+  const latestPaymentDate = new Map<string, string>();
+  const addPaymentDate = (expenseId: string | null, date: string | null) => {
+    if (!expenseId || !date) return;
+    const current = latestPaymentDate.get(expenseId);
+    if (!current || date > current) latestPaymentDate.set(expenseId, date);
+  };
+  for (const line of (bankPaymentRes.data ?? []) as any[]) {
+    if ((line.payment_kind ?? 'supplier') === 'supplier') {
+      addPaymentDate(line.matched_expense_id, line.transaction_date);
+    }
+  }
+  for (const allocation of (allocationRes.data ?? []) as any[]) {
+    if ((allocation.payment_kind ?? 'supplier') !== 'supplier') continue;
+    const voucher = linkedVouchers.get(allocation.payment_voucher_id);
+    if (voucher?.is_posted) addPaymentDate(allocation.finance_expense_id, voucher.voucher_date);
+  }
+  const periodDate = (expense: any): string =>
+    latestPaymentDate.get(expense.id) ?? expense.due_date ?? expense.expense_date;
+  const isSelectedPeriod = (expense: any): boolean => {
+    const date = periodDate(expense);
+    return date >= startDate && date <= endDate;
+  };
+
+  const expenseData = ((feRes.data ?? []) as any[]).filter(isSelectedPeriod);
+  const importData = ((importRes.data ?? []) as any[]).filter(isSelectedPeriod);
+
   const sourceRows = [
-    ...((feRes.data ?? []) as any[]),
+    ...expenseData,
     ...((pvRes.data ?? []) as any[]),
-    ...((importRes.data ?? []) as any[]),
+    ...importData,
   ];
   const sourceIds = [...new Set(sourceRows.map(r => r.id).filter(Boolean))];
   const journalRes = sourceIds.length
@@ -123,7 +162,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
 
   const pphType = row.tax_type;
 
-  const expenses: SourceLine[] = ((feRes.data ?? []) as any[])
+  const expenses: SourceLine[] = expenseData
     .filter(r => {
       // Import categories are handled by the import branch below; exclude here
       // to avoid double-counting (matches the engine's NOT IN import guard).
@@ -136,6 +175,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       id: r.id,
       doc_number: r.voucher_number ?? '—',
       doc_date: r.expense_date,
+      period_date: periodDate(r),
       party: r.suppliers?.company_name ?? r.staff?.full_name ?? '—',
       description: r.description,
       pph_code: r.pph_code?.code ?? null,
@@ -158,6 +198,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       id: r.id,
       doc_number: r.voucher_number ?? '—',
       doc_date: r.voucher_date,
+      period_date: r.voucher_date,
       party: r.suppliers?.company_name ?? r.staff?.full_name ?? '—',
       description: r.description,
       pph_code: r.pph_code?.code ?? null,
@@ -172,7 +213,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
 
   // Import PPh 22 — only relevant to the PPh22 and consolidated tabs.
   const imports: SourceLine[] = (pphType === 'PPh22' || pphType === 'PPh_Unifikasi')
-    ? ((importRes.data ?? []) as any[])
+    ? importData
         .map(r => {
           const amt = r.expense_category === 'pib_import'
             ? Number(r.pib_pph_amount ?? 0)
@@ -185,6 +226,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
           id: r.id,
           doc_number: r.voucher_number ?? '—',
           doc_date: r.expense_date,
+          period_date: periodDate(r),
           party: r.suppliers?.company_name ?? '—',
           description: r.description,
           pph_code: 'PPh22 Import',
@@ -198,7 +240,9 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
         }))
     : [];
 
-  return [...expenses, ...vouchers, ...imports].sort((a, b) => a.doc_date.localeCompare(b.doc_date));
+  return [...expenses, ...vouchers, ...imports].sort((a, b) =>
+    a.period_date.localeCompare(b.period_date) || a.doc_date.localeCompare(b.doc_date),
+  );
 }
 
 function consolidateRows(rows: Row[]): Row[] {
@@ -410,7 +454,8 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                                   <th className="text-left py-1 pr-3">Module</th>
                                   <th className="text-left py-1 pr-3">Tax Type</th>
                                   <th className="text-left py-1 pr-3">Document</th>
-                                  <th className="text-left py-1 pr-3">Date</th>
+                                  <th className="text-left py-1 pr-3">Document Date</th>
+                                  <th className="text-left py-1 pr-3">PPh Period Date</th>
                                   <th className="text-left py-1 pr-3">Employee / Supplier</th>
                                   <th className="text-left py-1 pr-3">Description</th>
                                   <th className="text-left py-1 pr-3">PPh Code</th>
@@ -442,6 +487,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                                       }}>{l.doc_number}</button>
                                     </td>
                                     <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDate(l.doc_date)}</td>
+                                    <td className="py-1.5 pr-3 whitespace-nowrap font-medium text-blue-700">{fmtDate(l.period_date)}</td>
                                     <td className="py-1.5 pr-3 max-w-[140px] truncate text-gray-700" title={l.party}>{l.party}</td>
                                     <td className="py-1.5 pr-3 max-w-[180px] truncate text-gray-500" title={l.description ?? undefined}>{l.description ?? '—'}</td>
                                     <td className="py-1.5 pr-3">
@@ -465,7 +511,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                                   </tr>
                                 ))}
                                 <tr className="font-semibold border-t-2 border-gray-300 bg-gray-50">
-                                  <td colSpan={10} className="py-1.5 pr-3 text-right text-xs text-gray-500">Total {pphTabLabel(active)} Withheld</td>
+                                  <td colSpan={11} className="py-1.5 pr-3 text-right text-xs text-gray-500">Total {pphTabLabel(active)} Withheld</td>
                                   <td className="py-1.5 text-right font-mono text-orange-700">
                                     Rp {fmt(detailTotal)}
                                   </td>
