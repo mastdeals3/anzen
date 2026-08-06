@@ -877,6 +877,8 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
                         <div className="ml-3 w-32">
                           <MoneyInput
                             decimal
+                            min={0}
+                            max={balance}
                             value={allocatedAmount || 0}
                             onChange={(n) => {
                               if (n > balance) {

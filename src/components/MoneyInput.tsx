@@ -1,141 +1,119 @@
-import { forwardRef, useState } from 'react';
-import { parseIndonesianNumber } from '../utils/currency';
+import { forwardRef, useEffect, useRef, useState } from 'react';
+import {
+  formatIndonesianMoneyInput,
+  parseIndonesianMoneyInput,
+  parseIndonesianNumber,
+} from '../utils/currency';
 
 /**
- * MoneyInput — Indonesian-formatted money input.
+ * Indonesian locale-aware currency input.
  *
- *   • Live thousands separators using Indonesian locale (`1.250.000` not `1,250,000`)
- *   • Cursor stays put while typing (native contentEditable would break this;
- *     we count separators before/after re-format and re-apply the caret).
- *   • Default zero disappears the instant the user types (empty display when
- *     value === 0 and the field is not focused, or immediately on focus).
- *
- * The value prop is a plain number. onChange emits a plain number.
- * Downstream code doesn't need to know about formatting.
+ * While focused, the user's draft is preserved exactly so intermediate values
+ * such as `55.359.075,` remain typeable. The numeric value is still emitted on
+ * every valid edit for calculations. On blur, the draft is normalized to the
+ * Indonesian display format (`55.359.075,50`).
  */
 
 interface MoneyInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type' | 'inputMode'> {
   value: number | null | undefined;
   onChange: (n: number) => void;
-  /** Show empty (no "0") when value is exactly 0 and field not focused. Default true. */
+  /** Show empty instead of zero. Default true. */
   hideZero?: boolean;
-  /** Allow decimal (Indonesian comma). Default false. */
+  /** Allow an Indonesian decimal comma. Currency inputs default to true. */
   decimal?: boolean;
 }
 
-// Format a number as an Indonesian-locale string with dot thousands separator.
-function formatId(n: number, decimal: boolean): string {
-  if (!Number.isFinite(n)) return '';
-  return n.toLocaleString('id-ID', decimal ? {} : { maximumFractionDigits: 0 });
+function displayValue(value: number | null | undefined, hideZero: boolean, decimal: boolean): string {
+  const numeric = Number(value ?? 0);
+  if (!Number.isFinite(numeric) || (hideZero && numeric === 0)) return '';
+  return formatIndonesianMoneyInput(numeric, decimal);
 }
 
-// Parse the Indonesian-formatted string back to a number.
-//
-// This is a round-trip parser for MoneyInput's OWN display format (id-ID:
-// dots are always thousands, comma is always the decimal), so it must not
-// guess separator meaning the way a freeform parser does. Freeform values
-// (any of 187500 / 187.500 / 187,500 / 1,250,000 …) enter through the paste
-// handler below, which uses the shared parseIndonesianNumber utility.
-function parseId(s: string, decimal: boolean): number {
-  if (!s) return 0;
-  let cleaned = s.replace(/\s/g, '');
-  if (decimal) {
-    // Indonesian decimal: 1.250.000,50 → 1250000.50
-    cleaned = cleaned.replace(/\./g, '').replace(/,/g, '.');
-  } else {
-    // Integer-only: strip everything non-digit (and leading -)
-    cleaned = cleaned.replace(/[^\d-]/g, '');
-  }
-  const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? n : 0;
-}
-
-// Count how many "separator characters" (dot or comma) precede a given caret
-// position inside a formatted Indonesian number string.
-function countSeparatorsBefore(s: string, caret: number): number {
-  let n = 0;
-  for (let i = 0; i < caret && i < s.length; i++) {
-    if (s[i] === '.' || s[i] === ',') n += 1;
-  }
-  return n;
-}
-
-// Find the caret position in the newly formatted string that corresponds to
-// having `digitCount` digits before it. Preserves feel that the cursor sits
-// after the "last digit the user just typed."
-function caretPositionForDigits(formatted: string, digitCount: number): number {
-  if (digitCount <= 0) return 0;
-  let seen = 0;
-  for (let i = 0; i < formatted.length; i++) {
-    if (/\d/.test(formatted[i])) {
-      seen += 1;
-      if (seen === digitCount) return i + 1;
-    }
-  }
-  return formatted.length;
-}
-
-// Count digits in a string up to a given position.
-function countDigitsBefore(s: string, caret: number): number {
-  let n = 0;
-  for (let i = 0; i < caret && i < s.length; i++) {
-    if (/\d/.test(s[i])) n += 1;
-  }
-  return n;
+function finiteBound(bound: string | number | undefined): number | null {
+  if (bound === undefined || bound === '') return null;
+  const parsed = Number(bound);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function MoneyInput(
-  { value, onChange, hideZero = true, decimal = false, className = '', onFocus, onBlur, ...rest },
-  ref
+  {
+    value,
+    onChange,
+    hideZero = true,
+    decimal = true,
+    className = '',
+    onFocus,
+    onBlur,
+    min,
+    max,
+    ...rest
+  },
+  ref,
 ) {
-  const [focused, setFocused] = useState(false);
-  const numeric = Number(value ?? 0);
-  // Show empty whenever the value is exactly zero, even on focus. Otherwise
-  // clicking a "0" field and typing 5 produces "05" (the "0" sat there when
-  // the keypress fired). Empty-display + typing-5 → "5" immediately.
-  // The `focused` var is retained so consumers passing `hideZero={false}` can
-  // still opt into always-formatted display.
-  const showEmpty = hideZero && numeric === 0;
-  const display = showEmpty ? '' : formatId(numeric, decimal);
-  void focused; // referenced only by handlers below; kept for onFocus/onBlur tracking
+  const focusedRef = useRef(false);
+  const [draft, setDraft] = useState(() => displayValue(value, hideZero, decimal));
+
+  const clamp = (amount: number): number => {
+    const minimum = finiteBound(min);
+    const maximum = finiteBound(max);
+    let result = decimal ? amount : Math.round(amount);
+    if (minimum !== null) result = Math.max(minimum, result);
+    if (maximum !== null) result = Math.min(maximum, result);
+    return result;
+  };
+
+  useEffect(() => {
+    if (!focusedRef.current) {
+      setDraft(displayValue(value, hideZero, decimal));
+    }
+  }, [value, hideZero, decimal]);
+
+  const commitDraft = (nextDraft: string, normalizeDisplay: boolean) => {
+    const parsed = parseIndonesianMoneyInput(nextDraft, decimal);
+    if (parsed === null) return false;
+    const normalized = clamp(parsed);
+    onChange(normalized);
+    if (normalizeDisplay) {
+      setDraft(displayValue(normalized, hideZero, decimal));
+    }
+    return true;
+  };
 
   return (
     <input
       {...rest}
       ref={ref}
-      // We must use type="text" to keep control of formatting + caret; inputMode
-      // still surfaces the numeric keypad on mobile.
       type="text"
       inputMode={decimal ? 'decimal' : 'numeric'}
-      value={display}
-      onFocus={(e) => { setFocused(true); onFocus?.(e); }}
-      onBlur={(e) => { setFocused(false); onBlur?.(e); }}
-      onPaste={(e) => {
-        // Pasted values are freeform (bank portals, spreadsheets, invoices) —
-        // route them through the shared parser so 187.500 / 187,500 /
-        // 1,250,000 all resolve to the intended amount.
-        const text = e.clipboardData.getData('text');
-        if (!text) return;
-        e.preventDefault();
-        let parsed = parseIndonesianNumber(text);
-        if (!decimal) parsed = Math.round(parsed);
-        onChange(Number.isFinite(parsed) ? parsed : 0);
+      value={draft}
+      onFocus={(event) => {
+        focusedRef.current = true;
+        onFocus?.(event);
       }}
-      onChange={(e) => {
-        const input = e.currentTarget;
-        const before = input.value;
-        const rawCaret = input.selectionStart ?? before.length;
-        // Digits typed BEFORE the caret is the anchor we want to preserve.
-        const digitsBeforeCaret = countDigitsBefore(before, rawCaret);
-        const parsed = parseId(before, decimal);
-        const formatted = formatId(parsed, decimal);
-        onChange(parsed);
-        // Reposition the caret to sit right after the same digit index.
-        // Rerender happens on the parent update so we schedule a microtask.
-        requestAnimationFrame(() => {
-          const next = caretPositionForDigits(formatted, digitsBeforeCaret);
-          try { input.setSelectionRange(next, next); } catch { /* ignore */ }
-        });
+      onBlur={(event) => {
+        focusedRef.current = false;
+        if (!commitDraft(draft, true)) {
+          setDraft(displayValue(value, hideZero, decimal));
+        }
+        onBlur?.(event);
+      }}
+      onPaste={(event) => {
+        const pasted = event.clipboardData.getData('text');
+        if (!pasted || !/\d/.test(pasted)) return;
+        event.preventDefault();
+        let parsed = parseIndonesianNumber(pasted);
+        if (!decimal) parsed = Math.round(parsed);
+        const normalized = clamp(parsed);
+        setDraft(formatIndonesianMoneyInput(normalized, decimal));
+        onChange(normalized);
+      }}
+      onChange={(event) => {
+        const nextDraft = event.currentTarget.value;
+        // Locale separators are valid draft characters. Invalid characters or
+        // a second comma are rejected without disturbing the current draft.
+        if (nextDraft !== '' && parseIndonesianMoneyInput(nextDraft, decimal) === null) return;
+        setDraft(nextDraft);
+        commitDraft(nextDraft, false);
       }}
       className={className}
     />

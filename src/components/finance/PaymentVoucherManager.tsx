@@ -1441,6 +1441,8 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                           <td className="px-3 py-1.5 text-right">
                             <MoneyInput
                               decimal
+                              min={0}
+                              max={bill.balance_amount}
                               value={thisAlloc || 0}
                               onChange={(n) => handleExpenseBillAllocationChange(bill, Math.min(n, bill.balance_amount))}
                               className="w-24 px-2 py-1 border border-purple-200 rounded text-right focus:border-purple-400 outline-none"
@@ -1508,6 +1510,8 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                             <td className="px-3 py-1.5 text-right">
                               <MoneyInput
                                 decimal
+                                min={0}
+                                max={availableBalance}
                                 value={thisAlloc || 0}
                                 onChange={(n) => handleAllocationChange(inv, Math.min(n, availableBalance))}
                                 className="w-24 px-2 py-1 border rounded text-right"

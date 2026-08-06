@@ -3314,6 +3314,8 @@ export function BankReconciliationEnhanced({
                                       {alloc && (
                                         <MoneyInput
                                           decimal
+                                          min={0}
+                                          max={bill.balance_amount}
                                           value={alloc.amount}
                                           onChange={(n) => setBillAllocationAmount(bill.id, Math.min(n, bill.balance_amount))}
                                           className="w-24 px-2 py-1 border border-emerald-300 rounded text-right focus:border-emerald-500 outline-none"
@@ -3789,6 +3791,8 @@ export function BankReconciliationEnhanced({
                                 {isChecked && (
                                   <MoneyInput
                                     decimal
+                                    min={0}
+                                    max={inv.balance_amount}
                                     value={receiptAllocations[inv.id] || 0}
                                     onChange={(n) => {
                                       setReceiptAllocations(prev => ({ ...prev, [inv.id]: Math.min(n, inv.balance_amount) }));

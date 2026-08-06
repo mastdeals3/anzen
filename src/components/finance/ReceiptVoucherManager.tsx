@@ -845,8 +845,10 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
                           <td className="px-3 py-2">
                             <MoneyInput
                               decimal
+                              min={0}
+                              max={balance}
                               value={allocations.find(a => a.targetId === target.id)?.amount || 0}
-                              onChange={(n) => handleAllocationChange(target.id, target.type, n)}
+                              onChange={(n) => handleAllocationChange(target.id, target.type, Math.min(n, balance))}
                               className="w-28 px-2 py-1 border rounded text-right text-xs"
                               placeholder="0"
                             />

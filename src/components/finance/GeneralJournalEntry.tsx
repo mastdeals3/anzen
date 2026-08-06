@@ -10,7 +10,7 @@ import {
 import { showToast } from '../ToastNotification';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
-import { parseIndonesianNumber } from '../../utils/currency';
+import { MoneyInput } from '../MoneyInput';
 
 interface Account {
   id: string;
@@ -588,19 +588,19 @@ export function GeneralJournalEntry({ canManage, onNavigateToLedger, initialEdit
                       />
                     </td>
                     <td className="px-4 py-2">
-                      <input
-                        type="text"
-                        value={line.debit || ''}
-                        onChange={e => updateLine(idx, 'debit', parseIndonesianNumber(e.target.value))}
+                      <MoneyInput
+                        decimal
+                        value={line.debit}
+                        onChange={amount => updateLine(idx, 'debit', amount)}
                         placeholder="0"
                         className="w-full px-2.5 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 tabular-nums"
                       />
                     </td>
                     <td className="px-4 py-2">
-                      <input
-                        type="text"
-                        value={line.credit || ''}
-                        onChange={e => updateLine(idx, 'credit', parseIndonesianNumber(e.target.value))}
+                      <MoneyInput
+                        decimal
+                        value={line.credit}
+                        onChange={amount => updateLine(idx, 'credit', amount)}
                         placeholder="0"
                         className="w-full px-2.5 py-1.5 text-sm text-right border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 tabular-nums"
                       />

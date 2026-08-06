@@ -79,6 +79,36 @@ export const formatPercentage = (value: number | string | null | undefined, deci
   })}%`;
 };
 
+/** Format a normalized currency-input value using Indonesian separators. */
+export const formatIndonesianMoneyInput = (value: number, decimal = true): string => {
+  if (!Number.isFinite(value)) return '';
+  if (!decimal) return value.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+  return value.toLocaleString('id-ID', {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+/**
+ * Deterministic parser for an Indonesian input draft. Dots are thousands
+ * separators and the single comma is the decimal separator. Null means the
+ * draft is incomplete or invalid; an empty draft represents zero.
+ */
+export const parseIndonesianMoneyInput = (draft: string, decimal = true): number | null => {
+  const compact = draft.replace(/\s/g, '');
+  if (compact === '') return 0;
+
+  const pattern = decimal ? /^-?[\d.]*,?\d*$/ : /^-?[\d.]*$/;
+  if (!pattern.test(compact) || !/\d/.test(compact)) return null;
+  if ((compact.match(/,/g) ?? []).length > 1) return null;
+
+  const normalized = decimal
+    ? compact.replace(/\./g, '').replace(',', '.')
+    : compact.replace(/\./g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 /**
  * Parse Indonesian number format to JavaScript number
  * Indonesian format: 1.000.000,50 (dot for thousands, comma for decimal)

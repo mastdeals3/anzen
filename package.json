@@ -18,6 +18,7 @@
     "verify:salary-advance-accounting": "node scripts/verify-salary-advance-accounting.mjs",
     "verify:expense-category-mappings": "node scripts/verify-expense-category-mappings.mjs",
     "verify:finance-navigation": "node scripts/verify-finance-navigation.mjs",
+    "verify:money-input": "node --experimental-strip-types scripts/verify-indonesian-money-input.mjs",
     "verify:inventory-v1": "node scripts/verify-inventory-v1-boundaries.mjs",
     "reconcile:inventory": "node scripts/inventory-stock-reconciliation.mjs",
     "test:inventory-v1": "node scripts/run-inventory-v1-regression.mjs"
