@@ -1781,6 +1781,7 @@ export function BankReconciliationEnhanced({
       setRecordModal(false);
       setRecordingLine(null);
       await loadStatementLines();
+      notifyFinanceReconciliationRefresh();
       alert('✅ Expense recorded and linked successfully');
     } catch (error: any) {
       console.error('Error recording expense:', error);
@@ -1826,6 +1827,7 @@ export function BankReconciliationEnhanced({
       setLinkToExpense(false);
       setLinkPaymentKind('supplier');
       await loadStatementLines();
+      notifyFinanceReconciliationRefresh();
       alert('✅ Linked to expense successfully');
     } catch (error: any) {
       console.error('Error linking to expense:', error);
@@ -2640,6 +2642,7 @@ export function BankReconciliationEnhanced({
 
       setEditModal(false);
       setEditingLine(null);
+      notifyFinanceReconciliationRefresh();
       alert('✅ Transaction unlinked successfully');
     } catch (error: any) {
       console.error('Error unlinking transaction:', error);

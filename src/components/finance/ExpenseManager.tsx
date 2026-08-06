@@ -13,6 +13,7 @@ import { moduleExpenseCategories, sortExpenseCategories } from './expenseCategor
 import { BankTransactionLinkField } from './BankTransactionLinkField';
 import { approveFinanceExpense, getReportingUsdRate, saveFinanceExpense } from '../../services/financeCommands';
 import {
+  FINANCE_RECONCILIATION_REFRESH_EVENT,
   linkBankTransaction,
   notifyFinanceReconciliationRefresh,
   unlinkBankTransaction,
@@ -617,39 +618,81 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     }
   };
 
-  const patchBankLine = (payload: any) => {
-    // Reconciled expense-id set only tracks presence — patch the Set accordingly.
-    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-      const meid = payload.new?.matched_expense_id;
-      if (meid) {
-        setReconciledExpenseIds(prev => {
-          if (prev.has(meid)) return prev;
-          const next = new Set(prev);
-          next.add(meid);
-          return next;
-        });
-      } else if (payload.eventType === 'UPDATE') {
-        const oldId = payload.old?.matched_expense_id;
-        if (oldId) {
-          setReconciledExpenseIds(prev => {
-            if (!prev.has(oldId)) return prev;
-            const next = new Set(prev);
-            next.delete(oldId);
-            return next;
-          });
-        }
-      }
-    } else if (payload.eventType === 'DELETE') {
-      const oldId = payload.old?.matched_expense_id;
-      if (oldId) {
-        setReconciledExpenseIds(prev => {
-          if (!prev.has(oldId)) return prev;
-          const next = new Set(prev);
-          next.delete(oldId);
-          return next;
-        });
-      }
+  // The canonical reconciliation relationship is owned by
+  // bank_statement_lines.matched_expense_id.  Detail and edit views keep a
+  // joined copy of those rows, so updating only reconciledExpenseIds leaves
+  // them stale after a link made from Bank Reconciliation.
+  const syncExpenseBankLinks = async (candidateIds: Array<string | null | undefined>) => {
+    const expenseIds = [...new Set(candidateIds.filter((id): id is string => Boolean(id)))];
+    if (expenseIds.length === 0) return;
+
+    const { data, error } = await supabase
+      .from('bank_statement_lines')
+      .select(`
+        id,
+        transaction_date,
+        description,
+        debit_amount,
+        credit_amount,
+        bank_account_id,
+        payment_kind,
+        matched_expense_id,
+        bank_accounts(bank_name, account_number, alias, currency)
+      `)
+      .in('matched_expense_id', expenseIds);
+
+    if (error) {
+      console.error('Unable to synchronize expense bank links:', error.message);
+      return;
     }
+
+    const linksByExpenseId = new Map<string, FinanceExpense['bank_statement_lines']>();
+    expenseIds.forEach(id => linksByExpenseId.set(id, []));
+    (data || []).forEach((line: any) => {
+      // matched_expense_id is deliberately omitted from the UI row shape, but
+      // is needed here to group the canonical rows by Expense.
+      const expenseId = line.matched_expense_id;
+      if (!expenseId) return;
+      const links = linksByExpenseId.get(expenseId) || [];
+      links.push(line);
+      linksByExpenseId.set(expenseId, links);
+    });
+
+    const patchLinks = (expense: FinanceExpense): FinanceExpense => {
+      const links = linksByExpenseId.get(expense.id);
+      return links === undefined ? expense : { ...expense, bank_statement_lines: links };
+    };
+
+    setExpenses(prev => prev.map(patchLinks));
+    setViewingExpense(prev => (prev ? patchLinks(prev) : prev));
+    setEditingExpense(prev => (prev ? patchLinks(prev) : prev));
+    setReconciledExpenseIds(prev => {
+      const next = new Set(prev);
+      expenseIds.forEach(id => {
+        if ((linksByExpenseId.get(id) || []).length > 0) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  };
+
+  const patchBankLine = (payload: any) => {
+    // A match can move from one Expense to another, so refresh both sides.
+    // Replica identity may omit the old matched_expense_id; the local joined
+    // snapshots still identify the previous owner in that case.
+    const lineId = payload.new?.id || payload.old?.id;
+    const previouslyLinkedExpenseIds = [
+      ...expenses
+        .filter(expense => expense.bank_statement_lines?.some(line => line.id === lineId))
+        .map(expense => expense.id),
+      viewingExpense?.bank_statement_lines?.some(line => line.id === lineId) ? viewingExpense.id : null,
+      editingExpense?.bank_statement_lines?.some(line => line.id === lineId) ? editingExpense.id : null,
+    ];
+    void syncExpenseBankLinks([
+      payload.new?.matched_expense_id,
+      payload.old?.matched_expense_id,
+      ...previouslyLinkedExpenseIds,
+    ]);
   };
 
   useSupabaseRealtimeChannel({
@@ -662,6 +705,22 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     table: 'bank_statement_lines',
     onEvent: patchBankLine,
   });
+
+  // Realtime supplies the immediate path. The shared event is the fallback
+  // for a link/unlink initiated elsewhere in this SPA, and also keeps the
+  // list, detail and edit snapshots in agreement when realtime delivery is
+  // delayed.
+  useEffect(() => {
+    const synchronizeVisibleExpenses = () => {
+      void syncExpenseBankLinks([
+        ...expenses.map(expense => expense.id),
+        viewingExpense?.id,
+        editingExpense?.id,
+      ]);
+    };
+    window.addEventListener(FINANCE_RECONCILIATION_REFRESH_EVENT, synchronizeVisibleExpenses);
+    return () => window.removeEventListener(FINANCE_RECONCILIATION_REFRESH_EVENT, synchronizeVisibleExpenses);
+  }, [expenses, viewingExpense, editingExpense]);
 
   useEffect(() => {
     if (!initialViewExpenseId) return;
