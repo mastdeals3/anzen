@@ -320,8 +320,10 @@ export interface ExpenseTotals {
   stampDutyAmount: number;
   /** Bank charges as applied (0 unless expense_category === 'utilities'). */
   bankChargesAmount: number;
-  /** amount + ppn − pph + stamp + effective bank_charges. */
+  /** Supplier/employee payable before bank-owned charges. */
   netPayable: number;
+  /** Actual bank movement: net payable plus bank-owned charges. */
+  settlementAmount: number;
 }
 
 /**
@@ -341,7 +343,8 @@ export function calculateExpenseTotals(exp: ExpenseTotalsInput): ExpenseTotals {
     pphAmount: pph,
     stampDutyAmount: stamp,
     bankChargesAmount: bank,
-    netPayable: amount + ppn - pph + stamp + bank,
+    netPayable: amount + ppn - pph + stamp,
+    settlementAmount: amount + ppn - pph + stamp + bank,
   };
 }
 
@@ -367,7 +370,7 @@ export function calculateCanonicalCashPayable(
   if (exp.expense_category === 'import_broker') {
     return calculateBrokerExpenseTotals(exp).finalCashPayable;
   }
-  return calculateExpenseTotals(exp).netPayable;
+  return calculateExpenseTotals(exp).settlementAmount;
 }
 
 /** Input for outstanding calculation — same as totals plus paid_amount. */
@@ -389,7 +392,7 @@ export interface Outstanding {
  * payment state (paid_amount) while totals depend only on the expense itself.
  */
 export function calculateOutstanding(exp: OutstandingInput): Outstanding {
-  const { netPayable } = calculateExpenseTotals(exp);
+  const { settlementAmount: netPayable } = calculateExpenseTotals(exp);
   const paid = Number(exp.paid_amount) || 0;
   const outstanding = Math.max(0, netPayable - paid);
   return {

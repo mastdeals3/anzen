@@ -491,12 +491,14 @@ export function BankReconciliationEnhanced({
       if (paymentIds.length > 0) {
         const { data: payments } = await supabase
           .from('payment_vouchers')
-          .select('id, amount, bank_amount, payment_currency, voucher_date, voucher_number, supplier_id, staff_id, suppliers(company_name), finance_staff_master(full_name)')
+          .select('id, amount, actual_bank_debit, bank_amount, payment_currency, voucher_date, voucher_number, supplier_id, staff_id, suppliers(company_name), finance_staff_master(full_name)')
           .in('id', paymentIds);
         payments?.forEach(payment => {
           paymentMap.set(payment.id, {
             id: payment.id,
-            amount: payment.bank_amount && Number(payment.bank_amount) > 0 ? payment.bank_amount : payment.amount,
+            amount: payment.actual_bank_debit && Number(payment.actual_bank_debit) > 0
+              ? payment.actual_bank_debit
+              : payment.bank_amount && Number(payment.bank_amount) > 0 ? payment.bank_amount : payment.amount,
             voucher_date: payment.voucher_date,
             voucher_number: payment.voucher_number,
             supplier_name: (payment.suppliers as any)?.company_name,
@@ -2014,7 +2016,7 @@ export function BankReconciliationEnhanced({
       // requires the staff-accounting migration; fall back without it.
       const { data: initialVouchers, error: pvErr } = await supabase
         .from('payment_vouchers')
-        .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, bank_amount, payment_currency, journal_entry_id, bank_account_id, payment_method, suppliers(company_name), finance_staff_master(full_name)')
+        .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, actual_bank_debit, bank_amount, payment_currency, journal_entry_id, bank_account_id, payment_method, suppliers(company_name), finance_staff_master(full_name)')
         .gte('voucher_date', from.toISOString().split('T')[0])
         .lte('voucher_date', to.toISOString().split('T')[0])
         .order('voucher_date', { ascending: false })
@@ -2023,7 +2025,7 @@ export function BankReconciliationEnhanced({
       if (pvErr && /finance_staff_master|staff_id/i.test(pvErr.message || '')) {
         const fb = await supabase
           .from('payment_vouchers')
-          .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, bank_amount, payment_currency, journal_entry_id, bank_account_id, payment_method, suppliers(company_name)')
+          .select('id, voucher_number, voucher_date, amount, net_amount, pph_amount, actual_bank_debit, bank_amount, payment_currency, journal_entry_id, bank_account_id, payment_method, suppliers(company_name)')
           .gte('voucher_date', from.toISOString().split('T')[0])
           .lte('voucher_date', to.toISOString().split('T')[0])
           .order('voucher_date', { ascending: false })
@@ -2059,17 +2061,13 @@ export function BankReconciliationEnhanced({
         return true;
       });
 
-      // Prefer amount matches within 5% tolerance (gross OR net-of-PPh);
+      // Compare only the canonical actual-bank amount. Gross and net invoice
+      // values are accounting breakdowns, never reconciliation candidates.
       // fall back to top 20 available candidates when nothing matches.
       const filtered = available.filter((pv: any) => {
-        const bankAmt = pv.bank_amount && Number(pv.bank_amount) > 0 ? Number(pv.bank_amount) : null;
-        const netAmt = Number(pv.net_amount ?? pv.amount);
-        const grossAmt = Number(pv.amount);
+        const bankAmt = Number(pv.actual_bank_debit ?? pv.bank_amount ?? 0);
         const tolerance = amount * 0.05;
-        if (bankAmt && Math.abs(bankAmt - amount) < tolerance) return true;
-        if (Math.abs(netAmt - amount) < tolerance) return true;
-        if (Math.abs(grossAmt - amount) < tolerance) return true;
-        return false;
+        return bankAmt > 0 && Math.abs(bankAmt - amount) < tolerance;
       });
       setSupplierPayments(filtered.length > 0 ? filtered : available.slice(0, 20));
     } catch (err) {
@@ -3554,7 +3552,7 @@ export function BankReconciliationEnhanced({
                             <option key={expense.id} value={expense.id}>
                               {formattedDate} - {expense.voucher_number ? `[${expense.voucher_number}] ` : ''}
                               {expense.description} -
-                              {formatCurrency(calculateCanonicalExpenseTotal(expense), recordingLine.currency)}
+                              {formatCurrency(calculateCanonicalCashPayable(expense), recordingLine.currency)}
                             </option>
                           );
                         })}
@@ -4165,7 +4163,7 @@ export function BankReconciliationEnhanced({
                     <div className="flex justify-between">
                       <span className="text-gray-600">Amount:</span>
                       <span className="font-medium text-gray-900">
-                        {formatCurrency(calculateCanonicalExpenseTotal(editingLine.matchedExpense), editingLine.currency)}
+                        {formatCurrency(calculateCanonicalCashPayable(editingLine.matchedExpense), editingLine.currency)}
                       </span>
                     </div>
                     <div className="flex justify-between">

@@ -3107,6 +3107,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     const totals = calculateExpenseTotals(formData);
                     const bc = totals.bankChargesAmount;
                     const payable = totals.netPayable;
+                    const settlementAmount = totals.settlementAmount;
                     const fmt = (n: number) => formatCurrency(n, expenseFormCurrency, {
                       minimumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
                       maximumFractionDigits: expenseFormCurrency === 'IDR' ? 0 : 2,
@@ -3117,7 +3118,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       { label: 'PPN', value: formData.ppn_amount || 0, valueColor: 'text-blue-700', op: '−', show: (formData.ppn_amount || 0) > 0 },
                       { label: 'PPh Withheld', value: formData.pph_amount || 0, valueColor: 'text-orange-700', op: '+', show: (formData.pph_amount || 0) > 0 },
                       { label: 'Stamp Duty', value: formData.stamp_duty_amount || 0, valueColor: 'text-gray-900', op: '+', show: (formData.stamp_duty_amount || 0) > 0 },
-                      { label: 'Bank Charges', value: bc, valueColor: 'text-purple-700', show: bc > 0 },
                     ].filter(c => c.show);
                     return (
                       <div className="mt-2 flex items-stretch border border-gray-200 rounded-lg bg-white overflow-hidden">
@@ -3134,9 +3134,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         ))}
                         <div className="flex items-center px-1.5 text-xs font-bold text-gray-400 bg-gray-50 select-none">=</div>
                         <div className="flex flex-col justify-center px-4 py-2 bg-emerald-50 border-l-2 border-emerald-400 min-w-[110px]">
-                          <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">TOTAL PAYABLE</span>
+                          <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-wide">NET PAYABLE</span>
                           <span className="text-sm font-bold font-mono text-emerald-900 mt-0.5">{fmt(payable)}</span>
                         </div>
+                        {bc > 0 && (
+                          <div className="flex flex-col justify-center px-4 py-2 bg-blue-50 border-l-2 border-blue-400 min-w-[130px]">
+                            <span className="text-[9px] font-bold text-blue-700 uppercase tracking-wide">ACTUAL BANK SETTLEMENT</span>
+                            <span className="text-sm font-bold font-mono text-blue-900 mt-0.5">{fmt(settlementAmount)}</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -3403,7 +3409,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           if ((viewingExpense.pib_ppn_amount || 0) > 0) taxRows.push({ label: 'PPN Import', value: viewingExpense.pib_ppn_amount || 0, tint: 'text-blue-700' });
           if ((viewingExpense.pib_pph_amount || 0) > 0) taxRows.push({ label: 'PPh 22 Import', value: viewingExpense.pib_pph_amount || 0, tint: 'text-orange-700' });
         }
-        const netPayable = !isBroker ? calculateExpenseTotals(viewingExpense).netPayable : 0;
+        const expenseTotals = !isBroker ? calculateExpenseTotals(viewingExpense) : null;
+        const netPayable = expenseTotals?.netPayable || 0;
 
         // Broker totals
         const brokerTotals = isBroker ? calculateBrokerExpenseTotals(viewingExpense) : null;
@@ -3611,6 +3618,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <span className="text-[9px] font-semibold text-green-700 uppercase">Net Payable</span>
                     <span className="text-[12px] font-bold font-mono text-green-800">{fmtMoney(netPayable, 2)}</span>
                   </div>
+                  {expenseTotals && expenseTotals.bankChargesAmount > 0 && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 border border-blue-200 bg-blue-50 rounded">
+                      <span className="text-[9px] font-semibold text-blue-700 uppercase">Actual Bank Settlement Amount</span>
+                      <span className="text-[12px] font-bold font-mono text-blue-800">{fmtMoney(expenseTotals.settlementAmount, 2)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

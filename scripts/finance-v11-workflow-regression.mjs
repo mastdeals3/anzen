@@ -56,6 +56,12 @@ BEGIN
     RAISE EXCEPTION 'Customs Broker cash formula is incorrect: %',row_to_json(v_broker);
   END IF;
 
+  -- The fixture may already be reconciled in production. Release its existing
+  -- link inside this rollback-only transaction before exercising relink.
+  FOR v_line IN SELECT id FROM public.bank_statement_lines WHERE matched_expense_id=v_expense LOOP
+    PERFORM public.unmatch_bank_line(v_line);
+  END LOOP;
+
   -- Finance V1.1.1 lifecycle: cancelling, editing and re-approving must create
   -- exactly one new canonical journal. Linking payment metadata must not
   -- regenerate that journal or leave matched_entry_id stale.
