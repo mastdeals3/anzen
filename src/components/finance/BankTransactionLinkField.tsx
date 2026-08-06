@@ -56,6 +56,7 @@ export function BankTransactionLinkField({
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [hideLinked, setHideLinked] = useState(true);
 
   const filteredTransactions = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -71,9 +72,9 @@ export function BankTransactionLinkField({
     ].some((value) => value?.toLowerCase().includes(query)));
   }, [searchTerm, transactions]);
 
-  const openDialog = async () => {
+  const loadTransactions = async (nextHideLinked: boolean, open = false) => {
     if (!bankAccountId || disabled) return;
-    setDialogOpen(true);
+    if (open) setDialogOpen(true);
     setLoading(true);
     try {
         const rows = await loadUnmatchedDebitBankTransactions({
@@ -82,10 +83,11 @@ export function BankTransactionLinkField({
         currentExpenseId,
         currentJournalEntryId,
         currentPettyCashId,
+        includeLinked: !nextHideLinked,
       });
       const candidates = candidateFilter ? rows.filter(candidateFilter) : rows;
       setTransactions(rows);
-      if (autoSelectSingle && candidates.length === 1) await handleSelect(candidates[0]);
+      if (autoSelectSingle && nextHideLinked && candidates.length === 1) await handleSelect(candidates[0]);
     } catch (error) {
       console.error('Error loading unmatched bank transactions:', error);
       alert('Failed to load unmatched bank transactions.');
@@ -94,6 +96,8 @@ export function BankTransactionLinkField({
       setLoading(false);
     }
   };
+
+  const openDialog = async () => loadTransactions(hideLinked, true);
 
   const handleSelect = async (transaction: BankTransactionLine) => {
     setSubmittingId(transaction.id);
@@ -182,6 +186,19 @@ export function BankTransactionLinkField({
               className="w-full h-8 pl-8 pr-3 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
             />
           </div>
+          <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 select-none">
+            <input
+              type="checkbox"
+              checked={hideLinked}
+              onChange={(event) => {
+                const next = event.target.checked;
+                setHideLinked(next);
+                void loadTransactions(next);
+              }}
+              className="accent-blue-600"
+            />
+            Hide already linked
+          </label>
 
           <div className="border border-gray-200 rounded overflow-hidden">
             <div className="max-h-[50vh] overflow-auto">
@@ -205,8 +222,8 @@ export function BankTransactionLinkField({
                   ) : filteredTransactions.map((line) => (
                     <tr
                       key={line.id}
-                      onClick={() => void handleSelect(line)}
-                      className={`cursor-pointer hover:bg-blue-50 ${selectedTransactionId === line.id ? 'bg-blue-50' : ''}`}
+                      onClick={() => { if (!line.isLinked) void handleSelect(line); }}
+                      className={`${line.isLinked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-blue-50'} ${selectedTransactionId === line.id ? 'bg-blue-50' : ''}`}
                     >
                       <td className="px-3 py-2 whitespace-nowrap">{new Date(line.transaction_date).toLocaleDateString('id-ID')}</td>
                       <td className="px-3 py-2 text-right font-mono font-semibold text-red-700 whitespace-nowrap">{formatAmount(line)}</td>
@@ -216,6 +233,7 @@ export function BankTransactionLinkField({
                       <td className="px-3 py-2 text-gray-600 font-mono">{line.reference || '—'}</td>
                       <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
                         {bankLabel(line)}
+                        {line.isLinked && <span className="ml-1 text-amber-700">Already linked</span>}
                         {submittingId === line.id && <span className="ml-1 text-blue-600">Linking...</span>}
                       </td>
                     </tr>

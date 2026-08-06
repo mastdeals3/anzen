@@ -146,6 +146,55 @@ interface BankReconciliationEnhancedProps {
   onOpenJournal?: (journalEntryId: string) => void;
 }
 
+type PickerCandidate = Record<string, any> & { _linked?: boolean; _linkedReason?: string };
+
+function rankBankCandidates<T extends PickerCandidate>(
+  candidates: T[],
+  line: StatementLine,
+  amountOf: (candidate: T) => number,
+  dateOf: (candidate: T) => string | null | undefined,
+  partyOf: (candidate: T) => string | null | undefined = () => null,
+): T[] {
+  const bankAmount = Number(line.debit || line.credit || 0);
+  const bankText = `${line.description} ${line.reference}`.toLocaleLowerCase();
+  const bankDate = new Date(line.date).getTime();
+
+  return [...candidates].sort((a, b) => {
+    const aAmountDiff = Math.abs(amountOf(a) - bankAmount);
+    const bAmountDiff = Math.abs(amountOf(b) - bankAmount);
+    const aExact = aAmountDiff < 0.01 ? 0 : 1;
+    const bExact = bAmountDiff < 0.01 ? 0 : 1;
+    if (aExact !== bExact) return aExact - bExact;
+
+    const matchesParty = (candidate: T) => {
+      const party = (partyOf(candidate) || '').trim().toLocaleLowerCase();
+      return party.length > 2 && bankText.includes(party) ? 0 : 1;
+    };
+    const aParty = matchesParty(a);
+    const bParty = matchesParty(b);
+    if (aParty !== bParty) return aParty - bParty;
+
+    const aDateDiff = Math.abs(new Date(dateOf(a) || 0).getTime() - bankDate);
+    const bDateDiff = Math.abs(new Date(dateOf(b) || 0).getTime() - bankDate);
+    if (aDateDiff !== bDateDiff) return aDateDiff - bDateDiff;
+    return aAmountDiff - bAmountDiff;
+  });
+}
+
+function LinkedCandidateToggle({ hidden, onChange }: { hidden: boolean; onChange: (hidden: boolean) => void }) {
+  return (
+    <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 select-none">
+      <input
+        type="checkbox"
+        checked={hidden}
+        onChange={(event) => onChange(event.target.checked)}
+        className="accent-blue-600"
+      />
+      Hide already linked
+    </label>
+  );
+}
+
 const NON_CUSTOMER_JOURNAL_TYPES = new Set([
   'bank_interest',
   'other_income',
@@ -237,6 +286,7 @@ export function BankReconciliationEnhanced({
     skippedEntries: any[];
   } | null>(null);
   const [forceImporting, setForceImporting] = useState(false);
+  const [hideLinkedCandidates, setHideLinkedCandidates] = useState(true);
 
   // Single source of truth: reuse the canonical category list from ExpenseManager.
   const expenseCategories = moduleExpenseCategories;
@@ -344,6 +394,45 @@ export function BankReconciliationEnhanced({
     if (data) setCustomers(data);
   };
 
+  const loadLinkedDocumentIds = async (exceptBankLineId?: string) => {
+    let query = supabase
+      .from('bank_statement_lines')
+      .select('matched_expense_id, matched_receipt_id, matched_payment_id, matched_petty_cash_id, matched_fund_transfer_id, matched_tax_payment_id, matched_entry_id');
+    if (exceptBankLineId) query = query.neq('id', exceptBankLineId);
+    const { data, error } = await query;
+    if (error) throw error;
+    const ids = (column: string) => new Set((data || []).map((row: any) => row[column]).filter(Boolean));
+    return {
+      expenseIds: ids('matched_expense_id'),
+      receiptIds: ids('matched_receipt_id'),
+      paymentIds: ids('matched_payment_id'),
+      pettyCashIds: ids('matched_petty_cash_id'),
+      fundTransferIds: ids('matched_fund_transfer_id'),
+      taxPaymentIds: ids('matched_tax_payment_id'),
+      journalIds: ids('matched_entry_id'),
+    };
+  };
+
+  const visiblePickerCandidates = <T extends PickerCandidate>(candidates: T[]) =>
+    hideLinkedCandidates ? candidates.filter((candidate) => !candidate._linked) : candidates;
+
+  const expenseCanAcceptLink = (expense: any) => {
+    if (linkPaymentKind === 'pph23') {
+      return Number(expense.pph_amount || 0) - Number(expense.pph_paid_amount || 0) > 0.01;
+    }
+    return calculateCanonicalCashPayable(expense) - Number(expense.paid_amount || 0) > 0.01;
+  };
+
+  const visibleExpenseCandidates = (candidates: any[]) => rankBankCandidates(
+    hideLinkedCandidates ? candidates.filter(expenseCanAcceptLink) : candidates,
+    recordingLine!,
+    (expense) => linkPaymentKind === 'pph23'
+      ? Number(expense.pph_amount || 0)
+      : calculateCanonicalCashPayable(expense),
+    (expense) => expense.expense_date,
+    (expense) => expense.suppliers?.company_name,
+  );
+
   const loadActiveLoans = async () => {
     const { data, error } = await supabase
       .from('loans')
@@ -406,16 +495,27 @@ export function BankReconciliationEnhanced({
           description,
           amount,
           expense_category,
-          voucher_number
+          voucher_number,
+          paid_amount,
+          pph_amount,
+          pph_paid_amount,
+          ppn_amount,
+          stamp_duty_amount,
+          bank_charges_amount,
+          broker_items,
+          suppliers(company_name)
         `)
         .order('expense_date', { ascending: false });
 
       if (error) throw error;
 
-      // Previously we excluded any expense that already had a matched bank line.
-      // Since finance expenses can now receive multiple payments (supplier + PPh23),
-      // we keep them all in the pool and let the operator link additional lines.
-      setExpenses(allExpenses || []);
+      const linked = await loadLinkedDocumentIds();
+      // Expenses can receive legal partial payments. A prior bank link is only
+      // unavailable once the relevant supplier/PPh balance is fully settled.
+      setExpenses((allExpenses || []).map((expense: any) => ({
+        ...expense,
+        _linked: linked.expenseIds.has(expense.id),
+      })));
     } catch (err) {
       console.error('Error loading expenses:', err);
     }
@@ -1752,15 +1852,29 @@ export function BankReconciliationEnhanced({
 
   const loadExistingReceipts = async () => {
     try {
-      const { data: allReceipts } = await supabase
+      const [{ data: allReceipts, error }, linked] = await Promise.all([
+        supabase
         .from('receipt_vouchers')
-        .select('id, voucher_number, voucher_date, amount, customers(company_name)')
+        .select('id, voucher_number, voucher_date, amount, journal_entry_id, customer_id, customers(company_name)')
         .eq('is_posted', true)
         .not('journal_entry_id', 'is', null)
         .order('voucher_date', { ascending: false })
-        .limit(100);
+        .limit(100),
+        loadLinkedDocumentIds(recordingLine?.id),
+      ]);
+      if (error) throw error;
 
-      setExistingReceipts(allReceipts || []);
+      setExistingReceipts(rankBankCandidates(
+        (allReceipts || []).map((receipt: any) => ({
+          ...receipt,
+          _linked: linked.receiptIds.has(receipt.id) || linked.journalIds.has(receipt.journal_entry_id),
+          _linkedReason: 'Already linked to another bank statement line',
+        })),
+        recordingLine!,
+        (receipt) => Number(receipt.amount || 0),
+        (receipt) => receipt.voucher_date,
+        (receipt) => receipt.customers?.company_name,
+      ));
     } catch (err) {
       console.error('Error loading receipts:', err);
     }
@@ -1921,18 +2035,10 @@ export function BankReconciliationEnhanced({
 
       if (error) throw error;
 
-      const { data: alreadyMatched } = await supabase
-        .from('bank_statement_lines')
-        .select('matched_entry_id')
-        .not('matched_entry_id', 'is', null)
-        .neq('id', line.id);
+      const linked = await loadLinkedDocumentIds(line.id);
 
-      const matchedEntryIds = new Set((alreadyMatched || []).map(b => b.matched_entry_id));
-
-      const validJournals: typeof journals = [];
+      const validJournals: PickerCandidate[] = [];
       for (const j of (journals || [])) {
-        if (matchedEntryIds.has(j.id)) continue;
-
         if (j.source_module === 'expenses' && j.reference_number) {
           const expId = j.reference_number.replace('EXP-', '');
           const { data: exp } = await supabase
@@ -1972,10 +2078,19 @@ export function BankReconciliationEnhanced({
           if (!pc) continue;
         }
 
-        validJournals.push(j);
+        validJournals.push({
+          ...j,
+          _linked: linked.journalIds.has(j.id),
+          _linkedReason: 'Already linked to another bank statement line',
+        });
       }
 
-      setAvailableJournals(validJournals);
+      setAvailableJournals(rankBankCandidates(
+        validJournals as PickerCandidate[],
+        line,
+        (journal) => Number(journal.total_debit || journal.total_credit || 0),
+        (journal) => journal.entry_date,
+      ));
     } catch (error) {
       console.error('Error loading journals:', error);
       setAvailableJournals([]);
@@ -2035,11 +2150,7 @@ export function BankReconciliationEnhanced({
 
       // Derive "already reconciled" from bank_statement_lines (the single
       // source of truth — payment_vouchers has no reconciliation columns).
-      const { data: takenLines } = await supabase
-        .from('bank_statement_lines')
-        .select('matched_entry_id')
-        .not('matched_entry_id', 'is', null);
-      const takenJeIds = new Set((takenLines || []).map((l: any) => l.matched_entry_id));
+      const linked = await loadLinkedDocumentIds(line.id);
 
       const available = (vouchers || []).filter((pv: any) => {
         // A payment voucher without a journal_entry_id has never been posted
@@ -2054,22 +2165,22 @@ export function BankReconciliationEnhanced({
         if (!pv.journal_entry_id) return false;
         // Advance-adjustment vouchers never touch the bank — exclude them.
         if (pv.payment_method === 'advance_adjustment') return false;
-        // Exclude vouchers whose journal entry is already matched to a bank line.
-        if (takenJeIds.has(pv.journal_entry_id)) return false;
         // If the voucher pinned a specific bank account, restrict to matches on that account.
         if (pv.bank_account_id && selectedBank && pv.bank_account_id !== selectedBank) return false;
         return true;
       });
 
-      // Compare only the canonical actual-bank amount. Gross and net invoice
-      // values are accounting breakdowns, never reconciliation candidates.
-      // fall back to top 20 available candidates when nothing matches.
-      const filtered = available.filter((pv: any) => {
-        const bankAmt = Number(pv.actual_bank_debit ?? pv.bank_amount ?? 0);
-        const tolerance = amount * 0.05;
-        return bankAmt > 0 && Math.abs(bankAmt - amount) < tolerance;
-      });
-      setSupplierPayments(filtered.length > 0 ? filtered : available.slice(0, 20));
+      setSupplierPayments(rankBankCandidates(
+        available.map((pv: any) => ({
+          ...pv,
+          _linked: linked.paymentIds.has(pv.id) || linked.journalIds.has(pv.journal_entry_id),
+          _linkedReason: 'Already linked to another bank statement line',
+        })),
+        line,
+        (payment) => Number(payment.actual_bank_debit ?? payment.bank_amount ?? payment.net_amount ?? 0),
+        (payment) => payment.voucher_date,
+        (payment) => payment.suppliers?.company_name || payment.finance_staff_master?.full_name,
+      ).slice(0, 100));
     } catch (err) {
       console.error('Error loading supplier payments:', err);
       setSupplierPayments([]);
@@ -2311,26 +2422,25 @@ export function BankReconciliationEnhanced({
         .order('payment_date', { ascending: false })
         .limit(500);
 
-      const { data: takenLines } = await supabase
-        .from('bank_statement_lines')
-        .select('matched_tax_payment_id')
-        .not('matched_tax_payment_id', 'is', null);
-      const takenIds = new Set((takenLines || []).map((l: any) => l.matched_tax_payment_id));
+      const linked = await loadLinkedDocumentIds(line.id);
 
       const scored = (tps || [])
         .filter((tp: any) => {
-          if (takenIds.has(tp.id)) return false;
           if (tp.bank_account_id && selectedBank && tp.bank_account_id !== selectedBank) return false;
           return Math.abs(tp.amount - amount) < 1;
         })
         .map((tp: any) => ({
-          tp,
-          dateDiff: Math.abs(new Date(tp.payment_date).getTime() - lineDate),
-        }))
-        .sort((a: any, b: any) => a.dateDiff - b.dateDiff)
-        .map((s: any) => s.tp);
+          ...tp,
+          _linked: linked.taxPaymentIds.has(tp.id) || linked.journalIds.has(tp.journal_entry_id),
+          _linkedReason: 'Already linked to another bank statement line',
+        }));
 
-      setAvailableTaxPayments(scored);
+      setAvailableTaxPayments(rankBankCandidates(
+        scored,
+        line,
+        (payment) => Number(payment.amount || 0),
+        (payment) => payment.payment_date,
+      ));
     } catch (err) {
       console.error('Error loading tax payments:', err);
       setAvailableTaxPayments([]);
@@ -3353,15 +3463,17 @@ export function BankReconciliationEnhanced({
                 ) : linkJournalEntry ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select a journal entry to link to this bank transaction (matching amount, +/-7 days).</p>
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                     <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
-                      {availableJournals.length === 0 ? (
+                      {visiblePickerCandidates(availableJournals).length === 0 ? (
                         <div className="p-3 text-center text-gray-500 text-sm">No matching journal entries found</div>
                       ) : (
-                        availableJournals.map(j => (
+                        visiblePickerCandidates(availableJournals).map(j => (
                           <button
                             key={j.id}
                             onClick={() => handleLinkJournalEntry(recordingLine, j.id)}
-                            className="w-full p-2 text-left hover:bg-blue-50 text-sm flex justify-between items-center"
+                            disabled={j._linked}
+                            className="w-full p-2 text-left hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex justify-between items-center"
                           >
                             <div>
                               <span className="font-mono font-medium text-blue-600">{j.entry_number}</span>
@@ -3370,6 +3482,7 @@ export function BankReconciliationEnhanced({
                               </span>
                               <div className="text-xs text-gray-500 mt-0.5">{j.description}</div>
                               <div className="text-xs text-gray-400">{new Date(j.entry_date).toLocaleDateString('id-ID')}</div>
+                              {j._linked && <div className="text-xs text-amber-700">Already linked</div>}
                             </div>
                             <span className="font-medium text-green-600">
                               {formatCurrency(j.total_debit || j.total_credit, recordingLine.currency)}
@@ -3381,24 +3494,27 @@ export function BankReconciliationEnhanced({
                   </div>
                 ) : linkToSupplierPayment ? (
                   <div className="space-y-3">
-                    <p className="text-xs text-gray-500">Select a supplier payment voucher to link to this bank debit (showing payments within ±10 days with similar amounts).</p>
+                    <p className="text-xs text-gray-500">Select a supplier payment voucher to link to this bank debit.</p>
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                     {loadingSupplierPayments ? (
                       <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-orange-600" /></div>
                     ) : (
                       <div className="max-h-56 overflow-y-auto border rounded-lg divide-y">
-                        {supplierPayments.length === 0 ? (
+                        {visiblePickerCandidates(supplierPayments).length === 0 ? (
                           <div className="p-3 text-center text-gray-500 text-sm">No matching supplier payments found</div>
                         ) : (
-                          supplierPayments.map((pv: any) => (
+                          visiblePickerCandidates(supplierPayments).map((pv: any) => (
                             <button
                               key={pv.id}
                               onClick={() => handleLinkSupplierPayment(recordingLine, pv.id)}
-                              className="w-full p-3 text-left hover:bg-orange-50 text-sm flex justify-between items-center"
+                              disabled={pv._linked}
+                              className="w-full p-3 text-left hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex justify-between items-center"
                             >
                               <div>
                                 <span className="font-mono font-medium text-orange-700">{pv.voucher_number}</span>
                                 <div className="text-xs text-gray-500 mt-0.5">{pv.suppliers?.company_name || pv.finance_staff_master?.full_name}</div>
                                 <div className="text-xs text-gray-400">{new Date(pv.voucher_date).toLocaleDateString('id-ID')}</div>
+                                {pv._linked && <div className="text-xs text-amber-700">Already linked</div>}
                               </div>
                               <div className="text-right">
                                 <div className="font-medium text-red-600">{formatCurrency(pv.bank_amount && Number(pv.bank_amount) > 0 ? pv.bank_amount : pv.net_amount, recordingLine.currency)}</div>
@@ -3414,21 +3530,24 @@ export function BankReconciliationEnhanced({
                 ) : linkToTaxPayment ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select a posted tax payment to link to this bank debit (matching bank account, amount within Rp 1, within ±7 days).</p>
-                    {availableTaxPayments.length === 0 ? (
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
+                    {visiblePickerCandidates(availableTaxPayments).length === 0 ? (
                       <div className="p-3 text-center text-gray-500 text-sm border rounded-lg">No matching tax payments found</div>
                     ) : (
                       <div className="max-h-56 overflow-y-auto border rounded-lg divide-y">
-                        {availableTaxPayments.map((tp: any) => (
+                        {visiblePickerCandidates(availableTaxPayments).map((tp: any) => (
                           <button
                             key={tp.id}
                             onClick={() => handleLinkToTaxPayment(recordingLine, tp)}
-                            className="w-full p-3 text-left hover:bg-purple-50 text-sm flex justify-between items-center"
+                            disabled={tp._linked}
+                            className="w-full p-3 text-left hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex justify-between items-center"
                           >
                             <div>
                               <span className="font-medium text-purple-700">{tp.tax_type}</span>
                               {tp.billing_code && <span className="text-xs ml-2 text-gray-500 font-mono">{tp.billing_code}</span>}
                               <div className="text-xs text-gray-400">{new Date(tp.payment_date).toLocaleDateString('id-ID')}</div>
                               {tp.ntpn && <div className="text-xs text-gray-400 font-mono">NTPN: {tp.ntpn}</div>}
+                              {tp._linked && <div className="text-xs text-amber-700">Already linked</div>}
                             </div>
                             <div className="text-right">
                               <div className="font-medium text-red-600">{formatCurrency(tp.amount, 'IDR')}</div>
@@ -3533,16 +3652,17 @@ export function BankReconciliationEnhanced({
                   >
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Select Expense *</label>
+                      <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                       <select
                         name="expense_id"
                         required
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
-                        disabled={expenses.length === 0}
+                        disabled={visibleExpenseCandidates(expenses).length === 0}
                       >
                         <option value="">
-                          {expenses.length === 0 ? 'No expenses found' : 'Choose an expense...'}
+                          {visibleExpenseCandidates(expenses).length === 0 ? 'No available expenses found' : 'Choose an expense...'}
                         </option>
-                        {expenses.map(expense => {
+                        {visibleExpenseCandidates(expenses).map(expense => {
                           // Format date as DD/MM/YY
                           const date = new Date(expense.expense_date);
                           const dd = String(date.getDate()).padStart(2, '0');
@@ -3551,16 +3671,17 @@ export function BankReconciliationEnhanced({
                           const formattedDate = `${dd}/${mm}/${yy}`;
 
                           return (
-                            <option key={expense.id} value={expense.id}>
+                            <option key={expense.id} value={expense.id} disabled={!expenseCanAcceptLink(expense)}>
                               {formattedDate} - {expense.voucher_number ? `[${expense.voucher_number}] ` : ''}
                               {expense.description} -
                               {formatCurrency(calculateCanonicalCashPayable(expense), recordingLine.currency)}
+                              {!expenseCanAcceptLink(expense) ? ' (already settled)' : ''}
                             </option>
                           );
                         })}
                       </select>
                       <p className="text-xs text-gray-500 mt-1">
-                        Showing {expenses.length} expense{expenses.length !== 1 ? 's' : ''}. Match by voucher number or amount.
+                        Showing {visibleExpenseCandidates(expenses).length} available expense{visibleExpenseCandidates(expenses).length !== 1 ? 's' : ''}. Match by voucher number or amount.
                       </p>
                     </div>
                     <div>
@@ -3635,20 +3756,23 @@ export function BankReconciliationEnhanced({
                 {linkExistingReceipt ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select an existing receipt voucher to link to this bank statement line.</p>
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                     <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
-                      {existingReceipts.length === 0 ? (
+                      {visiblePickerCandidates(existingReceipts).length === 0 ? (
                         <div className="p-3 text-center text-gray-500 text-sm">No receipt vouchers found</div>
                       ) : (
-                        existingReceipts.map(r => (
+                        visiblePickerCandidates(existingReceipts).map(r => (
                           <button
                             key={r.id}
                             onClick={() => handleLinkExistingReceipt(recordingLine, r.id)}
-                            className="w-full p-2 text-left hover:bg-blue-50 text-sm flex justify-between items-center"
+                            disabled={r._linked}
+                            className="w-full p-2 text-left hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex justify-between items-center"
                           >
                             <div>
                               <span className="font-mono font-medium">{r.voucher_number}</span>
                               <span className="text-gray-500 ml-2">{r.customers?.company_name}</span>
                               <div className="text-xs text-gray-400">{new Date(r.voucher_date).toLocaleDateString('id-ID')}</div>
+                              {r._linked && <div className="text-xs text-amber-700">Already linked</div>}
                             </div>
                             <span className="font-medium text-green-600">
                               {formatCurrency(r.amount, recordingLine.currency)}
@@ -3661,15 +3785,17 @@ export function BankReconciliationEnhanced({
                 ) : linkJournalEntry ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select a journal entry to link to this bank transaction (matching amount, +/-7 days).</p>
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                     <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
-                      {availableJournals.length === 0 ? (
+                      {visiblePickerCandidates(availableJournals).length === 0 ? (
                         <div className="p-3 text-center text-gray-500 text-sm">No matching journal entries found</div>
                       ) : (
-                        availableJournals.map(j => (
+                        visiblePickerCandidates(availableJournals).map(j => (
                           <button
                             key={j.id}
                             onClick={() => handleLinkJournalEntry(recordingLine, j.id)}
-                            className="w-full p-2 text-left hover:bg-blue-50 text-sm flex justify-between items-center"
+                            disabled={j._linked}
+                            className="w-full p-2 text-left hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex justify-between items-center"
                           >
                             <div>
                               <span className="font-mono font-medium text-blue-600">{j.entry_number}</span>
@@ -3678,6 +3804,7 @@ export function BankReconciliationEnhanced({
                               </span>
                               <div className="text-xs text-gray-500 mt-0.5">{j.description}</div>
                               <div className="text-xs text-gray-400">{new Date(j.entry_date).toLocaleDateString('id-ID')}</div>
+                              {j._linked && <div className="text-xs text-amber-700">Already linked</div>}
                             </div>
                             <span className="font-medium text-green-600">
                               {formatCurrency(j.total_debit || j.total_credit, recordingLine.currency)}

@@ -18,6 +18,7 @@ export interface BankTransactionLine {
   matched_petty_cash_id?: string | null;
   matched_fund_transfer_id?: string | null;
   matched_tax_payment_id?: string | null;
+  isLinked?: boolean;
   bank_accounts?: {
     bank_name: string;
     account_name?: string | null;
@@ -33,6 +34,7 @@ interface LoadUnmatchedDebitOptions {
   currentExpenseId?: string | null;
   currentJournalEntryId?: string | null;
   currentPettyCashId?: string | null;
+  includeLinked?: boolean;
 }
 
 interface LinkBankTransactionOptions {
@@ -74,6 +76,7 @@ export async function loadUnmatchedDebitBankTransactions({
   currentExpenseId,
   currentJournalEntryId,
   currentPettyCashId,
+  includeLinked = false,
 }: LoadUnmatchedDebitOptions): Promise<BankTransactionLine[]> {
   let query = supabase
     .from('bank_statement_lines')
@@ -102,9 +105,12 @@ export async function loadUnmatchedDebitBankTransactions({
 
   if (error) throw error;
 
-  return ((data || []) as unknown as BankTransactionLine[]).filter((line) =>
-    isAvailableTransaction(line, currentExpenseId, currentJournalEntryId, currentPettyCashId)
-  );
+  return ((data || []) as unknown as BankTransactionLine[])
+    .map((line) => ({
+      ...line,
+      isLinked: !isAvailableTransaction(line, currentExpenseId, currentJournalEntryId, currentPettyCashId),
+    }))
+    .filter((line) => includeLinked || !line.isLinked);
 }
 
 export async function linkBankTransaction({
