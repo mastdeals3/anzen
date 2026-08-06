@@ -117,6 +117,11 @@ BEGIN
      AND reconciliation_status='matched';
   IF NOT FOUND THEN RAISE EXCEPTION 'Corrected Broker Expense bank link failed'; END IF;
   PERFORM public.unmatch_bank_line(v_line);
+  PERFORM 1 FROM public.bank_statement_lines
+   WHERE id=v_line AND matched_expense_id IS NULL AND matched_entry_id IS NULL
+     AND reconciliation_status='unmatched' AND matching_status='none'
+     AND manually_unlinked=true;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Broker Expense bank unlink did not persist as unmatched'; END IF;
   PERFORM public.link_bank_statement_line(v_line,'expense',v_expense,'supplier');
   SELECT count(*) INTO v_count FROM public.journal_entries
    WHERE source_module='expenses' AND reference_id=v_expense

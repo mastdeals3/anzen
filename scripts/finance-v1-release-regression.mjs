@@ -169,6 +169,17 @@ BEGIN
   -- historical journal currency rewrite.
   IF EXISTS (SELECT 1 FROM public.bank_statement_lines WHERE id = v_line) THEN
     PERFORM public.unmatch_bank_line(v_line);
+    PERFORM 1
+      FROM public.bank_statement_lines
+     WHERE id = v_line
+       AND matched_expense_id IS NULL
+       AND matched_entry_id IS NULL
+       AND reconciliation_status = 'unmatched'
+       AND matching_status = 'none'
+       AND manually_unlinked = true;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Expense bank unlink was immediately rematched or left stale reconciliation metadata';
+    END IF;
     SELECT paid_amount INTO v_paid FROM public.finance_expenses WHERE id = v_expense;
     IF COALESCE(v_paid, 0) <> 0 THEN
       RAISE EXCEPTION 'Expense paid amount remained % after bank unlink', v_paid;

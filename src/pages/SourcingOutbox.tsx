@@ -407,21 +407,6 @@ export function SourcingOutbox() {
     }
   }, [previewOpen]);
 
-  // Auto-populate China TO from saved defaults when preview opens
-  useEffect(() => {
-    if (previewOpen && groups.china.length > 0 && routeRecipients.china.to.length === 0) {
-      const defaults = routeRecipients.china;
-      const defaultTo = [defaults.default_to, defaults.to].flat().filter(Boolean);
-      const defaultCc = [defaults.default_cc, defaults.cc].flat().filter(Boolean);
-      if (defaultTo.length > 0) {
-        setRouteRecipients(prev => ({
-          ...prev,
-          china: { ...prev.china, to: defaultTo, cc: defaultCc.length > 0 ? defaultCc : prev.china.cc },
-        }));
-      }
-    }
-  }, [previewOpen, groups.china.length, routeRecipients.china]);
-
   const load = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase

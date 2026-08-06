@@ -351,9 +351,42 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
     }
 
     // Check if editing an approved/reserved order
-    const wasApproved = existingOrder && ['approved', 'stock_reserved', 'shortage', 'pending_approval'].includes(existingOrder.status);
+    const wasApproved = existingOrder && [
+      'approved',
+      'stock_reserved',
+      'shortage',
+      'pending_approval',
+      'pending_delivery',
+      'partially_delivered',
+    ].includes(existingOrder.status);
 
     if (wasApproved && existingOrder) {
+      // Replacing SO lines deletes their stock_reservations through the
+      // sales_order_item FK. Keep an already prepared DC and its canonical FEFO
+      // reservation together; the DC must be rejected/cancelled before the SO
+      // can be edited and submitted through approval again.
+      const { data: activeChallan, error: challanError } = await supabase
+        .from('delivery_challans')
+        .select('challan_number')
+        .eq('sales_order_id', existingOrder.id)
+        .in('approval_status', ['pending_approval', 'approved'])
+        .limit(1)
+        .maybeSingle();
+
+      if (challanError) {
+        showToast({ type: 'error', title: 'Error', message: `Unable to verify linked Delivery Challans: ${challanError.message}` });
+        return;
+      }
+
+      if (activeChallan) {
+        showToast({
+          type: 'error',
+          title: 'Sales order cannot be edited',
+          message: `Delivery Challan ${activeChallan.challan_number} is still pending or approved. Reject or cancel it before editing this order so its FEFO reservation is retained.`,
+        });
+        return;
+      }
+
       const confirmed = await showConfirm({
         title: 'Confirm',
         message: 'Warning: This order has been approved or is awaiting approval.\n\nEditing will:\n- Release existing stock reservations\n- Require re-approval from admin\n- Reset status to "Pending Approval"\n\nDo you want to continue?',

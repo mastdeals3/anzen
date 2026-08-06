@@ -59,6 +59,11 @@ const requiredSourceContracts = [
     message: 'Sales Order approval is not routed through the canonical approval RPC',
   },
   {
+    file: 'src/components/SalesOrderForm.tsx',
+    pattern: /\.from\(['"]delivery_challans['"]\)[\s\S]{0,300}\.in\(['"]approval_status['"],\s*\[['"]pending_approval['"],\s*['"]approved['"]\]\)/,
+    message: 'Sales Order editing does not guard FEFO reservations owned by active Delivery Challans',
+  },
+  {
     file: 'src/pages/Inventory.tsx',
     pattern: /p_transaction_type:\s*['"]adjustment['"]/,
     message: 'Manual stock entry is not adjustment-only',
