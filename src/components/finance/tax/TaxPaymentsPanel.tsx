@@ -70,6 +70,7 @@ export function TaxPaymentsPanel() {
   const [bslCandidates, setBslCandidates] = useState<any[]>([]);
   const [bslPickerLoading, setBslPickerLoading] = useState(false);
   const [bslLinking, setBslLinking] = useState(false);
+  const [hideLinkedBslCandidates, setHideLinkedBslCandidates] = useState(true);
 
   const emptyForm = {
     tax_period_id: '',
@@ -272,7 +273,7 @@ export function TaxPaymentsPanel() {
     }
   }
 
-  async function openBslPicker(p: Payment) {
+  async function loadBslCandidates(p: Payment, hideLinked = hideLinkedBslCandidates) {
     setBslPickerPayment(p);
     setBslCandidates([]);
     setBslPickerLoading(true);
@@ -285,14 +286,7 @@ export function TaxPaymentsPanel() {
       // proximity to the payment_date, and rank exact-amount matches first.
       let q = supabase
         .from('bank_statement_lines')
-        .select('id, transaction_date, description, debit_amount, bank_account_id')
-        .is('matched_tax_payment_id', null)
-        .is('matched_expense_id', null)
-        .is('matched_receipt_id', null)
-        .is('matched_petty_cash_id', null)
-        .is('matched_fund_transfer_id', null)
-        .is('matched_entry_id', null)
-        .eq('reconciliation_status', 'unmatched')
+        .select('id, transaction_date, description, debit_amount, bank_account_id, reconciliation_status, matched_tax_payment_id, matched_expense_id, matched_receipt_id, matched_payment_id, matched_petty_cash_id, matched_fund_transfer_id, matched_entry_id')
         .gt('debit_amount', 0)
         .order('transaction_date', { ascending: false })
         .limit(200);
@@ -304,6 +298,11 @@ export function TaxPaymentsPanel() {
       const payDate = new Date(p.payment_date).getTime();
       const scored = (data ?? []).map((b: any) => ({
         row: b,
+        linked: Boolean(
+          b.matched_tax_payment_id || b.matched_expense_id || b.matched_receipt_id
+          || b.matched_payment_id || b.matched_petty_cash_id || b.matched_fund_transfer_id
+          || b.matched_entry_id || b.reconciliation_status !== 'unmatched',
+        ),
         amountDiff: Math.abs(Number(b.debit_amount) - amount),
         dateDiff: Math.abs(new Date(b.transaction_date).getTime() - payDate),
       }));
@@ -315,12 +314,20 @@ export function TaxPaymentsPanel() {
         if (a.dateDiff !== b.dateDiff) return a.dateDiff - b.dateDiff;
         return a.amountDiff - b.amountDiff;
       });
-      setBslCandidates(scored.slice(0, 50).map(s => s.row));
+      setBslCandidates(scored
+        .filter((candidate) => !hideLinked || !candidate.linked)
+        .slice(0, 50)
+        .map((candidate) => ({ ...candidate.row, _linked: candidate.linked })));
     } catch (err) {
       console.error('Error fetching BSL candidates:', err);
     } finally {
       setBslPickerLoading(false);
     }
+  }
+
+  async function openBslPicker(p: Payment) {
+    setHideLinkedBslCandidates(true);
+    await loadBslCandidates(p, true);
   }
 
   async function linkBsl(bslId: string) {
@@ -669,6 +676,19 @@ export function TaxPaymentsPanel() {
                 <> · <span className="text-gray-600">{bankLabel(bankById.get(bslPickerPayment.bank_account_id)!)}</span></>
               )}
             </p>
+            <label className="mb-3 inline-flex items-center gap-1.5 text-xs text-gray-600 select-none">
+              <input
+                type="checkbox"
+                checked={hideLinkedBslCandidates}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  setHideLinkedBslCandidates(next);
+                  if (bslPickerPayment) void loadBslCandidates(bslPickerPayment, next);
+                }}
+                className="accent-purple-600"
+              />
+              Hide already linked
+            </label>
             {bslPickerLoading ? (
               <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600" /></div>
             ) : bslCandidates.length === 0 ? (
@@ -677,6 +697,7 @@ export function TaxPaymentsPanel() {
                 <div className="mt-2 text-xs text-gray-400">Import the bank statement first, then return here to link.</div>
               </div>
             ) : (
+              <>
               <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg divide-y">
                 {bslCandidates.map((b: any) => {
                   const exact = Math.abs(Number(b.debit_amount) - Number(bslPickerPayment.amount)) < 1;
@@ -684,14 +705,15 @@ export function TaxPaymentsPanel() {
                     <button
                       key={b.id}
                       onClick={() => void linkBsl(b.id)}
-                      disabled={bslLinking}
-                      className={`w-full p-3 text-left hover:bg-purple-50 disabled:opacity-50 text-sm flex justify-between items-center ${exact ? 'bg-emerald-50/50' : ''}`}
+                      disabled={bslLinking || b._linked}
+                      className={`w-full p-3 text-left hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex justify-between items-center ${exact ? 'bg-emerald-50/50' : ''}`}
                     >
                       <div>
                         <div className="font-medium text-gray-800">{b.description}</div>
                         <div className="text-xs text-gray-400">
                           {new Date(b.transaction_date).toLocaleDateString('id-ID')}
                           {exact ? <span className="ml-2 text-emerald-700 font-medium">Exact amount</span> : null}
+                          {b._linked ? <span className="ml-2 text-amber-700 font-medium">Already linked</span> : null}
                         </div>
                       </div>
                       <div className="font-medium text-red-600 text-sm">
@@ -701,6 +723,7 @@ export function TaxPaymentsPanel() {
                   );
                 })}
               </div>
+              </>
             )}
             <div className="mt-4 flex justify-end">
               <button onClick={() => setBslPickerPayment(null)} className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50">
