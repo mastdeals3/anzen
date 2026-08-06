@@ -1855,13 +1855,26 @@ export function SourcingOutbox() {
                             </button>
                           )}
                         </div>
-                        <textarea
-                          value={bodyOverride[route] ?? previewBodies[route] ?? ''}
-                          onChange={e => setBodyOverride(prev => ({ ...prev, [route]: e.target.value }))}
-                          placeholder="No sendable rows selected for this route."
-                          rows={10}
-                          className="w-full p-3 text-[11px] whitespace-pre-wrap font-sans text-gray-700 border-0 focus:outline-none focus:ring-0 resize-y min-h-[180px]"
-                        />
+                        {route === 'india' ? (
+                          <div className="relative">
+                            {(previewBodies[route] || bodyOverride[route]) ? (
+                              <div
+                                className="w-full p-3 overflow-x-auto min-h-[180px] text-[12px]"
+                                dangerouslySetInnerHTML={{ __html: bodyOverride[route] ?? previewBodies[route] ?? '' }}
+                              />
+                            ) : (
+                              <div className="w-full p-3 text-[11px] text-gray-400 min-h-[180px]">No sendable rows selected for this route.</div>
+                            )}
+                          </div>
+                        ) : (
+                          <textarea
+                            value={bodyOverride[route] ?? previewBodies[route] ?? ''}
+                            onChange={e => setBodyOverride(prev => ({ ...prev, [route]: e.target.value }))}
+                            placeholder="No sendable rows selected for this route."
+                            rows={10}
+                            className="w-full p-3 text-[11px] whitespace-pre-wrap font-sans text-gray-700 border-0 focus:outline-none focus:ring-0 resize-y min-h-[180px]"
+                          />
+                        )}
                         {aiNotes[route] && (
                           <p className="px-3 pb-2 text-[10px] text-purple-700 bg-purple-50 border-t border-purple-100">{aiNotes[route]}</p>
                         )}
