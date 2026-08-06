@@ -2436,6 +2436,24 @@ export function BankReconciliationEnhanced({
 
       if (error) throw error;
 
+      // Propagate amount change to linked document and re-post journal entries
+      const newAmount = Number(editFormData.debit) || Number(editFormData.credit) || 0;
+      const hasLink = editingLine.matchedExpenseId || editingLine.matchedReceiptId
+        || editingLine.matchedPaymentId || editingLine.matchedFundTransferId
+        || editingLine.matchedPettyCashId || editingLine.matchedTaxPaymentId
+        || editingLine.matchedEntry;
+      if (hasLink && newAmount > 0) {
+        const { data: propResult, error: propError } = await supabase
+          .rpc('propagate_bank_line_amount_edit', {
+            p_line_id: editingLine.id,
+            p_new_amount: newAmount,
+          });
+        if (propError) {
+          console.error('Propagation error:', propError);
+          alert('⚠️ Bank line updated, but linked document sync failed: ' + propError.message);
+        }
+      }
+
       // Update in local state
       setStatementLines(prev => prev.map(line =>
         line.id === editingLine.id ? {
@@ -2449,6 +2467,8 @@ export function BankReconciliationEnhanced({
       setEditModal(false);
       setEditingLine(null);
       alert('✅ Bank statement line updated successfully');
+      // Reload to reflect journal changes
+      loadStatementLines();
     } catch (error: any) {
       console.error('Error updating line:', error);
       alert('❌ ' + error.message);
