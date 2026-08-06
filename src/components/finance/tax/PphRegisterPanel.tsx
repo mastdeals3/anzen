@@ -49,6 +49,7 @@ interface SourceLine {
   journal_status: string | null;
   tax_type: string;
   source_status: string;
+  is_official: boolean;
 }
 
 function fmt(n: number) {
@@ -79,7 +80,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       .gt('pph_amount', 0),
     supabase
       .from('payment_vouchers')
-      .select('id, voucher_number, voucher_date, pph_amount, description, status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
+      .select('id, voucher_number, voucher_date, pph_amount, description, status, is_posted, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
       .gte('voucher_date', startDate)
       .lte('voucher_date', endDate)
       .gt('pph_amount', 0),
@@ -140,7 +141,8 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       pph_code: r.pph_code?.code ?? null,
       pph_amount: Number(r.pph_amount),
       tax_type: r.pph_code?.tax_type ?? pphType,
-      source_status: r.approval_status === 'approved' ? 'Posted' : 'Pending Approval',
+      source_status: r.approval_status === 'approved' ? 'Approved' : 'Pending Approval',
+      is_official: r.approval_status === 'approved',
       payment_method: r.payment_method,
       recon_status: null,
       ...journalFields(r.id),
@@ -161,7 +163,8 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       pph_code: r.pph_code?.code ?? null,
       pph_amount: Number(r.pph_amount),
       tax_type: r.pph_code?.tax_type ?? pphType,
-      source_status: r.status === 'posted' || r.status === 'reconciled' ? 'Posted' : r.status ?? 'Draft',
+      source_status: r.is_posted ? 'Posted' : r.status ?? 'Draft',
+      is_official: Boolean(r.is_posted),
       payment_method: null,
       recon_status: null,
       ...journalFields(r.id),
@@ -187,7 +190,8 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
           pph_code: 'PPh22 Import',
           pph_amount: amt,
           tax_type: 'PPh22',
-          source_status: r.approval_status === 'approved' ? 'Posted' : 'Pending Approval',
+          source_status: r.approval_status === 'approved' ? 'Approved' : 'Pending Approval',
+          is_official: r.approval_status === 'approved',
           payment_method: null,
           recon_status: null,
           ...journalFields(r.id),
@@ -324,7 +328,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
         <SectionCard>
           <EmptyState
             title={`No ${active} periods in the selected date range`}
-            hint="PPh periods are created automatically once expenses, vouchers, or imports with PPh are posted. Try widening the date range."
+            hint="PPh periods are created automatically once expenses, vouchers, or imports with PPh are approved. Try widening the date range."
           />
         </SectionCard>
       ) : (
@@ -351,8 +355,9 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                   paidAmount: r.pph_paid_total,
                   outstandingAmount: r.pph_outstanding,
                 });
-                const officialDetail = isOpen && detail ? detail.filter(line => line.journal_id) : [];
-                const pendingDetail = isOpen && detail ? detail.filter(line => !line.journal_id) : [];
+                const officialDetail = isOpen && detail ? detail.filter(line => line.is_official) : [];
+                const pendingDetail = isOpen && detail ? detail.filter(line => !line.is_official) : [];
+                const missingJournalDetail = officialDetail.filter(line => !line.journal_id);
                 const detailTotal = officialDetail.reduce((sum, line) => sum + line.pph_amount, 0);
                 const traceDifference = detailTotal - Number(r.pph_total || 0);
                 return (
@@ -386,9 +391,14 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                           {detailLoading ? (
                             <p className="text-xs text-gray-500">Loading source documents…</p>
                           ) : officialDetail.length === 0 && Number(r.pph_total || 0) > 0 ? (
-                            <p className="text-xs font-medium text-red-700">Audit trace error: this official Register amount has no posted source journal. Filing and payment should remain blocked until the lifecycle event is corrected.</p>
+                            <p className="text-xs font-medium text-red-700">Audit trace mismatch: this Register amount has no approved source document. Review the source-document lifecycle.</p>
                           ) : officialDetail.length > 0 ? (
                             <>
+                            {missingJournalDetail.length > 0 && (
+                              <div className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                                Accounting warning: {missingJournalDetail.length} approved source document{missingJournalDetail.length === 1 ? '' : 's'} {missingJournalDetail.length === 1 ? 'has' : 'have'} no active posted journal. The withholding remains in the official Register; open the document to correct its journal lifecycle.
+                              </div>
+                            )}
                             {Math.abs(traceDifference) > 0.01 && (
                               <p className="mb-2 text-xs font-medium text-red-700">
                                 Audit trace mismatch: source documents total Rp {fmt(detailTotal)}, Register total Rp {fmt(r.pph_total)}.
@@ -469,7 +479,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                             <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3">
                               <h5 className="text-xs font-semibold text-amber-900">Pending Approval / Not Posted</h5>
                               <p className="mb-2 text-[11px] text-amber-800">
-                                These transactions are not yet posted and are excluded from accounting totals until approval.
+                                These transactions are not approved and are excluded from the official Register until approval.
                               </p>
                               <table className="w-full text-xs border-collapse bg-white">
                                 <thead>

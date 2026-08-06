@@ -55,6 +55,69 @@ BEGIN
      GROUP BY source_module,reference_id HAVING count(*)>1
   ) duplicates;
   IF v_count<>0 THEN RAISE EXCEPTION '% source documents have duplicate active journals',v_count; END IF;
+
+  -- The statutory PPh Register is sourced from approved documents. Journals
+  -- remain an audit trail and must not gate or manufacture withholding.
+  IF pg_get_functiondef('public.compute_period_ppn(uuid)'::regprocedure) LIKE '%journal_entries%'
+     OR pg_get_functiondef('public.compute_period_ppn(uuid)'::regprocedure) NOT LIKE '%approval_status = ''approved''%'
+     OR pg_get_functiondef('public.compute_period_ppn(uuid)'::regprocedure) NOT LIKE '%pv.is_posted%'
+  THEN RAISE EXCEPTION 'PPh Register is not sourced exclusively from approved source documents'; END IF;
+
+  WITH source AS (
+    SELECT EXTRACT(YEAR FROM fe.expense_date)::int fiscal_year,
+           EXTRACT(MONTH FROM fe.expense_date)::int period_month,
+           tc.tax_type, fe.pph_amount amount
+      FROM public.finance_expenses fe
+      LEFT JOIN public.tax_codes tc ON tc.id=fe.pph_code_id
+     WHERE fe.approval_status='approved' AND fe.pph_amount>0
+       AND COALESCE(fe.expense_category,'') NOT IN ('pib_import','pph_import')
+    UNION ALL
+    SELECT EXTRACT(YEAR FROM pv.voucher_date)::int,
+           EXTRACT(MONTH FROM pv.voucher_date)::int,
+           tc.tax_type, pv.pph_amount
+      FROM public.payment_vouchers pv
+      LEFT JOIN public.tax_codes tc ON tc.id=pv.pph_code_id
+     WHERE COALESCE(pv.is_posted,false) AND pv.pph_amount>0
+    UNION ALL
+    SELECT EXTRACT(YEAR FROM fe.expense_date)::int,
+           EXTRACT(MONTH FROM fe.expense_date)::int,
+           'PPh22',
+           CASE WHEN fe.expense_category='pib_import' THEN fe.pib_pph_amount ELSE fe.amount END
+      FROM public.finance_expenses fe
+     WHERE fe.approval_status='approved'
+       AND fe.expense_category IN ('pib_import','pph_import')
+       AND CASE WHEN fe.expense_category='pib_import'
+         THEN COALESCE(fe.pib_pph_amount,0) ELSE COALESCE(fe.amount,0) END>0
+  ), typed AS (
+    SELECT * FROM source
+    UNION ALL
+    SELECT fiscal_year,period_month,'PPh_Unifikasi',amount FROM source
+  ), expected AS (
+    SELECT fiscal_year,period_month,tax_type,sum(amount) total
+      FROM typed GROUP BY fiscal_year,period_month,tax_type
+  )
+  SELECT count(*) INTO v_count
+    FROM public.tax_periods tp
+    LEFT JOIN expected e USING(fiscal_year,period_month,tax_type)
+   WHERE tp.tax_type<>'PPN'
+     AND tp.pph_total IS DISTINCT FROM COALESCE(e.total,0);
+  IF v_count<>0 THEN RAISE EXCEPTION '% PPh periods differ from approved source documents',v_count; END IF;
+
+  SELECT count(*) INTO v_count FROM (
+    SELECT fiscal_year,period_month,tax_type,count(*)
+      FROM public.tax_periods WHERE tax_type<>'PPN'
+     GROUP BY fiscal_year,period_month,tax_type HAVING count(*)>1
+  ) duplicate_register_rows;
+  IF v_count<>0 THEN RAISE EXCEPTION '% duplicate PPh Register period rows',v_count; END IF;
+
+  SELECT count(*) INTO v_count
+    FROM public.vw_pph_by_period_type r
+   WHERE r.pph_paid_total IS DISTINCT FROM LEAST(
+     r.pph_total,
+     public.fn_tax_payments_paid(r.tax_period_id)
+       + public.fn_settled_import_pph22(r.fiscal_year,r.period_month,r.tax_type)
+   );
+  IF v_count<>0 THEN RAISE EXCEPTION '% PPh periods have incorrect tax-payment offsets',v_count; END IF;
 END;
 $regression$;
 ROLLBACK;

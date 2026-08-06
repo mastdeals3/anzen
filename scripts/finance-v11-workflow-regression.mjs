@@ -21,6 +21,8 @@ DECLARE
   v_fx_payment uuid;
   v_supplier uuid;
   v_salary uuid;
+  v_draft_pph uuid;
+  v_pph_period uuid;
   v_saved jsonb;
   v_calc jsonb;
   v_applied jsonb;
@@ -34,6 +36,8 @@ DECLARE
   v_ppn_debit numeric;
   v_pph_credit numeric;
   v_bank_credit numeric;
+  v_pph_before numeric;
+  v_pph_after numeric;
 BEGIN
   SELECT id INTO v_staff FROM public.finance_staff_master WHERE status='active' ORDER BY created_at,id LIMIT 1;
   SELECT id INTO v_pph21 FROM public.tax_codes WHERE upper(code)='PPH21' LIMIT 1;
@@ -216,10 +220,6 @@ BEGIN
     'approval_status','pending_approval','transaction_currency','IDR','exchange_rate',1,
     'pph_amount',100000,'pph_code_id',v_pph21,'created_by',v_user,'document_urls','[]'::jsonb));
   PERFORM public.approve_finance_expense(v_salary,v_user);
-  v_applied:=public.apply_salary_advances_to_expense(v_salary,true);
-  IF (v_applied->>'total_applied')::numeric<>500000 OR (v_applied->>'remaining_salary')::numeric<>1400000 THEN
-    RAISE EXCEPTION 'Salary Advance settlement did not reconcile to net salary: %',v_applied;
-  END IF;
 
   SELECT id INTO v_je FROM public.journal_entries WHERE reference_id=v_salary
     AND source_module IN ('expense','expenses') AND is_posted=true AND COALESCE(is_reversed,false)=false
@@ -232,6 +232,56 @@ BEGIN
     (SELECT jsonb_agg(jsonb_build_object('code',coa.code,'debit',jel.debit,'credit',jel.credit,'description',jel.description))
        FROM public.journal_entry_lines jel JOIN public.chart_of_accounts coa ON coa.id=jel.account_id
       WHERE jel.journal_entry_id=v_je); END IF;
+
+  SELECT id INTO v_pph_period FROM public.tax_periods
+   WHERE fiscal_year=EXTRACT(YEAR FROM current_date)::int
+     AND period_month=EXTRACT(MONTH FROM current_date)::int
+     AND tax_type='PPh21';
+  IF v_pph_period IS NULL THEN RAISE EXCEPTION 'Current PPh21 period is missing'; END IF;
+  PERFORM public.compute_period_ppn(v_pph_period);
+  SELECT pph_total INTO v_pph_before FROM public.tax_periods WHERE id=v_pph_period;
+
+  -- A reversed/missing journal is an accounting warning, not authority to
+  -- remove an approved withholding from the statutory Register.
+  UPDATE public.journal_entries SET is_reversed=true WHERE id=v_je;
+  SELECT pph_total INTO v_pph_after FROM public.tax_periods WHERE id=v_pph_period;
+  IF v_pph_after IS DISTINCT FROM v_pph_before THEN
+    RAISE EXCEPTION 'PPh Register changed from % to % when its source journal was reversed',v_pph_before,v_pph_after;
+  END IF;
+  UPDATE public.journal_entries SET is_reversed=false WHERE id=v_je;
+
+  -- A draft with PPh never enters the Register and deleting it changes no
+  -- official liability.
+  v_draft_pph:=public.save_finance_expense(NULL,jsonb_build_object(
+    'expense_date',current_date,'expense_category','salary','expense_type','admin',
+    'amount',1000,'staff_id',v_staff,'description','Draft PPh Register regression',
+    'approval_status','pending_approval','transaction_currency','IDR','exchange_rate',1,
+    'pph_amount',50,'pph_code_id',v_pph21,'created_by',v_user,'document_urls','[]'::jsonb));
+  SELECT pph_total INTO v_pph_after FROM public.tax_periods WHERE id=v_pph_period;
+  IF v_pph_after IS DISTINCT FROM v_pph_before THEN RAISE EXCEPTION 'Draft PPh entered the Register'; END IF;
+  PERFORM public.delete_expense_safe(v_draft_pph);
+  SELECT pph_total INTO v_pph_after FROM public.tax_periods WHERE id=v_pph_period;
+  IF v_pph_after IS DISTINCT FROM v_pph_before THEN RAISE EXCEPTION 'Deleting draft PPh changed the Register'; END IF;
+
+  -- Cancellation removes source approval; reapproval restores the liability
+  -- and recreates exactly one active journal.
+  PERFORM public.cancel_expense_posting(v_salary,v_user,'PPh Register lifecycle regression');
+  SELECT pph_total INTO v_pph_after FROM public.tax_periods WHERE id=v_pph_period;
+  IF v_pph_after IS DISTINCT FROM v_pph_before-100000 THEN
+    RAISE EXCEPTION 'Cancelling approved PPh did not remove exactly 100000 from the Register';
+  END IF;
+  PERFORM public.approve_finance_expense(v_salary,v_user);
+  SELECT pph_total INTO v_pph_after FROM public.tax_periods WHERE id=v_pph_period;
+  IF v_pph_after IS DISTINCT FROM v_pph_before THEN RAISE EXCEPTION 'Reapproving PPh did not restore the Register'; END IF;
+  SELECT count(*) INTO v_count FROM public.journal_entries
+   WHERE reference_id=v_salary AND source_module IN ('expense','expenses')
+     AND is_posted=true AND COALESCE(is_reversed,false)=false;
+  IF v_count<>1 THEN RAISE EXCEPTION 'PPh reapproval produced % active journals',v_count; END IF;
+
+  v_applied:=public.apply_salary_advances_to_expense(v_salary,true);
+  IF (v_applied->>'total_applied')::numeric<>500000 OR (v_applied->>'remaining_salary')::numeric<>1400000 THEN
+    RAISE EXCEPTION 'Salary Advance settlement did not reconcile to net salary: %',v_applied;
+  END IF;
 
   SELECT count(*) INTO v_count FROM public.journal_entries je WHERE je.is_posted=true AND
     abs(COALESCE((SELECT sum(debit) FROM public.journal_entry_lines WHERE journal_entry_id=je.id),0)-
@@ -278,6 +328,7 @@ try {
     'payment_bank_link_unlink_relink_document_identity','staff_salary_master_calculation',
     'usd_21000_to_idr_356840000_cross_currency_payment',
     'salary_advance_fifo_settlement_after_pph21','salary_journal_and_withholding_liability',
+    'pph_register_approved_source_journal_reversal_cancel_reapprove_draft_delete',
     'all_posted_journals_balanced','no_stale_payment_bank_links',
     'trial_balance_pnl_balance_sheet_and_tax_reports',
     'recoverable_ppn_and_pph23_reports',
