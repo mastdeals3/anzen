@@ -247,6 +247,12 @@ interface COAAccount {
   name: string;
 }
 
+interface ExpenseExportAccount {
+  expense_id: string;
+  coa_code: string | null;
+  coa_name: string | null;
+}
+
 interface ExpenseManagerProps {
   canManage: boolean;
   initialViewExpenseId?: string | null;
@@ -1848,11 +1854,28 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     return 0;
   });
 
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
     if (filteredExpenses.length === 0) {
       alert('No expenses to export');
       return;
     }
+
+    let exportAccountRows: ExpenseExportAccount[] = [];
+    try {
+      const { data, error } = await supabase.rpc('get_expense_export_accounts', {
+        p_expense_ids: filteredExpenses.map(expense => expense.id),
+      });
+      if (error) throw error;
+      exportAccountRows = (data || []) as ExpenseExportAccount[];
+    } catch (error) {
+      console.error('Error resolving Expense export accounts:', error);
+      alert('Unable to resolve Chart of Account details. Please try again after the accounting export setup is available.');
+      return;
+    }
+
+    const exportAccounts = Object.fromEntries(
+      exportAccountRows.map(account => [account.expense_id, account]),
+    );
 
     const headers = [
       'Number',
@@ -1868,6 +1891,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       'Payment Status',
       'Recon Status',
       'Approval Status',
+      'COA Code',
+      'Chart of Account Name',
     ];
     const rows = filteredExpenses.map(exp => {
       const category = expenseCategories.find(c => c.value === exp.expense_category);
@@ -1890,6 +1915,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       // Recon status (independent of payment)
       const isReconciled = exp.bank_statement_lines && exp.bank_statement_lines.length > 0;
       const reconStatus = isReconciled ? 'Linked' : 'Unlinked';
+      const account = exportAccounts[exp.id];
       return [
         exp.voucher_number || '',
         category?.type || '',
@@ -1916,6 +1942,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         paymentStatus,
         reconStatus,
         exp.approval_status || '',
+        account?.coa_code || '',
+        account?.coa_name || '',
       ];
     });
 
