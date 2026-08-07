@@ -30,6 +30,7 @@ type CategoryRow = {
   parent_id: string | null;
   coa_account_id: string;
   sort_order: number;
+  is_posting_category: boolean;
   parent?: { name: string } | { name: string }[] | null;
   chart_of_accounts?: { code: string; name: string } | { code: string; name: string }[] | null;
 };
@@ -43,10 +44,11 @@ export function useExpenseCategories(includeInactive = false) {
   const loadCategories = useCallback(async () => {
     const query = supabase
       .from('expense_categories')
-      .select('id, category_key, name, category_type, tax_behavior, description, requires_container, allows_account_override, parent_id, coa_account_id, sort_order, parent:parent_id(name), chart_of_accounts:coa_account_id(code,name)')
+      .select('id, category_key, name, category_type, tax_behavior, description, requires_container, allows_account_override, parent_id, coa_account_id, sort_order, is_posting_category, parent:parent_id(name), chart_of_accounts:coa_account_id(code,name)')
       .order('sort_order')
       .order('name');
     if (!includeInactive) query.eq('is_active', true);
+    query.eq('is_posting_category', true);
     const { data, error } = await query;
     if (error) throw error;
     setCategories(((data || []) as CategoryRow[]).map((row) => {
