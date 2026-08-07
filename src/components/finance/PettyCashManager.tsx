@@ -97,6 +97,12 @@ interface PostingAccount {
   account_type: string;
 }
 
+interface PettyCashExportAccount {
+  transaction_id: string;
+  coa_code: string | null;
+  coa_name: string | null;
+}
+
 interface FundTransferActivityRow {
   id: string;
   transfer_number: string;
@@ -364,6 +370,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
   const [challans, setChallans] = useState<DeliveryChallan[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [postingAccounts, setPostingAccounts] = useState<PostingAccount[]>([]);
+  const [exportAccounts, setExportAccounts] = useState<Record<string, PettyCashExportAccount>>({});
   const [selectedBankTransaction, setSelectedBankTransaction] = useState<BankTransactionLine | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -496,6 +503,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       if (bankRes.error) throw bankRes.error;
       if (accountsRes.error) throw accountsRes.error;
 
+      const pettyCashTransactions = (txRes.data || []) as PettyCashTransaction[];
+      const transactionIds = pettyCashTransactions.map(transaction => transaction.id);
+      const exportAccountsRes = transactionIds.length > 0
+        ? await supabase.rpc('get_petty_cash_export_accounts', { p_transaction_ids: transactionIds })
+        : { data: [], error: null };
+      if (exportAccountsRes.error) throw exportAccountsRes.error;
+
       const fundTransferActivity: PettyCashTransaction[] = ((transfersRes.data || []) as FundTransferActivityRow[]).map((transfer) => {
         const isInflow = transfer.to_account_type === 'petty_cash';
         const approvalStatus: PettyCashTransaction['approval_status'] =
@@ -542,7 +556,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       if (balanceRes.error) throw balanceRes.error;
       const balance = Number(balanceRes.data || 0);
 
-      setTransactions([...(txRes.data || []), ...fundTransferActivity] as PettyCashTransaction[]);
+      setTransactions([...pettyCashTransactions, ...fundTransferActivity] as PettyCashTransaction[]);
       setCashBalance(balance);
       setContainers(containersRes.data || []);
       setChallans((challansRes.data || []).map((challan) => ({
@@ -551,6 +565,9 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       })) as DeliveryChallan[]);
       setBankAccounts(bankRes.data || []);
       setPostingAccounts(accountsRes.data || []);
+      setExportAccounts(Object.fromEntries(
+        ((exportAccountsRes.data || []) as PettyCashExportAccount[]).map(account => [account.transaction_id, account]),
+      ));
     } catch (error: any) {
       console.error('Error loading petty cash data:', error);
       showToast({ type: 'error', title: 'Error', message: 'Failed to load petty cash data: ' + error.message });
@@ -1105,9 +1122,10 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       return;
     }
 
-    const headers = ['Date', 'Number', 'Type', 'Category', 'Description', 'Source / Destination', 'Currency', 'Amount', 'Paid To'];
+    const headers = ['Date', 'Number', 'Type', 'Category', 'Description', 'Source / Destination', 'Currency', 'Amount', 'Paid To', 'COA Code', 'Chart of Account Name'];
     const rows = filteredTransactions.map(tx => {
       const category = tx.expense_category ? getCategoryInfo(tx.expense_category) : null;
+      const account = exportAccounts[tx.id];
       const amountSign = tx.transaction_type === 'withdraw' ? '+' : '-';
       return [
         tx.transaction_date,
@@ -1120,7 +1138,9 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
         tx.source || '',
         'IDR',
         `${amountSign} ${formatCurrency(tx.amount, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-        tx.paid_to || ''
+        tx.paid_to || '',
+        account?.coa_code || '',
+        account?.coa_name || ''
       ];
     });
 
