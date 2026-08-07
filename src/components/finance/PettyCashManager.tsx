@@ -370,7 +370,6 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
   const [challans, setChallans] = useState<DeliveryChallan[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [postingAccounts, setPostingAccounts] = useState<PostingAccount[]>([]);
-  const [exportAccounts, setExportAccounts] = useState<Record<string, PettyCashExportAccount>>({});
   const [selectedBankTransaction, setSelectedBankTransaction] = useState<BankTransactionLine | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -504,11 +503,6 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       if (accountsRes.error) throw accountsRes.error;
 
       const pettyCashTransactions = (txRes.data || []) as PettyCashTransaction[];
-      const transactionIds = pettyCashTransactions.map(transaction => transaction.id);
-      const exportAccountsRes = transactionIds.length > 0
-        ? await supabase.rpc('get_petty_cash_export_accounts', { p_transaction_ids: transactionIds })
-        : { data: [], error: null };
-      if (exportAccountsRes.error) throw exportAccountsRes.error;
 
       const fundTransferActivity: PettyCashTransaction[] = ((transfersRes.data || []) as FundTransferActivityRow[]).map((transfer) => {
         const isInflow = transfer.to_account_type === 'petty_cash';
@@ -565,9 +559,6 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
       })) as DeliveryChallan[]);
       setBankAccounts(bankRes.data || []);
       setPostingAccounts(accountsRes.data || []);
-      setExportAccounts(Object.fromEntries(
-        ((exportAccountsRes.data || []) as PettyCashExportAccount[]).map(account => [account.transaction_id, account]),
-      ));
     } catch (error: any) {
       console.error('Error loading petty cash data:', error);
       showToast({ type: 'error', title: 'Error', message: 'Failed to load petty cash data: ' + error.message });
@@ -1116,12 +1107,35 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     }
   };
 
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
     if (filteredTransactions.length === 0) {
       showToast({ type: 'info', title: 'Notice', message: 'No transactions to export' });
       return;
     }
 
+    const pettyCashTransactionIds = filteredTransactions
+      .filter(transaction => !transaction.fund_transfer_id)
+      .map(transaction => transaction.id);
+    let exportAccountRows: PettyCashExportAccount[] = [];
+    try {
+      const exportAccountsRes = pettyCashTransactionIds.length > 0
+        ? await supabase.rpc('get_petty_cash_export_accounts', { p_transaction_ids: pettyCashTransactionIds })
+        : { data: [], error: null };
+      if (exportAccountsRes.error) throw exportAccountsRes.error;
+      exportAccountRows = (exportAccountsRes.data || []) as PettyCashExportAccount[];
+    } catch (error) {
+      console.error('Error resolving Petty Cash export accounts:', error);
+      showToast({
+        type: 'error',
+        title: 'Export failed',
+        message: 'Unable to resolve Chart of Account details. Please try again after the accounting export setup is available.',
+      });
+      return;
+    }
+
+    const exportAccounts = Object.fromEntries(
+      exportAccountRows.map(account => [account.transaction_id, account]),
+    );
     const headers = ['Date', 'Number', 'Type', 'Category', 'Description', 'Source / Destination', 'Currency', 'Amount', 'Paid To', 'COA Code', 'Chart of Account Name'];
     const rows = filteredTransactions.map(tx => {
       const category = tx.expense_category ? getCategoryInfo(tx.expense_category) : null;
