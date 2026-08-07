@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Download, Trash2, Pencil, Receipt, Wallet, CheckCircle2, Clock } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { TaxAttachments } from './TaxAttachments';
-import { sanitizeExportRows } from '../../../utils/csvSafe';
+import { getPostedJournalLinesByEntryIds, writeReconciliationWorkbook, type ReconciliationSummaryRow } from '../reconciliationExport';
 import { FinanceModal as Modal } from '../FinanceModal';
 import { MoneyInput } from '../../MoneyInput';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState, paymentStatusLabel, taxPaymentBusinessStatus } from './TaxUI';
@@ -363,24 +362,50 @@ export function TaxPaymentsPanel() {
     }
   }
 
-  function exportExcel() {
-    const rows = filteredPayments.map(p => ({
-      'Date': p.payment_date,
-      'Tax Type': p.tax_type,
-      'Period': periodLabelById.get(p.tax_period_id) ?? '',
-      'Bank': p.bank_account_id ? (bankById.get(p.bank_account_id) ? bankLabel(bankById.get(p.bank_account_id)!) : '—') : '—',
-      'Amount (Rp)': Number(p.amount),
-      'NTPN': p.ntpn ?? '',
-      'Billing Code': p.billing_code ?? '',
-      'Payment Ref': p.payment_reference ?? '',
-      'Status': p.status,
-      'JE #': p.journal_entry_id ?? '',
-    }));
-    const ws = XLSX.utils.json_to_sheet(sanitizeExportRows(rows));
-    ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 10 }, { wch: 24 }, { wch: 18 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 12 }, { wch: 36 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Tax Payments');
-    XLSX.writeFile(wb, `Tax_Payments_${dateRange.startDate}_${dateRange.endDate}.xlsx`);
+  async function exportExcel() {
+    const journalIds = filteredPayments.map((payment) => payment.journal_entry_id).filter((id): id is string => Boolean(id));
+    const paymentByJournalId = Object.fromEntries(filteredPayments.filter((payment) => payment.journal_entry_id).map((payment) => [payment.journal_entry_id!, payment]));
+    const bankByJournalId = Object.fromEntries(filteredPayments.filter((payment) => payment.journal_entry_id).map((payment) => [payment.journal_entry_id!, payment.bank_account_id && bankById.get(payment.bank_account_id) ? bankLabel(bankById.get(payment.bank_account_id)!) : '']));
+    const periodByJournalId = Object.fromEntries(filteredPayments.filter((payment) => payment.journal_entry_id).map((payment) => [payment.journal_entry_id!, periodLabelById.get(payment.tax_period_id) ?? '']));
+    try {
+      const journalLines = await getPostedJournalLinesByEntryIds(
+        journalIds,
+        'Tax',
+        Object.fromEntries(Object.entries(paymentByJournalId).map(([journalId, payment]) => [journalId, payment.payment_reference || payment.id])),
+        bankByJournalId,
+        periodByJournalId,
+      );
+      const primaryByJournalId = new Map<string, { code: string; name: string }>();
+      const journalMetaByDocument = new Map<string, { number: string; date: string }>();
+      for (const payment of filteredPayments) {
+        if (!payment.journal_entry_id) continue;
+        const line = journalLines.find((item) => item['Journal Number'] && item['Document Number'] === (payment.payment_reference || payment.id) && item.Debit > 0) || journalLines.find((item) => item['Document Number'] === (payment.payment_reference || payment.id));
+        if (line) primaryByJournalId.set(payment.journal_entry_id, { code: line['COA Code'], name: line['COA Name'] });
+        if (line) journalMetaByDocument.set(payment.payment_reference || payment.id, { number: line['Journal Number'], date: line['Journal Date'] });
+      }
+      const rows: ReconciliationSummaryRow[] = filteredPayments.map((payment) => {
+        const bank = payment.bank_account_id ? bankById.get(payment.bank_account_id) : undefined;
+        const primary = payment.journal_entry_id ? primaryByJournalId.get(payment.journal_entry_id) : undefined;
+        const journalMeta = journalMetaByDocument.get(payment.payment_reference || payment.id);
+        return {
+          'Source Module': 'Tax', 'Document Type': 'Tax Payment', 'Document Number': payment.payment_reference || payment.id,
+          'Document Date': payment.payment_date, 'Posting Date': journalMeta?.date || '', 'Journal Number': journalMeta?.number || '', 'Journal Status': journalMeta ? 'Posted' : 'Not posted',
+          'Approval Status': '', 'Payment Status': payment.status, 'Reconciliation Status': '', 'Party Type': 'Tax Authority', 'Party Name': '',
+          'Category Parent': '', 'Leaf Category': payment.tax_type, Currency: bank?.currency || 'IDR', 'Exchange Rate': 1,
+          'Gross Amount': Number(payment.amount), Discount: '', 'DPP / Tax Base': '', PPN: payment.tax_type.toUpperCase() === 'PPN' ? Number(payment.amount) : '',
+          PPh21: payment.tax_type.toUpperCase() === 'PPH21' ? Number(payment.amount) : '', PPh22: payment.tax_type.toUpperCase() === 'PPH22' ? Number(payment.amount) : '',
+          PPh23: payment.tax_type.toUpperCase() === 'PPH23' ? Number(payment.amount) : '', 'PPh4(2)': /PPH\s*4\s*\(?2\)?/i.test(payment.tax_type) ? Number(payment.amount) : '',
+          'Other Taxes': !/^(PPN|PPH21|PPH22|PPH23|PPH\s*4\s*\(?2\)?)$/i.test(payment.tax_type) ? Number(payment.amount) : '',
+          'Bank Charges': '', 'Salary Advance': '', 'Other Deductions': '', 'Net Settlement Amount': Number(payment.amount), 'Actual Bank Amount': '', 'Settlement Difference': '',
+          'Primary COA Code': primary?.code || '', 'Primary COA Name': primary?.name || '', 'Bank Account': bank ? bankLabel(bank) : '', 'Bank Statement Reference': '',
+          'Tax Period': periodLabelById.get(payment.tax_period_id) ?? '', 'Tax Reference / NTPN (where applicable)': payment.ntpn || payment.billing_code || '', Remarks: payment.notes || '',
+        };
+      });
+      writeReconciliationWorkbook(rows, journalLines, `Tax_Payments_${dateRange.startDate}_${dateRange.endDate}.xlsx`);
+    } catch (error) {
+      console.error('Tax export failed', error);
+      alert('Unable to resolve posted journal lines for this export.');
+    }
   }
 
   return (

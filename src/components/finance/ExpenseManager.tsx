@@ -19,6 +19,7 @@ import {
   unlinkBankTransaction,
 } from './bankTransactionLinking';
 import { FinanceDocumentAttachments, uploadFinanceDocuments } from './FinanceDocumentAttachments';
+import { getPostedJournalsForExport, writeReconciliationWorkbook, type ReconciliationSummaryRow } from './reconciliationExport';
 
 // Tiny inline helper used inside the SAP header PPN cell — a 3-state
 // selector rendered as a right-side chip so it doesn't consume a column.
@@ -1871,24 +1872,25 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       exportAccountRows.map(account => [account.expense_id, account]),
     );
 
-    const headers = [
-      'Number',
-      'Type',
-      'Date',
-      'Category',
-      'Description',
-      'Linked To',
-      'Currency',
-      'Expense Total',
-      'Payment Method',
-      'Bank Account',
-      'Payment Status',
-      'Recon Status',
-      'Approval Status',
-      'COA Code',
-      'Chart of Account Name',
-    ];
-    const rows = filteredExpenses.map(exp => {
+    const documentNumbers = Object.fromEntries(filteredExpenses.map((expense) => [expense.id, expense.voucher_number || expense.invoice_number || expense.id]));
+    const bankAccounts = Object.fromEntries(filteredExpenses.map((expense) => [
+      expense.id,
+      expense.bank_accounts
+        ? (expense.bank_accounts.alias || expense.bank_accounts.bank_name)
+        : (expense.bank_statement_lines?.[0]?.bank_accounts?.alias || expense.bank_statement_lines?.[0]?.bank_accounts?.bank_name || ''),
+    ]));
+    let postedJournals;
+    try {
+      postedJournals = await getPostedJournalsForExport(
+        filteredExpenses.map((expense) => expense.id), ['expense', 'expenses'], documentNumbers, 'Expenses', bankAccounts,
+      );
+    } catch (error) {
+      console.error('Error resolving Expense journal lines:', error);
+      alert('Unable to resolve posted journal lines for this export.');
+      return;
+    }
+
+    const rows: ReconciliationSummaryRow[] = filteredExpenses.map(exp => {
       const category = expenseCategories.find(c => c.value === exp.expense_category);
       const linkedTo =
         exp.import_containers?.container_ref ||
@@ -1910,53 +1912,56 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       const isReconciled = exp.bank_statement_lines && exp.bank_statement_lines.length > 0;
       const reconStatus = isReconciled ? 'Linked' : 'Unlinked';
       const account = exportAccounts[exp.id];
-      return [
-        exp.voucher_number || '',
-        category?.type || '',
-        exp.expense_date,
-        category?.label || exp.expense_category,
-        (() => {
-          const rules = getCategoryFieldRules(exp.expense_category);
-          let partyName = '';
-          if (rules.staff === 'show' && exp.staff_id) {
-            partyName = staffRoster.find(s => s.id === exp.staff_id)?.full_name || '';
-          } else if (exp.suppliers) {
-            partyName = exp.suppliers.company_name;
-          }
-          const desc = exp.description || '';
-          if (partyName && desc) return `[${partyName}] ${desc}`;
-          if (partyName) return `[${partyName}]`;
-          return desc;
-        })(),
-        linkedTo,
-        getExpenseCurrency(exp),
-        calculateCanonicalExpenseTotal(exp).toString(),
-        (exp.payment_method || '').replace(/_/g, ' '),
-        bankInfo,
-        paymentStatus,
-        reconStatus,
-        exp.approval_status || '',
-        account?.coa_code || '',
-        account?.coa_name || '',
-      ];
+      const journal = postedJournals.get(exp.id);
+      const totals = calculateExpenseTotals(exp);
+      const pphCode = taxCodes.find((code) => code.id === exp.pph_code_id)?.code || '';
+      const pphColumn = pphCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const partyName = exp.staff_id
+        ? staffRoster.find(s => s.id === exp.staff_id)?.full_name || ''
+        : exp.suppliers?.company_name || '';
+      const actualBankAmount = exp.bank_statement_lines?.reduce((sum, line) => sum + Math.abs(Number(line.debit_amount || 0) - Number(line.credit_amount || 0)), 0) || 0;
+      return {
+        'Source Module': 'Expenses',
+        'Document Type': exp.expense_type || 'Expense',
+        'Document Number': documentNumbers[exp.id],
+        'Document Date': exp.expense_date,
+        'Posting Date': journal?.date || '',
+        'Journal Number': journal?.number || '',
+        'Journal Status': journal?.status || 'Not posted',
+        'Approval Status': exp.approval_status || '',
+        'Payment Status': paymentStatus,
+        'Reconciliation Status': reconStatus,
+        'Party Type': exp.staff_id ? 'Employee' : exp.suppliers ? 'Supplier' : '',
+        'Party Name': partyName,
+        'Category Parent': category?.group || '',
+        'Leaf Category': category?.label || exp.expense_category,
+        Currency: getExpenseCurrency(exp),
+        'Exchange Rate': Number(exp.exchange_rate || 1),
+        'Gross Amount': calculateCanonicalExpenseTotal(exp),
+        Discount: '',
+        'DPP / Tax Base': Number(exp.dpp_amount ?? exp.amount ?? 0),
+        PPN: Number(exp.ppn_amount || 0),
+        PPh21: pphColumn.includes('PPH21') ? Number(exp.pph_amount || 0) : '',
+        PPh22: pphColumn.includes('PPH22') ? Number(exp.pph_amount || 0) : '',
+        PPh23: pphColumn.includes('PPH23') ? Number(exp.pph_amount || 0) : '',
+        'PPh4(2)': pphColumn.includes('PPH42') ? Number(exp.pph_amount || 0) : '',
+        'Other Taxes': pphCode && !/PPH(21|22|23|42)/.test(pphColumn) ? Number(exp.pph_amount || 0) : Number(exp.stamp_duty_amount || 0) || '',
+        'Bank Charges': totals.bankChargesAmount || '',
+        'Salary Advance': '',
+        'Other Deductions': '',
+        'Net Settlement Amount': totals.settlementAmount,
+        'Actual Bank Amount': actualBankAmount || '',
+        'Settlement Difference': actualBankAmount ? actualBankAmount - totals.settlementAmount : '',
+        'Primary COA Code': account?.coa_code || category?.coaCode || '',
+        'Primary COA Name': account?.coa_name || category?.coaName || '',
+        'Bank Account': bankInfo,
+        'Bank Statement Reference': exp.bank_statement_lines?.[0]?.description || '',
+        'Tax Period': '',
+        'Tax Reference / NTPN (where applicable)': exp.invoice_number || '',
+        Remarks: [linkedTo, exp.description || ''].filter(Boolean).join(' — '),
+      };
     });
-
-    const escape = (cell: string) => `"${String(cell).replace(/"/g, '""')}"`;
-    const csvContent = [
-      headers.map(escape).join(','),
-      ...rows.map(row => row.map(c => escape(String(c))).join(',')),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `expenses_${startDate || 'all'}_to_${endDate || 'all'}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    writeReconciliationWorkbook(rows, [...postedJournals.values()].flatMap((journal) => journal.lines), `expenses_reconciliation_${startDate || 'all'}_to_${endDate || 'all'}.xlsx`);
   };
 
   const getTypeColor = (type: string) => {

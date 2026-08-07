@@ -23,6 +23,7 @@ import {
 } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
 import { useExpenseCategories } from './useExpenseCategories';
+import { getPostedJournalsForExport, writeReconciliationWorkbook, type ReconciliationSummaryRow } from './reconciliationExport';
 
 interface PettyCashDocument {
   id: string;
@@ -910,42 +911,64 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     const exportAccounts = Object.fromEntries(
       exportAccountRows.map(account => [account.transaction_id, account]),
     );
-    const headers = ['Date', 'Number', 'Type', 'Category', 'Description', 'Source / Destination', 'Currency', 'Amount', 'Paid To', 'COA Code', 'Chart of Account Name'];
-    const rows = filteredTransactions.map(tx => {
+    const documentNumbers = Object.fromEntries(filteredTransactions.map((transaction) => [transaction.id, transaction.transaction_number]));
+    const bankAccounts = Object.fromEntries(filteredTransactions.map((transaction) => [
+      transaction.id,
+      transaction.bank_accounts?.alias || transaction.bank_accounts?.bank_name || transaction.bank_statement_lines?.bank_accounts?.alias || transaction.bank_statement_lines?.bank_accounts?.bank_name || '',
+    ]));
+    let postedJournals;
+    try {
+      postedJournals = await getPostedJournalsForExport(
+        filteredTransactions.map((transaction) => transaction.id), ['petty_cash'], documentNumbers, 'Petty Cash', bankAccounts,
+      );
+    } catch (error) {
+      console.error('Error resolving Petty Cash journal lines:', error);
+      showToast({ type: 'error', title: 'Export failed', message: 'Unable to resolve posted journal lines for this export.' });
+      return;
+    }
+    const rows: ReconciliationSummaryRow[] = filteredTransactions.map(tx => {
       const category = tx.expense_category ? getCategoryInfo(tx.expense_category) : null;
       const account = exportAccounts[tx.id];
-      const amountSign = tx.transaction_type === 'withdraw' ? '+' : '-';
-      return [
-        tx.transaction_date,
-        tx.transaction_number,
-        tx.fund_transfer_id
+      const journal = postedJournals.get(tx.id);
+      const actualBankAmount = tx.bank_statement_lines
+        ? Math.abs(Number(tx.bank_statement_lines.debit_amount || 0) - Number(tx.bank_statement_lines.credit_amount || 0))
+        : 0;
+      return {
+        'Source Module': 'Petty Cash',
+        'Document Type': tx.fund_transfer_id
           ? (tx.transaction_type === 'withdraw' ? 'Contra Inflow' : 'Contra Outflow')
           : (tx.transaction_type === 'withdraw' ? 'Cash In' : 'Expense'),
-        category?.label || '',
-        tx.description,
-        tx.source || '',
-        'IDR',
-        `${amountSign} ${formatCurrency(tx.amount, 'IDR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-        tx.paid_to || '',
-        account?.coa_code || '',
-        account?.coa_name || ''
-      ];
+        'Document Number': tx.transaction_number,
+        'Document Date': tx.transaction_date,
+        'Posting Date': journal?.date || '',
+        'Journal Number': journal?.number || '',
+        'Journal Status': journal?.status || 'Not posted',
+        'Approval Status': tx.approval_status || '',
+        'Payment Status': tx.transaction_type === 'expense' ? 'Paid' : '',
+        'Reconciliation Status': tx.bank_statement_lines ? 'Linked' : 'Unlinked',
+        'Party Type': tx.paid_to ? 'Payee' : '',
+        'Party Name': tx.paid_to || tx.received_by_staff_name || '',
+        'Category Parent': category?.group || '',
+        'Leaf Category': category?.label || tx.expense_category || '',
+        Currency: 'IDR',
+        'Exchange Rate': 1,
+        'Gross Amount': Number(tx.amount || 0),
+        Discount: '',
+        'DPP / Tax Base': tx.transaction_type === 'expense' ? Number(tx.amount || 0) : '',
+        PPN: '', PPh21: '', PPh22: '', PPh23: '', 'PPh4(2)': '', 'Other Taxes': '', 'Bank Charges': '', 'Salary Advance': '', 'Other Deductions': '',
+        'Net Settlement Amount': Number(tx.settlement_amount ?? tx.amount ?? 0),
+        'Actual Bank Amount': actualBankAmount || '',
+        'Settlement Difference': actualBankAmount ? actualBankAmount - Number(tx.settlement_amount ?? tx.amount ?? 0) : '',
+        'Primary COA Code': account?.coa_code || category?.coaCode || '',
+        'Primary COA Name': account?.coa_name || category?.coaName || '',
+        'Bank Account': bankAccounts[tx.id],
+        'Bank Statement Reference': tx.bank_statement_lines?.reference || '',
+        'Tax Period': '',
+        'Tax Reference / NTPN (where applicable)': tx.voucher_number || '',
+        Remarks: [tx.source || '', tx.description || ''].filter(Boolean).join(' — '),
+      };
     });
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `petty_cash_${startDate || 'all'}_to_${endDate || 'all'}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    writeReconciliationWorkbook(rows, [...postedJournals.values()].flatMap((journal) => journal.lines), `petty_cash_reconciliation_${startDate || 'all'}_to_${endDate || 'all'}.xlsx`);
   };
 
   const viewTransaction = async (transaction: PettyCashTransaction) => {
