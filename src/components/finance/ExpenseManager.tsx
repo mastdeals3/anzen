@@ -9,7 +9,7 @@ import { F_BTN_PRIMARY, F_BTN_SECONDARY } from './FinanceForm';
 import { FinanceActionButton } from './FinanceUI';
 import { getCategoryFieldRules } from './categoryFieldRules';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
-import { moduleExpenseCategories, sortExpenseCategories } from './expenseCategories';
+import { useExpenseCategories } from './useExpenseCategories';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
 import { approveFinanceExpense, getReportingUsdRate, saveFinanceExpense } from '../../services/financeCommands';
 import {
@@ -265,15 +265,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const { profile } = useAuth();
   const { t } = useLanguage();
   const isAdmin = profile?.role === 'admin';
-  // Locally shadow the module-scope expenseCategories with a translated version.
-  // Keeps the rest of the file (10+ references) working unchanged.
-  const expenseCategories = useMemo(
-    () => moduleExpenseCategories.map(c => ({
-      ...c,
-      label: t(`finance.expense.categories.${c.value}.label`) || c.label,
-    })),
-    [t]
-  );
+  // The database Expense Category master is the selector and posting source.
+  // A newly-created active master row is available here without a deploy.
+  const { categories: expenseCategories } = useExpenseCategories();
   const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
   const [rejectionTarget, setRejectionTarget] = useState<{ id: string; type: 'expense' } | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -2119,7 +2113,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           className="h-6 px-1.5 border border-gray-300 rounded text-[11px] bg-white"
         >
           <option value="all">All Categories</option>
-          {sortExpenseCategories(expenseCategories)
+          {expenseCategories
             .map((category) => (
               <option key={category.value} value={category.value}>{category.label}</option>
             ))}
@@ -2577,12 +2571,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               : {}),
                           }));
                         }}
-                        options={(Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][]).flatMap(([docType, cats]) =>
-                          cats.map(cat => {
-                            const translated = expenseCategories.find(c => c.value === cat)?.label;
-                            return { value: cat, label: translated || EXPENSE_CATEGORY_LABELS[cat] || cat, group: docType };
-                          })
-                        )}
+                        options={expenseCategories.map(cat => ({ value: cat.value, label: cat.label, group: cat.group }))}
                         placeholder="Select category"
                       />
                     </SapField>

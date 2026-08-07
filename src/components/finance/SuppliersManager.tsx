@@ -6,6 +6,7 @@ import { FinancePage } from './FinancePage';
 import { FinanceActionButton, FinanceBadge, FinanceButton } from './FinanceUI';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { SUPPLIER_TYPES } from '../../utils/taxCalculations';
+import { useExpenseCategories } from './useExpenseCategories';
 
 interface Supplier {
   id: string;
@@ -43,29 +44,8 @@ interface SuppliersManagerProps {
   canManage: boolean;
 }
 
-// Expense categories available for supplier defaults (mirrors DOCUMENT_TYPE_GROUPS in taxCalculations.ts)
-const DEFAULT_CATEGORY_OPTIONS = [
-  { value: '', label: 'No default' },
-  { value: 'warehouse_rent',             label: 'Warehouse Rent' },
-  { value: 'bank_charges',               label: 'Bank Charges' },
-  { value: 'office_admin',               label: 'Office & Admin' },
-  { value: 'office_shifting_renovation', label: 'Office Shifting/Renovation' },
-  { value: 'other',                      label: 'Other' },
-  { value: 'utilities',                  label: 'Utilities' },
-  { value: 'salary',                     label: 'Salary' },
-  { value: 'staff_overtime',             label: 'Staff Overtime' },
-  { value: 'staff_welfare',              label: 'Staff Welfare' },
-  { value: 'non_permanent_employee_fee', label: 'Non-Permanent Employee Fee (PPh 21)' },
-  { value: 'travel_conveyance',          label: 'Travel & Conveyance' },
-  { value: 'delivery_sales',             label: 'Delivery (Sales)' },
-  { value: 'loading_sales',              label: 'Loading (Sales)' },
-  { value: 'other_sales',               label: 'Other (Sales)' },
-  { value: 'professional_services',      label: 'Professional Services' },
-  { value: 'import_broker',             label: 'Customs Broker Invoice' },
-  { value: 'fixed_asset',               label: 'Fixed Asset' },
-];
-
 export function SuppliersManager({ canManage }: SuppliersManagerProps) {
+  const { categories: expenseCategories } = useExpenseCategories();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -468,7 +448,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
               <select value={formData.default_expense_category}
                 onChange={(e) => setFormData({ ...formData, default_expense_category: e.target.value })}
                 className={SAP_INPUT}>
-                {DEFAULT_CATEGORY_OPTIONS.map(opt => (
+                {[{ value: '', label: 'No default' }, ...expenseCategories.map(category => ({ value: category.value, label: category.label }))].map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>

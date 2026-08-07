@@ -8,7 +8,7 @@ import { MoneyInput } from '../MoneyInput';
 import { useFinance } from '../../contexts/FinanceContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
-import { moduleExpenseCategories } from './expenseCategories';
+import { useExpenseCategories } from './useExpenseCategories';
 import { calculateCanonicalCashPayable, calculateCanonicalExpenseTotal } from '../../utils/taxCalculations';
 import {
   FINANCE_RECONCILIATION_REFRESH_EVENT,
@@ -212,6 +212,7 @@ export function BankReconciliationEnhanced({
   onOpenJournal,
 }: BankReconciliationEnhancedProps) {
   const { t } = useLanguage();
+  const { categories: expenseCategories } = useExpenseCategories();
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selectedBank, setSelectedBank] = useState<string>(() => {
     try { return localStorage.getItem('bank_recon_selected_bank') || ''; } catch { return ''; }
@@ -287,10 +288,6 @@ export function BankReconciliationEnhanced({
   } | null>(null);
   const [forceImporting, setForceImporting] = useState(false);
   const [hideLinkedCandidates, setHideLinkedCandidates] = useState(true);
-
-  // Single source of truth: reuse the canonical category list from ExpenseManager.
-  const expenseCategories = moduleExpenseCategories;
-
 
   // Refs let the stable-deps realtime effect below read latest state/loaders
   // without resubscribing on every render.

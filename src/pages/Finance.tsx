@@ -28,6 +28,7 @@ const SuppliersManager = lazy(() => import('../components/finance/SuppliersManag
 const BankAccountsManager = lazy(() => import('../components/finance/BankAccountsManager').then(m => ({ default: m.BankAccountsManager })));
 const StaffMasterManager = lazy(() => import('../components/finance/StaffMasterManager').then(m => ({ default: m.StaffMasterManager })));
 const UtilityMasterManager = lazy(() => import('../components/finance/UtilityMasterManager').then(m => ({ default: m.UtilityMasterManager })));
+const ExpenseCategoryManager = lazy(() => import('../components/finance/ExpenseCategoryManager').then(m => ({ default: m.ExpenseCategoryManager })));
 const TaxComplianceCentre = lazy(() => import('../components/finance/TaxComplianceCentre').then(m => ({ default: m.TaxComplianceCentre })));
 const CAReports = lazy(() => import('../components/finance/CAReports').then(m => ({ default: m.CAReports })));
 const GeneralJournalEntry = lazy(() => import('../components/finance/GeneralJournalEntry').then(m => ({ default: m.GeneralJournalEntry })));
@@ -38,13 +39,13 @@ type FinanceTab =
   | 'purchase' | 'receipt' | 'payment' | 'journal' | 'contra' | 'expenses' | 'petty_cash'
   | 'ledger' | 'journal_register' | 'bank_ledger' | 'party_ledger' | 'bank_recon'
   | 'trial_balance' | 'pnl' | 'balance_sheet' | 'receivables' | 'payables' | 'ageing' | 'tax' | 'ca_reports' | 'integrity_monitor' | 'exception_correction'
-  | 'coa' | 'customers' | 'suppliers' | 'products' | 'banks' | 'staff_master' | 'utility_master';
+  | 'coa' | 'expense_categories' | 'customers' | 'suppliers' | 'products' | 'banks' | 'staff_master' | 'utility_master';
 
 const FINANCE_TABS: readonly FinanceTab[] = [
   'purchase', 'receipt', 'payment', 'journal', 'contra', 'expenses', 'petty_cash',
   'ledger', 'journal_register', 'bank_ledger', 'party_ledger', 'bank_recon',
   'trial_balance', 'pnl', 'balance_sheet', 'receivables', 'payables', 'ageing', 'tax', 'ca_reports', 'integrity_monitor', 'exception_correction',
-  'coa', 'customers', 'suppliers', 'products', 'banks', 'staff_master', 'utility_master',
+  'coa', 'expense_categories', 'customers', 'suppliers', 'products', 'banks', 'staff_master', 'utility_master',
 ];
 const DEFAULT_FINANCE_TAB: FinanceTab = 'purchase';
 
@@ -55,7 +56,7 @@ const FINANCE_ROUTE_BY_TAB: Record<FinanceTab, string> = {
   trial_balance: 'trial-balance', pnl: 'profit-and-loss', balance_sheet: 'balance-sheet', receivables: 'receivables',
   payables: 'payables', ageing: 'ageing', tax: 'tax', ca_reports: 'ca-reports', integrity_monitor: 'integrity-monitor',
   exception_correction: 'exception-correction', coa: 'chart-of-accounts', customers: 'customers', suppliers: 'suppliers',
-  products: 'products', banks: 'banks', staff_master: 'staff-master', utility_master: 'utility-master',
+  products: 'products', banks: 'banks', staff_master: 'staff-master', utility_master: 'utility-master', expense_categories: 'expense-categories',
 };
 
 const FINANCE_TAB_BY_ROUTE = Object.fromEntries(
@@ -120,6 +121,7 @@ const getFinanceMenu = (t: TFunction): MenuGroup[] => [
     collapsible: true,
     items: [
       { id: 'coa', label: t.finance.chartOfAccounts },
+      { id: 'expense_categories', label: 'Expense Categories' },
       { id: 'suppliers', label: t.finance.suppliers },
       { id: 'banks', label: t.finance.banks },
       { id: 'staff_master', label: 'Staff Master' },
@@ -455,6 +457,8 @@ function FinanceContent() {
         return <FinanceExceptionCorrectionDashboard canManage={canManage} />;
       case 'coa':
         return <ChartOfAccountsManager canManage={canManage} />;
+      case 'expense_categories':
+        return <ExpenseCategoryManager canManage={canManage} />;
       case 'suppliers':
         return <SuppliersManager canManage={canManage} />;
       case 'banks':
