@@ -24,6 +24,7 @@ import {
 import { formatCurrency } from '../../utils/currency';
 import { useExpenseCategories } from './useExpenseCategories';
 import { getPostedJournalsForExport, writeReconciliationWorkbook, type ReconciliationSummaryRow } from './reconciliationExport';
+import { ExpenseCategorySelect } from './ExpenseCategorySelect';
 
 interface PettyCashDocument {
   id: string;
@@ -1044,14 +1045,6 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     .filter(t => t.transaction_type === 'withdraw')
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  const groupedCategories = expenseCategories.reduce((acc, cat) => {
-    if (!acc[cat.group]) {
-      acc[cat.group] = [];
-    }
-    acc[cat.group].push(cat);
-    return acc;
-  }, {} as Record<string, typeof expenseCategories>);
-
   return (
     <div className="flex flex-col gap-1.5">
       {/* Shared title strip — matches every other Finance page */}
@@ -1415,18 +1408,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
             <>
               <SapRow>
                 <SapField label="Category" required span={12}>
-                  <select value={formData.expense_category}
-                    onChange={(e) => setFormData({ ...formData, expense_category: e.target.value })}
-                    className={SAP_INPUT} required>
-                    <option value="">Select expense category...</option>
-                    {Object.entries(groupedCategories).map(([group, categories]) => (
-                      <optgroup key={group} label={group}>
-                        {categories.map((cat) => (
-                          <option key={cat.value} value={cat.value}>{cat.label}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
+                  <ExpenseCategorySelect
+                    value={formData.expense_category}
+                    onChange={(expense_category) => setFormData({ ...formData, expense_category })}
+                    categories={expenseCategories}
+                    className={SAP_INPUT}
+                    required
+                  />
                 </SapField>
               </SapRow>
 

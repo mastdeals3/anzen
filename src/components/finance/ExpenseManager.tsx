@@ -20,6 +20,7 @@ import {
 } from './bankTransactionLinking';
 import { FinanceDocumentAttachments, uploadFinanceDocuments } from './FinanceDocumentAttachments';
 import { getPostedJournalsForExport, writeReconciliationWorkbook, type ReconciliationSummaryRow } from './reconciliationExport';
+import { ExpenseCategorySelect } from './ExpenseCategorySelect';
 
 // Tiny inline helper used inside the SAP header PPN cell — a 3-state
 // selector rendered as a right-side chip so it doesn't consume a column.
@@ -2553,7 +2554,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         placeholder={rules.billingMonth === 'show' ? 'Bill number / account ref' : 'Enter invoice number'} />
                     </SapField>
                     <SapField label="Category" required span={3}>
-                      <SearchableSelect
+                      <ExpenseCategorySelect
                         value={formData.expense_category}
                         onChange={(val) => {
                           const cat = val || '';
@@ -2576,8 +2577,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               : {}),
                           }));
                         }}
-                        options={expenseCategories.map(cat => ({ value: cat.value, label: cat.label, group: cat.group }))}
-                        placeholder="Select category"
+                        categories={expenseCategories}
                       />
                     </SapField>
                     <SapField
