@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { RefreshCw, ChevronDown, ChevronRight, ExternalLink, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { formatFinancePeriod } from '../../../utils/financePeriod';
@@ -59,7 +59,7 @@ async function loadDetail(row: Row): Promise<{ input: InputLine[]; output: Outpu
   const [piRes, feRes, siRes, cnRes] = await Promise.all([
     supabase
       .from('purchase_invoices')
-      .select('id, invoice_number, invoice_date, tax_amount, suppliers:supplier_id(company_name), description')
+      .select('id, invoice_number, invoice_date, tax_amount, suppliers:supplier_id(company_name), notes')
       .eq('tax_period_id', periodId)
       .gt('tax_amount', 0),
     supabase
@@ -86,7 +86,7 @@ async function loadDetail(row: Row): Promise<{ input: InputLine[]; output: Outpu
       doc_number: r.invoice_number ?? '—',
       doc_date: r.invoice_date,
       party: r.suppliers?.company_name ?? '—',
-      description: r.description,
+      description: r.notes,
       ppn_amount: Number(r.tax_amount),
       tax_period_id: periodId,
     })),
@@ -294,7 +294,7 @@ export function TaxPeriodsPanel() {
               {filtered.map(r => {
                 const isOpen = expandedId === r.tax_period_id;
                 return (
-                  <>
+                  <Fragment key={r.tax_period_id}>
                     <tr
                       key={r.tax_period_id}
                       className={`border-t cursor-pointer select-none ${isOpen ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
@@ -426,7 +426,7 @@ export function TaxPeriodsPanel() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>

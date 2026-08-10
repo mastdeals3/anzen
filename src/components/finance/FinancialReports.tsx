@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Download, ChevronDown, ChevronRight, Printer } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -490,7 +490,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                   const bgClass = SECTION_BG[section.color] || 'bg-gray-50 text-gray-700';
                   const totalBgClass = SECTION_TOTAL_BG[section.color] || 'bg-gray-100 text-gray-800';
                   return (
-                    <tbody key={section.id} className="border-t border-gray-200">
+                    <Fragment key={section.id}>
                       {/* Section header */}
                       <tr
                         className={`${bgClass} cursor-pointer select-none`}
@@ -551,7 +551,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                           ))}
                         </tr>
                       )}
-                    </tbody>
+                    </Fragment>
                   );
                 })}
               </tbody>

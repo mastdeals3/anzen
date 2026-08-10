@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { formatFinancePeriod } from '../../../utils/financePeriod';
@@ -79,7 +79,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       .gt('pph_amount', 0),
     supabase
       .from('payment_vouchers')
-      .select('id, voucher_number, voucher_date, pph_amount, description, status, is_posted, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
+      .select('id, voucher_number, voucher_date, pph_amount, description, is_posted, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
       .gte('voucher_date', startDate)
       .lte('voucher_date', endDate)
       .gt('pph_amount', 0),
@@ -204,7 +204,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       pph_code: r.pph_code?.code ?? null,
       pph_amount: Number(r.pph_amount),
       tax_type: r.pph_code?.tax_type ?? pphType,
-      source_status: r.is_posted ? 'Posted' : r.status ?? 'Draft',
+      source_status: r.is_posted ? 'Posted' : 'Draft',
       is_official: Boolean(r.is_posted),
       payment_method: null,
       recon_status: null,
@@ -405,7 +405,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                 const detailTotal = officialDetail.reduce((sum, line) => sum + line.pph_amount, 0);
                 const traceDifference = detailTotal - Number(r.pph_total || 0);
                 return (
-                  <>
+                  <Fragment key={r.tax_period_id}>
                     <tr
                       key={r.tax_period_id}
                       className={`border-t cursor-pointer select-none ${isOpen ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
@@ -563,7 +563,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>
