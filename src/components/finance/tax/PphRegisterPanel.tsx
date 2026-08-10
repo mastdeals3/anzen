@@ -24,6 +24,7 @@ interface Row {
   pph_total: number;
   pph_paid_total: number;
   pph_outstanding: number;
+  pph_overpaid: number;
   status: string;
   payment_due_date: string | null;
   filing_due_date: string | null;
@@ -51,6 +52,16 @@ interface SourceLine {
   tax_type: string;
   source_status: string;
   is_official: boolean;
+  tax_period_id: string | null;
+}
+
+interface TaxPeriodOption {
+  id: string;
+  fiscal_year: number;
+  period_month: number;
+  tax_type: string;
+  status: string;
+  filing_status: string;
 }
 
 function fmt(n: number) {
@@ -75,11 +86,11 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const [feRes, pvRes, importRes, bankPaymentRes, allocationRes, linkedVoucherRes] = await Promise.all([
     supabase
       .from('finance_expenses')
-      .select('id, voucher_number, expense_date, due_date, pph_amount, description, payment_method, expense_category, approval_status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
+      .select('id, voucher_number, expense_date, due_date, pph_amount, pph_tax_period_id, description, payment_method, expense_category, approval_status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
       .gt('pph_amount', 0),
     supabase
       .from('payment_vouchers')
-      .select('id, voucher_number, voucher_date, pph_amount, description, is_posted, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
+      .select('id, voucher_number, voucher_date, pph_amount, tax_period_id, description, is_posted, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
       .gte('voucher_date', startDate)
       .lte('voucher_date', endDate)
       .gt('pph_amount', 0),
@@ -87,7 +98,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
     // Mirrors compute_period_ppn's import branch. Always PPh22.
     supabase
       .from('finance_expenses')
-      .select('id, voucher_number, expense_date, due_date, amount, pib_pph_amount, description, expense_category, approval_status, suppliers:supplier_id(company_name)')
+      .select('id, voucher_number, expense_date, due_date, amount, pib_pph_amount, pph_tax_period_id, description, expense_category, approval_status, suppliers:supplier_id(company_name)')
       .in('expense_category', ['pib_import', 'pph_import']),
     supabase
       .from('bank_statement_lines')
@@ -102,8 +113,8 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       .select('id, voucher_date, is_posted'),
   ]);
 
-  // Mirror get_expense_pph_period_date(): latest linked supplier payment,
-  // otherwise due date, otherwise the legacy document date.
+  // Untouched documents retain the engine's existing payment/due-date
+  // attribution; an explicit selected PPh period takes precedence.
   const linkedVouchers = new Map<string, any>(
     ((linkedVoucherRes.data ?? []) as any[]).map(v => [v.id, v]),
   );
@@ -126,6 +137,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const periodDate = (expense: any): string =>
     latestPaymentDate.get(expense.id) ?? expense.due_date ?? expense.expense_date;
   const isSelectedPeriod = (expense: any): boolean => {
+    if (row.tax_type !== 'PPh_Unifikasi' && expense.pph_tax_period_id) return expense.pph_tax_period_id === row.tax_period_id;
     const date = periodDate(expense);
     return date >= startDate && date <= endDate;
   };
@@ -135,7 +147,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
 
   const sourceRows = [
     ...expenseData,
-    ...((pvRes.data ?? []) as any[]),
+    ...((pvRes.data ?? []) as any[]).filter(v => row.tax_type !== 'PPh_Unifikasi' && v.tax_period_id ? v.tax_period_id === row.tax_period_id : v.voucher_date >= startDate && v.voucher_date <= endDate),
     ...importData,
   ];
   const sourceIds = [...new Set(sourceRows.map(r => r.id).filter(Boolean))];
@@ -183,6 +195,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       tax_type: r.pph_code?.tax_type ?? pphType,
       source_status: r.approval_status === 'approved' ? 'Approved' : 'Pending Approval',
       is_official: r.approval_status === 'approved',
+      tax_period_id: r.pph_tax_period_id ?? null,
       payment_method: r.payment_method,
       recon_status: null,
       ...journalFields(r.id),
@@ -206,6 +219,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       tax_type: r.pph_code?.tax_type ?? pphType,
       source_status: r.is_posted ? 'Posted' : 'Draft',
       is_official: Boolean(r.is_posted),
+      tax_period_id: r.tax_period_id ?? null,
       payment_method: null,
       recon_status: null,
       ...journalFields(r.id),
@@ -234,6 +248,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
           tax_type: 'PPh22',
           source_status: r.approval_status === 'approved' ? 'Approved' : 'Pending Approval',
           is_official: r.approval_status === 'approved',
+          tax_period_id: r.pph_tax_period_id ?? null,
           payment_method: null,
           recon_status: null,
           ...journalFields(r.id),
@@ -257,6 +272,7 @@ function consolidateRows(rows: Row[]): Row[] {
     existing.pph_total += Number(row.pph_total || 0);
     existing.pph_paid_total += Number(row.pph_paid_total || 0);
     existing.pph_outstanding += Number(row.pph_outstanding || 0);
+    existing.pph_overpaid += Number(row.pph_overpaid || 0);
     if (row.payment_status === 'overdue') existing.payment_status = 'overdue';
   }
   return [...grouped.values()].sort((a, b) => b.fiscal_year - a.fiscal_year || b.period_month - a.period_month);
@@ -276,6 +292,9 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SourceLine[] | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [periods, setPeriods] = useState<TaxPeriodOption[]>([]);
+  const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -300,7 +319,18 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
       }
     })();
     return () => { cancelled = true; };
-  }, [active]);
+  }, [active, reloadKey]);
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase.from('tax_periods')
+        .select('id, fiscal_year, period_month, tax_type, status, filing_status')
+        .neq('tax_type', 'PPN')
+        .order('fiscal_year', { ascending: false })
+        .order('period_month', { ascending: false });
+      setPeriods((data as TaxPeriodOption[] | null) ?? []);
+    })();
+  }, []);
 
   const filtered = useMemo(() => {
     if (!dateRange?.startDate || !dateRange?.endDate) return rows;
@@ -318,9 +348,30 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
       total: a.total + Number(r.pph_total || 0),
       paid: a.paid + Number(r.pph_paid_total || 0),
       outstanding: a.outstanding + Number(r.pph_outstanding || 0),
+      overpaid: a.overpaid + Number(r.pph_overpaid || 0),
     }),
-    { total: 0, paid: 0, outstanding: 0 },
+    { total: 0, paid: 0, outstanding: 0, overpaid: 0 },
   ), [filtered]);
+
+  async function saveDocumentPeriod(line: SourceLine, periodId: string) {
+    const source = line.module === 'payment_voucher' ? 'payment_voucher' : 'finance_expense_pph';
+    setEditingPeriodId(line.id);
+    try {
+      const { error } = await supabase.rpc('reassign_tax_document_period', {
+        p_source: source,
+        p_document_id: line.id,
+        p_tax_period_id: periodId,
+      });
+      if (error) throw error;
+      setReloadKey(key => key + 1);
+      setExpandedId(null);
+      setDetail(null);
+    } catch (error) {
+      alert('Tax period update failed: ' + (error as Error).message);
+    } finally {
+      setEditingPeriodId(null);
+    }
+  }
 
   async function toggleExpand(row: Row) {
     if (expandedId === row.tax_period_id) {
@@ -359,10 +410,11 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
       </div>
 
       {!loading && filtered.length > 0 && (
-        <StatCardGrid cols={3}>
+        <StatCardGrid cols={4}>
           <StatCard label={`Total ${pphTabLabel(active)} Withheld`} value={totals.total} tone="orange" hint="Across periods in range" />
           <StatCard label="Paid to Tax Office" value={totals.paid} tone="green" />
           <StatCard label="Outstanding" value={totals.outstanding} tone="red" hint="Not yet remitted" />
+          <StatCard label="Overpaid / Credit" value={totals.overpaid} tone="blue" hint="Not allocated to another period" />
         </StatCardGrid>
       )}
 
@@ -387,6 +439,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                 <th className="text-right px-3 py-2">Total PPh</th>
                 <th className="text-right px-3 py-2">Paid</th>
                 <th className="text-right px-3 py-2">Outstanding</th>
+                <th className="text-right px-3 py-2">Overpaid / Credit</th>
                 <th className="text-left px-3 py-2">Payment Due</th>
                 <th className="text-left px-3 py-2">Filing Due</th>
               </tr>
@@ -423,12 +476,13 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                       <td className="px-3 py-2 text-right font-semibold text-orange-700">
                         Rp {fmt(r.pph_outstanding)}
                       </td>
+                      <td className="px-3 py-2 text-right font-semibold text-blue-700">Rp {fmt(r.pph_overpaid)}</td>
                       <td className="px-3 py-2">{r.payment_due_date ?? '—'}</td>
                       <td className="px-3 py-2">{r.filing_due_date ?? '—'}</td>
                     </tr>
                     {isOpen && (
                       <tr key={`${r.tax_period_id}-detail`} className="bg-blue-50/30">
-                        <td colSpan={10} className="px-6 pb-4 pt-2">
+                        <td colSpan={11} className="px-6 pb-4 pt-2">
                           <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
                             Source Documents — {pphTabLabel(active)} withheld in {formatFinancePeriod(r.fiscal_year, r.period_month)}
                           </h4>
@@ -456,6 +510,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                                   <th className="text-left py-1 pr-3">Document</th>
                                   <th className="text-left py-1 pr-3">Document Date</th>
                                   <th className="text-left py-1 pr-3">PPh Period Date</th>
+                                  <th className="text-left py-1 pr-3">Tax Period</th>
                                   <th className="text-left py-1 pr-3">Employee / Supplier</th>
                                   <th className="text-left py-1 pr-3">Description</th>
                                   <th className="text-left py-1 pr-3">PPh Code</th>
@@ -488,6 +543,25 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                                     </td>
                                     <td className="py-1.5 pr-3 whitespace-nowrap">{fmtDate(l.doc_date)}</td>
                                     <td className="py-1.5 pr-3 whitespace-nowrap font-medium text-blue-700">{fmtDate(l.period_date)}</td>
+                                    <td className="py-1.5 pr-3" onClick={event => event.stopPropagation()}>
+                                      {l.module === 'import' ? (
+                                        <span className="text-gray-400">Derived import period</span>
+                                      ) : (
+                                        <select
+                                          aria-label={`Tax period for ${l.doc_number}`}
+                                          value={l.tax_period_id ?? r.tax_period_id}
+                                          disabled={editingPeriodId === l.id || r.status === 'closed' || r.status === 'filed'}
+                                          onChange={event => void saveDocumentPeriod(l, event.target.value)}
+                                          className="max-w-28 rounded border border-gray-300 bg-white px-1 py-0.5 text-[11px] disabled:opacity-50"
+                                        >
+                                          {periods.filter(period => period.tax_type === l.tax_type).map(period => (
+                                            <option key={period.id} value={period.id} disabled={period.status === 'closed' || period.status === 'filed' || period.filing_status === 'filed'}>
+                                              {formatFinancePeriod(period.fiscal_year, period.period_month)}{period.status === 'closed' || period.status === 'filed' || period.filing_status === 'filed' ? ' (locked)' : ''}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      )}
+                                    </td>
                                     <td className="py-1.5 pr-3 max-w-[140px] truncate text-gray-700" title={l.party}>{l.party}</td>
                                     <td className="py-1.5 pr-3 max-w-[180px] truncate text-gray-500" title={l.description ?? undefined}>{l.description ?? '—'}</td>
                                     <td className="py-1.5 pr-3">
@@ -511,7 +585,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                                   </tr>
                                 ))}
                                 <tr className="font-semibold border-t-2 border-gray-300 bg-gray-50">
-                                  <td colSpan={11} className="py-1.5 pr-3 text-right text-xs text-gray-500">Total {pphTabLabel(active)} Withheld</td>
+                                  <td colSpan={12} className="py-1.5 pr-3 text-right text-xs text-gray-500">Total {pphTabLabel(active)} Withheld</td>
                                   <td className="py-1.5 text-right font-mono text-orange-700">
                                     Rp {fmt(detailTotal)}
                                   </td>

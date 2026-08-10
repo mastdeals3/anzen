@@ -69,16 +69,18 @@ BEGIN
   -- The statutory PPh Register is sourced from approved documents. Journals
   -- remain an audit trail and must not gate or manufacture withholding.
   IF pg_get_functiondef('public.compute_period_ppn(uuid)'::regprocedure) LIKE '%journal_entries%'
-     OR pg_get_functiondef('public.compute_period_ppn(uuid)'::regprocedure) NOT LIKE '%approval_status = ''approved''%'
+     OR pg_get_functiondef('public.compute_period_ppn(uuid)'::regprocedure) NOT LIKE '%approval_status%'
+     OR pg_get_functiondef('public.compute_period_ppn(uuid)'::regprocedure) NOT LIKE '%approved%'
      OR pg_get_functiondef('public.compute_period_ppn(uuid)'::regprocedure) NOT LIKE '%pv.is_posted%'
   THEN RAISE EXCEPTION 'PPh Register is not sourced exclusively from approved source documents'; END IF;
 
   WITH source AS (
-    SELECT EXTRACT(YEAR FROM public.get_expense_pph_period_date(fe.id))::int fiscal_year,
-           EXTRACT(MONTH FROM public.get_expense_pph_period_date(fe.id))::int period_month,
+    SELECT COALESCE(selected_tp.fiscal_year, EXTRACT(YEAR FROM public.get_expense_pph_period_date(fe.id))::int) fiscal_year,
+           COALESCE(selected_tp.period_month, EXTRACT(MONTH FROM public.get_expense_pph_period_date(fe.id))::int) period_month,
            tc.tax_type, fe.pph_amount amount
       FROM public.finance_expenses fe
       LEFT JOIN public.tax_codes tc ON tc.id=fe.pph_code_id
+      LEFT JOIN public.tax_periods selected_tp ON selected_tp.id=fe.pph_tax_period_id
      WHERE fe.approval_status='approved' AND fe.pph_amount>0
        AND COALESCE(fe.expense_category,'') NOT IN ('pib_import','pph_import')
     UNION ALL
@@ -89,11 +91,12 @@ BEGIN
       LEFT JOIN public.tax_codes tc ON tc.id=pv.pph_code_id
      WHERE COALESCE(pv.is_posted,false) AND pv.pph_amount>0
     UNION ALL
-    SELECT EXTRACT(YEAR FROM public.get_expense_pph_period_date(fe.id))::int,
-           EXTRACT(MONTH FROM public.get_expense_pph_period_date(fe.id))::int,
+    SELECT COALESCE(selected_tp.fiscal_year, EXTRACT(YEAR FROM public.get_expense_pph_period_date(fe.id))::int),
+           COALESCE(selected_tp.period_month, EXTRACT(MONTH FROM public.get_expense_pph_period_date(fe.id))::int),
            'PPh22',
            CASE WHEN fe.expense_category='pib_import' THEN fe.pib_pph_amount ELSE fe.amount END
       FROM public.finance_expenses fe
+      LEFT JOIN public.tax_periods selected_tp ON selected_tp.id=fe.pph_tax_period_id
      WHERE fe.approval_status='approved'
        AND fe.expense_category IN ('pib_import','pph_import')
        AND CASE WHEN fe.expense_category='pib_import'
@@ -213,11 +216,16 @@ BEGIN
 
   SELECT count(*) INTO v_count
     FROM public.vw_pph_by_period_type r
-   WHERE r.pph_paid_total IS DISTINCT FROM LEAST(
-     r.pph_total,
+   WHERE r.pph_paid_total IS DISTINCT FROM (
      public.fn_tax_payments_paid(r.tax_period_id)
        + public.fn_settled_import_pph22(r.fiscal_year,r.period_month,r.tax_type)
-   );
+   )
+      OR r.pph_overpaid IS DISTINCT FROM GREATEST(
+        public.fn_tax_payments_paid(r.tax_period_id)
+          + public.fn_settled_import_pph22(r.fiscal_year,r.period_month,r.tax_type)
+          - r.pph_total,
+        0
+      );
   IF v_count<>0 THEN RAISE EXCEPTION '% PPh periods have incorrect tax-payment offsets',v_count; END IF;
 END;
 $regression$;

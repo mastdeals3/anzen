@@ -101,7 +101,7 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
       const endYM   = endDate.slice(0, 7);
       const { data } = await supabase
         .from('vw_pph_by_period_type')
-        .select('tax_period_id, fiscal_year, period_month, tax_type, pph_total, pph_paid_total, pph_outstanding, status, payment_due_date, filing_due_date')
+        .select('tax_period_id, fiscal_year, period_month, tax_type, pph_total, pph_paid_total, pph_outstanding, pph_overpaid, status, payment_due_date, filing_due_date')
         .gte('fiscal_year', Number(startYM.slice(0, 4)))
         .lte('fiscal_year', Number(endYM.slice(0, 4)))
         .order('fiscal_year', { ascending: false })
@@ -116,8 +116,9 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
         'Period':           formatFinancePeriod(Number(r.fiscal_year), Number(r.period_month)),
         'PPh Type':         r.tax_type as string,
         'PPh Total (Rp)':   Number(r.pph_total ?? 0),
-        'Paid (Rp)':        Number(r.pph_paid_total ?? 0),
+        'Actual Payment (Rp)': Number(r.pph_paid_total ?? 0),
         'Outstanding (Rp)': Number(r.pph_outstanding ?? 0),
+        'Overpaid / Credit (Rp)': Number(r.pph_overpaid ?? 0),
         'Status':           r.status as string,
         'Payment Due':      (r.payment_due_date as string) ?? '',
         'Filing Due':       (r.filing_due_date as string) ?? '',

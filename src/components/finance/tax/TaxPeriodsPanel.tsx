@@ -41,6 +41,14 @@ interface OutputLine {
   id: string;
 }
 
+interface TaxPeriodOption {
+  id: string;
+  fiscal_year: number;
+  period_month: number;
+  status: string;
+  filing_status: string;
+}
+
 function fmt(n: number) { return Number(n).toLocaleString('id-ID'); }
 function fmtDate(s: string) {
   const d = new Date(s);
@@ -177,6 +185,8 @@ export function TaxPeriodsPanel() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<{ input: InputLine[]; output: OutputLine[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [periodOptions, setPeriodOptions] = useState<TaxPeriodOption[]>([]);
+  const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -191,6 +201,17 @@ export function TaxPeriodsPanel() {
   }
 
   useEffect(() => { void refresh(); }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase.from('tax_periods')
+        .select('id, fiscal_year, period_month, status, filing_status')
+        .eq('tax_type', 'PPN')
+        .order('fiscal_year', { ascending: false })
+        .order('period_month', { ascending: false });
+      setPeriodOptions((data as TaxPeriodOption[] | null) ?? []);
+    })();
+  }, []);
 
   const filtered = useMemo(() => {
     if (!dateRange?.startDate || !dateRange?.endDate) return rows;
@@ -241,6 +262,47 @@ export function TaxPeriodsPanel() {
     } finally {
       setDetailLoading(false);
     }
+  }
+
+  async function saveDocumentPeriod(source: InputLine['source'] | OutputLine['source'], id: string, taxPeriodId: string) {
+    if (source === 'broker' || source === 'pib') return;
+    const pSource = source === 'expense' ? 'finance_expense_ppn' : source;
+    setEditingDocumentId(id);
+    try {
+      const { error } = await supabase.rpc('reassign_tax_document_period', {
+        p_source: pSource,
+        p_document_id: id,
+        p_tax_period_id: taxPeriodId,
+      });
+      if (error) throw error;
+      await refresh();
+      setExpandedId(null);
+      setDetail(null);
+    } catch (error) {
+      alert('Tax period update failed: ' + (error as Error).message);
+    } finally {
+      setEditingDocumentId(null);
+    }
+  }
+
+  function periodEditor(source: InputLine['source'] | OutputLine['source'], id: string, currentPeriodId: string, locked: boolean) {
+    if (source === 'broker' || source === 'pib') return <span className="text-gray-400">Same as expense</span>;
+    return (
+      <select
+        aria-label="Tax period"
+        value={currentPeriodId}
+        disabled={locked || editingDocumentId === id}
+        onClick={event => event.stopPropagation()}
+        onChange={event => void saveDocumentPeriod(source, id, event.target.value)}
+        className="max-w-28 rounded border border-gray-300 bg-white px-1 py-0.5 text-[11px] disabled:opacity-50"
+      >
+        {periodOptions.map(period => (
+          <option key={period.id} value={period.id} disabled={period.status === 'closed' || period.status === 'filed' || period.filing_status === 'filed'}>
+            {formatFinancePeriod(period.fiscal_year, period.period_month)}{period.status === 'closed' || period.status === 'filed' || period.filing_status === 'filed' ? ' (locked)' : ''}
+          </option>
+        ))}
+      </select>
+    );
   }
 
   return (
@@ -342,6 +404,7 @@ export function TaxPeriodsPanel() {
                                         <th className="text-left py-1">Doc</th>
                                         <th className="text-left py-1">Date</th>
                                         <th className="text-left py-1">Supplier</th>
+                                        <th className="text-left py-1">Tax Period</th>
                                         <th className="text-right py-1">PPN</th>
                                       </tr>
                                     </thead>
@@ -359,11 +422,12 @@ export function TaxPeriodsPanel() {
                                           </td>
                                           <td className="py-1 pr-2 whitespace-nowrap">{fmtDate(l.doc_date)}</td>
                                           <td className="py-1 pr-2 text-gray-600 max-w-[140px] truncate" title={l.party}>{l.party}</td>
+                                          <td className="py-1 pr-2">{periodEditor(l.source, l.id, l.tax_period_id, r.status === 'closed' || r.status === 'filed' || r.filing_status === 'filed')}</td>
                                           <td className="py-1 text-right text-red-700 font-mono">{fmt(l.ppn_amount)}</td>
                                         </tr>
                                       ))}
                                       <tr className="font-semibold">
-                                        <td colSpan={3} className="py-1 text-right text-xs text-gray-500">Total Input PPN</td>
+                                        <td colSpan={4} className="py-1 text-right text-xs text-gray-500">Total Input PPN</td>
                                         <td className="py-1 text-right text-red-700 font-mono">
                                           {fmt(detail.input.reduce((s, l) => s + l.ppn_amount, 0))}
                                         </td>
@@ -387,6 +451,7 @@ export function TaxPeriodsPanel() {
                                         <th className="text-left py-1">Date</th>
                                         <th className="text-left py-1">Customer</th>
                                         <th className="text-left py-1">Faktur</th>
+                                        <th className="text-left py-1">Tax Period</th>
                                         <th className="text-right py-1">PPN</th>
                                       </tr>
                                     </thead>
@@ -408,11 +473,12 @@ export function TaxPeriodsPanel() {
                                                 ? <span className="text-green-700 font-mono">{l.faktur_number}</span>
                                                 : <span className="text-orange-500 text-[10px]">Waiting for Faktur</span>}
                                           </td>
+                                          <td className="py-1 pr-2">{periodEditor(l.source, l.id, r.tax_period_id, r.status === 'closed' || r.status === 'filed' || r.filing_status === 'filed')}</td>
                                           <td className={`py-1 text-right font-mono ${l.ppn_amount < 0 ? 'text-red-600' : 'text-green-700'}`}>{fmt(l.ppn_amount)}</td>
                                         </tr>
                                       ))}
                                       <tr className="font-semibold">
-                                        <td colSpan={4} className="py-1 text-right text-xs text-gray-500">Total Output PPN</td>
+                                        <td colSpan={5} className="py-1 text-right text-xs text-gray-500">Total Output PPN</td>
                                         <td className="py-1 text-right text-green-700 font-mono">
                                           {fmt(detail.output.reduce((s, l) => s + l.ppn_amount, 0))}
                                         </td>
