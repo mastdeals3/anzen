@@ -62,8 +62,8 @@ interface DirectorLoanLedgerAccount {
 }
 
 interface DirectorOwnerLoanOption {
-  /** Existing Director master ID when the ledger is linked to one. */
-  directorId: string | null;
+  /** Required existing Director master ID. */
+  directorId: string;
   directorName: string;
   account: DirectorLoanLedgerAccount;
 }
@@ -215,9 +215,6 @@ const NON_CUSTOMER_JOURNAL_TYPES = new Set([
   'refund',
 ]);
 
-// Prefer the existing Director master -> loan_account_id relationship. A
-// legacy per-owner loan COA with no Director master remains selectable so the
-// reconciliation flow can reuse it without manufacturing master data.
 function directorOwnerName(option: DirectorOwnerLoanOption): string {
   return option.directorName || option.account.name.replace(/^director\s+loan\s*[-–—:]\s*/i, '').trim() || option.account.name;
 }
@@ -2017,10 +2014,9 @@ export function BankReconciliationEnhanced({
     }
   };
 
-  // Director/Owner lending is represented by the existing Director master
+  // Director/Owner lending is represented only by the existing Director master
   // `loan_account_id` -> COA relationship. This deliberately reads (and never
-  // creates) either master data or mappings. Unlinked legacy ledgers are shown
-  // only as a compatibility fallback and are persisted on `loans.coa_id`.
+  // creates) master data, ledgers, or mappings.
   const loadDirectorLoanAccounts = async () => {
     const [{ data: directors, error: directorsError }, { data: accounts, error: accountsError }] = await Promise.all([
       supabase
@@ -2049,11 +2045,11 @@ export function BankReconciliationEnhanced({
       const account = accountById.get(director.loan_account_id);
       return account ? [{ directorId: director.id, directorName: director.full_name, account }] : [];
     });
-    const linkedAccountIds = new Set(linkedOptions.map(option => option.account.id));
-    const legacyOptions = activeAccounts
-      .filter(account => !linkedAccountIds.has(account.id) && /director\s+loan/i.test(account.name))
-      .map(account => ({ directorId: null, directorName: '', account }));
-    setDirectorLoanAccounts([...linkedOptions, ...legacyOptions]);
+    // A duplicated master -> COA mapping is invalid master data. Do not let a
+    // bank transaction choose ambiguously; the accounting audit reports it.
+    const mappingCounts = new Map<string, number>();
+    linkedOptions.forEach(option => mappingCounts.set(option.account.id, (mappingCounts.get(option.account.id) || 0) + 1));
+    setDirectorLoanAccounts(linkedOptions.filter(option => mappingCounts.get(option.account.id) === 1));
   };
 
   const handleLinkExistingReceipt = async (line: StatementLine, receiptId: string) => {

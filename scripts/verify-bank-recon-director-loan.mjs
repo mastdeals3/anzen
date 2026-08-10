@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 // its existing Loan + journal triggers, and roll everything back. This proves
 // that Bank Reconciliation uses the selected pre-existing Director Loan COA.
 const migration = readFileSync(
-  new URL('../supabase/migrations/20260810120000_bank_recon_reuse_director_loan_ledger.sql', import.meta.url),
+  new URL('../supabase/migrations/20260810130000_require_director_master_loan_mapping.sql', import.meta.url),
   'utf8',
 );
 
@@ -24,7 +24,7 @@ SET LOCAL ROLE authenticated;
 DO $audit$
 DECLARE
   v_user uuid := auth.uid();
-  v_bank uuid; v_bank_coa uuid; v_director_loan_coa uuid; v_upload uuid;
+  v_bank uuid; v_bank_coa uuid; v_director_id uuid; v_director_name text; v_director_loan_coa uuid; v_upload uuid;
   v_receipt_line uuid; v_repayment_line uuid; v_loan jsonb; v_repayment jsonb;
   v_loan_id uuid; v_loan_je uuid; v_repayment_je uuid;
   v_debits numeric; v_credits numeric; v_count bigint;
@@ -33,12 +33,14 @@ BEGIN
   FROM public.bank_accounts
   WHERE is_active=true AND upper(currency)='IDR' AND coa_id IS NOT NULL
   ORDER BY created_at,id LIMIT 1;
-  SELECT id INTO v_director_loan_coa
-  FROM public.chart_of_accounts
-  WHERE is_active=true AND COALESCE(is_header,false)=false
-    AND lower(account_type)='liability' AND name ILIKE '%director%loan%'
-  ORDER BY code,id LIMIT 1;
-  IF v_user IS NULL OR v_bank IS NULL OR v_bank_coa IS NULL OR v_director_loan_coa IS NULL THEN
+  SELECT d.id, d.full_name, d.loan_account_id INTO v_director_id, v_director_name, v_director_loan_coa
+  FROM public.directors d
+  JOIN public.chart_of_accounts coa ON coa.id=d.loan_account_id
+  WHERE d.is_active=true AND COALESCE(d.is_deprecated,false)=false
+    AND coa.is_active=true AND COALESCE(coa.is_header,false)=false
+    AND lower(coa.account_type)='liability'
+  ORDER BY d.full_name,d.id LIMIT 1;
+  IF v_user IS NULL OR v_bank IS NULL OR v_bank_coa IS NULL OR v_director_id IS NULL OR v_director_loan_coa IS NULL THEN
     RAISE EXCEPTION 'Required existing finance fixtures are missing';
   END IF;
 
@@ -52,9 +54,10 @@ BEGIN
   RETURNING id INTO v_receipt_line;
 
   v_loan := public.save_finance_loan(jsonb_build_object(
-    'loan_date',current_date,'counterparty_name','Vijay','counterparty_type','person',
+    'loan_date',current_date,'counterparty_name',v_director_name,'counterparty_type','person',
     'principal_amount',20000000,'bank_account_id',v_bank,'liability_kind','director_owner',
-    'liability_account_id',v_director_loan_coa,'transaction_currency','IDR','exchange_rate',1,
+    'liability_account_id',v_director_loan_coa,'director_id',v_director_id,
+    'transaction_currency','IDR','exchange_rate',1,
     'description','Rollback Director Loan receipt verification','created_by',v_user
   ),v_receipt_line);
   v_loan_id := (v_loan->>'id')::uuid;
