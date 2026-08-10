@@ -1195,7 +1195,6 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
             ) : (
               filteredTransactions.map((tx) => {
                 const categoryInfo = tx.expense_category ? getCategoryInfo(tx.expense_category) : null;
-                const Icon = categoryInfo?.icon;
 
                 return (
                   <tr
@@ -1249,7 +1248,6 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       {categoryInfo && (
                         <div className="flex items-center gap-2">
-                          {Icon && <Icon className="h-4 w-4 text-gray-500" />}
                           <span className="text-sm text-gray-900">{categoryInfo.label}</span>
                         </div>
                       )}
@@ -1742,10 +1740,8 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
                       <div className="flex items-center gap-1.5">
                         {(() => {
                           const categoryInfo = getCategoryInfo(viewingTransaction.expense_category);
-                          const Icon = categoryInfo?.icon;
                           return (
                             <>
-                              {Icon && <Icon className="h-4 w-4 text-amber-600" />}
                               <span className="text-sm font-medium text-gray-900">{categoryInfo?.label}</span>
                             </>
                           );
