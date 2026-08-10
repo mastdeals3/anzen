@@ -62,9 +62,6 @@ interface DirectorLoanLedgerAccount {
 }
 
 interface DirectorOwnerLoanOption {
-  /** Required existing Director master ID. */
-  directorId: string;
-  directorName: string;
   account: DirectorLoanLedgerAccount;
 }
 
@@ -216,7 +213,7 @@ const NON_CUSTOMER_JOURNAL_TYPES = new Set([
 ]);
 
 function directorOwnerName(option: DirectorOwnerLoanOption): string {
-  return option.directorName || option.account.name.replace(/^director\s+loan\s*[-–—:]\s*/i, '').trim() || option.account.name;
+  return option.account.name.replace(/^director\s+loan\s*[-–—:]\s*/i, '').trim() || option.account.name;
 }
 
 export function BankReconciliationEnhanced({
@@ -277,6 +274,7 @@ export function BankReconciliationEnhanced({
   const [loanCounterparty, setLoanCounterparty] = useState('');
   const [directorLoanAccounts, setDirectorLoanAccounts] = useState<DirectorOwnerLoanOption[]>([]);
   const [directorLoanAccountId, setDirectorLoanAccountId] = useState('');
+  const [recordDirectorLoanWithdrawal, setRecordDirectorLoanWithdrawal] = useState(false);
   const [recordLoanRepayment, setRecordLoanRepayment] = useState(false);
   const [activeLoans, setActiveLoans] = useState<Array<{
     id: string; loan_number: string; counterparty_name: string; outstanding_balance: number; currency: string;
@@ -1955,25 +1953,32 @@ export function BankReconciliationEnhanced({
         }
         if (type === 'loan' && !loanCounterparty.trim()) throw new Error('Counterparty name is required');
         if (line.currency === 'USD' && recordExchangeRate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
-        const result = await saveFinanceLoan({
+        if (type === 'loan_director_owner') {
+          const result = await saveBankLinkedFinanceJournal(
+            line.id,
+            description || line.description,
+            selectedDirectorLoan!.account.code,
+            'debit',
+            line.currency as 'IDR' | 'USD',
+            line.currency === 'IDR' ? 1 : recordExchangeRate,
+          );
+          const { data: journal } = await supabase.from('journal_entries').select('entry_number').eq('id', result.journal_entry_id).single();
+          alert(`Director Loan journal ${journal?.entry_number || ''} created and linked successfully`);
+        } else {
+          const result = await saveFinanceLoan({
           loan_date: line.date,
-          // The director/owner name is derived from the existing ledger selected
-          // above; it is never an independently-entered accounting party.
-          counterparty_name: type === 'loan_director_owner'
-            ? directorOwnerName(selectedDirectorLoan!)
-            : loanCounterparty.trim(),
-          counterparty_type: type === 'loan_director_owner' ? 'person' : 'bank',
+          counterparty_name: loanCounterparty.trim(),
+          counterparty_type: 'bank',
           principal_amount: line.credit,
           bank_account_id: selectedBank,
-          liability_kind: type === 'loan_director_owner' ? 'director_owner' : 'bank',
-          liability_account_id: selectedDirectorLoan?.account.id || null,
-          director_id: selectedDirectorLoan?.directorId || null,
+          liability_kind: 'bank',
           transaction_currency: line.currency as 'IDR' | 'USD',
           exchange_rate: line.currency === 'IDR' ? 1 : recordExchangeRate,
           description: description || line.description,
           created_by: user.id,
         }, line.id);
         alert(`Loan ${result.loan_number} created and linked successfully`);
+        }
       } else {
         if (!NON_CUSTOMER_JOURNAL_TYPES.has(type)) {
           throw new Error(`Unsupported non-customer receipt type: ${type}`);
@@ -2014,42 +2019,54 @@ export function BankReconciliationEnhanced({
     }
   };
 
-  // Director/Owner lending is represented only by the existing Director master
-  // `loan_account_id` -> COA relationship. This deliberately reads (and never
-  // creates) master data, ledgers, or mappings.
+  // Director/Owner activity uses the existing active Director Loan COA as its
+  // complete ledger. No separate party, master, loan, or repayment document is
+  // created for this bank-reconciliation classification.
   const loadDirectorLoanAccounts = async () => {
-    const [{ data: directors, error: directorsError }, { data: accounts, error: accountsError }] = await Promise.all([
-      supabase
-        .from('directors')
-        .select('id, full_name, loan_account_id')
-        .eq('is_active', true)
-        .or('is_deprecated.is.null,is_deprecated.eq.false')
-        .not('loan_account_id', 'is', null)
-        .order('full_name'),
-      supabase
+    const { data: accounts, error } = await supabase
       .from('chart_of_accounts')
       .select('id, code, name')
       .eq('is_active', true)
       .eq('is_header', false)
       .eq('account_type', 'liability')
-      .order('code'),
-    ]);
-    if (directorsError || accountsError) {
-      console.error('Unable to load Director/Owner loan ledgers:', directorsError || accountsError);
+      .ilike('name', 'Director Loan%')
+      .order('code');
+    if (error) {
+      console.error('Unable to load Director/Owner loan ledgers:', error);
       setDirectorLoanAccounts([]);
       return;
     }
-    const activeAccounts = (accounts || []) as DirectorLoanLedgerAccount[];
-    const accountById = new Map(activeAccounts.map(account => [account.id, account]));
-    const linkedOptions: DirectorOwnerLoanOption[] = (directors || []).flatMap(director => {
-      const account = accountById.get(director.loan_account_id);
-      return account ? [{ directorId: director.id, directorName: director.full_name, account }] : [];
-    });
-    // A duplicated master -> COA mapping is invalid master data. Do not let a
-    // bank transaction choose ambiguously; the accounting audit reports it.
-    const mappingCounts = new Map<string, number>();
-    linkedOptions.forEach(option => mappingCounts.set(option.account.id, (mappingCounts.get(option.account.id) || 0) + 1));
-    setDirectorLoanAccounts(linkedOptions.filter(option => mappingCounts.get(option.account.id) === 1));
+    setDirectorLoanAccounts(((accounts || []) as DirectorLoanLedgerAccount[]).map(account => ({ account })));
+  };
+
+  const handleRecordDirectorLoanWithdrawal = async (line: StatementLine) => {
+    const selectedDirectorLoan = directorLoanAccounts.find(option => option.account.id === directorLoanAccountId);
+    if (!selectedDirectorLoan) {
+      alert('Select the existing Director / Owner loan ledger');
+      return;
+    }
+    try {
+      if (line.currency === 'USD' && recordExchangeRate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
+      const result = await saveBankLinkedFinanceJournal(
+        line.id,
+        line.description || `Director Loan withdrawal — ${selectedDirectorLoan.account.name}`,
+        selectedDirectorLoan.account.code,
+        'credit',
+        line.currency as 'IDR' | 'USD',
+        line.currency === 'IDR' ? 1 : recordExchangeRate,
+      );
+      setRecordModal(false);
+      setRecordingLine(null);
+      setRecordDirectorLoanWithdrawal(false);
+      setDirectorLoanAccountId('');
+      await loadStatementLines();
+      notifyFinanceReconciliationRefresh();
+      const { data: journal } = await supabase.from('journal_entries').select('entry_number').eq('id', result.journal_entry_id).single();
+      alert(`Director Loan withdrawal journal ${journal?.entry_number || ''} created and linked successfully`);
+    } catch (error: any) {
+      console.error('Error recording Director Loan withdrawal:', error);
+      alert('Error: ' + error.message);
+    }
   };
 
   const handleLinkExistingReceipt = async (line: StatementLine, receiptId: string) => {
@@ -3291,6 +3308,7 @@ export function BankReconciliationEnhanced({
                   <button
                     onClick={() => {
                       setRecordLoanRepayment(false);
+                      setRecordDirectorLoanWithdrawal(false);
                       setLinkJournalEntry(true);
                       setLinkToExpense(false);
                       setLinkToSupplierPayment(false);
@@ -3305,6 +3323,7 @@ export function BankReconciliationEnhanced({
                   <button
                     onClick={() => {
                       setRecordLoanRepayment(false);
+                      setRecordDirectorLoanWithdrawal(false);
                       setLinkToSupplierPayment(true);
                       setLinkToExpense(false);
                       setLinkJournalEntry(false);
@@ -3348,6 +3367,7 @@ export function BankReconciliationEnhanced({
                   <button
                     onClick={() => {
                       setRecordLoanRepayment(false);
+                      setRecordDirectorLoanWithdrawal(false);
                       setLinkToTaxPayment(true);
                       setLinkToExpense(false);
                       setLinkJournalEntry(false);
@@ -3362,6 +3382,7 @@ export function BankReconciliationEnhanced({
                   <button
                     onClick={() => {
                       setRecordLoanRepayment(false);
+                      setRecordDirectorLoanWithdrawal(false);
                       setLinkSettleBills(true);
                       setLinkToExpense(false);
                       setLinkJournalEntry(false);
@@ -3378,6 +3399,7 @@ export function BankReconciliationEnhanced({
                     type="button"
                     onClick={() => {
                       setRecordLoanRepayment(true);
+                      setRecordDirectorLoanWithdrawal(false);
                       setLinkToExpense(false);
                       setLinkJournalEntry(false);
                       setLinkToSupplierPayment(false);
@@ -3390,6 +3412,22 @@ export function BankReconciliationEnhanced({
                     className={`py-2 px-3 rounded-lg text-sm font-medium ${recordLoanRepayment ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'}`}
                   >
                     Loan Repayment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecordDirectorLoanWithdrawal(true);
+                      setRecordLoanRepayment(false);
+                      setLinkToExpense(false);
+                      setLinkJournalEntry(false);
+                      setLinkToSupplierPayment(false);
+                      setLinkToTaxPayment(false);
+                      setLinkSettleBills(false);
+                      setDirectorLoanAccountId('');
+                    }}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium ${recordDirectorLoanWithdrawal ? 'bg-violet-600 text-white' : 'bg-violet-50 text-violet-700 border border-violet-200'}`}
+                  >
+                    Director Loan Withdrawal
                   </button>
                   <button
                     type="button"
@@ -3437,6 +3475,27 @@ export function BankReconciliationEnhanced({
                     <button type="button" onClick={() => handleRecordLoanRepayment(recordingLine)}
                       className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
                       Record Loan Repayment
+                    </button>
+                  </div>
+                ) : recordDirectorLoanWithdrawal ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500">Post this bank debit to an existing Director Loan COA. This creates a normal bank-linked journal only.</p>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Director / Owner loan ledger *</label>
+                      <SearchableSelect
+                        value={directorLoanAccountId}
+                        onChange={setDirectorLoanAccountId}
+                        options={directorLoanAccounts.map(option => ({ value: option.account.id, label: directorOwnerName(option) }))}
+                        placeholder="Select existing Director / Owner..."
+                      />
+                    </div>
+                    {directorLoanAccountId && (() => {
+                      const option = directorLoanAccounts.find(item => item.account.id === directorLoanAccountId);
+                      return option ? <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700"><span className="font-medium">Account:</span> <span className="font-mono">{option.account.code}</span> — {option.account.name}</div> : null;
+                    })()}
+                    <button type="button" onClick={() => handleRecordDirectorLoanWithdrawal(recordingLine)} disabled={!directorLoanAccountId}
+                      className="w-full py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50">
+                      Record Director Loan Withdrawal
                     </button>
                   </div>
                 ) : linkSettleBills ? (
@@ -3917,7 +3976,7 @@ export function BankReconciliationEnhanced({
                         <option value="customer_payment">Customer Payment</option>
                         <option value="capital">Capital Injection</option>
                         <option value="loan">Loan Received</option>
-                        <option value="loan_director_owner">Loan from Director/Owner</option>
+                        <option value="loan_director_owner">Money received from Director/Owner (existing COA)</option>
                         <option value="bank_interest">Bank Interest</option>
                         <option value="other_income">Other Income</option>
                         <option value="misc_income">Miscellaneous Income</option>

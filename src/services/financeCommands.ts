@@ -77,11 +77,7 @@ export interface FinanceLoanPayload {
   counterparty_type: 'bank' | 'person' | 'staff' | 'company';
   principal_amount: number;
   bank_account_id: string;
-  liability_kind: 'bank' | 'director_owner';
-  /** Existing Director/Owner loan control ledger selected from the COA. */
-  liability_account_id?: string | null;
-  /** Existing Director master that resolves the selected control ledger, if present. */
-  director_id?: string | null;
+  liability_kind: 'bank';
   transaction_currency: FinanceCurrency;
   exchange_rate: number;
   description?: string | null;
