@@ -21,9 +21,7 @@
     "verify:finance-navigation": "node scripts/verify-finance-navigation.mjs",
     "verify:money-input": "node --experimental-strip-types scripts/verify-indonesian-money-input.mjs",
     "verify:money-input-coverage": "node scripts/verify-money-input-coverage.mjs",
-    "verify:inventory-v1": "node scripts/verify-inventory-v1-boundaries.mjs",
-    "reconcile:inventory": "node scripts/inventory-stock-reconciliation.mjs",
-    "test:inventory-v1": "node scripts/run-inventory-v1-regression.mjs"
+    "reconcile:inventory": "node scripts/inventory-stock-reconciliation.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

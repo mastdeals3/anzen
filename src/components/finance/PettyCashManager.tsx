@@ -42,6 +42,9 @@ interface PettyCashTransaction {
   transaction_date: string;
   transaction_type: 'withdraw' | 'expense';
   amount: number;
+  // Stored generated column on petty_cash_transactions; synthetic fund-transfer
+  // activity does not have a source-table settlement amount and falls back to amount.
+  settlement_amount?: number | null;
   description: string;
   expense_category: string | null;
   bank_account_id: string | null;
