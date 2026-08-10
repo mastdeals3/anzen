@@ -55,6 +55,19 @@ interface BankAccount {
   alias: string | null;
 }
 
+interface DirectorLoanLedgerAccount {
+  id: string;
+  code: string;
+  name: string;
+}
+
+interface DirectorOwnerLoanOption {
+  /** Existing Director master ID when the ledger is linked to one. */
+  directorId: string | null;
+  directorName: string;
+  account: DirectorLoanLedgerAccount;
+}
+
 interface StatementLine {
   id: string;
   date: string;
@@ -202,6 +215,13 @@ const NON_CUSTOMER_JOURNAL_TYPES = new Set([
   'refund',
 ]);
 
+// Prefer the existing Director master -> loan_account_id relationship. A
+// legacy per-owner loan COA with no Director master remains selectable so the
+// reconciliation flow can reuse it without manufacturing master data.
+function directorOwnerName(option: DirectorOwnerLoanOption): string {
+  return option.directorName || option.account.name.replace(/^director\s+loan\s*[-–—:]\s*/i, '').trim() || option.account.name;
+}
+
 export function BankReconciliationEnhanced({
   canManage,
   initialBankAccountId,
@@ -258,6 +278,8 @@ export function BankReconciliationEnhanced({
   const [recordingReceipt, setRecordingReceipt] = useState(false);
   const [recordExchangeRate, setRecordExchangeRate] = useState(1);
   const [loanCounterparty, setLoanCounterparty] = useState('');
+  const [directorLoanAccounts, setDirectorLoanAccounts] = useState<DirectorOwnerLoanOption[]>([]);
+  const [directorLoanAccountId, setDirectorLoanAccountId] = useState('');
   const [recordLoanRepayment, setRecordLoanRepayment] = useState(false);
   const [activeLoans, setActiveLoans] = useState<Array<{
     id: string; loan_number: string; counterparty_name: string; outstanding_balance: number; currency: string;
@@ -318,6 +340,7 @@ export function BankReconciliationEnhanced({
     loadBankAccounts();
     loadExpenses();
     loadCustomers();
+    loadDirectorLoanAccounts();
   }, []);
 
   useEffect(() => {
@@ -1929,15 +1952,25 @@ export function BankReconciliationEnhanced({
         }, line.id);
         alert(`Capital Contribution ${result.voucher_number} created and linked successfully`);
       } else if (type === 'loan' || type === 'loan_director_owner') {
-        if (!loanCounterparty.trim()) throw new Error('Counterparty name is required');
+        const selectedDirectorLoan = directorLoanAccounts.find(option => option.account.id === directorLoanAccountId);
+        if (type === 'loan_director_owner' && !selectedDirectorLoan) {
+          throw new Error('Select the existing Director / Owner loan ledger');
+        }
+        if (type === 'loan' && !loanCounterparty.trim()) throw new Error('Counterparty name is required');
         if (line.currency === 'USD' && recordExchangeRate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
         const result = await saveFinanceLoan({
           loan_date: line.date,
-          counterparty_name: loanCounterparty.trim(),
+          // The director/owner name is derived from the existing ledger selected
+          // above; it is never an independently-entered accounting party.
+          counterparty_name: type === 'loan_director_owner'
+            ? directorOwnerName(selectedDirectorLoan!)
+            : loanCounterparty.trim(),
           counterparty_type: type === 'loan_director_owner' ? 'person' : 'bank',
           principal_amount: line.credit,
           bank_account_id: selectedBank,
           liability_kind: type === 'loan_director_owner' ? 'director_owner' : 'bank',
+          liability_account_id: selectedDirectorLoan?.account.id || null,
+          director_id: selectedDirectorLoan?.directorId || null,
           transaction_currency: line.currency as 'IDR' | 'USD',
           exchange_rate: line.currency === 'IDR' ? 1 : recordExchangeRate,
           description: description || line.description,
@@ -1971,6 +2004,7 @@ export function BankReconciliationEnhanced({
       setReceiptInvoices([]);
       setReceiptAllocations({});
       setLoanCounterparty('');
+      setDirectorLoanAccountId('');
       setLinkExistingReceipt(false);
       await loadStatementLines();
       notifyFinanceReconciliationRefresh();
@@ -1981,6 +2015,45 @@ export function BankReconciliationEnhanced({
       recordingReceiptRef.current = false;
       setRecordingReceipt(false);
     }
+  };
+
+  // Director/Owner lending is represented by the existing Director master
+  // `loan_account_id` -> COA relationship. This deliberately reads (and never
+  // creates) either master data or mappings. Unlinked legacy ledgers are shown
+  // only as a compatibility fallback and are persisted on `loans.coa_id`.
+  const loadDirectorLoanAccounts = async () => {
+    const [{ data: directors, error: directorsError }, { data: accounts, error: accountsError }] = await Promise.all([
+      supabase
+        .from('directors')
+        .select('id, full_name, loan_account_id')
+        .eq('is_active', true)
+        .or('is_deprecated.is.null,is_deprecated.eq.false')
+        .not('loan_account_id', 'is', null)
+        .order('full_name'),
+      supabase
+      .from('chart_of_accounts')
+      .select('id, code, name')
+      .eq('is_active', true)
+      .eq('is_header', false)
+      .eq('account_type', 'liability')
+      .order('code'),
+    ]);
+    if (directorsError || accountsError) {
+      console.error('Unable to load Director/Owner loan ledgers:', directorsError || accountsError);
+      setDirectorLoanAccounts([]);
+      return;
+    }
+    const activeAccounts = (accounts || []) as DirectorLoanLedgerAccount[];
+    const accountById = new Map(activeAccounts.map(account => [account.id, account]));
+    const linkedOptions: DirectorOwnerLoanOption[] = (directors || []).flatMap(director => {
+      const account = accountById.get(director.loan_account_id);
+      return account ? [{ directorId: director.id, directorName: director.full_name, account }] : [];
+    });
+    const linkedAccountIds = new Set(linkedOptions.map(option => option.account.id));
+    const legacyOptions = activeAccounts
+      .filter(account => !linkedAccountIds.has(account.id) && /director\s+loan/i.test(account.name))
+      .map(account => ({ directorId: null, directorName: '', account }));
+    setDirectorLoanAccounts([...linkedOptions, ...legacyOptions]);
   };
 
   const handleLinkExistingReceipt = async (line: StatementLine, receiptId: string) => {
@@ -3834,6 +3907,9 @@ export function BankReconciliationEnhanced({
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                         onChange={(e) => {
                           setReceiptType(e.target.value);
+                          if (e.target.value !== 'loan_director_owner') {
+                            setDirectorLoanAccountId('');
+                          }
                           if (e.target.value !== 'customer_payment') {
                             setReceiptCustomerId('');
                             setReceiptInvoices([]);
@@ -3872,7 +3948,36 @@ export function BankReconciliationEnhanced({
                       </div>
                     )}
 
-                    {(receiptType === 'loan' || receiptType === 'loan_director_owner') && (
+                    {receiptType === 'loan_director_owner' && (
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Director / Owner *</label>
+                          <SearchableSelect
+                            value={directorLoanAccountId}
+                            onChange={setDirectorLoanAccountId}
+                            options={directorLoanAccounts.map(option => ({
+                              value: option.account.id,
+                              label: directorOwnerName(option),
+                            }))}
+                            placeholder="Select existing Director / Owner..."
+                          />
+                        </div>
+                        {directorLoanAccountId && (() => {
+                          const option = directorLoanAccounts.find(item => item.account.id === directorLoanAccountId);
+                          return option ? (
+                            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                              <span className="font-medium">Account:</span>{' '}
+                              <span className="font-mono">{option.account.code}</span> — {option.account.name}
+                            </div>
+                          ) : null;
+                        })()}
+                        {directorLoanAccounts.length === 0 && (
+                          <p className="text-xs text-amber-700">No existing active Director/Owner loan ledger is available.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {receiptType === 'loan' && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Counterparty *</label>
                         <input
@@ -3881,7 +3986,7 @@ export function BankReconciliationEnhanced({
                           onChange={(e) => setLoanCounterparty(e.target.value)}
                           required
                           className="w-full px-3 py-2 border rounded-lg"
-                          placeholder={receiptType === 'loan_director_owner' ? 'Director or owner name' : 'Bank or lender name'}
+                          placeholder="Bank or lender name"
                         />
                       </div>
                     )}

@@ -208,6 +208,10 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
   const [editingVoucher, setEditingVoucher] = useState<PaymentVoucher | null>(null);
   const [viewingVoucher, setViewingVoucher] = useState<PaymentVoucher | null>(null);
   const [bankReconStatementLineId, setBankReconStatementLineId] = useState<string | null>(null);
+  // A Bank Reconciliation-created voucher must settle the exact statement
+  // amount and the exact bank master selected on the statement line.
+  const [bankReconExpectedAmount, setBankReconExpectedAmount] = useState<number | null>(null);
+  const [bankReconBankAccountId, setBankReconBankAccountId] = useState<string | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
   const [viewAllocations, setViewAllocations] = useState<Array<{ invoice_id: string; invoice_number: string; invoice_date: string; allocated_amount: number; allocated_currency: string; is_expense_bill?: boolean; expense_id?: string; expense_category?: string; gross_salary?: number; advance_applied?: number; pph21?: number }>>([]);
 
@@ -273,6 +277,8 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
     if (!prefillFromBankReconciliation || loading) return;
     setEditingVoucher(null);
     setBankReconStatementLineId(prefillFromBankReconciliation.statementLineId);
+    setBankReconExpectedAmount(prefillFromBankReconciliation.amount);
+    setBankReconBankAccountId(prefillFromBankReconciliation.bankAccountId);
     setAllocations([]);
     setExpenseBillAllocations([]);
     setFormData(prev => ({
@@ -590,6 +596,8 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
     setSelectedBank(null);
     setEditingVoucher(null);
     setBankReconStatementLineId(null);
+    setBankReconExpectedAmount(null);
+    setBankReconBankAccountId(null);
     setUploadingFiles([]);
   };
 
@@ -868,6 +876,24 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
     if (formData.payment_purpose === 'salary_advance' && !isStaffPayee) {
       alert('Salary Advance requires a staff payee.');
       return;
+    }
+
+    if (bankReconStatementLineId) {
+      if (formData.payment_method === 'cash' || formData.payment_method === 'advance_adjustment') {
+        alert('A reconciled bank payment must use the bank transfer payment method.');
+        return;
+      }
+      if (!bankReconBankAccountId || formData.bank_account_id !== bankReconBankAccountId) {
+        alert('The payment bank account must remain the bank account on the selected statement line.');
+        return;
+      }
+      if (bankReconExpectedAmount == null || Math.abs(totalBankDebit - bankReconExpectedAmount) > 0.01) {
+        alert(
+          `Actual bank debit (${fmt(totalBankDebit, bankCurrency)}) must exactly equal the selected bank statement amount (${fmt(bankReconExpectedAmount || 0, bankCurrency)}). ` +
+          'Adjust the gross amount, PPh, or bank charge so the existing payment voucher settles the statement exactly.',
+        );
+        return;
+      }
     }
 
     // ── Currency / bank account guard ──────────────────────────────
