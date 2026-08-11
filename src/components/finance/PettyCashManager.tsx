@@ -24,7 +24,7 @@ import {
 import { formatCurrency } from '../../utils/currency';
 import { useExpenseCategories } from './useExpenseCategories';
 import { getPostedJournalsForExport, writeReconciliationWorkbook, type ReconciliationSummaryRow } from './reconciliationExport';
-import { ExpenseCategorySelect } from './ExpenseCategorySelect';
+import { ExpenseCategorySelect, groupExpenseCategories } from './ExpenseCategorySelect';
 
 interface PettyCashDocument {
   id: string;
@@ -1122,8 +1122,12 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
           className="h-6 px-1.5 border border-gray-300 rounded text-[11px] bg-white"
         >
             <option value="all">All Categories</option>
-            {expenseCategories.map(cat => (
-              <option key={cat.value} value={cat.value}>{cat.label}</option>
+            {groupExpenseCategories(expenseCategories).map(([parent, categories]) => (
+              <optgroup key={parent} label={parent}>
+                {categories.map(cat => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
+              </optgroup>
             ))}
         </select>
 

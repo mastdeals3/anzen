@@ -9,6 +9,7 @@ import { useFinance } from '../../contexts/FinanceContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 import { useExpenseCategories } from './useExpenseCategories';
+import { groupExpenseCategories } from './ExpenseCategorySelect';
 import { calculateCanonicalCashPayable, calculateCanonicalExpenseTotal } from '../../utils/taxCalculations';
 import {
   FINANCE_RECONCILIATION_REFRESH_EVENT,
@@ -3706,45 +3707,13 @@ export function BankReconciliationEnhanced({
                       >
                         <option value="">Select category...</option>
 
-                        <optgroup label="═══ IMPORT COSTS (Capitalized to Inventory) ═══">
-                          {expenseCategories.filter(c => c.group === 'Import Costs').map((cat) => (
-                            <option key={cat.value} value={cat.value}>
-                              {cat.label}
-                            </option>
-                          ))}
-                        </optgroup>
-
-                        <optgroup label="═══ SALES & DISTRIBUTION (P&L Expense) ═══">
-                          {expenseCategories.filter(c => c.group === 'Sales & Distribution').map((cat) => (
-                            <option key={cat.value} value={cat.value}>
-                              {cat.label}
-                            </option>
-                          ))}
-                        </optgroup>
-
-                        <optgroup label="═══ STAFF COSTS (P&L Expense) ═══">
-                          {expenseCategories.filter(c => c.group === 'Staff Costs').map((cat) => (
-                            <option key={cat.value} value={cat.value}>
-                              {cat.label}
-                            </option>
-                          ))}
-                        </optgroup>
-
-                        <optgroup label="═══ OPERATIONS (P&L Expense) ═══">
-                          {expenseCategories.filter(c => c.group === 'Operations').map((cat) => (
-                            <option key={cat.value} value={cat.value}>
-                              {cat.label}
-                            </option>
-                          ))}
-                        </optgroup>
-
-                        <optgroup label="═══ ADMINISTRATIVE (P&L Expense) ═══">
-                          {expenseCategories.filter(c => c.group === 'Administrative').map((cat) => (
-                            <option key={cat.value} value={cat.value}>
-                              {cat.label}
-                            </option>
-                          ))}
-                        </optgroup>
+                        {groupExpenseCategories(expenseCategories).map(([parent, categories]) => (
+                          <optgroup key={parent} label={parent}>
+                            {categories.map((category) => (
+                              <option key={category.value} value={category.value}>{category.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
                       </select>
                     </div>
                     <div>

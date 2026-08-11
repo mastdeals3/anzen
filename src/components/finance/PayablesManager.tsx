@@ -6,7 +6,7 @@ import { FinanceModal as Modal } from './FinanceModal';
 import { MoneyInput } from '../MoneyInput';
 import { Plus, CreditCard as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
 import { formatDate } from '../../utils/dateFormat';
-import { EXPENSE_CATEGORY_LABELS } from '../../utils/taxCalculations';
+import { useExpenseCategories } from './useExpenseCategories';
 
 interface VendorBill {
   id: string;
@@ -77,6 +77,7 @@ type ViewMode = 'bills' | 'payments' | 'expense_bills';
 
 export function PayablesManager({ canManage }: PayablesManagerProps) {
   const { profile } = useAuth();
+  const { categories: expenseCategories } = useExpenseCategories();
   const [viewMode, setViewMode] = useState<ViewMode>('expense_bills');
   const [bills, setBills] = useState<VendorBill[]>([]);
   const [payments, setPayments] = useState<VendorPayment[]>([]);
@@ -474,7 +475,8 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
   const overdueExpenseBills = outstandingExpenseBills.filter(b => b.days_overdue > 0);
 
   const categoryLabel = (cat: string) =>
-    EXPENSE_CATEGORY_LABELS[cat] || cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    expenseCategories.find(category => category.value === cat)?.label
+    || cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   const billColumns = [
     {

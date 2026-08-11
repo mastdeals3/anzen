@@ -65,7 +65,6 @@ const UTILITY_RULES: CategoryFieldRules = {
   supplier:     'hide',
   utility:      'show',
   billingMonth: 'show',
-  bankCharges:  'show',
 };
 
 const IMPORT_BROKER_RULES: CategoryFieldRules = {
@@ -91,7 +90,9 @@ const STAFF_CATEGORIES = new Set([
  * Categories that map to Utility Master.
  */
 const UTILITY_CATEGORIES = new Set([
-  'utilities',
+  'electricity',
+  'water',
+  'internet_phone',
 ]);
 
 /**

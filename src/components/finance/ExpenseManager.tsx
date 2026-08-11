@@ -20,7 +20,7 @@ import {
 } from './bankTransactionLinking';
 import { FinanceDocumentAttachments, uploadFinanceDocuments } from './FinanceDocumentAttachments';
 import { getPostedJournalsForExport, writeReconciliationWorkbook, type ReconciliationSummaryRow } from './reconciliationExport';
-import { ExpenseCategorySelect } from './ExpenseCategorySelect';
+import { ExpenseCategorySelect, groupExpenseCategories } from './ExpenseCategorySelect';
 
 // Tiny inline helper used inside the SAP header PPN cell — a 3-state
 // selector rendered as a right-side chip so it doesn't consume a column.
@@ -112,7 +112,6 @@ import {
   brokerLineTotal,
   computeBrokerLinePpn,
   getDueDateFromTerms,
-  EXPENSE_CATEGORY_LABELS,
 } from '../../utils/taxCalculations';
 
 const SALARY_PERIOD_OPTIONS = salaryPeriodOptions();
@@ -2119,10 +2118,13 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           className="h-6 px-1.5 border border-gray-300 rounded text-[11px] bg-white"
         >
           <option value="all">All Categories</option>
-          {expenseCategories
-            .map((category) => (
-              <option key={category.value} value={category.value}>{category.label}</option>
-            ))}
+          {groupExpenseCategories(expenseCategories).map(([parent, categories]) => (
+            <optgroup key={parent} label={parent}>
+              {categories.map((category) => (
+                <option key={category.value} value={category.value}>{category.label}</option>
+              ))}
+            </optgroup>
+          ))}
         </select>
 
         {suppliers.length > 0 && (
@@ -2523,7 +2525,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             {(() => {
               const rules   = getCategoryFieldRules(formData.expense_category);
               const taxCfg  = selectedDocType ? DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType] : null;
+              const category = expenseCategories.find(c => c.value === formData.expense_category);
               const isBroker = formData.expense_category === 'import_broker';
+              // Tax is an invoice attribute, not a document-type/category lock.
+              // Only PIB (its own tax breakdown) and staff advances are excluded.
+              // This lets an operating service such as fumigation carry PPN and
+              // any supported PPh code on the same invoice.
+              const isPib = category?.taxBehavior === 'pib_import';
+              const supportsPpn = !!category && !isPib && category.taxBehavior !== 'advance' && category.taxBehavior !== 'salary';
+              const supportsPph = !!category && !isPib && category.taxBehavior !== 'advance';
               return (
                 <div className="pb-2 mb-1 border-b border-gray-200 flex flex-col gap-1">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Basic Information</p>
@@ -2719,7 +2729,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           className={SAP_INPUT + ' !text-right !font-mono'} />
                       </SapField>
                     )}
-                    {taxCfg?.ppn && !isBroker && formData.ppn_calc_mode === 'dpp_nilai_lain' && (
+                    {supportsPpn && !isBroker && formData.ppn_calc_mode === 'dpp_nilai_lain' && (
                       <>
                         <SapField label="DPP (Nilai Lain)" span={3}>
                           <MoneyInput value={formData.dpp_amount} placeholder="0"
@@ -2740,7 +2750,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         </SapField>
                       </>
                     )}
-                    {taxCfg?.ppn && !(formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBroker) && (
+                    {supportsPpn && !(formData.ppn_calc_mode === 'dpp_nilai_lain' && !isBroker) && (
                       <>
                         {isBroker && (
                           <SapField label="PPN %" span={3}>
@@ -2794,14 +2804,14 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         </SapField>
                       </>
                     )}
-                    {(taxCfg?.pph23 || taxCfg?.pph21) && (
-                      <SapField label={taxCfg?.pph23 ? 'PPh Withheld' : 'PPh 21'} span={3}>
+                    {supportsPph && (
+                      <SapField label={category?.taxBehavior === 'salary' ? 'PPh 21' : 'PPh Withheld'} span={3}>
                         <MoneyInput value={formData.pph_amount} placeholder="0.00"
                           onChange={(v) => setFormData({ ...formData, pph_amount: v })}
                           className={SAP_INPUT + ' !text-right !font-mono text-orange-700'} />
                       </SapField>
                     )}
-                    {(taxCfg?.pph23 || taxCfg?.pph21) && (
+                    {supportsPph && (
                       <SapField label="PPh Code" span={3}>
                         <SearchableSelect
                           value={formData.pph_code_id}
@@ -2828,7 +2838,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           className={SAP_INPUT + ' !text-right !font-mono'} />
                       </SapField>
                     )}
-                    {formData.expense_category === 'utilities' && (
+                    {rules.bankCharges === 'show' && (
                       <SapField label="Bank Charges" span={3}>
                         <MoneyInput value={formData.bank_charges_amount} placeholder="0.00"
                           onChange={(v) => setFormData({ ...formData, bank_charges_amount: v })}
@@ -2880,15 +2890,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             })()}
 
             {/* ── Tax Section (conditional, full width) ── */}
-            {selectedDocType && (() => {
-              const taxCfg = DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType];
-              if (!taxCfg || (!taxCfg.ppn && !taxCfg.pph23 && !taxCfg.pph21 && !taxCfg.stamp && !taxCfg.pib && !taxCfg.brokerItems)) return null;
+            {(() => {
+              const category = expenseCategories.find(c => c.value === formData.expense_category);
+              const taxCfg = selectedDocType ? DOCUMENT_TYPE_TAX_CONFIG[selectedDocType as DocumentType] : null;
+              const isPib = category?.taxBehavior === 'pib_import';
+              const supportsPpn = !!category && !isPib && category.taxBehavior !== 'advance' && category.taxBehavior !== 'salary';
+              const supportsPph = !!category && !isPib && category.taxBehavior !== 'advance';
+              const supportsStamp = !!category && !isPib && category.taxBehavior !== 'advance' && category.taxBehavior !== 'salary';
+              if (!category || (!supportsPpn && !supportsPph && !supportsStamp && !isPib && !taxCfg?.brokerItems)) return null;
               return (
                 <div className="py-1.5 border-b">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Tax</p>
 
                   {/* PIB Breakdown */}
-                  {taxCfg.pib && (() => {
+                  {isPib && (() => {
                     const pibSum = (formData.pib_bm_amount || 0) + (formData.pib_ppn_amount || 0) + (formData.pib_pph_amount || 0);
                     const pibOk = Math.abs(pibSum - (formData.amount || 0)) < 1 && pibSum > 0;
                     return (
@@ -2947,7 +2962,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                        DPP and PPN remain independent reporting values and are
                        never added to Invoice Amount.
                      ══════════════════════════════════════════════════════════════ */}
-                  {taxCfg.brokerItems && (() => {
+                  {taxCfg?.brokerItems && (() => {
                     // ─── updateLine — pure line mutator, NEVER touches header state.
                     const updateLine = (idx: number, patch: Partial<BrokerItem>) => {
                       setBrokerItems(prev => prev.map((it, i) => {
@@ -3184,7 +3199,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                   })()}
 
                   {/* Non-broker payment summary — horizontal formula bar */}
-                  {formData.expense_category !== 'import_broker' && !taxCfg.pib && (formData.amount > 0 || formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0) && (() => {
+                  {formData.expense_category !== 'import_broker' && !isPib && (formData.amount > 0 || formData.ppn_amount > 0 || formData.pph_amount > 0 || formData.stamp_duty_amount > 0) && (() => {
                     const totals = calculateExpenseTotals(formData);
                     const bc = totals.bankChargesAmount;
                     const payable = totals.netPayable;

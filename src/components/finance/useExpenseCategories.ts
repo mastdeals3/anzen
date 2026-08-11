@@ -37,6 +37,13 @@ type CategoryRow = {
 
 const first = <T,>(value: T | T[] | null | undefined): T | null => Array.isArray(value) ? value[0] || null : value || null;
 
+// PPN Import and PPh Import are internal legs of the PIB import posting. They
+// must stay active so the existing split-journal resolver can map them to their
+// tax COAs, but they are not business-cost choices for a generic expense form.
+// tax_behavior is master data, so every consumer of this hook applies the same
+// rule without maintaining a second category list.
+const INTERNAL_TAX_BEHAVIORS = new Set(['input_vat', 'advance_income_tax']);
+
 export function useExpenseCategories(includeInactive = false) {
   const [categories, setCategories] = useState<ExpenseCategoryDef[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +58,9 @@ export function useExpenseCategories(includeInactive = false) {
     query.eq('is_posting_category', true);
     const { data, error } = await query;
     if (error) throw error;
-    setCategories(((data || []) as CategoryRow[]).map((row) => {
+    setCategories(((data || []) as CategoryRow[])
+      .filter((row) => !INTERNAL_TAX_BEHAVIORS.has(row.tax_behavior))
+      .map((row) => {
       const parent = first(row.parent);
       const coa = first(row.chart_of_accounts);
       return {
@@ -70,7 +79,7 @@ export function useExpenseCategories(includeInactive = false) {
         coaName: coa?.name,
         sortOrder: row.sort_order,
       };
-    }));
+      }));
   }, [includeInactive]);
 
   useEffect(() => {

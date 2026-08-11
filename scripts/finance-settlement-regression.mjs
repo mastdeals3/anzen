@@ -101,20 +101,52 @@ BEGIN
        AND fe.expense_category IN ('pib_import','pph_import')
        AND CASE WHEN fe.expense_category='pib_import'
          THEN COALESCE(fe.pib_pph_amount,0) ELSE COALESCE(fe.amount,0) END>0
-  ), typed AS (
-    SELECT * FROM source
-    UNION ALL
-    SELECT fiscal_year,period_month,'PPh_Unifikasi',amount FROM source
   ), expected AS (
     SELECT fiscal_year,period_month,tax_type,sum(amount) total
-      FROM typed GROUP BY fiscal_year,period_month,tax_type
+      FROM source GROUP BY fiscal_year,period_month,tax_type
+  ), actual AS (
+    SELECT fiscal_year,period_month,tax_type,pph_total total
+      FROM public.tax_periods
+     WHERE tax_type IN ('PPh21','PPh22','PPh23','PPh4(2)')
+  ), expected_unifikasi AS (
+    SELECT fiscal_year,period_month,sum(total) total
+      FROM expected GROUP BY fiscal_year,period_month
+  ), actual_unifikasi AS (
+    -- The UI's PPh_Unifikasi tab is a live consolidation of these four typed
+    -- registers. The legacy PPh_Unifikasi tax_period row is not its source.
+    SELECT fiscal_year,period_month,sum(total) total
+      FROM actual GROUP BY fiscal_year,period_month
+  ), differences AS (
+    SELECT COALESCE(e.fiscal_year,a.fiscal_year) fiscal_year,
+           COALESCE(e.period_month,a.period_month) period_month,
+           COALESCE(e.tax_type,a.tax_type) tax_type
+      FROM expected e FULL JOIN actual a USING (fiscal_year,period_month,tax_type)
+     WHERE COALESCE(e.total,0) IS DISTINCT FROM COALESCE(a.total,0)
+    UNION ALL
+    SELECT COALESCE(e.fiscal_year,a.fiscal_year),
+           COALESCE(e.period_month,a.period_month),
+           'PPh_Unifikasi'
+      FROM expected_unifikasi e FULL JOIN actual_unifikasi a USING (fiscal_year,period_month)
+     WHERE COALESCE(e.total,0) IS DISTINCT FROM COALESCE(a.total,0)
   )
   SELECT count(*) INTO v_count
-    FROM public.tax_periods tp
-    LEFT JOIN expected e USING(fiscal_year,period_month,tax_type)
-   WHERE tp.tax_type<>'PPN'
-     AND tp.pph_total IS DISTINCT FROM COALESCE(e.total,0);
-  IF v_count<>0 THEN RAISE EXCEPTION '% PPh periods differ from approved source documents',v_count; END IF;
+    FROM differences;
+  IF v_count<>0 THEN RAISE EXCEPTION '% typed or consolidated PPh registers differ from approved source documents',v_count; END IF;
+
+  -- EXP/26/127 was paid in February and deliberately assigned to February.
+  -- The 4-Mar value is the fallback payment-attribution date; it is not used
+  -- when the existing explicit PPh reporting-period selection is present.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.finance_expenses fe
+    JOIN public.tax_periods tp ON tp.id = fe.pph_tax_period_id
+    WHERE fe.voucher_number = 'EXP/26/127'
+      AND fe.expense_date = '2026-02-10'
+      AND fe.pph_amount = 67500
+      AND tp.tax_type = 'PPh21'
+      AND tp.fiscal_year = 2026 AND tp.period_month = 2
+      AND public.get_expense_pph_period_date(fe.id) = '2026-03-04'
+  ) THEN RAISE EXCEPTION 'EXP/26/127 lost its explicit February PPh reporting period'; END IF;
 
   -- Canonical period precedence: latest linked supplier payment, then due
   -- date, then the legacy document date. Government PPh remittance links do
