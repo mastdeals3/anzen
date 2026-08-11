@@ -15,7 +15,7 @@ export const APP_INFO = {
   name: (import.meta.env.VITE_APP_NAME as string | undefined) || 'SAPJ Pharma ERP',
   tagline: 'Enterprise Resource Planning System',
   /** Current release. Bump here (only here) on each release. */
-  version: 'v1.3.0',
+  version: 'v1.4.0',
   /** Stamped by Vite at build time — never hand-edited. */
   buildDate: __BUILD_DATE__,
   status: 'Production',
@@ -36,6 +36,18 @@ export interface VersionEntry {
 
 /** Release timeline, newest first. The first entry is the current release. */
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: 'v1.4.0',
+    date: '2026-08-10',
+    title: 'Finance & Tax Compliance Consolidation',
+    summary: 'Certified Finance workflows consolidated with master-driven expense categories, canonical COA posting, strict bank settlement reconciliation, and source-authoritative PPN/PPh registers and payments.',
+  },
+  {
+    version: 'v1.3.1',
+    date: '2026-08-01',
+    title: 'ERP Production Certification',
+    summary: 'Finance Version 1.0 and Inventory Version 1.0 certified for controlled daily production use with deterministic migrations and authenticated regression coverage.',
+  },
   {
     version: 'v1.3.0',
     date: '2026-07-14',
@@ -73,14 +85,14 @@ export const COMPLIANCE_ITEMS: ComplianceItem[] = [
   { label: 'Role Based Access Control', detail: 'Admin / Accounts / Sales / Warehouse roles' },
   { label: 'Double Entry Accounting', detail: 'Balanced journal entries on every financial document' },
   { label: 'Indonesian Tax Compliance', detail: 'PPN, PPh 21/22/23/4(2), Faktur Pajak, e-filing calendar' },
-  { label: 'Document Versioning', detail: 'Company profile snapshots frozen onto every document' },
+  { label: 'Document Versioning', detail: 'Company profile snapshots retained on supported business documents' },
   { label: 'Database Backups', detail: 'Managed PostgreSQL backups + in-app backup download' },
   { label: 'Electronic Document Storage', detail: 'Invoices, fakturs and attachments in cloud storage' },
   { label: 'User Activity Logging', detail: 'Author and timestamp captured on records' },
   { label: 'Row Level Security', detail: 'Postgres RLS enforced on application tables' },
   { label: 'Inventory Batch Traceability', detail: 'Batch-level stock movements end to end' },
   { label: 'Bank Reconciliation', detail: 'Statement lines matched to journals and vouchers' },
-  { label: 'Financial Audit Reports', detail: 'Trial balance, ledgers, ageing and tax reports' },
+  { label: 'Financial Audit Reports', detail: 'Trial balance, ledgers, ageing, financial statements and tax reports' },
 ];
 
 /**
@@ -96,5 +108,7 @@ export const STATIC_STATS = {
   securityPolicies: 250,
   storageBuckets: 8,
   reports: 14,
-  taxReports: 6,
+  // TaxReportsPanel defines the nine current report tabs. This remains a
+  // fallback because the About page must render before authenticated data loads.
+  taxReports: 9,
 } as const;
