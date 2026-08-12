@@ -49,28 +49,11 @@ interface LinkBankTransactionOptions {
   allocationAmount?: number;
 }
 
-function isAvailableTransaction(
-  line: BankTransactionLine,
-  currentExpenseId?: string | null,
-  currentJournalEntryId?: string | null,
-  currentPettyCashId?: string | null,
-) {
-  const isCurrent =
-    (!!currentExpenseId && line.matched_expense_id === currentExpenseId) ||
-    (!!currentJournalEntryId && line.matched_entry_id === currentJournalEntryId) ||
-    (!!currentPettyCashId && line.matched_petty_cash_id === currentPettyCashId);
-
-  if (isCurrent || Number(line.remainingAmount ?? 0) > 0.01) return true;
-
-  return !(
-    line.matched_expense_id ||
-    line.matched_entry_id ||
-    line.matched_receipt_id ||
-    line.matched_payment_id ||
-    line.matched_petty_cash_id ||
-    line.matched_fund_transfer_id ||
-    line.matched_tax_payment_id
-  );
+function isAvailableTransaction(line: BankTransactionLine) {
+  // The allocation ledger is canonical: a line is selectable only while it
+  // has a positive balance. Matched metadata alone cannot distinguish a
+  // partial allocation from a fully reconciled transaction.
+  return Number(line.remainingAmount ?? 0) > 0.01;
 }
 
 export async function loadUnmatchedDebitBankTransactions({
@@ -131,7 +114,7 @@ export async function loadUnmatchedDebitBankTransactions({
       const enriched = { ...line, allocatedAmount, remainingAmount: Math.max(0, total - allocatedAmount) };
       return {
         ...enriched,
-        isLinked: !isAvailableTransaction(enriched, currentExpenseId, currentJournalEntryId, currentPettyCashId),
+        isLinked: !isAvailableTransaction(enriched),
       };
     })
     .filter((line) => includeLinked || !line.isLinked);

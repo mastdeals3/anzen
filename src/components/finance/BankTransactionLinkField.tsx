@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Landmark, Link2, Search, Unlink } from 'lucide-react';
+import { Landmark, Link2, Search } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import {
   type BankTransactionLine,
@@ -46,9 +46,7 @@ export function BankTransactionLinkField({
   currentPettyCashId,
   disabled = false,
   disabledMessage,
-  canUnlink = false,
   onSelect,
-  onUnlink,
   direction = 'debit',
   candidateFilter,
   autoSelectSingle = false,
@@ -129,6 +127,7 @@ export function BankTransactionLinkField({
   const pendingAllocation = Math.min(pendingBankRemaining, pendingDocumentOutstanding);
   const pendingBankAfter = Math.max(0, pendingBankRemaining - pendingAllocation);
   const pendingDocumentAfter = Math.max(0, pendingDocumentOutstanding - pendingAllocation);
+  const hasReferenceColumn = filteredTransactions.some((line) => Boolean(line.reference?.trim()));
 
   if (linkedTransaction) {
     return (
@@ -151,16 +150,6 @@ export function BankTransactionLinkField({
                 {' · '}{bankLabel(linkedTransaction)}
               </div>
             </div>
-            {canUnlink && onUnlink && (
-              <button
-                type="button"
-                onClick={() => void onUnlink()}
-                className="inline-flex items-center gap-1 text-[10px] text-red-600 hover:text-red-700 shrink-0"
-              >
-                <Unlink className="w-3 h-3" />
-                Unlink
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -216,15 +205,15 @@ export function BankTransactionLinkField({
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Currency</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Direction</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Narration</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-600">Reference</th>
+                    {hasReferenceColumn && <th className="px-3 py-2 text-left font-semibold text-gray-600">Reference</th>}
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">Bank</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
-                    <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">Loading transactions...</td></tr>
+                    <tr><td colSpan={hasReferenceColumn ? 7 : 6} className="px-3 py-8 text-center text-gray-400">Loading transactions...</td></tr>
                   ) : filteredTransactions.length === 0 ? (
-                    <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">No matching bank transactions found</td></tr>
+                    <tr><td colSpan={hasReferenceColumn ? 7 : 6} className="px-3 py-8 text-center text-gray-400">No matching bank transactions found</td></tr>
                   ) : filteredTransactions.map((line) => (
                     <tr
                       key={line.id}
@@ -232,14 +221,20 @@ export function BankTransactionLinkField({
                       className={`${line.isLinked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-blue-50'} ${selectedTransactionId === line.id ? 'bg-blue-50' : ''}`}
                     >
                       <td className="px-3 py-2 whitespace-nowrap">{new Date(line.transaction_date).toLocaleDateString('id-ID')}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-red-700 whitespace-nowrap">{formatAmount(line)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold text-red-700 whitespace-nowrap">
+                        <div>{formatAmount(line)}</div>
+                        {Number(line.allocatedAmount || 0) > 0 && (
+                          <div className="mt-0.5 text-[10px] font-medium text-amber-700">
+                            Remaining: {formatCurrency(Number(line.remainingAmount || 0), line.bank_accounts?.currency || 'IDR')}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-2">{line.bank_accounts?.currency || '—'}</td>
                       <td className="px-3 py-2">{line.debit_amount > 0 ? 'Money out' : 'Money in'}</td>
                       <td className="px-3 py-2 text-gray-700 min-w-[220px]">{line.description || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600 font-mono">{line.reference || '—'}</td>
+                      {hasReferenceColumn && <td className="px-3 py-2 text-gray-600 font-mono">{line.reference?.trim() || ''}</td>}
                       <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
                         {bankLabel(line)}
-                        {line.isLinked && <span className="ml-1 text-amber-700">Already linked</span>}
                         {submittingId === line.id && <span className="ml-1 text-blue-600">Linking...</span>}
                       </td>
                     </tr>
