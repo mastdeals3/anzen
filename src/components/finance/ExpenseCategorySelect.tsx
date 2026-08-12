@@ -45,12 +45,31 @@ export function ExpenseCategorySelect({
   // The source remains the canonical master hook; this is presentation-only
   // ordering so a sort-order change cannot repeat a parent heading.
   const orderedCategories = groupExpenseCategories(categories).flatMap(([, entries]) => entries);
+  // Historical expenses can retain the archived `utilities` key. Keep that
+  // current value visible while editing without reintroducing it as a choice
+  // for a new expense; the database preserves it only for unchanged history.
+  const visibleCategories = value === 'utilities' && !orderedCategories.some((category) => category.value === value)
+    ? [...orderedCategories, {
+      id: 'legacy-utilities',
+      value,
+      label: 'Utilities (legacy)',
+      type: 'operations' as const,
+      taxBehavior: 'standard',
+      description: 'Historical category retained for existing expenses.',
+      requiresContainer: false,
+      allowsAccountOverride: false,
+      group: 'Historical',
+      parentId: null,
+      coaAccountId: '',
+      sortOrder: Number.MAX_SAFE_INTEGER,
+    }]
+    : orderedCategories;
 
   return (
     <SearchableSelect
       value={value}
       onChange={onChange}
-      options={orderedCategories.map((category) => ({
+      options={visibleCategories.map((category) => ({
         value: category.value,
         label: category.label,
         group: category.group,
