@@ -22,6 +22,8 @@ interface BankTransactionLinkFieldProps {
   direction?: 'debit' | 'credit' | 'both';
   candidateFilter?: (line: BankTransactionLine) => boolean;
   autoSelectSingle?: boolean;
+  documentOutstanding?: number;
+  documentLabel?: string;
 }
 
 function formatAmount(line: BankTransactionLine) {
@@ -50,6 +52,8 @@ export function BankTransactionLinkField({
   direction = 'debit',
   candidateFilter,
   autoSelectSingle = false,
+  documentOutstanding,
+  documentLabel = 'this document',
 }: BankTransactionLinkFieldProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [transactions, setTransactions] = useState<BankTransactionLine[]>([]);
@@ -57,6 +61,7 @@ export function BankTransactionLinkField({
   const [loading, setLoading] = useState(false);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [hideLinked, setHideLinked] = useState(true);
+  const [pendingTransaction, setPendingTransaction] = useState<BankTransactionLine | null>(null);
 
   const filteredTransactions = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -100,6 +105,14 @@ export function BankTransactionLinkField({
   const openDialog = async () => loadTransactions(hideLinked, true);
 
   const handleSelect = async (transaction: BankTransactionLine) => {
+    if (documentOutstanding !== undefined) {
+      setPendingTransaction(transaction);
+      return;
+    }
+    await commitSelect(transaction);
+  };
+
+  const commitSelect = async (transaction: BankTransactionLine) => {
     setSubmittingId(transaction.id);
     try {
       await onSelect(transaction);
@@ -109,6 +122,14 @@ export function BankTransactionLinkField({
       setSubmittingId(null);
     }
   };
+
+  const pendingBankTotal = Number(pendingTransaction?.debit_amount || pendingTransaction?.credit_amount || 0);
+  const pendingAlreadyAllocated = Number(pendingTransaction?.allocatedAmount || 0);
+  const pendingBankRemaining = Number(pendingTransaction?.remainingAmount ?? pendingBankTotal);
+  const pendingDocumentOutstanding = Math.max(0, Number(documentOutstanding || 0));
+  const pendingAllocation = Math.min(pendingBankRemaining, pendingDocumentOutstanding);
+  const pendingBankAfter = Math.max(0, pendingBankRemaining - pendingAllocation);
+  const pendingDocumentAfter = Math.max(0, pendingDocumentOutstanding - pendingAllocation);
 
   if (linkedTransaction) {
     return (
@@ -242,6 +263,44 @@ export function BankTransactionLinkField({
               </table>
             </div>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!pendingTransaction}
+        onClose={() => setPendingTransaction(null)}
+        title={pendingBankAfter > 0.01 || pendingDocumentAfter > 0.01 ? 'Confirm Partial Reconciliation' : 'Confirm Reconciliation'}
+        size="sm"
+        footer={<>
+          <button type="button" onClick={() => setPendingTransaction(null)} className="px-3 py-2 text-xs border border-gray-300 rounded hover:bg-gray-50">Cancel</button>
+          <button type="button" onClick={() => {
+            if (!pendingTransaction) return;
+            const selected = pendingTransaction;
+            setPendingTransaction(null);
+            void commitSelect(selected);
+          }} disabled={pendingAllocation <= 0.01} className="px-3 py-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+            {pendingBankAfter > 0.01 || pendingDocumentAfter > 0.01
+              ? `Yes, Link ${formatCurrency(pendingAllocation, pendingTransaction?.bank_accounts?.currency || 'IDR')}`
+              : 'Yes, Link'}
+          </button>
+        </>}
+      >
+        <div className="space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 p-3 bg-gray-50 border rounded">
+            <span className="text-gray-500">Bank transaction</span><span className="text-right font-semibold">{formatCurrency(pendingBankTotal, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
+            <span className="text-gray-500">Already allocated</span><span className="text-right">{formatCurrency(pendingAlreadyAllocated, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
+            <span className="text-gray-500">{documentLabel} outstanding</span><span className="text-right">{formatCurrency(pendingDocumentOutstanding, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
+            <span className="font-medium">Amount to link</span><span className="text-right font-bold text-blue-700">{formatCurrency(pendingAllocation, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
+            <span className="text-gray-500">Remaining bank balance</span><span className="text-right">{formatCurrency(pendingBankAfter, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
+            <span className="text-gray-500">Document remaining</span><span className="text-right">{formatCurrency(pendingDocumentAfter, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
+          </div>
+          {(pendingBankAfter > 0.01 || pendingDocumentAfter > 0.01) && (
+            <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded p-3">
+              You are linking {formatCurrency(pendingAllocation, pendingTransaction?.bank_accounts?.currency || 'IDR')} to this document.
+              {pendingBankAfter > 0.01 && ` ${formatCurrency(pendingBankAfter, pendingTransaction?.bank_accounts?.currency || 'IDR')} will remain unreconciled and available for another document.`}
+              {pendingDocumentAfter > 0.01 && ` ${formatCurrency(pendingDocumentAfter, pendingTransaction?.bank_accounts?.currency || 'IDR')} will remain outstanding on the document.`}
+            </p>
+          )}
         </div>
       </Modal>
     </div>

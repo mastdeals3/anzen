@@ -19,6 +19,8 @@ export interface BankTransactionLine {
   matched_fund_transfer_id?: string | null;
   matched_tax_payment_id?: string | null;
   isLinked?: boolean;
+  allocatedAmount?: number;
+  remainingAmount?: number;
   bank_accounts?: {
     bank_name: string;
     account_name?: string | null;
@@ -44,6 +46,7 @@ interface LinkBankTransactionOptions {
   matchedJournalEntryId?: string | null;
   note?: string | null;
   paymentKind?: 'supplier' | 'pph23';
+  allocationAmount?: number;
 }
 
 function isAvailableTransaction(
@@ -57,7 +60,7 @@ function isAvailableTransaction(
     (!!currentJournalEntryId && line.matched_entry_id === currentJournalEntryId) ||
     (!!currentPettyCashId && line.matched_petty_cash_id === currentPettyCashId);
 
-  if (isCurrent) return true;
+  if (isCurrent || Number(line.remainingAmount ?? 0) > 0.01) return true;
 
   return !(
     line.matched_expense_id ||
@@ -105,11 +108,32 @@ export async function loadUnmatchedDebitBankTransactions({
 
   if (error) throw error;
 
+  const lineIds = (data || []).map(line => line.id);
+  const allocatedByLine = new Map<string, number>();
+  if (lineIds.length > 0) {
+    const { data: allocations, error: allocationError } = await supabase
+      .from('bank_statement_allocations')
+      .select('bank_statement_line_id, allocation_amount')
+      .in('bank_statement_line_id', lineIds);
+    if (allocationError) throw allocationError;
+    for (const allocation of allocations || []) {
+      allocatedByLine.set(
+        allocation.bank_statement_line_id,
+        (allocatedByLine.get(allocation.bank_statement_line_id) || 0) + Number(allocation.allocation_amount || 0),
+      );
+    }
+  }
+
   return ((data || []) as unknown as BankTransactionLine[])
-    .map((line) => ({
-      ...line,
-      isLinked: !isAvailableTransaction(line, currentExpenseId, currentJournalEntryId, currentPettyCashId),
-    }))
+    .map((line) => {
+      const total = Number(line.debit_amount || line.credit_amount || 0);
+      const allocatedAmount = allocatedByLine.get(line.id) || 0;
+      const enriched = { ...line, allocatedAmount, remainingAmount: Math.max(0, total - allocatedAmount) };
+      return {
+        ...enriched,
+        isLinked: !isAvailableTransaction(enriched, currentExpenseId, currentJournalEntryId, currentPettyCashId),
+      };
+    })
     .filter((line) => includeLinked || !line.isLinked);
 }
 
@@ -120,6 +144,7 @@ export async function linkBankTransaction({
   matchedJournalEntryId,
   note,
   paymentKind = 'supplier',
+  allocationAmount,
 }: LinkBankTransactionOptions): Promise<void> {
   if (!matchedExpenseId && !matchedPaymentId && !matchedJournalEntryId) {
     throw new Error('A bank transaction must be linked to a Finance document or journal entry.');
@@ -130,6 +155,7 @@ export async function linkBankTransaction({
     matchedExpenseId ? 'expense' : matchedPaymentId ? 'payment' : 'journal',
     (matchedExpenseId || matchedPaymentId || matchedJournalEntryId) as string,
     paymentKind,
+    allocationAmount,
   );
   if (note) {
     const { error } = await supabase.from('bank_statement_lines').update({ notes: note }).eq('id', bankStatementLineId);

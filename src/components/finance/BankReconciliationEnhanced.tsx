@@ -27,6 +27,7 @@ import {
   saveFinanceLoanRepayment,
   savePaymentVoucher,
   saveReceiptVoucher,
+  unlinkBankStatementAllocation,
   unlinkBankStatementLine,
 } from '../../services/financeCommands';
 
@@ -75,7 +76,16 @@ interface StatementLine {
   credit: number;
   balance: number;
   currency: string;
-  status: 'matched' | 'suggested' | 'unmatched' | 'recorded';
+  status: 'matched' | 'partially_reconciled' | 'suggested' | 'unmatched' | 'recorded';
+  allocatedAmount: number;
+  remainingAmount: number;
+  allocations: Array<{
+    id: string;
+    document_type: string;
+    document_id: string;
+    allocation_amount: number;
+    payment_kind: string;
+  }>;
   matchedEntry?: string;
   matchedExpenseId?: string;
   matchedReceiptId?: string;
@@ -306,6 +316,13 @@ export function BankReconciliationEnhanced({
   } | null>(null);
   const [forceImporting, setForceImporting] = useState(false);
   const [hideLinkedCandidates, setHideLinkedCandidates] = useState(true);
+  const [pendingExpenseAllocation, setPendingExpenseAllocation] = useState<{
+    line: StatementLine;
+    expense: any;
+    amount: number;
+    bankAfter: number;
+    documentAfter: number;
+  } | null>(null);
 
   // Refs let the stable-deps realtime effect below read latest state/loaders
   // without resubscribing on every render.
@@ -574,6 +591,27 @@ export function BankReconciliationEnhanced({
         if (focusedLine) data = [focusedLine, ...data];
       }
 
+      const lineIds = data.map(row => row.id);
+      const allocationMap = new Map<string, StatementLine['allocations']>();
+      if (lineIds.length > 0) {
+        const { data: allocations, error: allocationError } = await supabase
+          .from('bank_statement_allocations')
+          .select('id, bank_statement_line_id, document_type, document_id, allocation_amount, payment_kind')
+          .in('bank_statement_line_id', lineIds);
+        if (allocationError) throw allocationError;
+        for (const allocation of allocations || []) {
+          const list = allocationMap.get(allocation.bank_statement_line_id) || [];
+          list.push({
+            id: allocation.id,
+            document_type: allocation.document_type,
+            document_id: allocation.document_id,
+            allocation_amount: Number(allocation.allocation_amount || 0),
+            payment_kind: allocation.payment_kind,
+          });
+          allocationMap.set(allocation.bank_statement_line_id, list);
+        }
+      }
+
       // HARDENING FIX #5: Batch load all matched records to eliminate N+1 queries
       // Collect all IDs. Petty cash IS a valid recon target (petty_cash_transactions
       // linked via matched_petty_cash_id). Journal entry is the canonical link
@@ -715,6 +753,9 @@ export function BankReconciliationEnhanced({
 
       // Map lines with pre-loaded data (NO MORE QUERIES!)
       const lines: StatementLine[] = data.map(row => {
+        const allocations = allocationMap.get(row.id) || [];
+        const bankAmount = Number(row.debit_amount || row.credit_amount || 0);
+        const allocatedAmount = allocations.reduce((sum, allocation) => sum + allocation.allocation_amount, 0);
         return {
           id: row.id,
           date: row.transaction_date,
@@ -725,6 +766,9 @@ export function BankReconciliationEnhanced({
           balance: row.running_balance || 0,
           currency: row.currency || 'IDR',
           status: row.reconciliation_status || 'unmatched',
+          allocatedAmount,
+          remainingAmount: Math.max(0, bankAmount - allocatedAmount),
+          allocations,
           matchedEntry: row.matched_entry_id,
           matchedExpenseId: row.matched_expense_id,
           matchedReceiptId: row.matched_receipt_id,
@@ -1542,6 +1586,9 @@ export function BankReconciliationEnhanced({
         balance: balance,
         currency: selectedAccount?.currency || 'IDR',
         status: 'unmatched',
+        allocatedAmount: 0,
+        remainingAmount: debit || credit,
+        allocations: [],
       });
     }
 
@@ -1810,33 +1857,36 @@ export function BankReconciliationEnhanced({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Soft-guard: warn if this link would exceed the target for its payment_kind.
-      // Non-blocking — operator can override.
-      try {
-        const { data: exp } = await supabase
+      const { data: exp, error: expenseError } = await supabase
           .from('finance_expenses')
           .select('amount, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, expense_category, broker_items, paid_amount, pph_paid_amount')
           .eq('id', expenseId)
           .single();
-        if (exp) {
-          const thisAmount = (line.debit || 0) + (line.credit || 0);
-          if (linkPaymentKind === 'supplier') {
-            const target = calculateCanonicalCashPayable(exp);
-            if ((exp.paid_amount || 0) + thisAmount > target + 1) {
-              const proceed = confirm(`Warning: supplier paid amount (${((exp.paid_amount||0)+thisAmount).toLocaleString('id-ID')}) would exceed target (${target.toLocaleString('id-ID')}). Link anyway?`);
-              if (!proceed) return;
-            }
-          } else {
-            const target = exp.pph_amount || 0;
-            if ((exp.pph_paid_amount || 0) + thisAmount > target + 1) {
-              const proceed = confirm(`Warning: PPh23 paid (${((exp.pph_paid_amount||0)+thisAmount).toLocaleString('id-ID')}) would exceed PPh23 target (${target.toLocaleString('id-ID')}). Link anyway?`);
-              if (!proceed) return;
-            }
-          }
-        }
-      } catch { /* soft guard only */ }
+      if (expenseError || !exp) throw expenseError || new Error('Expense not found');
+      const documentOutstanding = linkPaymentKind === 'supplier'
+        ? Math.max(0, calculateCanonicalCashPayable(exp) - Number(exp.paid_amount || 0))
+        : Math.max(0, Number(exp.pph_amount || 0) - Number(exp.pph_paid_amount || 0));
+      const amount = Math.min(line.remainingAmount, documentOutstanding);
+      if (amount <= 0.01) throw new Error('No remaining amount is available to allocate.');
+      setPendingExpenseAllocation({
+        line,
+        expense: { ...exp, id: expenseId },
+        amount,
+        bankAfter: Math.max(0, line.remainingAmount - amount),
+        documentAfter: Math.max(0, documentOutstanding - amount),
+      });
+    } catch (error: any) {
+      console.error('Error preparing expense allocation:', error);
+      alert('❌ ' + error.message);
+    }
+  };
 
-      await linkBankStatementLine(line.id, 'expense', expenseId, linkPaymentKind);
+  const confirmExpenseAllocation = async () => {
+    if (!pendingExpenseAllocation) return;
+    const { line, expense, amount } = pendingExpenseAllocation;
+    try {
+      await linkBankStatementLine(line.id, 'expense', expense.id, linkPaymentKind, amount);
+      setPendingExpenseAllocation(null);
 
       setRecordModal(false);
       setRecordingLine(null);
@@ -2555,6 +2605,7 @@ export function BankReconciliationEnhanced({
 
   const filteredLines = statementLines.filter(line => {
     if (activeFilter === 'all') return true;
+    if (activeFilter === 'unmatched' && line.status === 'partially_reconciled') return true;
     return line.status === activeFilter;
   });
 
@@ -3180,15 +3231,44 @@ export function BankReconciliationEnhanced({
                           />
                         </>
                       )}
-                      {line.status === 'unmatched' && canManage && (
+                      {(line.status === 'unmatched' || line.status === 'partially_reconciled') && canManage && (
                         <button
                           onClick={() => openRecordModal(line)}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                          title="Record transaction"
+                          title={line.status === 'partially_reconciled' ? 'Allocate remaining amount' : 'Record transaction'}
                         >
                           <Plus className="w-3 h-3" />
-                          Record
+                          {line.status === 'partially_reconciled' ? 'Allocate' : 'Record'}
                         </button>
+                      )}
+                      {line.allocatedAmount > 0 && (
+                        <div className="text-[10px] text-gray-600 leading-tight">
+                          <div>Bank: {formatCurrency(line.debit || line.credit, line.currency)}</div>
+                          <div>Allocated: {formatCurrency(line.allocatedAmount, line.currency)}</div>
+                          <div className={line.remainingAmount > 0.01 ? 'text-amber-700 font-medium' : 'text-green-700 font-medium'}>
+                            Remaining: {formatCurrency(line.remainingAmount, line.currency)}
+                          </div>
+                          <div>{line.remainingAmount > 0.01 ? 'Partially Reconciled' : 'Fully Reconciled'}</div>
+                          {line.allocations.map(allocation => (
+                            <button
+                              key={allocation.id}
+                              type="button"
+                              onClick={async () => {
+                                if (!canManage) return;
+                                try {
+                                  await unlinkBankStatementAllocation(allocation.id);
+                                  await loadStatementLines();
+                                  notifyFinanceReconciliationRefresh();
+                                } catch (error: any) {
+                                  alert('❌ Failed to unlink allocation: ' + error.message);
+                                }
+                              }}
+                              className="block text-left text-red-600 hover:underline"
+                            >
+                              Unlink {allocation.document_type}: {formatCurrency(allocation.allocation_amount, line.currency)}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </td>
@@ -4095,6 +4175,37 @@ export function BankReconciliationEnhanced({
             )}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={!!pendingExpenseAllocation}
+        onClose={() => setPendingExpenseAllocation(null)}
+        title={pendingExpenseAllocation && (pendingExpenseAllocation.bankAfter > 0.01 || pendingExpenseAllocation.documentAfter > 0.01)
+          ? 'Confirm Partial Reconciliation' : 'Confirm Reconciliation'}
+        size="sm"
+        footer={<>
+          <button type="button" onClick={() => setPendingExpenseAllocation(null)} className="px-3 py-2 text-xs border border-gray-300 rounded hover:bg-gray-50">Cancel</button>
+          <button type="button" onClick={() => void confirmExpenseAllocation()} className="px-3 py-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+            {pendingExpenseAllocation && (pendingExpenseAllocation.bankAfter > 0.01 || pendingExpenseAllocation.documentAfter > 0.01)
+              ? `Yes, Link ${formatCurrency(pendingExpenseAllocation.amount, pendingExpenseAllocation.line.currency)}` : 'Yes, Link'}
+          </button>
+        </>}
+      >
+        {pendingExpenseAllocation && <div className="space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 p-3 bg-gray-50 border rounded">
+            <span className="text-gray-500">Bank transaction</span><span className="text-right font-semibold">{formatCurrency(pendingExpenseAllocation.line.debit || pendingExpenseAllocation.line.credit, pendingExpenseAllocation.line.currency)}</span>
+            <span className="text-gray-500">Already allocated</span><span className="text-right">{formatCurrency(pendingExpenseAllocation.line.allocatedAmount, pendingExpenseAllocation.line.currency)}</span>
+            <span className="text-gray-500">Document outstanding</span><span className="text-right">{formatCurrency(pendingExpenseAllocation.amount + pendingExpenseAllocation.documentAfter, pendingExpenseAllocation.line.currency)}</span>
+            <span className="font-medium">Amount to link</span><span className="text-right font-bold text-blue-700">{formatCurrency(pendingExpenseAllocation.amount, pendingExpenseAllocation.line.currency)}</span>
+            <span className="text-gray-500">Remaining bank balance</span><span className="text-right">{formatCurrency(pendingExpenseAllocation.bankAfter, pendingExpenseAllocation.line.currency)}</span>
+            <span className="text-gray-500">Document remaining</span><span className="text-right">{formatCurrency(pendingExpenseAllocation.documentAfter, pendingExpenseAllocation.line.currency)}</span>
+          </div>
+          {(pendingExpenseAllocation.bankAfter > 0.01 || pendingExpenseAllocation.documentAfter > 0.01) && <p className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded">
+            You are linking {formatCurrency(pendingExpenseAllocation.amount, pendingExpenseAllocation.line.currency)} to this document.
+            {pendingExpenseAllocation.bankAfter > 0.01 && ` ${formatCurrency(pendingExpenseAllocation.bankAfter, pendingExpenseAllocation.line.currency)} will remain unreconciled and available for another document.`}
+            {pendingExpenseAllocation.documentAfter > 0.01 && ` ${formatCurrency(pendingExpenseAllocation.documentAfter, pendingExpenseAllocation.line.currency)} will remain outstanding on the document.`}
+          </p>}
+        </div>}
       </Modal>
 
       {ocrError && (

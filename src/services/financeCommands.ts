@@ -207,12 +207,30 @@ export const linkBankStatementLine = (
   documentType: 'expense' | 'receipt' | 'payment' | 'fund_transfer' | 'petty_cash' | 'tax_payment' | 'journal',
   documentId: string,
   paymentKind: 'supplier' | 'pph23' = 'supplier',
-) => rpc<{ document_id: string; journal_entry_id: string }>('link_bank_statement_line', {
-  p_bank_line_id: bankLineId,
-  p_document_type: documentType,
-  p_document_id: documentId,
-  p_payment_kind: paymentKind,
-});
+  allocationAmount?: number,
+) => {
+  const payload = {
+    p_bank_line_id: bankLineId,
+    p_document_type: documentType,
+    p_document_id: documentId,
+    p_payment_kind: paymentKind,
+    ...(allocationAmount === undefined ? {} : { p_allocation_amount: allocationAmount }),
+  };
+  return rpc<{
+  allocation_amount: number;
+  bank_total: number;
+  bank_allocated: number;
+  bank_remaining: number;
+  document_total: number;
+  document_allocated: number;
+  document_remaining: number;
+  }>('link_bank_statement_line', payload);
+};
+
+export const unlinkBankStatementAllocation = (allocationId: string) =>
+  rpc<{ success: boolean; bank_line_id: string; allocation_id: string }>('unmatch_bank_statement_allocation', {
+    p_allocation_id: allocationId,
+  });
 
 export const unlinkBankStatementLine = (bankLineId: string) =>
   rpc<{ success: boolean; bank_line_id: string }>('unmatch_bank_line', {

@@ -284,6 +284,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [reconciledExpenseIds, setReconciledExpenseIds] = useState<Set<string>>(new Set());
   const [selectedBankTransactionId, setSelectedBankTransactionId] = useState<string>('');
+  const [selectedBankAllocationAmount, setSelectedBankAllocationAmount] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<FinanceExpense | null>(null);
@@ -1142,6 +1143,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               bankStatementLineId: selectedBankTransactionId,
               matchedExpenseId: editingExpense.id,
               note: `Linked to expense ${updatedExpense.voucher_number || editingExpense.id}`,
+              allocationAmount: selectedBankAllocationAmount,
             });
           } catch (linkError) {
             linkFailed = true;
@@ -1240,6 +1242,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               bankStatementLineId: selectedBankTransactionId,
               matchedExpenseId: newExpense.id,
               note: `Linked to expense ${newExpense.voucher_number || newExpense.id}`,
+              allocationAmount: selectedBankAllocationAmount,
             });
           } catch (linkError) {
             linkFailed = true;
@@ -3343,8 +3346,19 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     selectedTransactionId={selectedBankTransactionId}
                     linkedTransaction={editingExpense?.bank_statement_lines?.[0] || null}
                     currentExpenseId={editingExpense?.id}
+                    documentOutstanding={Math.max(
+                      0,
+                      calculateCanonicalCashPayable(formData) - Number(editingExpense?.paid_amount || 0),
+                    )}
+                    documentLabel={editingExpense?.voucher_number || 'Expense'}
                     canUnlink={canManage}
-                    onSelect={(transaction) => setSelectedBankTransactionId(transaction.id)}
+                    onSelect={(transaction) => {
+                      setSelectedBankTransactionId(transaction.id);
+                      setSelectedBankAllocationAmount(Math.min(
+                        Number(transaction.remainingAmount ?? transaction.debit_amount ?? transaction.credit_amount ?? 0),
+                        Math.max(0, calculateCanonicalCashPayable(formData) - Number(editingExpense?.paid_amount || 0)),
+                      ));
+                    }}
                     onUnlink={() => handleUnlinkFromBankStatement(editingExpense!.id)}
                   />
                 )}
