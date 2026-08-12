@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, X, Download, Eye, CheckCircle, XCircle, Clipboard, ClipboardCheck, Lock, RotateCcw, UserPlus, AlertCircle, Banknote, Link2 } from 'lucide-react';
+import { Plus, Package, Truck, CreditCard as Edit, Trash2, FileText, X, Download, Eye, CheckCircle, XCircle, Clipboard, ClipboardCheck, Lock, RotateCcw, UserPlus, AlertCircle, Banknote, Link2, Search } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { MoneyInput } from '../MoneyInput';
 import { SearchableSelect } from '../SearchableSelect';
@@ -306,6 +306,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [reconFilter, setReconFilter] = useState<'all' | 'reconciled' | 'not_reconciled'>('all');
   const [approvalFilter, setApprovalFilter] = useState<'all' | 'approved' | 'pending_approval'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [taxCodes, setTaxCodes] = useState<TaxCode[]>([]);
@@ -1723,6 +1724,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const selectedCategory = expenseCategories.find(c => c.value === formData.expense_category);
   const requiresContainer = selectedCategory?.type === 'import';
   const requiresDC = selectedCategory?.type === 'sales';
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
 
   const filteredExpenses = expenses.filter(exp => {
     // Filter by type
@@ -1757,6 +1759,23 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       if (exp.approval_status !== 'approved') return false;
     } else if (approvalFilter === 'pending_approval') {
       if (exp.approval_status !== 'pending_approval') return false;
+    }
+
+    if (normalizedSearch) {
+      const category = expenseCategories.find(c => c.value === exp.expense_category);
+      const searchableValues = [
+        exp.voucher_number,
+        exp.description,
+        exp.suppliers?.company_name,
+        exp.invoice_number,
+        exp.payment_reference,
+        exp.expense_category,
+        category?.label,
+        category?.group,
+      ];
+      if (!searchableValues.some(value => String(value ?? '').toLocaleLowerCase().includes(normalizedSearch))) {
+        return false;
+      }
     }
 
     // perf: date range filtered server-side in loadData().
@@ -2140,6 +2159,18 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             ))}
           </select>
         )}
+
+        <div className="relative">
+          <Search className="absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search expenses"
+            aria-label="Search expenses"
+            className="h-6 w-44 rounded border border-gray-300 bg-white pl-6 pr-2 text-[11px]"
+          />
+        </div>
 
         <button
           onClick={exportToCSV}

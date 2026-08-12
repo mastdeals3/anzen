@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, ArrowDownCircle, ArrowUpCircle, Upload, X, FileText, Image, Eye, CreditCard as Edit2, Trash2, ExternalLink, Download, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw } from 'lucide-react';
+import { Plus, ArrowDownCircle, ArrowUpCircle, Upload, X, FileText, Image, Eye, CreditCard as Edit2, Trash2, ExternalLink, Download, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw, Search } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { MoneyInput } from '../MoneyInput';
 import { FinanceModal } from './FinanceModal';
@@ -163,6 +163,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
   const [showPasteHint, setShowPasteHint] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'import' | 'sales' | 'staff' | 'operations' | 'admin' | 'assets'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const { dateRange } = useFinance();
   const { profile } = useAuth();
@@ -1013,6 +1014,7 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
     return 0;
   });
 
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
   const filteredTransactions = sortedTransactions.filter(tx => {
     if (filterType !== 'all' && tx.transaction_type === 'expense') {
       const category = expenseCategories.find(c => c.value === tx.expense_category);
@@ -1021,6 +1023,26 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
 
     if (categoryFilter !== 'all' && tx.expense_category !== categoryFilter) {
       return false;
+    }
+
+    if (normalizedSearch) {
+      const category = expenseCategories.find(c => c.value === tx.expense_category);
+      const searchableValues = [
+        tx.transaction_number,
+        tx.voucher_number,
+        tx.description,
+        tx.paid_to,
+        tx.paid_by_staff_name,
+        tx.received_by_staff_name,
+        tx.source,
+        tx.source_account_name,
+        tx.expense_category,
+        category?.label,
+        category?.group,
+      ];
+      if (!searchableValues.some(value => String(value ?? '').toLocaleLowerCase().includes(normalizedSearch))) {
+        return false;
+      }
     }
 
     return true;
@@ -1130,6 +1152,18 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
               </optgroup>
             ))}
         </select>
+
+        <div className="relative">
+          <Search className="absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search petty cash"
+            aria-label="Search petty cash"
+            className="h-6 w-44 rounded border border-gray-300 bg-white pl-6 pr-2 text-[11px]"
+          />
+        </div>
 
         <button
           onClick={exportToCSV}
