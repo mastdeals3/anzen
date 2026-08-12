@@ -202,6 +202,20 @@ function rankBankCandidates<T extends PickerCandidate>(
   });
 }
 
+function LinkedCandidateToggle({ hidden, onChange }: { hidden: boolean; onChange: (hidden: boolean) => void }) {
+  return (
+    <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 select-none">
+      <input
+        type="checkbox"
+        checked={hidden}
+        onChange={(event) => onChange(event.target.checked)}
+        className="accent-blue-600"
+      />
+      Hide already linked
+    </label>
+  );
+}
+
 const NON_CUSTOMER_JOURNAL_TYPES = new Set([
   'bank_interest',
   'other_income',
@@ -301,6 +315,7 @@ export function BankReconciliationEnhanced({
     skippedEntries: any[];
   } | null>(null);
   const [forceImporting, setForceImporting] = useState(false);
+  const [hideLinkedCandidates, setHideLinkedCandidates] = useState(true);
   const [pendingExpenseAllocation, setPendingExpenseAllocation] = useState<{
     line: StatementLine;
     expense: any;
@@ -432,7 +447,7 @@ export function BankReconciliationEnhanced({
   };
 
   const visiblePickerCandidates = <T extends PickerCandidate>(candidates: T[]) =>
-    candidates.filter((candidate) => !candidate._linked);
+    hideLinkedCandidates ? candidates.filter((candidate) => !candidate._linked) : candidates;
 
   const expenseCanAcceptLink = (expense: any) => {
     if (linkPaymentKind === 'pph23') {
@@ -442,7 +457,7 @@ export function BankReconciliationEnhanced({
   };
 
   const visibleExpenseCandidates = (candidates: any[]) => rankBankCandidates(
-    candidates.filter(expenseCanAcceptLink),
+    hideLinkedCandidates ? candidates.filter(expenseCanAcceptLink) : candidates,
     recordingLine!,
     (expense) => linkPaymentKind === 'pph23'
       ? Number(expense.pph_amount || 0)
@@ -3229,10 +3244,7 @@ export function BankReconciliationEnhanced({
                       {line.allocatedAmount > 0 && (
                         <div className="text-[10px] text-gray-600 leading-tight">
                           <div>Bank: {formatCurrency(line.debit || line.credit, line.currency)}</div>
-                          <div>
-                            Allocated: {formatCurrency(line.allocatedAmount, line.currency)}
-                            {line.allocations.length > 0 && ` (${line.allocations.length} document${line.allocations.length === 1 ? '' : 's'})`}
-                          </div>
+                          <div>Allocated: {formatCurrency(line.allocatedAmount, line.currency)}</div>
                           <div className={line.remainingAmount > 0.01 ? 'text-amber-700 font-medium' : 'text-green-700 font-medium'}>
                             Remaining: {formatCurrency(line.remainingAmount, line.currency)}
                           </div>
@@ -3660,6 +3672,7 @@ export function BankReconciliationEnhanced({
                 ) : linkJournalEntry ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select a journal entry to link to this bank transaction (matching amount, +/-7 days).</p>
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                     <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
                       {visiblePickerCandidates(availableJournals).length === 0 ? (
                         <div className="p-3 text-center text-gray-500 text-sm">No matching journal entries found</div>
@@ -3691,6 +3704,7 @@ export function BankReconciliationEnhanced({
                 ) : linkToSupplierPayment ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select a supplier payment voucher to link to this bank debit.</p>
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                     {loadingSupplierPayments ? (
                       <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-orange-600" /></div>
                     ) : (
@@ -3725,6 +3739,7 @@ export function BankReconciliationEnhanced({
                 ) : linkToTaxPayment ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select a posted tax payment to link to this bank debit (matching bank account, amount within Rp 1, within ±7 days).</p>
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                     {visiblePickerCandidates(availableTaxPayments).length === 0 ? (
                       <div className="p-3 text-center text-gray-500 text-sm border rounded-lg">No matching tax payments found</div>
                     ) : (
@@ -3814,6 +3829,7 @@ export function BankReconciliationEnhanced({
                   >
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Select Expense *</label>
+                      <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                       <select
                         name="expense_id"
                         required
@@ -3917,6 +3933,7 @@ export function BankReconciliationEnhanced({
                 {linkExistingReceipt ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select an existing receipt voucher to link to this bank statement line.</p>
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                     <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
                       {visiblePickerCandidates(existingReceipts).length === 0 ? (
                         <div className="p-3 text-center text-gray-500 text-sm">No receipt vouchers found</div>
@@ -3945,6 +3962,7 @@ export function BankReconciliationEnhanced({
                 ) : linkJournalEntry ? (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">Select a journal entry to link to this bank transaction (matching amount, +/-7 days).</p>
+                    <LinkedCandidateToggle hidden={hideLinkedCandidates} onChange={setHideLinkedCandidates} />
                     <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
                       {visiblePickerCandidates(availableJournals).length === 0 ? (
                         <div className="p-3 text-center text-gray-500 text-sm">No matching journal entries found</div>

@@ -60,6 +60,7 @@ export function BankTransactionLinkField({
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [hideLinked, setHideLinked] = useState(true);
   const [pendingTransaction, setPendingTransaction] = useState<BankTransactionLine | null>(null);
 
   const filteredTransactions = useMemo(() => {
@@ -76,7 +77,7 @@ export function BankTransactionLinkField({
     ].some((value) => value?.toLowerCase().includes(query)));
   }, [searchTerm, transactions]);
 
-  const loadTransactions = async (open = false) => {
+  const loadTransactions = async (nextHideLinked: boolean, open = false) => {
     if (!bankAccountId || disabled) return;
     if (open) setDialogOpen(true);
     setLoading(true);
@@ -87,10 +88,11 @@ export function BankTransactionLinkField({
         currentExpenseId,
         currentJournalEntryId,
         currentPettyCashId,
+        includeLinked: !nextHideLinked,
       });
       const candidates = candidateFilter ? rows.filter(candidateFilter) : rows;
       setTransactions(rows);
-      if (autoSelectSingle && candidates.length === 1) await handleSelect(candidates[0]);
+      if (autoSelectSingle && nextHideLinked && candidates.length === 1) await handleSelect(candidates[0]);
     } catch (error) {
       console.error('Error loading unmatched bank transactions:', error);
       alert('Failed to load unmatched bank transactions.');
@@ -100,7 +102,7 @@ export function BankTransactionLinkField({
     }
   };
 
-  const openDialog = async () => loadTransactions(true);
+  const openDialog = async () => loadTransactions(hideLinked, true);
 
   const handleSelect = async (transaction: BankTransactionLine) => {
     if (documentOutstanding !== undefined) {
@@ -113,15 +115,7 @@ export function BankTransactionLinkField({
   const commitSelect = async (transaction: BankTransactionLine) => {
     setSubmittingId(transaction.id);
     try {
-      await onSelect({
-        ...transaction,
-        selectedAllocationAmount: documentOutstanding === undefined
-          ? undefined
-          : Math.min(
-              Number(transaction.remainingAmount ?? transaction.debit_amount ?? transaction.credit_amount ?? 0),
-              Math.max(0, Number(documentOutstanding || 0)),
-            ),
-      });
+      await onSelect(transaction);
       setDialogOpen(false);
       setSearchTerm('');
     } finally {
@@ -213,6 +207,20 @@ export function BankTransactionLinkField({
               className="w-full h-8 pl-8 pr-3 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
             />
           </div>
+          <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 select-none">
+            <input
+              type="checkbox"
+              checked={hideLinked}
+              onChange={(event) => {
+                const next = event.target.checked;
+                setHideLinked(next);
+                void loadTransactions(next);
+              }}
+              className="accent-blue-600"
+            />
+            Hide already linked
+          </label>
+
           <div className="border border-gray-200 rounded overflow-hidden">
             <div className="max-h-[50vh] overflow-auto">
               <table className="w-full text-xs">
@@ -235,23 +243,18 @@ export function BankTransactionLinkField({
                   ) : filteredTransactions.map((line) => (
                     <tr
                       key={line.id}
-                      onClick={() => void handleSelect(line)}
-                      className={`cursor-pointer hover:bg-blue-50 ${selectedTransactionId === line.id ? 'bg-blue-50' : ''}`}
+                      onClick={() => { if (!line.isLinked) void handleSelect(line); }}
+                      className={`${line.isLinked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-blue-50'} ${selectedTransactionId === line.id ? 'bg-blue-50' : ''}`}
                     >
                       <td className="px-3 py-2 whitespace-nowrap">{new Date(line.transaction_date).toLocaleDateString('id-ID')}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <div className="font-mono font-semibold text-red-700">{formatAmount(line)}</div>
-                        <div className="mt-0.5 text-[10px] leading-tight text-gray-500">
-                          <div>Allocated {formatCurrency(Number(line.allocatedAmount || 0), line.bank_accounts?.currency || 'IDR')}{Number(line.allocationCount || 0) > 0 ? ` (${line.allocationCount} document${line.allocationCount === 1 ? '' : 's'})` : ''}</div>
-                          <div className="font-semibold text-amber-700">Balance {formatCurrency(Number(line.remainingAmount || 0), line.bank_accounts?.currency || 'IDR')}</div>
-                        </div>
-                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold text-red-700 whitespace-nowrap">{formatAmount(line)}</td>
                       <td className="px-3 py-2">{line.bank_accounts?.currency || '—'}</td>
                       <td className="px-3 py-2">{line.debit_amount > 0 ? 'Money out' : 'Money in'}</td>
                       <td className="px-3 py-2 text-gray-700 min-w-[220px]">{line.description || '—'}</td>
                       <td className="px-3 py-2 text-gray-600 font-mono">{line.reference || '—'}</td>
                       <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
                         {bankLabel(line)}
+                        {line.isLinked && <span className="ml-1 text-amber-700">Already linked</span>}
                         {submittingId === line.id && <span className="ml-1 text-blue-600">Linking...</span>}
                       </td>
                     </tr>
@@ -286,9 +289,8 @@ export function BankTransactionLinkField({
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 p-3 bg-gray-50 border rounded">
             <span className="text-gray-500">Bank transaction</span><span className="text-right font-semibold">{formatCurrency(pendingBankTotal, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
             <span className="text-gray-500">Already allocated</span><span className="text-right">{formatCurrency(pendingAlreadyAllocated, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
-            <span className="text-gray-500">Remaining available</span><span className="text-right font-semibold text-amber-700">{formatCurrency(pendingBankRemaining, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
             <span className="text-gray-500">{documentLabel} outstanding</span><span className="text-right">{formatCurrency(pendingDocumentOutstanding, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
-            <span className="font-medium">Suggested allocation</span><span className="text-right font-bold text-blue-700">{formatCurrency(pendingAllocation, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
+            <span className="font-medium">Amount to link</span><span className="text-right font-bold text-blue-700">{formatCurrency(pendingAllocation, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
             <span className="text-gray-500">Remaining bank balance</span><span className="text-right">{formatCurrency(pendingBankAfter, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
             <span className="text-gray-500">Document remaining</span><span className="text-right">{formatCurrency(pendingDocumentAfter, pendingTransaction?.bank_accounts?.currency || 'IDR')}</span>
           </div>

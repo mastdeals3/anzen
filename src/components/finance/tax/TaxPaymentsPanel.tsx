@@ -69,6 +69,7 @@ export function TaxPaymentsPanel() {
   const [bslCandidates, setBslCandidates] = useState<any[]>([]);
   const [bslPickerLoading, setBslPickerLoading] = useState(false);
   const [bslLinking, setBslLinking] = useState(false);
+  const [hideLinkedBslCandidates, setHideLinkedBslCandidates] = useState(true);
 
   const emptyForm = {
     tax_period_id: '',
@@ -271,7 +272,7 @@ export function TaxPaymentsPanel() {
     }
   }
 
-  async function loadBslCandidates(p: Payment) {
+  async function loadBslCandidates(p: Payment, hideLinked = hideLinkedBslCandidates) {
     setBslPickerPayment(p);
     setBslCandidates([]);
     setBslPickerLoading(true);
@@ -313,7 +314,7 @@ export function TaxPaymentsPanel() {
         return a.amountDiff - b.amountDiff;
       });
       setBslCandidates(scored
-        .filter((candidate) => !candidate.linked)
+        .filter((candidate) => !hideLinked || !candidate.linked)
         .slice(0, 50)
         .map((candidate) => ({ ...candidate.row, _linked: candidate.linked })));
     } catch (err) {
@@ -324,7 +325,8 @@ export function TaxPaymentsPanel() {
   }
 
   async function openBslPicker(p: Payment) {
-    await loadBslCandidates(p);
+    setHideLinkedBslCandidates(true);
+    await loadBslCandidates(p, true);
   }
 
   async function linkBsl(bslId: string) {
@@ -699,6 +701,19 @@ export function TaxPaymentsPanel() {
                 <> · <span className="text-gray-600">{bankLabel(bankById.get(bslPickerPayment.bank_account_id)!)}</span></>
               )}
             </p>
+            <label className="mb-3 inline-flex items-center gap-1.5 text-xs text-gray-600 select-none">
+              <input
+                type="checkbox"
+                checked={hideLinkedBslCandidates}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  setHideLinkedBslCandidates(next);
+                  if (bslPickerPayment) void loadBslCandidates(bslPickerPayment, next);
+                }}
+                className="accent-purple-600"
+              />
+              Hide already linked
+            </label>
             {bslPickerLoading ? (
               <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600" /></div>
             ) : bslCandidates.length === 0 ? (
@@ -723,6 +738,7 @@ export function TaxPaymentsPanel() {
                         <div className="text-xs text-gray-400">
                           {new Date(b.transaction_date).toLocaleDateString('id-ID')}
                           {exact ? <span className="ml-2 text-emerald-700 font-medium">Exact amount</span> : null}
+                          {b._linked ? <span className="ml-2 text-amber-700 font-medium">Already linked</span> : null}
                         </div>
                       </div>
                       <div className="font-medium text-red-600 text-sm">

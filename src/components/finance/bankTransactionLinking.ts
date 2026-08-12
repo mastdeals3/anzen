@@ -21,8 +21,6 @@ export interface BankTransactionLine {
   isLinked?: boolean;
   allocatedAmount?: number;
   remainingAmount?: number;
-  allocationCount?: number;
-  selectedAllocationAmount?: number;
   bank_accounts?: {
     bank_name: string;
     account_name?: string | null;
@@ -38,6 +36,7 @@ interface LoadUnmatchedDebitOptions {
   currentExpenseId?: string | null;
   currentJournalEntryId?: string | null;
   currentPettyCashId?: string | null;
+  includeLinked?: boolean;
 }
 
 interface LinkBankTransactionOptions {
@@ -80,6 +79,7 @@ export async function loadUnmatchedDebitBankTransactions({
   currentExpenseId,
   currentJournalEntryId,
   currentPettyCashId,
+  includeLinked = false,
 }: LoadUnmatchedDebitOptions): Promise<BankTransactionLine[]> {
   let query = supabase
     .from('bank_statement_lines')
@@ -110,7 +110,6 @@ export async function loadUnmatchedDebitBankTransactions({
 
   const lineIds = (data || []).map(line => line.id);
   const allocatedByLine = new Map<string, number>();
-  const allocationCountByLine = new Map<string, number>();
   if (lineIds.length > 0) {
     const { data: allocations, error: allocationError } = await supabase
       .from('bank_statement_allocations')
@@ -122,10 +121,6 @@ export async function loadUnmatchedDebitBankTransactions({
         allocation.bank_statement_line_id,
         (allocatedByLine.get(allocation.bank_statement_line_id) || 0) + Number(allocation.allocation_amount || 0),
       );
-      allocationCountByLine.set(
-        allocation.bank_statement_line_id,
-        (allocationCountByLine.get(allocation.bank_statement_line_id) || 0) + 1,
-      );
     }
   }
 
@@ -133,18 +128,13 @@ export async function loadUnmatchedDebitBankTransactions({
     .map((line) => {
       const total = Number(line.debit_amount || line.credit_amount || 0);
       const allocatedAmount = allocatedByLine.get(line.id) || 0;
-      const enriched = {
-        ...line,
-        allocatedAmount,
-        remainingAmount: Math.max(0, total - allocatedAmount),
-        allocationCount: allocationCountByLine.get(line.id) || 0,
-      };
+      const enriched = { ...line, allocatedAmount, remainingAmount: Math.max(0, total - allocatedAmount) };
       return {
         ...enriched,
         isLinked: !isAvailableTransaction(enriched, currentExpenseId, currentJournalEntryId, currentPettyCashId),
       };
     })
-    .filter((line) => Number(line.remainingAmount || 0) > 0.01);
+    .filter((line) => includeLinked || !line.isLinked);
 }
 
 export async function linkBankTransaction({
