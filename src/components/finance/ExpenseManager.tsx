@@ -3359,6 +3359,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     selectedTransactionId={selectedBankTransactionId}
                     linkedTransaction={editingExpense?.bank_statement_lines?.[0] || null}
                     currentExpenseId={editingExpense?.id}
+                    documentDate={formData.expense_date}
                     documentOutstanding={Math.max(
                       0,
                       calculateCanonicalCashPayable(formData) - Number(editingExpense?.paid_amount || 0),
