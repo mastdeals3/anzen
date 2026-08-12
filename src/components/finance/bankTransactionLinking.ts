@@ -18,6 +18,7 @@ export interface BankTransactionLine {
   matched_petty_cash_id?: string | null;
   matched_fund_transfer_id?: string | null;
   matched_tax_payment_id?: string | null;
+  reconciliation_status?: string | null;
   isLinked?: boolean;
   allocatedAmount?: number;
   remainingAmount?: number;
@@ -49,11 +50,23 @@ interface LinkBankTransactionOptions {
   allocationAmount?: number;
 }
 
-function isAvailableTransaction(line: BankTransactionLine) {
-  // The allocation ledger is canonical: a line is selectable only while it
-  // has a positive balance. Matched metadata alone cannot distinguish a
-  // partial allocation from a fully reconciled transaction.
-  return Number(line.remainingAmount ?? 0) > 0.01;
+export function isAvailableBankTransaction(line: BankTransactionLine) {
+  const hasDirectDocumentLink = Boolean(
+    line.matched_expense_id
+    || line.matched_entry_id
+    || line.matched_receipt_id
+    || line.matched_payment_id
+    || line.matched_petty_cash_id
+    || line.matched_fund_transfer_id
+    || line.matched_tax_payment_id
+  );
+
+  // Bank Reconciliation's linkage state is authoritative for legacy/direct
+  // matches. Allocation rows only add support for genuinely partial lines;
+  // they must not resurrect a line already marked matched/recorded.
+  return Number(line.remainingAmount ?? 0) > 0.01
+    && !hasDirectDocumentLink
+    && !['matched', 'recorded'].includes((line.reconciliation_status || '').toLowerCase());
 }
 
 export async function loadUnmatchedDebitBankTransactions({
@@ -81,6 +94,7 @@ export async function loadUnmatchedDebitBankTransactions({
       matched_petty_cash_id,
       matched_fund_transfer_id,
       matched_tax_payment_id,
+      reconciliation_status,
       bank_accounts(bank_name, account_name, account_number, alias, currency)
     `)
     .eq('bank_account_id', bankAccountId);
