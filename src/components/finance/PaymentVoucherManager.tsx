@@ -821,6 +821,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
         bankStatementLineId: transaction.id,
         matchedPaymentId: voucher.id,
         note: `Linked to supplier payment ${voucher.voucher_number}`,
+        allocationAmount: transaction.selectedAllocationAmount,
       });
 
       const updatedVoucher = {
@@ -1680,6 +1681,13 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
                       currentJournalEntryId={viewingVoucher.journal_entry_id}
                       disabled={!viewingVoucher.is_posted || !viewingVoucher.journal_entry_id}
                       disabledMessage="Post this voucher to create its journal entry before linking a bank transaction."
+                      documentOutstanding={Number(
+                        viewingVoucher.actual_bank_debit
+                        || viewingVoucher.bank_amount
+                        || viewingVoucher.amount
+                        || 0
+                      )}
+                      documentLabel={viewingVoucher.voucher_number}
                       canUnlink={canManage}
                       onSelect={(transaction) => handleLinkBankTransaction(viewingVoucher, transaction)}
                       onUnlink={() => handleUnlinkBankTransaction(viewingVoucher)}

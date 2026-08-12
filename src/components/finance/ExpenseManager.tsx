@@ -3354,10 +3354,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     canUnlink={canManage}
                     onSelect={(transaction) => {
                       setSelectedBankTransactionId(transaction.id);
-                      setSelectedBankAllocationAmount(Math.min(
-                        Number(transaction.remainingAmount ?? transaction.debit_amount ?? transaction.credit_amount ?? 0),
-                        Math.max(0, calculateCanonicalCashPayable(formData) - Number(editingExpense?.paid_amount || 0)),
-                      ));
+                      setSelectedBankAllocationAmount(transaction.selectedAllocationAmount);
                     }}
                     onUnlink={() => handleUnlinkFromBankStatement(editingExpense!.id)}
                   />

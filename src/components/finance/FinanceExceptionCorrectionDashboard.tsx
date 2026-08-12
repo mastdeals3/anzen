@@ -226,7 +226,7 @@ export function FinanceExceptionCorrectionDashboard({ canManage }: {
             direction={transactionDirection(row)}
             autoSelectSingle
             candidateFilter={(line: BankTransactionLine) => {
-              const lineAmount = Number(line.debit_amount || line.credit_amount || 0);
+              const lineAmount = Number(line.remainingAmount ?? line.debit_amount ?? line.credit_amount ?? 0);
               const amountMatches = row.amount == null || Math.abs(lineAmount - Number(row.amount)) < 0.01;
               const currencyMatches = !row.currency || !line.bank_accounts?.currency || row.currency === line.bank_accounts.currency;
               const dateMatches = !row.date || Math.abs(new Date(line.transaction_date).getTime() - new Date(row.date).getTime()) <= 8 * 24 * 60 * 60 * 1000;
