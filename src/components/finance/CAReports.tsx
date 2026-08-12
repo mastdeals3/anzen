@@ -5,6 +5,8 @@ import * as XLSX from 'xlsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFinance } from '../../contexts/FinanceContext';
 import { sanitizeCsvCell } from '../../utils/csvSafe';
+import { FinancialReports } from './FinancialReports';
+import { TaxReportsPanel } from './tax/TaxReportsPanel';
 
 type ReportType =
   | 'coa'
@@ -16,6 +18,9 @@ type ReportType =
   | 'journal_register'
   | 'general_ledger'
   | 'trial_balance'
+  | 'profit_and_loss'
+  | 'balance_sheet'
+  | 'tax_compliance'
   | 'fixed_assets';
 
 interface DateRange {
@@ -53,6 +58,9 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
     { id: 'journal_register' as const, name: 'Journal Register', icon: FileText, description: 'All journal entries' },
     { id: 'general_ledger' as const, name: 'General Ledger', icon: FileText, description: 'All account ledgers combined' },
     { id: 'trial_balance' as const, name: 'Trial Balance', icon: FileText, description: 'Debit/Credit summary' },
+    { id: 'profit_and_loss' as const, name: 'Profit & Loss', icon: TrendingUp, description: 'Canonical journal-native P&L' },
+    { id: 'balance_sheet' as const, name: 'Balance Sheet', icon: Building2, description: 'Canonical journal-native balance sheet' },
+    { id: 'tax_compliance' as const, name: 'Tax Reports', icon: FileText, description: 'Canonical PPN, PPh, payments, Faktur and audit exports' },
     { id: 'fixed_assets' as const, name: 'Fixed Asset Register', icon: Building2, description: 'Assets with depreciation' }
   ];
 
@@ -78,6 +86,12 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
   };
 
   const loadReportData = async () => {
+    if (selectedReport === 'profit_and_loss' || selectedReport === 'balance_sheet' || selectedReport === 'tax_compliance') {
+      setReportData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -273,10 +287,10 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
 
   const loadPurchaseRegister = async () => {
     const { data, error } = await supabase
-      .from('purchase_orders')
+      .from('purchase_invoices')
       .select(`
-        po_number,
-        po_date,
+        invoice_number,
+        invoice_date,
         supplier_id,
         subtotal,
         tax_amount,
@@ -284,15 +298,15 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
         currency,
         suppliers(company_name)
       `)
-      .gte('po_date', dateRange.from)
-      .lte('po_date', dateRange.to)
-      .order('po_date', { ascending: true });
+      .gte('invoice_date', dateRange.from)
+      .lte('invoice_date', dateRange.to)
+      .order('invoice_date', { ascending: true });
 
     if (error) throw error;
 
     return data?.map(po => ({
-      po_date: po.po_date,
-      po_number: po.po_number,
+      invoice_date: po.invoice_date,
+      invoice_number: po.invoice_number,
       supplier_name: (po.suppliers as any)?.company_name,
       net_amount: po.subtotal,
       ppn: po.tax_amount,
@@ -384,40 +398,20 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
   };
 
   const loadTrialBalance = async () => {
-    const { data: lines, error } = await supabase.rpc('ca_report_journal_lines', {
-      p_date_from: dateRange.from,
-      p_date_to: dateRange.to,
-      p_account_ids: null
+    const { data, error } = await supabase.rpc('get_trial_balance', {
+      p_start_date: dateRange.from,
+      p_end_date: dateRange.to,
+      p_usd_rate: 1,
     });
 
     if (error) throw error;
-
-    const { data: accounts } = await supabase
-      .from('chart_of_accounts')
-      .select('id, code, name, account_type');
-
-    const accountMap = new Map();
-    accounts?.forEach(acc => {
-      accountMap.set(acc.id, {
-        code: acc.code,
-        name: acc.name,
-        account_type: acc.account_type,
-        debit: 0,
-        credit: 0
-      });
-    });
-
-    (lines || []).forEach((line: any) => {
-      if (accountMap.has(line.line_account_id)) {
-        const acc = accountMap.get(line.line_account_id);
-        acc.debit += parseFloat(line.debit || 0);
-        acc.credit += parseFloat(line.credit || 0);
-      }
-    });
-
-    return Array.from(accountMap.values())
-      .filter(acc => acc.debit !== 0 || acc.credit !== 0)
-      .sort((a, b) => a.code.localeCompare(b.code));
+    return ((data || []) as any[]).map(row => ({
+      code: row.code,
+      name: row.name,
+      account_type: row.account_type,
+      debit: Number(row.total_debit || 0),
+      credit: Number(row.total_credit || 0),
+    }));
   };
 
   const loadFixedAssets = async () => {
@@ -559,8 +553,8 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
         reportTitle = 'PURCHASE REGISTER';
         hasDateRange = true;
         worksheetData = reportData.map((row: any) => ({
-          'Date': row.po_date,
-          'PO Number': row.po_number,
+          'Date': row.invoice_date,
+          'Invoice Number': row.invoice_number,
           'Supplier': row.supplier_name,
           'Net Amount': row.net_amount,
           'PPN': row.ppn,
@@ -724,7 +718,11 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
         })}
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 p-6">
+      {selectedReport === 'profit_and_loss' && <FinancialReports initialReport="pnl" onDrillDown={() => undefined} />}
+      {selectedReport === 'balance_sheet' && <FinancialReports initialReport="balance_sheet" onDrillDown={() => undefined} />}
+      {selectedReport === 'tax_compliance' && <TaxReportsPanel />}
+
+      {!['profit_and_loss', 'balance_sheet', 'tax_compliance'].includes(selectedReport) && <div className="bg-white rounded-lg border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-slate-900">
             {reports.find(r => r.id === selectedReport)?.name}
@@ -1021,7 +1019,7 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
             )}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

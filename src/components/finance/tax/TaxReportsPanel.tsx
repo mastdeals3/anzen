@@ -67,23 +67,35 @@ function fmtCell(col: string, v: string | number | null): string {
 }
 
 async function fetchReport(id: ReportId, startDate: string, endDate: string): Promise<Row[]> {
+  const { data: selectedPeriods } = await supabase
+    .from('tax_periods')
+    .select('id, tax_type')
+    .lte('period_start', endDate)
+    .gte('period_end', startDate);
+  const periodIds = (selectedPeriods ?? []).map(period => period.id);
+  const ppnPeriodIds = (selectedPeriods ?? []).filter(period => period.tax_type === 'PPN').map(period => period.id);
+
   switch (id) {
     case 'input_ppn': {
-      const { data } = await supabase
+      let query = supabase
         .from('vw_input_ppn_report')
         .select('*')
-        .gte('expense_date', startDate)
-        .lte('expense_date', endDate)
         .order('expense_date');
+      query = ppnPeriodIds.length > 0
+        ? query.or(`tax_period_id.in.(${ppnPeriodIds.join(',')}),and(tax_period_id.is.null,expense_date.gte.${startDate},expense_date.lte.${endDate})`)
+        : query.is('tax_period_id', null).gte('expense_date', startDate).lte('expense_date', endDate);
+      const { data } = await query;
       return (data ?? []) as Row[];
     }
     case 'output_ppn': {
-      const { data } = await supabase
+      let query = supabase
         .from('vw_output_ppn_report')
         .select('*')
-        .gte('invoice_date', startDate)
-        .lte('invoice_date', endDate)
         .order('invoice_date');
+      query = ppnPeriodIds.length > 0
+        ? query.or(`tax_period_id.in.(${ppnPeriodIds.join(',')}),and(tax_period_id.is.null,invoice_date.gte.${startDate},invoice_date.lte.${endDate})`)
+        : query.is('tax_period_id', null).gte('invoice_date', startDate).lte('invoice_date', endDate);
+      const { data } = await query;
       return (data ?? []) as Row[];
     }
     case 'ppn_payable': {
@@ -125,11 +137,11 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
       }));
     }
     case 'tax_payments': {
+      if (periodIds.length === 0) return [];
       const { data } = await supabase
         .from('tax_payments')
-        .select('payment_date, tax_type, amount, billing_code, ntpn, payment_reference, government_reference, status, journal_entry_id, notes, bank_accounts:bank_account_id(alias, bank_name, account_name)')
-        .gte('payment_date', startDate)
-        .lte('payment_date', endDate)
+        .select('payment_date, tax_period_id, tax_type, amount, billing_code, ntpn, payment_reference, government_reference, status, journal_entry_id, notes, bank_accounts:bank_account_id(alias, bank_name, account_name)')
+        .in('tax_period_id', periodIds)
         .order('payment_date', { ascending: false });
       return ((data ?? []) as Array<Record<string, unknown>>).map(r => {
         const bank = r.bank_accounts as { alias?: string; bank_name?: string; account_name?: string } | null;
@@ -150,7 +162,8 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
       });
     }
     case 'outstanding': {
-      const { data } = await supabase.from('vw_outstanding_tax').select('*');
+      if (periodIds.length === 0) return [];
+      const { data } = await supabase.from('vw_outstanding_tax').select('*').in('tax_period_id', periodIds);
       return (data ?? []) as Row[];
     }
     case 'monthly_summary': {
@@ -163,11 +176,11 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
       return (data ?? []) as Row[];
     }
     case 'faktur_register': {
+      if (ppnPeriodIds.length === 0) return [];
       const { data } = await supabase
         .from('faktur_pajak')
-        .select('faktur_number, issue_date, status, dpp_amount, ppn_amount, reported_at, sales_invoice:sales_invoice_id(invoice_number, customer:customer_id(company_name, npwp))')
-        .gte('issue_date', startDate)
-        .lte('issue_date', endDate)
+        .select('faktur_number, issue_date, tax_period_id, status, dpp_amount, ppn_amount, reported_at, sales_invoice:sales_invoice_id(invoice_number, customer:customer_id(company_name, npwp))')
+        .in('tax_period_id', ppnPeriodIds)
         .order('issue_date', { ascending: false });
       return ((data ?? []) as Array<Record<string, unknown>>).map(r => {
         const inv = r.sales_invoice as { invoice_number?: string; customer?: { company_name?: string; npwp?: string } } | null;
