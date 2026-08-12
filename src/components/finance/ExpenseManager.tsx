@@ -1082,6 +1082,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       console.log('Full expense data:', expenseData);
 
       if (editingExpense) {
+        let bankAllocationError: string | null = null;
         // Regular update - bank expenses only (cash expenses go to Petty Cash Manager)
         console.log('=== UPDATING EXPENSE ===');
         console.log('Expense ID:', editingExpense.id);
@@ -1148,7 +1149,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           } catch (linkError) {
             linkFailed = true;
             console.error('Error linking to bank transaction:', linkError);
-            alert('Expense updated but failed to link to bank transaction. Please link manually from Bank Reconciliation.');
+            bankAllocationError = supabaseErrorMessage(linkError);
           }
 
           if (!linkFailed) {
@@ -1189,8 +1190,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           }
         }
 
-        alert('Expense updated successfully');
+        alert(bankAllocationError
+          ? `Expense updated, but the bank allocation was not created: ${bankAllocationError}`
+          : 'Expense updated successfully');
       } else {
+        let bankAllocationError: string | null = null;
         // Create new bank expense - cash expenses should be recorded in Petty Cash Manager
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not authenticated');
@@ -1247,7 +1251,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
           } catch (linkError) {
             linkFailed = true;
             console.error('Error linking to bank transaction:', linkError);
-            alert('Expense created but failed to link to bank transaction. Please link manually from Bank Reconciliation.');
+            bankAllocationError = supabaseErrorMessage(linkError);
           }
 
           if (!linkFailed) {
@@ -1288,7 +1292,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
         // Add to local state (with bank link if applicable)
         setExpenses(prev => [finalExpense, ...prev]);
-        alert('Expense recorded successfully');
+        alert(bankAllocationError
+          ? `Expense recorded, but the bank allocation was not created: ${bankAllocationError}`
+          : 'Expense recorded successfully');
       }
 
       setModalOpen(false);
@@ -1397,8 +1403,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       bank_charges_amount: expense.bank_charges_amount ?? 0,
     });
 
-    // Set selected bank transaction if expense is already linked
-    setSelectedBankTransactionId(reconciledBankInfo?.id || '');
+    // An existing allocation is displayed by BankTransactionLinkField; it is
+    // not a newly selected bank line. Preloading it here made Update call the
+    // allocation RPC again and correctly fail on the duplicate allocation.
+    setSelectedBankTransactionId('');
+    setSelectedBankAllocationAmount(undefined);
 
     setModalOpen(true);
   };
@@ -1579,6 +1588,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
   const resetForm = () => {
     setEditingExpense(null);
+    setSelectedBankTransactionId('');
+    setSelectedBankAllocationAmount(undefined);
     setUploadingFiles([]);
     setSelectedSupplier(null);
     setSelectedDocType('');
@@ -3294,6 +3305,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       setFormData(prev => ({ ...prev, payment_method: val, bank_account_id: val ? prev.bank_account_id : '' }));
                       if (!e.target.value || e.target.value === 'outstanding') {
                         setSelectedBankTransactionId('');
+                        setSelectedBankAllocationAmount(undefined);
                       }
                     }}
                     className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" required>
@@ -3318,6 +3330,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                         setFormData({ ...formData, bank_account_id: e.target.value, transaction_currency: currency,
                           exchange_rate: currency === 'IDR' ? 1 : formData.exchange_rate });
                         setSelectedBankTransactionId('');
+                        setSelectedBankAllocationAmount(undefined);
                       }}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded text-xs" required={formData.payment_method !== null}>
                       <option value="">Select account</option>

@@ -27,7 +27,6 @@ import {
   saveFinanceLoanRepayment,
   savePaymentVoucher,
   saveReceiptVoucher,
-  unlinkBankStatementAllocation,
   unlinkBankStatementLine,
 } from '../../services/financeCommands';
 
@@ -3249,25 +3248,6 @@ export function BankReconciliationEnhanced({
                             Remaining: {formatCurrency(line.remainingAmount, line.currency)}
                           </div>
                           <div>{line.remainingAmount > 0.01 ? 'Partially Reconciled' : 'Fully Reconciled'}</div>
-                          {line.allocations.map(allocation => (
-                            <button
-                              key={allocation.id}
-                              type="button"
-                              onClick={async () => {
-                                if (!canManage) return;
-                                try {
-                                  await unlinkBankStatementAllocation(allocation.id);
-                                  await loadStatementLines();
-                                  notifyFinanceReconciliationRefresh();
-                                } catch (error: any) {
-                                  alert('❌ Failed to unlink allocation: ' + error.message);
-                                }
-                              }}
-                              className="block text-left text-red-600 hover:underline"
-                            >
-                              Unlink {allocation.document_type}: {formatCurrency(allocation.allocation_amount, line.currency)}
-                            </button>
-                          ))}
                         </div>
                       )}
                     </div>
