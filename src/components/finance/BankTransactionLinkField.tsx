@@ -60,7 +60,6 @@ export function BankTransactionLinkField({
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
-  const [hideLinked, setHideLinked] = useState(true);
   const [pendingTransaction, setPendingTransaction] = useState<BankTransactionLine | null>(null);
 
   const filteredTransactions = useMemo(() => {
@@ -77,7 +76,7 @@ export function BankTransactionLinkField({
     ].some((value) => value?.toLowerCase().includes(query)));
   }, [searchTerm, transactions]);
 
-  const loadTransactions = async (nextHideLinked: boolean, open = false) => {
+  const loadTransactions = async (open = false) => {
     if (!bankAccountId || disabled) return;
     if (open) setDialogOpen(true);
     setLoading(true);
@@ -88,11 +87,11 @@ export function BankTransactionLinkField({
         currentExpenseId,
         currentJournalEntryId,
         currentPettyCashId,
-        includeLinked: !nextHideLinked,
+        includeLinked: false,
       });
       const candidates = candidateFilter ? rows.filter(candidateFilter) : rows;
       setTransactions(rows);
-      if (autoSelectSingle && nextHideLinked && candidates.length === 1) await handleSelect(candidates[0]);
+      if (autoSelectSingle && candidates.length === 1) await handleSelect(candidates[0]);
     } catch (error) {
       console.error('Error loading unmatched bank transactions:', error);
       alert('Failed to load unmatched bank transactions.');
@@ -102,7 +101,7 @@ export function BankTransactionLinkField({
     }
   };
 
-  const openDialog = async () => loadTransactions(hideLinked, true);
+  const openDialog = async () => loadTransactions(true);
 
   const handleSelect = async (transaction: BankTransactionLine) => {
     if (documentOutstanding !== undefined) {
@@ -207,20 +206,6 @@ export function BankTransactionLinkField({
               className="w-full h-8 pl-8 pr-3 text-xs border border-gray-300 rounded focus:outline-none focus:border-blue-400"
             />
           </div>
-          <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 select-none">
-            <input
-              type="checkbox"
-              checked={hideLinked}
-              onChange={(event) => {
-                const next = event.target.checked;
-                setHideLinked(next);
-                void loadTransactions(next);
-              }}
-              className="accent-blue-600"
-            />
-            Hide already linked
-          </label>
-
           <div className="border border-gray-200 rounded overflow-hidden">
             <div className="max-h-[50vh] overflow-auto">
               <table className="w-full text-xs">
