@@ -22,8 +22,6 @@ interface BankTransactionLinkFieldProps {
   direction?: 'debit' | 'credit' | 'both';
   candidateFilter?: (line: BankTransactionLine) => boolean;
   autoSelectSingle?: boolean;
-  /** Used only to rank available candidates; it never excludes history. */
-  documentDate?: string;
   documentOutstanding?: number;
   documentLabel?: string;
 }
@@ -52,7 +50,6 @@ export function BankTransactionLinkField({
   direction = 'debit',
   candidateFilter,
   autoSelectSingle = false,
-  documentDate,
   documentOutstanding,
   documentLabel = 'this document',
 }: BankTransactionLinkFieldProps) {
@@ -63,37 +60,10 @@ export function BankTransactionLinkField({
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [pendingTransaction, setPendingTransaction] = useState<BankTransactionLine | null>(null);
 
-  const rankedTransactions = useMemo(() => {
-    const documentDay = documentDate ? new Date(`${documentDate.slice(0, 10)}T00:00:00`).getTime() : NaN;
-    const documentAmount = Math.max(0, Number(documentOutstanding || 0));
-    const documentText = documentLabel.trim().toLowerCase();
-
-    return [...transactions].sort((left, right) => {
-      const dateDistance = (line: BankTransactionLine) => Number.isFinite(documentDay)
-        ? Math.abs(new Date(`${line.transaction_date.slice(0, 10)}T00:00:00`).getTime() - documentDay)
-        : 0;
-      const amountDistance = (line: BankTransactionLine) => Math.abs(
-        Number(line.remainingAmount ?? line.debit_amount ?? line.credit_amount ?? 0) - documentAmount,
-      );
-      const textDistance = (line: BankTransactionLine) => {
-        if (!documentText) return 0;
-        const lineText = [line.description, line.reference, bankLabel(line)].filter(Boolean).join(' ').toLowerCase();
-        return lineText.includes(documentText) ? 0 : 1;
-      };
-
-      return dateDistance(left) - dateDistance(right)
-        || amountDistance(left) - amountDistance(right)
-        || textDistance(left) - textDistance(right)
-        || right.transaction_date.localeCompare(left.transaction_date);
-    });
-  }, [transactions, documentDate, documentOutstanding, documentLabel]);
-
   const filteredTransactions = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
-    const candidates = candidateFilter ? rankedTransactions.filter(candidateFilter) : rankedTransactions;
-    // Keep the initial picker focused. A search deliberately operates over
-    // every available bank line, so older available history stays reachable.
-    if (!query) return candidates.slice(0, 12);
+    const candidates = candidateFilter ? transactions.filter(candidateFilter) : transactions;
+    if (!query) return candidates;
 
     return candidates.filter((line) => [
       line.transaction_date,
@@ -102,7 +72,7 @@ export function BankTransactionLinkField({
       bankLabel(line),
       String(line.debit_amount),
     ].some((value) => value?.toLowerCase().includes(query)));
-  }, [searchTerm, rankedTransactions, candidateFilter]);
+  }, [searchTerm, transactions]);
 
   const loadTransactions = async (open = false) => {
     if (!bankAccountId || disabled) return;
