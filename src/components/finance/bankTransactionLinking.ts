@@ -50,7 +50,7 @@ interface LinkBankTransactionOptions {
   allocationAmount?: number;
 }
 
-export function isAvailableBankTransaction(line: BankTransactionLine) {
+export function isAvailableTransaction(line: BankTransactionLine) {
   const hasDirectDocumentLink = Boolean(
     line.matched_expense_id
     || line.matched_entry_id
