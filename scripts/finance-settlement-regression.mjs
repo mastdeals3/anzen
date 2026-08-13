@@ -101,6 +101,24 @@ BEGIN
        AND fe.expense_category IN ('pib_import','pph_import')
        AND CASE WHEN fe.expense_category='pib_import'
          THEN COALESCE(fe.pib_pph_amount,0) ELSE COALESCE(fe.amount,0) END>0
+    UNION ALL
+    -- A verified historical exception is not a current source document. It is
+    -- admitted only when the existing tax-payment journal and canonical bank
+    -- allocation prove the cash remittance; an ordinary orphan still fails.
+    SELECT period.fiscal_year, period.period_month, tp.tax_type, tp.amount
+      FROM public.tax_payments tp
+      JOIN public.tax_periods period ON period.id=tp.tax_period_id
+      JOIN public.journal_entries je ON je.id=tp.journal_entry_id
+       AND je.is_posted AND NOT COALESCE(je.is_reversed,false)
+     WHERE tp.historical_source_status='missing_source_verified'
+       AND EXISTS (
+         SELECT 1 FROM public.bank_statement_allocations a
+         JOIN public.bank_statement_lines bsl ON bsl.id=a.bank_statement_line_id
+          WHERE a.document_type='tax_payment' AND a.document_id=tp.id
+            AND a.journal_entry_id=tp.journal_entry_id
+            AND bsl.matched_tax_payment_id=tp.id
+            AND abs(COALESCE(a.allocation_amount,0)-tp.amount)<0.01
+       )
   ), expected AS (
     SELECT fiscal_year,period_month,tax_type,sum(amount) total
       FROM source GROUP BY fiscal_year,period_month,tax_type
@@ -132,6 +150,15 @@ BEGIN
   SELECT count(*) INTO v_count
     FROM differences;
   IF v_count<>0 THEN RAISE EXCEPTION '% typed or consolidated PPh registers differ from approved source documents',v_count; END IF;
+
+  SELECT count(*) INTO v_count
+    FROM public.tax_payments tp
+   WHERE tp.historical_source_status='missing_source_verified'
+     AND NOT EXISTS (
+       SELECT 1 FROM public.journal_entries je WHERE je.id=tp.journal_entry_id
+         AND je.is_posted AND NOT COALESCE(je.is_reversed,false)
+     );
+  IF v_count<>0 THEN RAISE EXCEPTION '% historical PPh exceptions lack a posted tax-payment journal',v_count; END IF;
 
   -- EXP/26/127 was paid in February and deliberately assigned to February.
   -- The 4-Mar value is the fallback payment-attribution date; it is not used
