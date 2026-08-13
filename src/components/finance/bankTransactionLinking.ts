@@ -21,6 +21,7 @@ export interface BankTransactionLine {
   reconciliation_status?: string | null;
   isLinked?: boolean;
   allocatedAmount?: number;
+  allocationCount?: number;
   remainingAmount?: number;
   bank_accounts?: {
     bank_name: string;
@@ -61,11 +62,15 @@ export function isAvailableTransaction(line: BankTransactionLine) {
     || line.matched_tax_payment_id
   );
 
-  // Bank Reconciliation's linkage state is authoritative for legacy/direct
-  // matches. Allocation rows only add support for genuinely partial lines;
-  // they must not resurrect a line already marked matched/recorded.
-  return Number(line.remainingAmount ?? 0) > 0.01
-    && !hasDirectDocumentLink
+  const hasAllocation = Number(line.allocationCount || 0) > 0;
+  if (Number(line.remainingAmount ?? 0) <= 0.01) return false;
+
+  // A real allocation is authoritative. A partially allocated line remains
+  // available even though the sole-allocation compatibility fields contain
+  // its current document. Without an allocation, typed links/status remain
+  // authoritative for legacy/direct matches and must exclude the line.
+  if (hasAllocation) return line.reconciliation_status === 'partially_reconciled';
+  return !hasDirectDocumentLink
     && !['matched', 'recorded'].includes((line.reconciliation_status || '').toLowerCase());
 }
 
@@ -107,6 +112,7 @@ export async function loadUnmatchedDebitBankTransactions({
 
   const lineIds = (data || []).map(line => line.id);
   const allocatedByLine = new Map<string, number>();
+  const allocationCountByLine = new Map<string, number>();
   if (lineIds.length > 0) {
     const { data: allocations, error: allocationError } = await supabase
       .from('bank_statement_allocations')
@@ -118,6 +124,10 @@ export async function loadUnmatchedDebitBankTransactions({
         allocation.bank_statement_line_id,
         (allocatedByLine.get(allocation.bank_statement_line_id) || 0) + Number(allocation.allocation_amount || 0),
       );
+      allocationCountByLine.set(
+        allocation.bank_statement_line_id,
+        (allocationCountByLine.get(allocation.bank_statement_line_id) || 0) + 1,
+      );
     }
   }
 
@@ -125,7 +135,12 @@ export async function loadUnmatchedDebitBankTransactions({
     .map((line) => {
       const total = Number(line.debit_amount || line.credit_amount || 0);
       const allocatedAmount = allocatedByLine.get(line.id) || 0;
-      const enriched = { ...line, allocatedAmount, remainingAmount: Math.max(0, total - allocatedAmount) };
+      const enriched = {
+        ...line,
+        allocatedAmount,
+        allocationCount: allocationCountByLine.get(line.id) || 0,
+        remainingAmount: Math.max(0, total - allocatedAmount),
+      };
       return {
         ...enriched,
         isLinked: !isAvailableTransaction(enriched),

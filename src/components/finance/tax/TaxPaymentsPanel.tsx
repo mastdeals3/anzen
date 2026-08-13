@@ -8,6 +8,8 @@ import { FinanceModal as Modal } from '../FinanceModal';
 import { MoneyInput } from '../../MoneyInput';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState, paymentStatusLabel, taxPaymentBusinessStatus } from './TaxUI';
 import { formatFinancePeriod } from '../../../utils/financePeriod';
+import { linkBankStatementLine } from '../../../services/financeCommands';
+import { loadUnmatchedDebitBankTransactions, type BankTransactionLine } from '../bankTransactionLinking';
 
 interface Period {
   id: string;
@@ -66,7 +68,7 @@ export function TaxPaymentsPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
   const [bslPickerPayment, setBslPickerPayment] = useState<Payment | null>(null);
-  const [bslCandidates, setBslCandidates] = useState<any[]>([]);
+  const [bslCandidates, setBslCandidates] = useState<BankTransactionLine[]>([]);
   const [bslPickerLoading, setBslPickerLoading] = useState(false);
   const [bslLinking, setBslLinking] = useState(false);
 
@@ -276,32 +278,16 @@ export function TaxPaymentsPanel() {
     setBslCandidates([]);
     setBslPickerLoading(true);
     try {
-      // Match the Expense picker pattern (loadUnlinkedBankTransactions):
-      // no hard date filter. Bank clearing routinely lags tax payments by
-      // more than the previous ±7-day window, hiding the correct BSL row
-      // and forcing users to drop into raw SQL. Instead we take every
-      // fully-unmatched debit row on the same bank account, sort by
-      // proximity to the payment_date, and rank exact-amount matches first.
-      let q = supabase
-        .from('bank_statement_lines')
-        .select('id, transaction_date, description, debit_amount, bank_account_id, reconciliation_status, matched_tax_payment_id, matched_expense_id, matched_receipt_id, matched_payment_id, matched_petty_cash_id, matched_fund_transfer_id, matched_entry_id')
-        .gt('debit_amount', 0)
-        .order('transaction_date', { ascending: false })
-        .limit(200);
-
-      if (p.bank_account_id) q = q.eq('bank_account_id', p.bank_account_id);
-
-      const { data } = await q;
+      if (!p.bank_account_id) throw new Error('Tax payment has no bank account.');
+      const data = await loadUnmatchedDebitBankTransactions({
+        bankAccountId: p.bank_account_id,
+        direction: 'debit',
+      });
       const amount = Number(p.amount);
       const payDate = new Date(p.payment_date).getTime();
-      const scored = (data ?? []).map((b: any) => ({
+      const scored = data.map((b) => ({
         row: b,
-        linked: Boolean(
-          b.matched_tax_payment_id || b.matched_expense_id || b.matched_receipt_id
-          || b.matched_payment_id || b.matched_petty_cash_id || b.matched_fund_transfer_id
-          || b.matched_entry_id || b.reconciliation_status !== 'unmatched',
-        ),
-        amountDiff: Math.abs(Number(b.debit_amount) - amount),
+        amountDiff: Math.abs(Number(b.remainingAmount ?? b.debit_amount) - amount),
         dateDiff: Math.abs(new Date(b.transaction_date).getTime() - payDate),
       }));
       scored.sort((a, b) => {
@@ -313,11 +299,11 @@ export function TaxPaymentsPanel() {
         return a.amountDiff - b.amountDiff;
       });
       setBslCandidates(scored
-        .filter((candidate) => !candidate.linked)
         .slice(0, 50)
-        .map((candidate) => ({ ...candidate.row, _linked: candidate.linked })));
+        .map((candidate) => candidate.row));
     } catch (err) {
       console.error('Error fetching BSL candidates:', err);
+      alert('Failed to load available bank statement lines: ' + (err as Error).message);
     } finally {
       setBslPickerLoading(false);
     }
@@ -327,28 +313,18 @@ export function TaxPaymentsPanel() {
     await loadBslCandidates(p);
   }
 
-  async function linkBsl(bslId: string) {
+  async function linkBsl(bankLine: BankTransactionLine) {
     if (!bslPickerPayment?.journal_entry_id) {
       alert('❌ Tax payment has no journal entry. Record it again if needed.');
       return;
     }
     setBslLinking(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      const { error } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'matched',
-          matched_tax_payment_id: bslPickerPayment.id,
-          matched_entry_id: bslPickerPayment.journal_entry_id,
-          matched_at: new Date().toISOString(),
-          matched_by: user.id,
-          manually_unlinked: false,
-          notes: `Linked to tax payment: ${bslPickerPayment.tax_type} ${bslPickerPayment.payment_date}`,
-        })
-        .eq('id', bslId);
-      if (error) throw error;
+      const allocationAmount = Math.min(
+        Number(bankLine.remainingAmount ?? bankLine.debit_amount),
+        Number(bslPickerPayment.amount),
+      );
+      await linkBankStatementLine(bankLine.id, 'tax_payment', bslPickerPayment.id, 'supplier', allocationAmount);
       setBslPickerPayment(null);
       setBslCandidates([]);
       await refresh();
@@ -709,13 +685,14 @@ export function TaxPaymentsPanel() {
             ) : (
               <>
               <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg divide-y">
-                {bslCandidates.map((b: any) => {
-                  const exact = Math.abs(Number(b.debit_amount) - Number(bslPickerPayment.amount)) < 1;
+                {bslCandidates.map((b) => {
+                  const available = Number(b.remainingAmount ?? b.debit_amount);
+                  const exact = Math.abs(available - Number(bslPickerPayment.amount)) < 1;
                   return (
                     <button
                       key={b.id}
-                      onClick={() => void linkBsl(b.id)}
-                      disabled={bslLinking || b._linked}
+                      onClick={() => void linkBsl(b)}
+                      disabled={bslLinking}
                       className={`w-full p-3 text-left hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex justify-between items-center ${exact ? 'bg-emerald-50/50' : ''}`}
                     >
                       <div>
@@ -723,11 +700,13 @@ export function TaxPaymentsPanel() {
                         <div className="text-xs text-gray-400">
                           {new Date(b.transaction_date).toLocaleDateString('id-ID')}
                           {exact ? <span className="ml-2 text-emerald-700 font-medium">Exact amount</span> : null}
-                          {b._linked ? <span className="ml-2 text-amber-700 font-medium">Already linked</span> : null}
                         </div>
                       </div>
                       <div className="font-medium text-red-600 text-sm">
                         Rp {Number(b.debit_amount).toLocaleString('id-ID')}
+                        {Number(b.allocatedAmount || 0) > 0 && (
+                          <div className="text-xs text-amber-700">Remaining Rp {available.toLocaleString('id-ID')}</div>
+                        )}
                       </div>
                     </button>
                   );

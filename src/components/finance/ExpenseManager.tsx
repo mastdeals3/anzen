@@ -1416,42 +1416,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     if (!confirm('Are you sure you want to delete this expense?')) return;
 
     try {
-      // Reset any bank_statement_lines that link to this expense (or its JE)
-      // before we delete. The bsl_matched_expense_fk cascade will null the FK
-      // on delete, but leaves reconciliation_status='matched' behind — that
-      // is what turns future rows into "Linked (reference unresolved)".
-      const { data: expRow } = await supabase
-        .from('finance_expenses')
-        .select('journal_entry_id')
-        .eq('id', id)
-        .maybeSingle();
-
-      await supabase
-        .from('bank_statement_lines')
-        .update({
-          matched_expense_id: null,
-          reconciliation_status: 'unmatched',
-          matched_at: null,
-          matched_by: null,
-        })
-        .eq('matched_expense_id', id);
-
-      if (expRow?.journal_entry_id) {
-        await supabase
-          .from('bank_statement_lines')
-          .update({
-            matched_entry_id: null,
-            reconciliation_status: 'unmatched',
-            matched_at: null,
-            matched_by: null,
-          })
-          .eq('matched_entry_id', expRow.journal_entry_id);
-      }
-
-      const { error } = await supabase
-        .from('finance_expenses')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.rpc('delete_expense_safe', { p_expense_id: id });
 
       if (error) throw error;
 
