@@ -1023,7 +1023,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         : (formData.exchange_rate > 1 ? formData.exchange_rate : await getReportingUsdRate());
       const expenseData = {
         expense_category: formData.expense_category,
-        expense_type: category?.type || 'admin',
+        // finance_expenses.expense_type is the legacy transaction context,
+        // distinct from the broader Expense Category Master category_type.
+        // The database derives this again so every write path stays canonical.
+        expense_type: category?.type === 'import' ? 'import' : category?.type === 'sales' ? 'sales' : 'general',
         amount: formData.amount,
         expense_date: formData.expense_date,
         description: composedDescription || null,
