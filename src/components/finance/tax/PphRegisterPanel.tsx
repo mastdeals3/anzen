@@ -34,7 +34,7 @@ interface Row {
 }
 
 interface SourceLine {
-  module: 'expense' | 'payment_voucher' | 'import';
+  module: 'expense' | 'payment_voucher' | 'import' | 'historical_tax_payment';
   id: string;
   doc_number: string;
   doc_date: string;
@@ -83,7 +83,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const lastDay = new Date(yr, mo, 0).getDate();
   const endDate = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
 
-  const [feRes, pvRes, importRes, bankPaymentRes, allocationRes, linkedVoucherRes] = await Promise.all([
+  const [feRes, pvRes, importRes, bankPaymentRes, allocationRes, linkedVoucherRes, historicalRes] = await Promise.all([
     supabase
       .from('finance_expenses')
       .select('id, voucher_number, expense_date, due_date, pph_amount, pph_tax_period_id, description, payment_method, expense_category, approval_status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
@@ -111,6 +111,9 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
     supabase
       .from('payment_vouchers')
       .select('id, voucher_date, is_posted'),
+    row.tax_type === 'PPh_Unifikasi'
+      ? supabase.from('tax_payments').select('id, tax_type, payment_date, amount, billing_code, ntpn, payment_reference, historical_source_reference, historical_source_note, journal_entry_id, status').eq('historical_source_status', 'missing_source_verified').gte('payment_date', startDate).lte('payment_date', endDate)
+      : supabase.from('tax_payments').select('id, tax_type, payment_date, amount, billing_code, ntpn, payment_reference, historical_source_reference, historical_source_note, journal_entry_id, status').eq('tax_period_id', row.tax_period_id).eq('historical_source_status', 'missing_source_verified'),
   ]);
 
   // Untouched documents retain the engine's existing payment/due-date
@@ -255,7 +258,30 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
         }))
     : [];
 
-  return [...expenses, ...vouchers, ...imports].sort((a, b) =>
+  const historicalPayments: SourceLine[] = ((historicalRes.data ?? []) as any[])
+    .filter(payment => pphType === 'PPh_Unifikasi' || payment.tax_type === pphType)
+    .map(payment => ({
+      module: 'historical_tax_payment' as const,
+      id: payment.id,
+      doc_number: payment.payment_reference || payment.billing_code || payment.id,
+      doc_date: payment.payment_date,
+      period_date: payment.payment_date,
+      party: 'Tax Authority',
+      description: payment.historical_source_note,
+      pph_code: payment.ntpn || payment.billing_code || null,
+      pph_amount: Number(payment.amount),
+      tax_type: payment.tax_type,
+      source_status: 'Historical source unavailable — payment verified',
+      is_official: true,
+      tax_period_id: row.tax_period_id,
+      payment_method: 'bank_transfer',
+      recon_status: payment.status,
+      journal_reference: payment.payment_reference || payment.billing_code || null,
+      journal_id: payment.journal_entry_id,
+      posting_date: payment.payment_date,
+    }));
+
+  return [...expenses, ...vouchers, ...imports, ...historicalPayments].sort((a, b) =>
     a.period_date.localeCompare(b.period_date) || a.doc_date.localeCompare(b.doc_date),
   );
 }
@@ -492,6 +518,11 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                             <p className="text-xs font-medium text-red-700">Audit trace mismatch: this Register amount has no approved source document. Review the source-document lifecycle.</p>
                           ) : officialDetail.length > 0 ? (
                             <>
+                            {officialDetail.some(line => line.module === 'historical_tax_payment') && (
+                              <div className="mb-2 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+                                Historical audit exception: payment, posted journal, and bank reconciliation are verified; the original withholding source document is no longer available.
+                              </div>
+                            )}
                             {missingJournalDetail.length > 0 && (
                               <div className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
                                 Accounting warning: {missingJournalDetail.length} approved source document{missingJournalDetail.length === 1 ? '' : 's'} {missingJournalDetail.length === 1 ? 'has' : 'have'} no active posted journal. The withholding remains in the official Register; open the document to correct its journal lifecycle.
