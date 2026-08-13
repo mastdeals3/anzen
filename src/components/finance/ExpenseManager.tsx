@@ -350,6 +350,9 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     pph21_applicable: boolean;
     default_payment_method: string;
   } | null>(null);
+  // Applied advances are persisted settlement facts. They are not returned by
+  // the outstanding-advance query, so retain their total while editing.
+  const [persistedSalaryAdvanceApplied, setPersistedSalaryAdvanceApplied] = useState(0);
   const [selectedUtilityId, setSelectedUtilityId] = useState<string>('');
   const [periodLabel, setPeriodLabel] = useState<string>('');   // Salary Month / Billing Month
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
@@ -496,7 +499,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         // authoritative gross value after the user edits it.
         p_gross_override: formData.amount,
       }),
-    ]).then(([advancesResult, calculationResult]) => {
+    ]).then(async ([advancesResult, calculationResult]) => {
       if (cancelled) return;
       if (advancesResult.error || calculationResult.error) {
         console.error('Unable to load canonical salary calculation:', advancesResult.error?.message || calculationResult.error?.message);
@@ -506,8 +509,18 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       }
       const calculation = calculationResult.data as typeof salaryCalculation;
       setSalaryAdvances((advancesResult.data || []) as typeof salaryAdvances);
-      setSalaryCalculation(calculation);
-      setApplySalaryAdvance(true);
+      const existingApplied = editingExpense?.id
+        ? Number((await supabase.rpc('get_salary_advance_applications', { p_salary_expense_id: editingExpense.id })).data?.reduce((sum: number, item: { applied_amount: number }) => sum + Number(item.applied_amount || 0), 0) ?? 0)
+        : 0;
+      const advanceApplied = existingApplied || Number(calculation?.outstanding_salary_advances || 0);
+      setPersistedSalaryAdvanceApplied(existingApplied);
+      setSalaryCalculation(calculation ? {
+        ...calculation,
+        outstanding_salary_advances: advanceApplied,
+        net_salary_payable: Math.max(calculation.gross_salary - advanceApplied - calculation.pph21_amount - calculation.bpjs_amount, 0),
+      } : null);
+      // Saving a reopened settlement must not create another FIFO application.
+      setApplySalaryAdvance(!editingExpense || existingApplied === 0);
       if (calculation) {
         const pph21Code = taxCodes.find((code) => code.code.toUpperCase() === 'PPH21');
         setFormData((previous) => ({
@@ -523,7 +536,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     return () => {
       cancelled = true;
     };
-  }, [formData.expense_category, formData.expense_date, formData.amount, selectedStaffId, taxCodes]);
+  }, [formData.expense_category, formData.expense_date, formData.amount, selectedStaffId, taxCodes, editingExpense?.id]);
 
   // A deliberate PPh21 edit is a UI override, not a new payroll calculation.
   // Keep the canonical advances/BPJS result and update only the displayed
@@ -1092,7 +1105,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
         await saveFinanceExpense(editingExpense.id, expenseData);
 
-        if (formData.expense_category === 'salary' && selectedStaffId && applySalaryAdvance) {
+        if (formData.expense_category === 'salary' && selectedStaffId && applySalaryAdvance && persistedSalaryAdvanceApplied === 0) {
           const { error: advanceError } = await supabase.rpc('apply_salary_advances_to_expense', {
             p_salary_expense_id: editingExpense.id,
             p_apply: true,
@@ -1320,6 +1333,17 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       return;
     }
     setEditingExpense(expense);
+    if (expense.expense_category === 'salary') {
+      const { data, error } = await supabase.rpc('get_salary_advance_applications', { p_salary_expense_id: expense.id });
+      if (error) {
+        alert(`Unable to load salary advance settlement: ${error.message}`);
+        setEditingExpense(null);
+        return;
+      }
+      setPersistedSalaryAdvanceApplied((data || []).reduce((sum: number, item: { applied_amount: number }) => sum + Number(item.applied_amount || 0), 0));
+    } else {
+      setPersistedSalaryAdvanceApplied(0);
+    }
 
     // Check if expense is reconciled to a bank statement
     const reconciledBankInfo = expense.bank_statement_lines && expense.bank_statement_lines.length > 0

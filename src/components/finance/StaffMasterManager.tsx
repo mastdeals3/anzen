@@ -26,6 +26,7 @@ interface Staff {
   department: string | null;
   default_gl_code: string | null;
   default_gl_name: string | null;
+  default_gl_account_id?: string | null;
   npwp: string | null;
   monthly_salary: number;
   salary_type: 'monthly' | 'daily' | 'hourly';
@@ -42,8 +43,11 @@ interface Props {
   canManage: boolean;
 }
 
+interface COA { id: string; code: string; name: string; }
+
 export function StaffMasterManager({ canManage }: Props) {
   const [rows, setRows] = useState<Staff[]>([]);
+  const [coaAccounts, setCoaAccounts] = useState<COA[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -54,6 +58,7 @@ export function StaffMasterManager({ canManage }: Props) {
     department: '',
     default_gl_code: '',
     default_gl_name: '',
+    default_gl_account_id: '',
     npwp: '',
     monthly_salary: 0,
     salary_type: 'monthly' as Staff['salary_type'],
@@ -65,7 +70,13 @@ export function StaffMasterManager({ canManage }: Props) {
     notes: '',
   });
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); void loadCoa(); }, []);
+
+  const loadCoa = async () => {
+    const { data, error } = await supabase.from('chart_of_accounts').select('id, code, name').eq('is_active', true).eq('is_header', false).in('account_type', ['expense', 'Expense']).order('code');
+    if (error) showToast({ type: 'error', title: 'COA load failed', message: error.message });
+    else setCoaAccounts(data || []);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -82,7 +93,7 @@ export function StaffMasterManager({ canManage }: Props) {
     setEditing(null);
     setForm({
       full_name: '', employee_code: '', department: '',
-      default_gl_code: '', default_gl_name: '',
+      default_gl_code: '', default_gl_name: '', default_gl_account_id: '',
       npwp: '', status: 'active', notes: '',
       monthly_salary: 0, salary_type: 'monthly', pph21_applicable: false,
       pph21_method: 'percentage', pph21_percentage: 0, default_payment_method: 'bank_transfer',
@@ -97,6 +108,7 @@ export function StaffMasterManager({ canManage }: Props) {
       department: r.department || '',
       default_gl_code: r.default_gl_code || '',
       default_gl_name: r.default_gl_name || '',
+      default_gl_account_id: r.default_gl_account_id || '',
       npwp: r.npwp || '',
       monthly_salary: Number(r.monthly_salary || 0),
       salary_type: r.salary_type || 'monthly',
@@ -120,8 +132,8 @@ export function StaffMasterManager({ canManage }: Props) {
       full_name: form.full_name.trim(),
       employee_code: form.employee_code.trim() || null,
       department: form.department.trim() || null,
-      default_gl_code: form.default_gl_code.trim() || null,
-      default_gl_name: form.default_gl_name.trim() || null,
+      // Server derives the legacy display code/name from this canonical FK.
+      default_gl_account_id: form.default_gl_account_id || null,
       npwp: form.npwp.trim() || null,
       monthly_salary: form.monthly_salary,
       salary_type: form.salary_type,
@@ -299,15 +311,11 @@ export function StaffMasterManager({ canManage }: Props) {
               </SapField>
             </SapRow>
             <SapRow>
-              <SapField label="GL Code" span={4}>
-                <input value={form.default_gl_code} onChange={e => setForm({ ...form, default_gl_code: e.target.value })}
-                  placeholder="e.g. 6100"
-                  className={SAP_INPUT + ' !font-mono'} />
-              </SapField>
-              <SapField label="GL Name" span={4}>
-                <input value={form.default_gl_name} onChange={e => setForm({ ...form, default_gl_name: e.target.value })}
-                  placeholder="Salary Expense"
-                  className={SAP_INPUT} />
+              <SapField label="Salary GL" span={8}>
+                <select value={form.default_gl_account_id} onChange={e => setForm({ ...form, default_gl_account_id: e.target.value })} className={SAP_INPUT}>
+                  <option value="">Default — 6100 Salaries & Wages</option>
+                  {coaAccounts.map(account => <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
+                </select>
               </SapField>
               <SapField label="NPWP" span={4}>
                 <input value={form.npwp} onChange={e => setForm({ ...form, npwp: e.target.value })}

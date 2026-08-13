@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Download, Trash2, Pencil, Receipt, Wallet, CheckCircle2, Clock } from 'lucide-react';
+import { Plus, Download, Trash2, Pencil, Receipt, Wallet, CheckCircle2, Clock, Paperclip, Eye } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { TaxAttachments } from './TaxAttachments';
@@ -42,6 +42,7 @@ interface Payment {
   journal_entry_id: string | null;
   bank_account_id: string | null;
   notes: string | null;
+  attachment_count?: number;
 }
 
 const KINDS = [
@@ -71,6 +72,7 @@ export function TaxPaymentsPanel() {
   const [bslCandidates, setBslCandidates] = useState<BankTransactionLine[]>([]);
   const [bslPickerLoading, setBslPickerLoading] = useState(false);
   const [bslLinking, setBslLinking] = useState(false);
+  const [typeFilter, setTypeFilter] = useState('all');
 
   const emptyForm = {
     tax_period_id: '',
@@ -81,6 +83,7 @@ export function TaxPaymentsPanel() {
     billing_code: '',
     ntpn: '',
     payment_reference: '',
+    government_reference: '',
     notes: '',
   };
   const [form, setForm] = useState(emptyForm);
@@ -119,7 +122,11 @@ export function TaxPaymentsPanel() {
     }));
     setPeriods([...ppn, ...pph].sort((a, b) => b.fiscal_year - a.fiscal_year || b.period_month - a.period_month));
     setBanks((b.data as BankAccount[] | null) ?? []);
-    setPayments((tp.data as Payment[] | null) ?? []);
+    const paymentRows = (tp.data as Payment[] | null) ?? [];
+    const { data: files } = await supabase.from('tax_payment_files').select('tax_payment_id');
+    const counts = new Map<string, number>();
+    (files ?? []).forEach((file: { tax_payment_id: string }) => counts.set(file.tax_payment_id, (counts.get(file.tax_payment_id) ?? 0) + 1));
+    setPayments(paymentRows.map(payment => ({ ...payment, attachment_count: counts.get(payment.id) ?? 0 })));
     setLoading(false);
   }
   useEffect(() => { void refresh(); }, []);
@@ -150,9 +157,13 @@ export function TaxPaymentsPanel() {
   }
 
   const filteredPayments = useMemo(() => {
-    if (!dateRange?.startDate || !dateRange?.endDate) return payments;
-    return payments.filter(p => p.payment_date >= dateRange.startDate && p.payment_date <= dateRange.endDate);
-  }, [payments, dateRange]);
+    return payments.filter(p =>
+      (!dateRange?.startDate || !dateRange?.endDate || (p.payment_date >= dateRange.startDate && p.payment_date <= dateRange.endDate))
+      && (typeFilter === 'all' || p.tax_type === typeFilter)
+    );
+  }, [payments, dateRange, typeFilter]);
+
+  const taxTypes = useMemo(() => [...new Set([...periods.map(p => p.tax_type), ...payments.map(p => p.tax_type)])].sort(), [periods, payments]);
 
   const bankById = useMemo(() => {
     const map = new Map<string, BankAccount>();
@@ -187,6 +198,7 @@ export function TaxPaymentsPanel() {
       billing_code: p.billing_code ?? '',
       ntpn: p.ntpn ?? '',
       payment_reference: p.payment_reference ?? '',
+      government_reference: p.government_reference ?? '',
       notes: p.notes ?? '',
     });
     setShowForm(true);
@@ -218,7 +230,7 @@ export function TaxPaymentsPanel() {
           p_bank_account_id: form.bank_account_id,
           p_billing_code: form.billing_code || null,
           p_ntpn: form.ntpn || null,
-          p_government_reference: null,
+          p_government_reference: form.government_reference || null,
           p_notes: form.notes || null,
           p_payment_reference: form.payment_reference || null,
         });
@@ -232,7 +244,7 @@ export function TaxPaymentsPanel() {
           p_bank_account_id: form.bank_account_id,
           p_billing_code: form.billing_code || null,
           p_ntpn: form.ntpn || null,
-          p_government_reference: null,
+          p_government_reference: form.government_reference || null,
           p_notes: form.notes || null,
           p_payment_reference: form.payment_reference || null,
         });
@@ -387,6 +399,10 @@ export function TaxPaymentsPanel() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-lg font-semibold">Tax Payments</h3>
         <div className="flex items-center gap-2">
+          <select value={typeFilter} onChange={event => setTypeFilter(event.target.value)} className="h-8 rounded border px-2 text-xs" aria-label="Tax payment type filter">
+            <option value="all">All types</option>
+            {taxTypes.map(type => <option key={type} value={type}>{type}</option>)}
+          </select>
           <span className="text-xs text-gray-500 hidden md:inline">
             {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
           </span>
@@ -426,7 +442,7 @@ export function TaxPaymentsPanel() {
                 className="mt-1 w-full border rounded px-2 py-1.5 disabled:bg-gray-100"
                 disabled={!!editingId}
               >
-                {(['PPN','PPh21','PPh22','PPh23','PPh4(2)','PPh_Unifikasi'] as const).map(t => (
+                {taxTypes.map(t => (
                   <option key={t} value={t}>
                     {t === 'PPh21' ? 'PPh21' : t === 'PPh_Unifikasi' ? 'PPh Unifikasi (Consolidated)' : t}
                   </option>
@@ -517,6 +533,10 @@ export function TaxPaymentsPanel() {
               />
             </label>
             <label className="text-sm">
+              Government Reference
+              <input value={form.government_reference} onChange={e => setForm(f => ({ ...f, government_reference: e.target.value }))} className="mt-1 w-full border rounded px-2 py-1.5" />
+            </label>
+            <label className="text-sm">
               Payment Reference
               <input
                 value={form.payment_reference}
@@ -577,6 +597,7 @@ export function TaxPaymentsPanel() {
                 <th className="text-right px-3 py-2">Amount</th>
                 <th className="text-left px-3 py-2">NTPN / Billing / Ref</th>
                 <th className="text-left px-3 py-2">Status</th>
+                <th className="text-center px-3 py-2">Files</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -601,9 +622,15 @@ export function TaxPaymentsPanel() {
                         <StatusChip status={p.status} />
                       </span>
                     </td>
+                    <td className="px-3 py-2 text-center">
+                      <button onClick={() => setSelected(p)} title={p.attachment_count ? `${p.attachment_count} attachment(s)` : 'No attachments'} className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-blue-700">
+                        <Paperclip className={`w-4 h-4 ${p.attachment_count ? 'text-blue-600' : 'text-gray-300'}`} />{p.attachment_count || '—'}
+                      </button>
+                    </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap space-x-1">
+                      <button onClick={() => setSelected(p)} className="text-xs px-2 py-1 border rounded hover:bg-gray-50" title="View tax payment details"><Eye className="w-3 h-3" /></button>
                       <button
-                        onClick={() => setSelected(p.id === selected?.id ? null : p)}
+                        onClick={() => setSelected(p)}
                         className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
                         title="Attachments"
                       >
@@ -646,25 +673,39 @@ export function TaxPaymentsPanel() {
       )}
 
       {selected && (
-        <div className="border rounded p-4 bg-white space-y-2">
+        <Modal isOpen={!!selected} onClose={() => setSelected(null)} title="Tax Payment Details" size="xl">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-sm">Attachments · {selected.tax_type} · {selected.payment_date}</h4>
-            <button onClick={() => setSelected(null)} className="text-xs text-gray-500">Close</button>
+            <h4 className="font-semibold text-sm">{selected.tax_type} · {periodLabelById.get(selected.tax_period_id) ?? '—'}</h4>
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+            <div><span className="text-gray-500">Payment date</span><div>{selected.payment_date}</div></div>
+            <div><span className="text-gray-500">Amount</span><div>Rp {Number(selected.amount).toLocaleString('id-ID')}</div></div>
+            <div><span className="text-gray-500">Bank account</span><div>{selected.bank_account_id && bankById.get(selected.bank_account_id) ? bankLabel(bankById.get(selected.bank_account_id)!) : '—'}</div></div>
+            <div><span className="text-gray-500">Billing code</span><div>{selected.billing_code || '—'}</div></div>
+            <div><span className="text-gray-500">NTPN</span><div>{selected.ntpn || '—'}</div></div>
+            <div><span className="text-gray-500">Government reference</span><div>{selected.government_reference || '—'}</div></div>
+            <div><span className="text-gray-500">Payment reference</span><div>{selected.payment_reference || '—'}</div></div>
+            <div><span className="text-gray-500">Reconciliation status</span><div><StatusChip status={selected.status} /></div></div>
+            <div><span className="text-gray-500">Journal</span><div className="font-mono">{selected.journal_entry_id || '—'}</div></div>
+          </div>
+          <div className="border-t pt-3"><h5 className="font-medium text-sm mb-2">Attachments ({selected.attachment_count ?? 0})</h5>
           <TaxAttachments
             table="tax_payment_files"
             parentId={selected.id}
             storagePrefix="tax_payments"
             allowedKinds={KINDS}
           />
+          </div>
         </div>
+        </Modal>
       )}
 
       <Modal
         isOpen={!!bslPickerPayment}
         onClose={() => setBslPickerPayment(null)}
         title="Link Bank Statement Line"
-        size="sm"
+        size="2xl"
       >
         {bslPickerPayment && (
           <div>
@@ -684,7 +725,7 @@ export function TaxPaymentsPanel() {
               </div>
             ) : (
               <>
-              <div className="space-y-1 max-h-64 overflow-y-auto border rounded-lg divide-y">
+              <div className="space-y-1 max-h-[60vh] overflow-y-auto border rounded-lg divide-y">
                 {bslCandidates.map((b) => {
                   const available = Number(b.remainingAmount ?? b.debit_amount);
                   const exact = Math.abs(available - Number(bslPickerPayment.amount)) < 1;
@@ -693,12 +734,13 @@ export function TaxPaymentsPanel() {
                       key={b.id}
                       onClick={() => void linkBsl(b)}
                       disabled={bslLinking}
-                      className={`w-full p-3 text-left hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex justify-between items-center ${exact ? 'bg-emerald-50/50' : ''}`}
+                      className={`w-full p-3 text-left hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm grid grid-cols-[minmax(0,1fr)_auto] gap-4 items-center ${exact ? 'bg-emerald-50/50' : ''}`}
                     >
                       <div>
-                        <div className="font-medium text-gray-800">{b.description}</div>
+                        <div className="font-medium text-gray-800 break-words">{b.description || '— no description —'}</div>
                         <div className="text-xs text-gray-400">
                           {new Date(b.transaction_date).toLocaleDateString('id-ID')}
+                          {b.reference && <> · Ref: {b.reference}</>}
                           {exact ? <span className="ml-2 text-emerald-700 font-medium">Exact amount</span> : null}
                         </div>
                       </div>

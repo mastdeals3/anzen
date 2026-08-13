@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { Search, ArrowDownCircle, Printer, Lock, RotateCcw, CheckCircle } from 'lucide-react';
+import { Search, ArrowDownCircle, Printer, Lock, RotateCcw, CheckCircle, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
 import { MoneyInput } from '../MoneyInput';
@@ -495,6 +496,44 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
     setViewModalOpen(true);
   };
 
+  const exportExcel = async () => {
+    const ids = vouchers.map(voucher => voucher.id);
+    const [{ data: allocations }, { data: journalLines }, { data: bankLines }] = await Promise.all([
+      supabase.from('voucher_allocations').select('receipt_voucher_id, amount, sales_invoices(invoice_number, invoice_date), sales_orders(so_number, so_date)').in('receipt_voucher_id', ids),
+      supabase.from('journal_entry_lines').select('journal_entry_id, debit, credit, chart_of_accounts(code, name)').in('journal_entry_id', vouchers.map(v => v.journal_entry_id).filter(Boolean) as string[]),
+      supabase.from('bank_statement_lines').select('matched_receipt_id, reference').in('matched_receipt_id', ids),
+    ]);
+    const allocationByVoucher = new Map<string, any[]>();
+    (allocations ?? []).forEach((row: any) => allocationByVoucher.set(row.receipt_voucher_id, [...(allocationByVoucher.get(row.receipt_voucher_id) ?? []), row]));
+    const coaByJournal = new Map<string, any>();
+    (journalLines ?? []).forEach((line: any) => { if (!coaByJournal.has(line.journal_entry_id) && line.chart_of_accounts) coaByJournal.set(line.journal_entry_id, line.chart_of_accounts); });
+    const bankByVoucher = new Map<string, string>();
+    (bankLines ?? []).forEach((line: any) => bankByVoucher.set(line.matched_receipt_id, line.reference || 'Linked'));
+    const rows = vouchers.flatMap(voucher => {
+      const linked = allocationByVoucher.get(voucher.id) ?? [null];
+      const coa = voucher.journal_entry_id ? coaByJournal.get(voucher.journal_entry_id) : null;
+      return linked.map((allocation: any) => ({
+        'Receipt Voucher No.': voucher.voucher_number,
+        Date: voucher.voucher_date,
+        Customer: voucher.customers?.company_name || '',
+        'Payment Method': voucher.payment_method,
+        Bank: voucher.bank_accounts?.alias || (voucher.bank_accounts ? `${voucher.bank_accounts.bank_name} - ${voucher.bank_accounts.account_name}` : ''),
+        Amount: Number(voucher.amount),
+        'Allocated Invoice': allocation?.amount ?? 0,
+        'Invoice Number': allocation?.sales_invoices?.invoice_number || allocation?.sales_orders?.so_number || '',
+        'Invoice Date': allocation?.sales_invoices?.invoice_date || allocation?.sales_orders?.so_date || '',
+        'Allocation Status': allocation ? 'Allocated' : 'Unallocated',
+        'Posting Status': voucher.is_posted ? 'Posted' : 'Draft',
+        'Chart of Accounts Number': coa?.code || '',
+        'Chart of Accounts Name': coa?.name || '',
+        'Bank Transaction Reference': bankByVoucher.get(voucher.id) || voucher.reference_number || '',
+      }));
+    });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Receipt Vouchers');
+    XLSX.writeFile(workbook, `Receipt_Vouchers_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   useEffect(() => {
     if (!initialViewVoucherId || loading) return;
     const voucher = vouchers.find(item => item.id === initialViewVoucherId);
@@ -609,6 +648,11 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
           <h1 className="text-xs font-bold text-gray-900 truncate">Receipt Vouchers</h1>
           <span className="text-[10px] text-gray-400 truncate">Customer receipts and invoice allocation</span>
         </div>
+        {canManage && (
+          <button onClick={() => void exportExcel()} className="inline-flex items-center gap-1 h-7 px-2 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-50">
+            <Download className="w-3 h-3" /> Excel
+          </button>
+        )}
         {canManage && (
           <button
             onClick={() => { resetForm(); setModalOpen(true); }}
