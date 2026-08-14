@@ -9,6 +9,7 @@ import { RevenueChart } from '../components/dashboard/RevenueChart';
 import { SalesPipelineChart } from '../components/dashboard/SalesPipelineChart';
 import { PaymentOverview } from '../components/dashboard/PaymentOverview';
 import { SalesDashboard } from '../components/dashboard/SalesDashboard';
+import { WarehouseDeliveryDashboard } from '../components/dashboard/WarehouseDeliveryDashboard';
 import { AlertTriangle, Clock, TrendingUp, FileText, ClipboardCheck, ClipboardList, Zap, CircleUser as UserCircle, ArrowRight, Sparkles } from 'lucide-react';
 import { fetchSalesOrderDeliveryAlerts, summarizeDeliveryAlerts } from '../utils/salesOrderDeliveryAlerts';
 import { TaxComplianceDashboardCards } from '../components/finance/tax/TaxComplianceDashboardCards';
@@ -66,7 +67,7 @@ export function Dashboard() {
 
   const loadDashboardData = async () => {
     // Sales role has its own dedicated dashboard; skip all generic queries.
-    if (profile?.role === 'sales') { setLoading(false); return; }
+    if (profile?.role === 'sales' || profile?.role === 'warehouse') { setLoading(false); return; }
     try {
       setError(null);
       const now = new Date();
@@ -276,6 +277,14 @@ export function Dashboard() {
       color: 'blue',
       link: 'customers',
     });
+  }
+
+  if (isWarehouse) {
+    return (
+      <Layout>
+        <WarehouseDeliveryDashboard />
+      </Layout>
+    );
   }
 
   const colorClasses: Record<string, { bg: string; text: string; icon: string }> = {

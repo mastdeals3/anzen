@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase';
+import { getWarehouseDeliveryPriority } from './deliveryPriority';
+export { getWarehouseDeliveryPriority } from './deliveryPriority';
 
 export type DeliveryAlertLevel = 'due_soon' | 'overdue';
 
@@ -9,6 +11,28 @@ export interface SalesOrderDeliveryAlert {
   expectedDeliveryDate: string;
   level: DeliveryAlertLevel;
   daysUntilDue: number;
+}
+
+export type WarehouseDeliveryPriority = import('./deliveryPriority').DeliveryQueuePriority;
+
+export interface WarehouseDeliveryOrder {
+  soId: string;
+  soNumber: string;
+  customerName: string;
+  expectedDeliveryDate: string;
+  priority: WarehouseDeliveryPriority;
+  status: 'pending' | 'partial';
+  hasApprovedDc: boolean;
+  deliveryChallanNumbers: string[];
+  items: Array<{
+    productId: string;
+    productName: string;
+    unit: string;
+    orderedQuantity: number;
+    deliveredQuantity: number;
+    remainingQuantity: number;
+    itemDeliveryDate: string | null;
+  }>;
 }
 
 interface SalesOrderRow {
@@ -38,6 +62,14 @@ interface SalesInvoiceItemRow {
 interface DeliveryChallanItemRow {
   id: string;
   challan_id: string;
+}
+
+interface WarehouseOrderItemRow {
+  product_id: string;
+  quantity: number;
+  delivered_quantity: number | null;
+  item_delivery_date: string | null;
+  products?: { product_name?: string | null; unit?: string | null } | null;
 }
 
 export function getDeliveryAlertForOrder(
@@ -170,6 +202,82 @@ export async function fetchSalesOrderDeliveryAlerts(): Promise<SalesOrderDeliver
   return (orders as SalesOrderRow[])
     .map((order) => getDeliveryAlertForOrder(order, deliveredSoIds.has(order.id), today))
     .filter((alert): alert is SalesOrderDeliveryAlert => Boolean(alert));
+}
+
+/**
+ * Operational delivery queue for Warehouse.  This intentionally lives beside
+ * the sales delivery-alert logic so both consumers use the same exclusions,
+ * approved-DC lookup, and delivery-date semantics.
+ */
+export async function fetchWarehouseDeliveryQueue(today = new Date()): Promise<WarehouseDeliveryOrder[]> {
+  const startOfToday = new Date(today);
+  startOfToday.setHours(0, 0, 0, 0);
+  const nextSevenDays = new Date(startOfToday);
+  nextSevenDays.setDate(nextSevenDays.getDate() + 7);
+
+  const { data: orders, error } = await supabase
+    .from('sales_orders')
+    .select(`
+      id, so_number, expected_delivery_date, status, is_archived, customers(company_name),
+      sales_order_items(product_id, quantity, delivered_quantity, item_delivery_date, products(product_name, unit))
+    `)
+    .eq('is_archived', false)
+    .not('expected_delivery_date', 'is', null)
+    .lte('expected_delivery_date', nextSevenDays.toISOString().split('T')[0])
+    .not('status', 'in', '("closed","cancelled","rejected")')
+    .order('expected_delivery_date', { ascending: true });
+
+  if (error) throw error;
+  if (!orders?.length) return [];
+
+  const orderIds = orders.map((order) => order.id);
+  const approvedSoIds = await fetchApprovedDeliverySalesOrderIds(orderIds);
+  const { data: approvedDcs, error: dcError } = await supabase
+    .from('delivery_challans')
+    .select('sales_order_id, challan_number')
+    .in('sales_order_id', orderIds)
+    .eq('approval_status', 'approved');
+  if (dcError) throw dcError;
+
+  const challansByOrder = new Map<string, string[]>();
+  (approvedDcs || []).forEach((dc: { sales_order_id: string | null; challan_number: string | null }) => {
+    if (!dc.sales_order_id) return;
+    challansByOrder.set(dc.sales_order_id, [...(challansByOrder.get(dc.sales_order_id) || []), dc.challan_number || 'Approved DC']);
+  });
+
+  return (orders as Array<SalesOrderRow & { sales_order_items?: WarehouseOrderItemRow[] }>)
+    .map((order) => {
+      const items = (order.sales_order_items || []).map((item) => {
+        const orderedQuantity = Number(item.quantity) || 0;
+        const deliveredQuantity = Number(item.delivered_quantity) || 0;
+        return {
+          productId: item.product_id,
+          productName: item.products?.product_name || 'Product',
+          unit: item.products?.unit || '',
+          orderedQuantity,
+          deliveredQuantity,
+          remainingQuantity: Math.max(0, orderedQuantity - deliveredQuantity),
+          itemDeliveryDate: item.item_delivery_date,
+        };
+      });
+      const hasRemaining = items.some((item) => item.remainingQuantity > 0);
+      if (!hasRemaining || !order.expected_delivery_date) return null;
+
+      const priority = getWarehouseDeliveryPriority(order.expected_delivery_date, startOfToday);
+
+      return {
+        soId: order.id,
+        soNumber: order.so_number,
+        customerName: order.customers?.company_name || 'Customer',
+        expectedDeliveryDate: order.expected_delivery_date,
+        priority,
+        status: items.some((item) => item.deliveredQuantity > 0) ? 'partial' : 'pending',
+        hasApprovedDc: approvedSoIds.has(order.id),
+        deliveryChallanNumbers: challansByOrder.get(order.id) || [],
+        items,
+      };
+    })
+    .filter((order): order is WarehouseDeliveryOrder => Boolean(order));
 }
 
 export function summarizeDeliveryAlerts(alerts: SalesOrderDeliveryAlert[]) {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigation } from '../contexts/NavigationContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useFinance } from '../contexts/FinanceContext';
 import { Layout } from '../components/Layout';
@@ -51,6 +52,7 @@ interface SalesOrderItem {
   item_delivery_date?: string;
   notes?: string;
   delivered_quantity: number;
+  quoted_usd_unit_price?: number | null;
   products?: Product;
 }
 
@@ -95,6 +97,7 @@ type SortDirection = 'asc' | 'desc';
 
 export default function SalesOrders() {
   const { profile } = useAuth();
+  const { navigationData, clearNavigationData } = useNavigation();
   const { t } = useLanguage();
   const { dateRange } = useFinance();
   const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
@@ -135,6 +138,17 @@ export default function SalesOrders() {
   useEffect(() => {
     filterOrders();
   }, [debouncedSearchTerm, statusFilter, salesOrders, activeTab, soStatuses, approvedDeliverySoIds, sortConfig]);
+
+  useEffect(() => {
+    const requestedId = navigationData?.salesOrderId;
+    if (typeof requestedId !== 'string' || !salesOrders.length) return;
+    const requestedOrder = salesOrders.find((order) => order.id === requestedId);
+    if (requestedOrder) {
+      setProformaOrder(requestedOrder);
+      setShowProformaModal(true);
+      clearNavigationData();
+    }
+  }, [navigationData, salesOrders, clearNavigationData]);
 
   const fetchSOStatuses = async (orderIds: string[]) => {
     if (orderIds.length === 0) return;
@@ -182,6 +196,7 @@ export default function SalesOrders() {
             item_delivery_date,
             notes,
             delivered_quantity,
+            quoted_usd_unit_price,
             products (
               id,
               product_name,

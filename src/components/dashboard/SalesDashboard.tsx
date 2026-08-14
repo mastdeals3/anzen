@@ -2,10 +2,7 @@
  * SalesDashboard — CRM Action Center for sales role.
  *
  * Sections (in priority order):
- *  1. Kunal Price Ready — quote ready, not yet sent to customer
- *  2. Customer Follow-ups Overdue
- *  3. Pending Customer Replies (3d / 7d / 15d tiers)
- *  4. Today's Reminders
+ * Daily priority: overdue, today, customer replies, quote ready, then delivery.
  *  5. Delivery Alerts (compact, lower priority)
  *  6. Quick Links
  *
@@ -139,6 +136,7 @@ export function SalesDashboard() {
   const priceRef = useRef<HTMLDivElement>(null);
   const followRef = useRef<HTMLDivElement>(null);
   const replyRef = useRef<HTMLDivElement>(null);
+  const todayRef = useRef<HTMLDivElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { load(true); }, []);
@@ -242,15 +240,7 @@ export function SalesDashboard() {
   // ── Summary bar cards ────────────────────────────────────────────────────────
   const summaryCds = [
     {
-      label: 'Quotes to Send',
-      value: priceReady.length,
-      sub: priceReady.length === 1 ? '1 inquiry' : `${priceReady.length} inquiries`,
-      color: priceReady.length > 0 ? 'red' : 'green',
-      ref: priceRef,
-      icon: Send,
-    },
-    {
-      label: 'Follow-ups Overdue',
+      label: '1. Urgent / Overdue',
       value: overdueFollowUps.length,
       sub: overdueFollowUps.length > 0 ? 'Action needed' : 'All clear',
       color: overdueFollowUps.length > 0 ? 'orange' : 'green',
@@ -258,7 +248,15 @@ export function SalesDashboard() {
       icon: Clock,
     },
     {
-      label: 'Awaiting Reply',
+      label: '2. Today',
+      value: todayReminders.length,
+      sub: todayReminders.length ? 'Scheduled actions' : 'No reminders due',
+      color: todayReminders.length ? 'blue' : 'green',
+      ref: todayRef,
+      icon: CalendarClock,
+    },
+    {
+      label: '3. Customer replies',
       value: replies3d,
       sub: replies7d ? `${replies7d} over 7d` : '3d+ no response',
       color: replies15d > 0 ? 'red' : replies7d > 0 ? 'orange' : replies3d > 0 ? 'yellow' : 'green',
@@ -266,7 +264,15 @@ export function SalesDashboard() {
       icon: MessageSquare,
     },
     {
-      label: 'Delivery Alerts',
+      label: '4. Price / quote ready',
+      value: priceReady.length,
+      sub: priceReady.length === 1 ? '1 inquiry' : `${priceReady.length} inquiries`,
+      color: priceReady.length > 0 ? 'red' : 'green',
+      ref: priceRef,
+      icon: Send,
+    },
+    {
+      label: '5. Delivery follow-up',
       value: deliveryAlerts.length,
       sub: alertSummary.overdue.length ? `${alertSummary.overdue.length} overdue` : deliveryAlerts.length > 0 ? 'Due soon' : 'All on track',
       color: alertSummary.overdue.length > 0 ? 'red' : deliveryAlerts.length > 0 ? 'yellow' : 'green',
@@ -278,6 +284,7 @@ export function SalesDashboard() {
   const summaryColors: Record<string, { bg: string; text: string; iconBg: string }> = {
     red: { bg: 'bg-red-50 border-red-200', text: 'text-red-700', iconBg: 'bg-red-100' },
     orange: { bg: 'bg-orange-50 border-orange-200', text: 'text-orange-700', iconBg: 'bg-orange-100' },
+    blue: { bg: 'bg-blue-50 border-blue-200', text: 'text-blue-700', iconBg: 'bg-blue-100' },
     yellow: { bg: 'bg-yellow-50 border-yellow-200', text: 'text-yellow-700', iconBg: 'bg-yellow-100' },
     green: { bg: 'bg-green-50 border-green-200', text: 'text-green-700', iconBg: 'bg-green-100' },
   };
@@ -314,7 +321,7 @@ export function SalesDashboard() {
       </div>
 
       {/* ── Summary bar ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {summaryCds.map(card => {
           const c = summaryColors[card.color];
           const Icon = card.icon;
@@ -560,7 +567,7 @@ export function SalesDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Section 4: Today's Actions */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div ref={todayRef} className="bg-white rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
             <CalendarClock className="w-4 h-4 text-blue-500" />
             <h2 className="text-sm font-semibold text-gray-900">Today's Actions</h2>

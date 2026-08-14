@@ -36,6 +36,7 @@ interface OrderItem {
   line_total: number;
   item_delivery_date?: string;
   notes?: string;
+  quoted_usd_unit_price?: number | null;
 }
 
 interface SalesOrder {
@@ -52,6 +53,7 @@ interface SalesOrder {
   subtotal_amount: number;
   tax_amount: number;
   total_amount: number;
+  commercial_usd_to_idr_rate?: number | null;
   sales_order_items?: Array<{
     id: string;
     product_id: string;
@@ -64,6 +66,7 @@ interface SalesOrder {
     line_total: number;
     item_delivery_date?: string;
     notes?: string;
+    quoted_usd_unit_price?: number | null;
   }>;
 }
 
@@ -89,6 +92,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
     expected_delivery_date: '',
     notes: '',
     currency: 'IDR',
+    commercial_usd_to_idr_rate: null as number | null,
   });
 
   const [poFile, setPoFile] = useState<File | null>(null);
@@ -131,6 +135,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
         expected_delivery_date: existingOrder.expected_delivery_date || '',
         notes: existingOrder.notes || '',
         currency: (existingOrder as any).currency || 'IDR',
+        commercial_usd_to_idr_rate: existingOrder.commercial_usd_to_idr_rate ?? null,
       });
 
       if (existingOrder.sales_order_items && existingOrder.sales_order_items.length > 0) {
@@ -145,6 +150,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
           line_total: item.line_total,
           item_delivery_date: item.item_delivery_date || '',
           notes: item.notes || '',
+          quoted_usd_unit_price: item.quoted_usd_unit_price ?? null,
         }));
         setItems(mappedItems);
 
@@ -443,6 +449,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
             customer_po_file_url: poFileUrl,
             so_date: formData.so_date,
             currency: formData.currency,
+            commercial_usd_to_idr_rate: formData.commercial_usd_to_idr_rate || null,
             expected_delivery_date: formData.expected_delivery_date || null,
             notes: formData.notes || null,
             status: newStatus,
@@ -476,6 +483,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
           line_total: item.line_total,
           item_delivery_date: item.item_delivery_date || null,
           notes: item.notes || null,
+          quoted_usd_unit_price: item.quoted_usd_unit_price || null,
         }));
 
         const { data: insertedItems, error: itemsError } = await supabase
@@ -508,6 +516,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
             customer_po_file_url: poFileUrl,
             so_date: formData.so_date,
             currency: formData.currency,
+            commercial_usd_to_idr_rate: formData.commercial_usd_to_idr_rate || null,
             expected_delivery_date: formData.expected_delivery_date || null,
             notes: formData.notes || null,
             status: submitForApproval ? 'pending_approval' : 'draft',
@@ -533,6 +542,7 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
           line_total: item.line_total,
           item_delivery_date: item.item_delivery_date || null,
           notes: item.notes || null,
+          quoted_usd_unit_price: item.quoted_usd_unit_price || null,
         }));
 
         const { error: itemsError } = await supabase
@@ -632,6 +642,19 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
             <option value="IDR">IDR (Rp)</option>
             <option value="USD">USD ($)</option>
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">USD → IDR rate (historical, optional)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.000001"
+            value={formData.commercial_usd_to_idr_rate ?? ''}
+            onChange={(e) => setFormData({ ...formData, commercial_usd_to_idr_rate: e.target.value === '' ? null : Number(e.target.value) })}
+            className="w-full border rounded-lg px-3 py-2"
+            placeholder={formData.currency === 'IDR' ? 'Required only when IDR derives from USD' : 'Not required for USD'}
+          />
         </div>
 
         <div>
@@ -781,6 +804,19 @@ export default function SalesOrderForm({ existingOrder, onSuccess, onCancel }: S
                     }}
                     className="w-full border rounded px-2 py-1 text-sm"
                     placeholder="Enter price"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-600">Quoted USD / unit (optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.000001"
+                    value={item.quoted_usd_unit_price ?? ''}
+                    onChange={(e) => handleItemChange(index, 'quoted_usd_unit_price', e.target.value === '' ? null : Number(e.target.value))}
+                    className="w-full border rounded px-2 py-1 text-sm"
+                    placeholder="USD basis"
                   />
                 </div>
 
