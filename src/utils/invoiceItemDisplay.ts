@@ -13,6 +13,8 @@ export interface InvoiceDisplayItem {
   quantity: number;
   unit_price: number;
   tax_rate: number;
+  tax_amount?: number;
+  line_total?: number;
   total?: number;
   delivery_challan_item_id: string | null;
   challan_id: string | null;
@@ -31,7 +33,7 @@ export async function loadInvoiceDisplayItems(
 ): Promise<InvoiceDisplayItem[]> {
   const { data: invoiceItems, error: invoiceItemsError } = await client
     .from('sales_invoice_items')
-    .select('id, invoice_id, product_id, batch_id, quantity, unit_price, tax_rate, delivery_challan_item_id')
+    .select('id, invoice_id, product_id, batch_id, quantity, unit_price, tax_rate, tax_amount, line_total, delivery_challan_item_id')
     .eq('invoice_id', invoiceId);
 
   if (invoiceItemsError) throw invoiceItemsError;

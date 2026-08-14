@@ -5,6 +5,7 @@ const rows = {
   sales_invoice_items: [{
     id: 'invoice-item-1', invoice_id: 'invoice-1', product_id: 'product-1',
     batch_id: 'batch-1', quantity: 125, unit_price: 46855, tax_rate: 11,
+    tax_amount: 644256.25, line_total: 6501131.25,
     delivery_challan_item_id: 'dc-item-1',
   }],
   products: [{ id: 'product-1', product_name: 'Reference Product', product_code: 'REF-1', unit: 'Kg' }],
@@ -31,6 +32,8 @@ assert.equal(item.batches?.expiry_date, '2030-08-16');
 assert.equal(item.quantity, 125);
 assert.equal(item.products?.unit, 'Kg');
 assert.equal(item.unit_price, 46855);
+assert.equal(item.tax_amount, 644256.25);
+assert.equal(item.line_total, 6501131.25);
 assert.equal(item.delivery_challan_item_id, 'dc-item-1');
 assert.equal(item.challan_id, 'dc-1');
 assert.equal(item.dc_number, 'DO-26-0042');
