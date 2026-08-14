@@ -17,6 +17,7 @@ import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
 import { fetchLinkedDocumentsBundle, LinkedDocRef } from '../utils/linkedDocuments';
 import { LinkedDocsCell } from '../components/LinkedDocsCell';
+import { loadInvoiceDisplayItems } from '../utils/invoiceItemDisplay';
 
 interface DeliveryChallan {
   id: string;
@@ -287,10 +288,7 @@ export function DeliveryChallan() {
       .eq('invoice_number', invoiceNumber)
       .maybeSingle();
     if (!invoice) return;
-    const { data: items } = await supabase
-      .from('sales_invoice_items')
-      .select('*, products(product_name, product_code, unit), batches(batch_number, expiry_date, packaging_details), delivery_challan_items(id, challan_id)')
-      .eq('invoice_id', invoice.id);
+    const items = await loadInvoiceDisplayItems(supabase, invoice.id);
     setLinkedInvoicePreview(invoice);
     setLinkedInvoiceItems(items || []);
   };

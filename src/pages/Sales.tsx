@@ -19,6 +19,7 @@ import { formatDate } from '../utils/dateFormat';
 import { fetchLinkedDocumentsBundle, LinkedDocRef } from '../utils/linkedDocuments';
 import { LinkedDocsCell } from '../components/LinkedDocsCell';
 import { MoneyInput } from '../components/MoneyInput';
+import { loadInvoiceDisplayItems } from '../utils/invoiceItemDisplay';
 
 interface SalesInvoice {
   id: string;
@@ -1010,24 +1011,7 @@ export function Sales() {
 
   const loadInvoiceItems = async (invoiceId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('sales_invoice_items')
-        .select(`
-          *,
-          products(product_name, product_code, unit),
-          batches(batch_number, expiry_date),
-          delivery_challan_item_id,
-          delivery_challan_items(challan_id, delivery_challans(challan_number))
-        `)
-        .eq('invoice_id', invoiceId);
-
-      if (error) throw error;
-
-      const itemsWithDCInfo = (data || []).map((item: any) => ({
-        ...item,
-        challan_id: item.delivery_challan_items?.challan_id ?? null,
-        dc_number: item.delivery_challan_items?.delivery_challans?.challan_number,
-      }));
+      const itemsWithDCInfo = await loadInvoiceDisplayItems(supabase, invoiceId);
 
       setInvoiceItems(itemsWithDCInfo || []);
       return itemsWithDCInfo || [];

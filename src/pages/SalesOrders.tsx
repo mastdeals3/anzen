@@ -10,6 +10,7 @@ import SalesOrderForm from '../components/SalesOrderForm';
 import { ProformaInvoiceView } from '../components/ProformaInvoiceView';
 import { DeliveryChallanView } from '../components/DeliveryChallanView';
 import { InvoiceView } from '../components/InvoiceView';
+import { loadInvoiceDisplayItems } from '../utils/invoiceItemDisplay';
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
@@ -256,10 +257,7 @@ export default function SalesOrders() {
       .eq('id', invoiceId)
       .maybeSingle();
     if (!invoice) return;
-    const { data: items } = await supabase
-      .from('sales_invoice_items')
-      .select('*, products(product_name, product_code, unit), batches(batch_number, expiry_date, packaging_details), delivery_challan_items(id, challan_id)')
-      .eq('invoice_id', invoice.id);
+    const items = await loadInvoiceDisplayItems(supabase, invoice.id);
     setLinkedInvoicePreview(invoice);
     setLinkedInvoiceItems(items || []);
   };
