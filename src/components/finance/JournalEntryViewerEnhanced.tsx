@@ -7,6 +7,7 @@ import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
 import { formatCurrency } from '../../utils/currency';
 import { FinanceActionButton } from './FinanceUI';
+import { useFinance } from '../../contexts/FinanceContext';
 
 interface JournalEntry {
   id: string;
@@ -114,6 +115,7 @@ export function JournalEntryViewerEnhanced({
   onOpenSource,
 }: JournalEntryViewerEnhancedProps) {
   const { t, language } = useLanguage();
+  const { dateRange } = useFinance();
   const [voucherEntries, setVoucherEntries] = useState<VoucherJournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -132,7 +134,7 @@ export function JournalEntryViewerEnhanced({
 
   useEffect(() => {
     loadVoucherJournal();
-  }, [filterModule, statusFilter, language]);
+  }, [filterModule, statusFilter, language, dateRange.startDate, dateRange.endDate]);
 
   const loadVoucherJournal = async () => {
     try {
@@ -147,6 +149,8 @@ export function JournalEntryViewerEnhanced({
         let query = supabase
           .from('journal_entries')
           .select('id, entry_number, entry_date, source_module, reference_id, reference_number, description, total_debit, total_credit, is_posted, is_reversed, posted_at, transaction_currency, functional_currency, exchange_rate, amounts_are_functional')
+          .gte('entry_date', dateRange.startDate)
+          .lte('entry_date', dateRange.endDate)
           .order('entry_date', { ascending: false })
           .order('entry_number', { ascending: false })
           .order('id', { ascending: false })

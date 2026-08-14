@@ -20,6 +20,7 @@ import { type CompanySnapshot } from '../../types/company';
 import { waitForImages } from '../../utils/companyLogoUrl';
 import { formatCurrency } from '../../utils/currency';
 import { getReportingUsdRate, saveReceiptVoucher } from '../../services/financeCommands';
+import { useFinance } from '../../contexts/FinanceContext';
 
 interface Customer {
   id: string;
@@ -87,6 +88,7 @@ interface ReceiptVoucherManagerProps {
 export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onInitialViewHandled }: ReceiptVoucherManagerProps) {
   const { t } = useLanguage();
   const { profile } = useAuth();
+  const { dateRange } = useFinance();
   const isAdmin = profile?.role === 'admin';
   const printRef = useRef<HTMLDivElement>(null);
   const [cancelPostingTarget, setCancelPostingTarget] = useState<ReceiptVoucher | null>(null);
@@ -120,6 +122,9 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
 
   useEffect(() => {
     loadVouchers();
+  }, [dateRange.startDate, dateRange.endDate]);
+
+  useEffect(() => {
     loadCustomers();
     loadBankAccounts();
     loadCompanySettings();
@@ -151,6 +156,8 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
       const { data, error } = await supabase
         .from('receipt_vouchers')
         .select('*, customers(company_name), bank_accounts(account_name, bank_name, alias, currency), is_posted, journal_entry_id, company_snapshot')
+        .gte('voucher_date', dateRange.startDate)
+        .lte('voucher_date', dateRange.endDate)
         .order('voucher_date', { ascending: false });
 
       if (error) throw error;

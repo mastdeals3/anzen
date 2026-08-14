@@ -14,6 +14,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { notifyFinanceReconciliationRefresh } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
 import { FinanceActionButton, FinanceBadge } from './FinanceUI';
+import { useFinance } from '../../contexts/FinanceContext';
 
 interface FundTransfer {
   id: string;
@@ -108,6 +109,7 @@ export function FundTransferManager({
   onPrefillConsumed,
 }: FundTransferManagerProps) {
   const { t } = useLanguage();
+  const { dateRange } = useFinance();
   const [transfers, setTransfers] = useState<FundTransfer[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [fromBankStatements, setFromBankStatements] = useState<BankStatementLine[]>([]);
@@ -138,7 +140,7 @@ export function FundTransferManager({
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     if (!prefillFromBankReconciliation) return;
@@ -219,6 +221,8 @@ export function FundTransferManager({
           .from('vw_fund_transfers_detailed')
           // perf: projected columns (was select('*'))
           .select('id, transfer_number, transfer_date, amount, from_amount, to_amount, exchange_rate, from_account_type, to_account_type, from_account_name, to_account_name, from_currency, to_currency, from_bank_account_id, to_bank_account_id, from_bank_statement_line_id, to_bank_statement_line_id, journal_entry_id, description, status, posted_at, created_at, created_by_name')
+          .gte('transfer_date', dateRange.startDate)
+          .lte('transfer_date', dateRange.endDate)
           .order('transfer_date', { ascending: false })
           .order('created_at', { ascending: false })
           .limit(100),

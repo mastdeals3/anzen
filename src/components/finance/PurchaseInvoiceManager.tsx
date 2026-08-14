@@ -14,6 +14,7 @@ import { showToast } from '../ToastNotification';
 import { formatDate } from '../../utils/dateFormat';
 import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
 import { formatCurrency } from '../../utils/currency';
+import { useFinance } from '../../contexts/FinanceContext';
 
 interface Supplier {
   id: string;
@@ -84,6 +85,7 @@ interface PurchaseInvoiceManagerProps {
 }
 
 export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvoiceManagerProps) {
+  const { dateRange } = useFinance();
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -132,6 +134,9 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
 
   useEffect(() => {
     loadInvoices();
+  }, [dateRange.startDate, dateRange.endDate]);
+
+  useEffect(() => {
     loadSuppliers();
     loadProducts();
     loadAccounts();
@@ -142,6 +147,8 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
       const { data, error } = await supabase
         .from('purchase_invoices')
         .select('*, suppliers(company_name, pkp_status)')
+        .gte('invoice_date', dateRange.startDate)
+        .lte('invoice_date', dateRange.endDate)
         .order('invoice_date', { ascending: false });
 
       if (error) throw error;

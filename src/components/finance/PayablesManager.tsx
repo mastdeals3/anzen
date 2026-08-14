@@ -7,6 +7,7 @@ import { MoneyInput } from '../MoneyInput';
 import { Plus, CreditCard as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
 import { formatDate } from '../../utils/dateFormat';
 import { useExpenseCategories } from './useExpenseCategories';
+import { useFinance } from '../../contexts/FinanceContext';
 
 interface VendorBill {
   id: string;
@@ -77,6 +78,7 @@ type ViewMode = 'bills' | 'payments' | 'expense_bills';
 
 export function PayablesManager({ canManage }: PayablesManagerProps) {
   const { profile } = useAuth();
+  const { dateRange } = useFinance();
   const { categories: expenseCategories } = useExpenseCategories();
   const [viewMode, setViewMode] = useState<ViewMode>('expense_bills');
   const [bills, setBills] = useState<VendorBill[]>([]);
@@ -111,7 +113,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [dateRange.startDate, dateRange.endDate]);
 
   const loadData = async () => {
     setLoading(true);
@@ -135,6 +137,8 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
       const { data, error } = await supabase
         .from('vendor_bills')
         .select('*')
+        .gte('bill_date', dateRange.startDate)
+        .lte('bill_date', dateRange.endDate)
         .order('bill_date', { ascending: false });
 
       if (error) throw error;
@@ -160,6 +164,8 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
             alias
           )
         `)
+        .gte('payment_date', dateRange.startDate)
+        .lte('payment_date', dateRange.endDate)
         .order('payment_date', { ascending: false });
 
       if (error) throw error;

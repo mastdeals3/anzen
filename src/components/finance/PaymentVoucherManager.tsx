@@ -22,6 +22,7 @@ import {
   unlinkBankTransaction,
 } from './bankTransactionLinking';
 import { FinanceDocumentAttachments, uploadFinanceDocuments } from './FinanceDocumentAttachments';
+import { useFinance } from '../../contexts/FinanceContext';
 
 interface Supplier {
   id: string;
@@ -187,6 +188,7 @@ function fmt(amount: number, currency: string) {
 
 export function PaymentVoucherManager({ canManage, initialViewVoucherId, onInitialViewHandled, prefillInvoice, onPrefillConsumed, prefillExpenseBill, onPrefillExpenseBillConsumed, onViewInvoice, onViewExpense, prefillFromBankReconciliation, onBankReconciliationPrefillConsumed }: PaymentVoucherManagerProps) {
   const { profile } = useAuth();
+  const { dateRange } = useFinance();
   const isAdmin = profile?.role === 'admin';
   const [cancelPostingTarget, setCancelPostingTarget] = useState<PaymentVoucher | null>(null);
   const [cancelPostingReason, setCancelPostingReason] = useState('');
@@ -236,6 +238,9 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
 
   useEffect(() => {
     loadVouchers();
+  }, [dateRange.startDate, dateRange.endDate]);
+
+  useEffect(() => {
     loadSuppliers();
     loadStaff();
     loadBankAccounts();
@@ -364,12 +369,16 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       let { data, error } = await supabase
         .from('payment_vouchers')
         .select('*, suppliers(company_name), finance_staff_master(full_name), bank_accounts(account_name, bank_name, alias, currency)')
+        .gte('voucher_date', dateRange.startDate)
+        .lte('voucher_date', dateRange.endDate)
         .order('voucher_date', { ascending: false })
         .order('voucher_number', { ascending: false });
       if (error && /finance_staff_master|staff_id/i.test(error.message || '')) {
         ({ data, error } = await supabase
           .from('payment_vouchers')
           .select('*, suppliers(company_name), bank_accounts(account_name, bank_name, alias, currency)')
+          .gte('voucher_date', dateRange.startDate)
+          .lte('voucher_date', dateRange.endDate)
           .order('voucher_date', { ascending: false })
           .order('voucher_number', { ascending: false }));
       }
