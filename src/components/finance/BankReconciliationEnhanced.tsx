@@ -541,7 +541,6 @@ export function BankReconciliationEnhanced({
   const loadStatementLines = async () => {
     if (!selectedBank) return;
     setLoading(true);
-    let primaryStatementLinesLoaded = false;
     try {
       // Calculate next day for inclusive end date filtering
       const endDatePlusOne = new Date(dateRange.end);
@@ -572,39 +571,28 @@ export function BankReconciliationEnhanced({
           .eq('bank_account_id', selectedBank)
           .maybeSingle();
 
-        if (focusedLineError) {
-          // The focused-line lookup is a navigation enhancement. It must not
-          // hide the already-loaded statement range when it cannot be read.
-          console.error('Error loading focused bank statement line:', focusedLineError);
-        }
+        if (focusedLineError) throw focusedLineError;
         if (focusedLine) data = [focusedLine, ...data];
       }
 
       const lineIds = data.map(row => row.id);
       const allocationMap = new Map<string, StatementLine['allocations']>();
       if (lineIds.length > 0) {
-        try {
-          const { data: allocations, error: allocationError } = await supabase
-            .from('bank_statement_allocations')
-            .select('id, bank_statement_line_id, document_type, document_id, allocation_amount, payment_kind')
-            .in('bank_statement_line_id', lineIds);
-          if (allocationError) {
-            console.error('Error loading bank statement allocations (continuing without allocation enrichment):', allocationError);
-          } else {
-            for (const allocation of allocations || []) {
-              const list = allocationMap.get(allocation.bank_statement_line_id) || [];
-              list.push({
-                id: allocation.id,
-                document_type: allocation.document_type,
-                document_id: allocation.document_id,
-                allocation_amount: Number(allocation.allocation_amount || 0),
-                payment_kind: allocation.payment_kind,
-              });
-              allocationMap.set(allocation.bank_statement_line_id, list);
-            }
-          }
-        } catch (allocationError) {
-          console.error('Unexpected allocation enrichment failure (continuing with statement lines):', allocationError);
+        const { data: allocations, error: allocationError } = await supabase
+          .from('bank_statement_allocations')
+          .select('id, bank_statement_line_id, document_type, document_id, allocation_amount, payment_kind')
+          .in('bank_statement_line_id', lineIds);
+        if (allocationError) throw allocationError;
+        for (const allocation of allocations || []) {
+          const list = allocationMap.get(allocation.bank_statement_line_id) || [];
+          list.push({
+            id: allocation.id,
+            document_type: allocation.document_type,
+            document_id: allocation.document_id,
+            allocation_amount: Number(allocation.allocation_amount || 0),
+            payment_kind: allocation.payment_kind,
+          });
+          allocationMap.set(allocation.bank_statement_line_id, list);
         }
       }
 
@@ -620,63 +608,13 @@ export function BankReconciliationEnhanced({
       const entryIds = data.map(r => r.matched_entry_id).filter(Boolean);
       const taxPaymentIds = data.map(r => r.matched_tax_payment_id).filter(Boolean);
 
-      const mapLines = (
-        expenseMap = new Map(),
-        receiptMap = new Map(),
-        paymentMap = new Map(),
-        fundTransferMap = new Map(),
-        pettyCashMap = new Map(),
-        entryMap = new Map(),
-        taxPaymentMap = new Map(),
-      ): StatementLine[] => data.map(row => {
-        const allocations = allocationMap.get(row.id) || [];
-        const bankAmount = Number(row.debit_amount || row.credit_amount || 0);
-        const allocatedAmount = allocations.reduce((sum, allocation) => sum + allocation.allocation_amount, 0);
-        return {
-          id: row.id,
-          date: row.transaction_date,
-          description: row.description || '',
-          reference: row.reference || '',
-          debit: row.debit_amount || 0,
-          credit: row.credit_amount || 0,
-          balance: row.running_balance || 0,
-          currency: row.currency || 'IDR',
-          status: row.reconciliation_status || 'unmatched',
-          allocatedAmount,
-          remainingAmount: Math.max(0, bankAmount - allocatedAmount),
-          allocations,
-          matchedEntry: row.matched_entry_id,
-          matchedExpenseId: row.matched_expense_id,
-          matchedReceiptId: row.matched_receipt_id,
-          matchedPaymentId: row.matched_payment_id,
-          matchedFundTransferId: row.matched_fund_transfer_id,
-          matchedPettyCashId: row.matched_petty_cash_id,
-          matchedExpense: row.matched_expense_id ? expenseMap.get(row.matched_expense_id) : null,
-          matchedReceipt: row.matched_receipt_id ? receiptMap.get(row.matched_receipt_id) : null,
-          matchedPayment: row.matched_payment_id ? paymentMap.get(row.matched_payment_id) : null,
-          matchedFundTransfer: row.matched_fund_transfer_id ? fundTransferMap.get(row.matched_fund_transfer_id) : null,
-          matchedPettyCash: row.matched_petty_cash_id ? pettyCashMap.get(row.matched_petty_cash_id) : null,
-          matchedTaxPaymentId: row.matched_tax_payment_id,
-          matchedTaxPayment: row.matched_tax_payment_id ? taxPaymentMap.get(row.matched_tax_payment_id) : null,
-          matchedEntryRecord: row.matched_entry_id ? entryMap.get(row.matched_entry_id) : null,
-          notes: row.notes,
-        };
-      });
-
-      // The primary statement query is authoritative. Publish it before any
-      // optional document-enrichment work so a secondary lookup can never
-      // convert a populated bank statement into an empty reconciliation view.
-      primaryStatementLinesLoaded = true;
-      setStatementLines(mapLines());
-
       // Batch load all expenses
       const expenseMap = new Map();
       if (expenseIds.length > 0) {
-        const { data: expenses, error: expenseError } = await supabase
+        const { data: expenses } = await supabase
           .from('finance_expenses')
           .select('id, expense_category, amount, description, expense_date, voucher_number, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items')
           .in('id', expenseIds);
-        if (expenseError) console.error('Error enriching matched expenses:', expenseError);
         expenses?.forEach(e => expenseMap.set(e.id, e));
         // ── TEMP DIAG for expense batch (paired with the block below) ───
         if (expenses && expenseIds.length !== new Set(expenses.map(e => e.id)).size) {
@@ -689,11 +627,10 @@ export function BankReconciliationEnhanced({
 
       const paymentMap = new Map();
       if (paymentIds.length > 0) {
-        const { data: payments, error: paymentError } = await supabase
+        const { data: payments } = await supabase
           .from('payment_vouchers')
           .select('id, amount, actual_bank_debit, bank_amount, payment_currency, voucher_date, voucher_number, supplier_id, staff_id, suppliers(company_name), finance_staff_master(full_name)')
           .in('id', paymentIds);
-        if (paymentError) console.error('Error enriching matched payment vouchers:', paymentError);
         payments?.forEach(payment => {
           paymentMap.set(payment.id, {
             id: payment.id,
@@ -711,11 +648,10 @@ export function BankReconciliationEnhanced({
       // Batch load all receipts with customers
       const receiptMap = new Map();
       if (receiptIds.length > 0) {
-        const { data: receipts, error: receiptError } = await supabase
+        const { data: receipts } = await supabase
           .from('receipt_vouchers')
           .select('id, amount, voucher_date, voucher_number, customer_id, customers(company_name)')
           .in('id', receiptIds);
-        if (receiptError) console.error('Error enriching matched receipt vouchers:', receiptError);
         receipts?.forEach(r => {
           receiptMap.set(r.id, {
             id: r.id,
@@ -758,11 +694,10 @@ export function BankReconciliationEnhanced({
       // Batch load all fund transfers
       const fundTransferMap = new Map();
       if (fundTransferIds.length > 0) {
-        const { data: fundTransfers, error: fundTransferError } = await supabase
+        const { data: fundTransfers } = await supabase
           .from('fund_transfers')
           .select('id, transfer_number, amount, description, transfer_date, from_account_type, to_account_type')
           .in('id', fundTransferIds);
-        if (fundTransferError) console.error('Error enriching matched fund transfers:', fundTransferError);
         fundTransfers?.forEach(f => fundTransferMap.set(f.id, f));
         logMissing('fund_transfers', fundTransferIds, fundTransfers as any);
       }
@@ -770,12 +705,11 @@ export function BankReconciliationEnhanced({
       // Batch load all petty cash transactions
       const pettyCashMap = new Map();
       if (pettyCashIds.length > 0) {
-        const { data: pettyCash, error: pettyCashError } = await supabase
+        const { data: pettyCash } = await supabase
           .from('petty_cash_transactions')
           .select('id, description, amount, transaction_date, transaction_type')
           .is('fund_transfer_id', null)
           .in('id', pettyCashIds);
-        if (pettyCashError) console.error('Error enriching matched petty cash:', pettyCashError);
         pettyCash?.forEach(p => pettyCashMap.set(p.id, p));
         logMissing('petty_cash_transactions', pettyCashIds, pettyCash as any);
       }
@@ -783,11 +717,10 @@ export function BankReconciliationEnhanced({
       // Batch load all journal entries (canonical link fallback for display)
       const entryMap = new Map();
       if (entryIds.length > 0) {
-        const { data: entries, error: entryError } = await supabase
+        const { data: entries } = await supabase
           .from('journal_entries')
           .select('id, source_module, reference_id, reference_number, description, entry_date, entry_number')
           .in('id', entryIds);
-        if (entryError) console.error('Error enriching matched journal entries:', entryError);
         entries?.forEach(e => entryMap.set(e.id, e));
         logMissing('journal_entries', entryIds, entries as any);
       }
@@ -795,16 +728,48 @@ export function BankReconciliationEnhanced({
       // Batch load all tax payments
       const taxPaymentMap = new Map();
       if (taxPaymentIds.length > 0) {
-        const { data: taxPayments, error: taxPaymentError } = await supabase
+        const { data: taxPayments } = await supabase
           .from('tax_payments')
           .select('id, tax_type, amount, payment_date, billing_code, ntpn')
           .in('id', taxPaymentIds);
-        if (taxPaymentError) console.error('Error enriching matched tax payments:', taxPaymentError);
         taxPayments?.forEach(t => taxPaymentMap.set(t.id, t));
       }
 
       // Map lines with pre-loaded data (NO MORE QUERIES!)
-      const lines = mapLines(expenseMap, receiptMap, paymentMap, fundTransferMap, pettyCashMap, entryMap, taxPaymentMap);
+      const lines: StatementLine[] = data.map(row => {
+        const allocations = allocationMap.get(row.id) || [];
+        const bankAmount = Number(row.debit_amount || row.credit_amount || 0);
+        const allocatedAmount = allocations.reduce((sum, allocation) => sum + allocation.allocation_amount, 0);
+        return {
+          id: row.id,
+          date: row.transaction_date,
+          description: row.description || '',
+          reference: row.reference || '',
+          debit: row.debit_amount || 0,
+          credit: row.credit_amount || 0,
+          balance: row.running_balance || 0,
+          currency: row.currency || 'IDR',
+          status: row.reconciliation_status || 'unmatched',
+          allocatedAmount,
+          remainingAmount: Math.max(0, bankAmount - allocatedAmount),
+          allocations,
+          matchedEntry: row.matched_entry_id,
+          matchedExpenseId: row.matched_expense_id,
+          matchedReceiptId: row.matched_receipt_id,
+          matchedPaymentId: row.matched_payment_id,
+          matchedFundTransferId: row.matched_fund_transfer_id,
+          matchedPettyCashId: row.matched_petty_cash_id,
+          matchedExpense: row.matched_expense_id ? expenseMap.get(row.matched_expense_id) : null,
+          matchedReceipt: row.matched_receipt_id ? receiptMap.get(row.matched_receipt_id) : null,
+          matchedPayment: row.matched_payment_id ? paymentMap.get(row.matched_payment_id) : null,
+          matchedFundTransfer: row.matched_fund_transfer_id ? fundTransferMap.get(row.matched_fund_transfer_id) : null,
+          matchedPettyCash: row.matched_petty_cash_id ? pettyCashMap.get(row.matched_petty_cash_id) : null,
+          matchedTaxPaymentId: row.matched_tax_payment_id,
+          matchedTaxPayment: row.matched_tax_payment_id ? taxPaymentMap.get(row.matched_tax_payment_id) : null,
+          matchedEntryRecord: row.matched_entry_id ? entryMap.get(row.matched_entry_id) : null,
+          notes: row.notes,
+        };
+      });
 
       setStatementLines(lines);
 
@@ -834,9 +799,7 @@ export function BankReconciliationEnhanced({
       } catch { /* diag is best-effort */ }
     } catch (err) {
       console.error('Error loading statement lines:', err);
-      // Only a failed primary statement query may clear the view. Once the
-      // statement itself has been loaded, retain its rows if enrichment fails.
-      if (!primaryStatementLinesLoaded) setStatementLines([]);
+      setStatementLines([]);
     } finally {
       setLoading(false);
     }
