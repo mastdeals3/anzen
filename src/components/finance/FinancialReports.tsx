@@ -218,10 +218,13 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const bsLiabRows     = useMemo(() => balanceSheetData.filter(r => r.account_type === 'liability'), [balanceSheetData]);
   const bsEquityRows   = useMemo(() => balanceSheetData.filter(r => r.account_type === 'equity' || (r.account_type === 'contra' && r.account_group === 'Equity')), [balanceSheetData]);
 
-  const totalAssets      = bsAssetRows.reduce((s, r) => s + r.balance, 0) - bsContraAssets.reduce((s, r) => s + Math.abs(r.balance), 0);
-  const totalLiabilities = bsLiabRows.reduce((s, r) => s + Math.abs(r.balance), 0);
-  const totalEquityBase  = bsEquityRows.reduce((s, r) => s + (r.account_type === 'equity' ? Math.abs(r.balance) : -Math.abs(r.balance)), 0);
-  const totalEquity      = totalEquityBase + netIncome;
+  // get_balance_sheet() returns the journal-native signed balance
+  // (debit - credit). Present each section using its accounting normal side;
+  // never abs() a debit-balance liability/equity and never add period P&L a
+  // second time: Current Year Earnings is already returned by the RPC.
+  const totalAssets      = bsAssetRows.reduce((s, r) => s + r.balance, 0) + bsContraAssets.reduce((s, r) => s + r.balance, 0);
+  const totalLiabilities = bsLiabRows.reduce((s, r) => s - r.balance, 0);
+  const totalEquity      = bsEquityRows.reduce((s, r) => s - r.balance, 0);
   const totalLiabEquity  = totalLiabilities + totalEquity;
   const balanceCheck     = Math.abs(totalAssets - totalLiabEquity);
 
@@ -231,9 +234,9 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const liabLongtermRows  = bsLiabRows.filter(r => BS_LIAB_LONGTERM.includes(r.account_group || ''));
 
   const totalCurrentAssets   = assetCurrentRows.reduce((s, r) => s + r.balance, 0);
-  const totalNonCurrAssets   = assetNonCurrRows.reduce((s, r) => s + r.balance, 0) - bsContraAssets.reduce((s, r) => s + Math.abs(r.balance), 0);
-  const totalCurrentLiab     = liabCurrentRows.reduce((s, r) => s + Math.abs(r.balance), 0);
-  const totalLongtermLiab    = liabLongtermRows.reduce((s, r) => s + Math.abs(r.balance), 0);
+  const totalNonCurrAssets   = assetNonCurrRows.reduce((s, r) => s + r.balance, 0) + bsContraAssets.reduce((s, r) => s + r.balance, 0);
+  const totalCurrentLiab     = liabCurrentRows.reduce((s, r) => s - r.balance, 0);
+  const totalLongtermLiab    = liabLongtermRows.reduce((s, r) => s - r.balance, 0);
 
   // ── TB grand totals ───────────────────────────────────────────────────────
   const tbGrandTotals = useMemo(() => mergedTB.reduce(
@@ -331,13 +334,12 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
     addGroup('NON-CURRENT ASSETS', assetNonCurrRows, r => r.balance, totalNonCurrAssets, 'Total Non-current Assets');
     rows.push({ 'Section': 'TOTAL ASSETS', 'Code': '', 'Account': '', 'Amount (Rp)': totalAssets });
     rows.push({ 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '' });
-    addGroup('CURRENT LIABILITIES', liabCurrentRows, r => Math.abs(r.balance), totalCurrentLiab, 'Total Current Liabilities');
-    if (liabLongtermRows.length) addGroup('LONG-TERM LIABILITIES', liabLongtermRows, r => Math.abs(r.balance), totalLongtermLiab, 'Total Long-term Liabilities');
+    addGroup('CURRENT LIABILITIES', liabCurrentRows, r => -r.balance, totalCurrentLiab, 'Total Current Liabilities');
+    if (liabLongtermRows.length) addGroup('LONG-TERM LIABILITIES', liabLongtermRows, r => -r.balance, totalLongtermLiab, 'Total Long-term Liabilities');
     rows.push({ 'Section': 'TOTAL LIABILITIES', 'Code': '', 'Account': '', 'Amount (Rp)': totalLiabilities });
     rows.push({ 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '' });
     rows.push({ 'Section': 'EQUITY', 'Code': '', 'Account': '', 'Amount (Rp)': '' });
-    bsEquityRows.forEach(r => rows.push({ 'Section': '', 'Code': r.code, 'Account': r.name, 'Amount (Rp)': r.account_type === 'equity' ? Math.abs(r.balance) : -Math.abs(r.balance) }));
-    rows.push({ 'Section': '', 'Code': '3300', 'Account': 'Current Year Earnings', 'Amount (Rp)': netIncome });
+    bsEquityRows.forEach(r => rows.push({ 'Section': '', 'Code': r.code, 'Account': r.name, 'Amount (Rp)': -r.balance }));
     rows.push({ 'Section': 'TOTAL EQUITY', 'Code': '', 'Account': '', 'Amount (Rp)': totalEquity });
     rows.push({ 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '' });
     rows.push({ 'Section': 'TOTAL LIABILITIES + EQUITY', 'Code': '', 'Account': '', 'Amount (Rp)': totalLiabEquity });
@@ -825,7 +827,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                       </td>
                     </tr>
                     {!collapsedSections.has('bs-noncurr-assets') && assetNonCurrRows.map(r => <BSRow key={r.code} row={r} amount={r.balance} />)}
-                    {!collapsedSections.has('bs-noncurr-assets') && bsContraAssets.map(r => <BSRow key={r.code} row={r} amount={-Math.abs(r.balance)} />)}
+                    {!collapsedSections.has('bs-noncurr-assets') && bsContraAssets.map(r => <BSRow key={r.code} row={r} amount={r.balance} />)}
                     <tr className="bg-blue-100 border-t border-blue-300">
                       <td />
                       <td className="px-2 py-2 text-xs font-bold text-blue-900">Total Non-current Assets</td>
@@ -861,7 +863,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                         </div>
                       </td>
                     </tr>
-                    {!collapsedSections.has('bs-curr-liab') && liabCurrentRows.map(r => <BSRow key={r.code} row={r} amount={Math.abs(r.balance)} />)}
+                    {!collapsedSections.has('bs-curr-liab') && liabCurrentRows.map(r => <BSRow key={r.code} row={r} amount={-r.balance} />)}
                     <tr className="bg-red-100 border-t border-red-300">
                       <td />
                       <td className="px-2 py-2 text-xs font-bold text-red-900">Total Current Liabilities</td>
@@ -881,7 +883,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                         </div>
                       </td>
                     </tr>
-                    {!collapsedSections.has('bs-lt-liab') && liabLongtermRows.map(r => <BSRow key={r.code} row={r} amount={Math.abs(r.balance)} />)}
+                    {!collapsedSections.has('bs-lt-liab') && liabLongtermRows.map(r => <BSRow key={r.code} row={r} amount={-r.balance} />)}
                     <tr className="bg-red-100 border-t border-red-300">
                       <td />
                       <td className="px-2 py-2 text-xs font-bold text-red-900">Total Long-term Liabilities</td>
@@ -911,19 +913,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
                     </div>
                   </td>
                 </tr>
-                {!collapsedSections.has('bs-equity') && bsEquityRows.map(r => {
-                  const amt = r.account_type === 'equity' ? Math.abs(r.balance) : -Math.abs(r.balance);
-                  return <BSRow key={r.code} row={r} amount={amt} />;
-                })}
-                {!collapsedSections.has('bs-equity') && (
-                  <tr className="hover:bg-gray-50">
-                    <td className="pl-10 pr-2 py-1 text-[10px] font-mono text-gray-400 w-16">3300</td>
-                    <td className="px-2 py-1 text-xs text-gray-700 italic">Current Year Earnings (Provisional)</td>
-                    <td className={`px-4 py-1 text-right text-xs tabular-nums w-44 ${netIncome < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                      {netIncome < 0 ? `(Rp ${fmt(Math.abs(netIncome))})` : `Rp ${fmt(netIncome)}`}
-                    </td>
-                  </tr>
-                )}
+                {!collapsedSections.has('bs-equity') && bsEquityRows.map(r => <BSRow key={r.code} row={r} amount={-r.balance} />)}
                 <tr className="bg-purple-100 border-t border-purple-300">
                   <td />
                   <td className="px-2 py-2 text-xs font-bold text-purple-900">Total Equity</td>
