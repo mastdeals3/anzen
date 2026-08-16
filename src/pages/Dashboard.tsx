@@ -28,6 +28,7 @@ interface DashboardStats {
   pendingDeliveryChallans: number;
   pendingExpenses: number;
   pendingPettyCash: number;
+  pendingInvoices: number;
   overdueInvoicesCount: number;
   overdueInvoicesAmount: number;
   deliveryDueSoon: number;
@@ -51,6 +52,7 @@ export function Dashboard() {
     pendingDeliveryChallans: 0,
     pendingExpenses: 0,
     pendingPettyCash: 0,
+    pendingInvoices: 0,
     overdueInvoicesCount: 0,
     overdueInvoicesAmount: 0,
     deliveryDueSoon: 0,
@@ -82,6 +84,7 @@ export function Dashboard() {
         pendingDCResult,
         pendingExpensesResult,
         pendingPettyCashResult,
+        pendingInvoicesResult,
         overdueInvoicesResult,
         deliveryAlerts,
       ] = await Promise.all([
@@ -115,6 +118,10 @@ export function Dashboard() {
           .select('id', { count: 'exact', head: true })
           .is('fund_transfer_id', null)
           .eq('approval_status', 'pending_approval'),
+        supabase
+          .from('sales_invoices')
+          .select('id', { count: 'exact', head: true })
+          .in('payment_status', ['pending', 'partial']),
         supabase
           .from('sales_invoices')
           .select('id, total_amount, due_date')
@@ -164,6 +171,7 @@ export function Dashboard() {
         pendingDeliveryChallans: pendingDCResult.count || 0,
         pendingExpenses: pendingExpensesResult.count || 0,
         pendingPettyCash: pendingPettyCashResult.count || 0,
+        pendingInvoices: pendingInvoicesResult.count || 0,
         overdueInvoicesCount: overdueInvoicesResult.data?.length || 0,
         overdueInvoicesAmount: overdueAmount,
         deliveryDueSoon: deliveryAlertSummary.dueSoon.length,
@@ -202,6 +210,14 @@ export function Dashboard() {
       icon: AlertTriangle,
       color: 'red-gradient',
       link: 'sales'
+    });
+    statCards.push({
+      title: 'Pending Invoices',
+      value: stats.pendingInvoices,
+      subtitle: 'Awaiting collection',
+      icon: FileText,
+      color: 'yellow',
+      link: 'sales',
     });
   }
   if (isAdmin || isSales || isWarehouse || isManager) {

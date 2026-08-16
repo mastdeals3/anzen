@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ComponentProps } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useFinance } from '../contexts/FinanceContext';
 import { Layout } from '../components/Layout';
-import { FileText, Plus, Search, Eye, CreditCard as Edit, Trash2, XCircle, FileCheck, CheckCircle, Paperclip, Download, AlertTriangle, Clock, ExternalLink } from 'lucide-react';
+import { FileText, Plus, Search, Eye, CreditCard as Edit, Trash2, XCircle, FileCheck, CheckCircle, Paperclip, Download, AlertTriangle, Clock, ExternalLink, Truck } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import SalesOrderForm from '../components/SalesOrderForm';
 import { ProformaInvoiceView } from '../components/ProformaInvoiceView';
@@ -97,7 +97,7 @@ type SortDirection = 'asc' | 'desc';
 
 export default function SalesOrders() {
   const { profile } = useAuth();
-  const { navigationData, clearNavigationData } = useNavigation();
+  const { navigationData, clearNavigationData, setNavigationData, setCurrentPage } = useNavigation();
   const { t } = useLanguage();
   const { dateRange } = useFinance();
   const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
@@ -108,6 +108,7 @@ export default function SalesOrders() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null);
+  const [createPrefill, setCreatePrefill] = useState<ComponentProps<typeof SalesOrderForm>['prefill']>();
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [orderToReject, setOrderToReject] = useState<string | null>(null);
@@ -149,6 +150,15 @@ export default function SalesOrders() {
       clearNavigationData();
     }
   }, [navigationData, salesOrders, clearNavigationData]);
+
+  useEffect(() => {
+    if (navigationData?.createSalesOrder !== true) return;
+    const prefill = navigationData.salesOrderPrefill;
+    setEditingOrder(null);
+    setCreatePrefill(prefill && typeof prefill === 'object' ? prefill as ComponentProps<typeof SalesOrderForm>['prefill'] : undefined);
+    setShowCreateModal(true);
+    clearNavigationData();
+  }, [navigationData, clearNavigationData]);
 
   const fetchSOStatuses = async (orderIds: string[]) => {
     if (orderIds.length === 0) return;
@@ -962,6 +972,19 @@ export default function SalesOrders() {
                             <XCircle className="w-4 h-4" />
                           </button>
                         )}
+                        {['approved', 'stock_reserved', 'pending_delivery', 'partially_delivered'].includes(order.status)
+                          && !approvedDeliverySoIds.has(order.id) && (
+                          <button
+                            onClick={() => {
+                              setNavigationData({ createDeliveryChallanFromSO: order.id });
+                              setCurrentPage('delivery-challan');
+                            }}
+                            className="text-green-600 hover:text-green-800"
+                            title="Create Delivery Challan"
+                          >
+                            <Truck className="w-4 h-4" />
+                          </button>
+                        )}
                         {activeTab === 'active' && ['admin', 'sales'].includes(profile?.role || '') && ['delivered', 'cancelled'].includes(order.status) && (
                           <button
                             onClick={() => {
@@ -1005,14 +1028,17 @@ export default function SalesOrders() {
         >
           <SalesOrderForm
             existingOrder={(editingOrder as any) || undefined}
+            prefill={!editingOrder ? createPrefill : undefined}
             onSuccess={() => {
               setShowCreateModal(false);
               setEditingOrder(null);
+              setCreatePrefill(undefined);
               fetchSalesOrders();
             }}
             onCancel={() => {
               setShowCreateModal(false);
               setEditingOrder(null);
+              setCreatePrefill(undefined);
             }}
           />
         </Modal>
