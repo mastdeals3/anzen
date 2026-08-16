@@ -820,7 +820,7 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
                   {selectedReport === 'purchase_register' && (
                     <>
                       <th className="px-1.5 py-1 text-left font-medium text-slate-700">Date</th>
-                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">PO No</th>
+                      <th className="px-1.5 py-1 text-left font-medium text-slate-700">Invoice No</th>
                       <th className="px-1.5 py-1 text-left font-medium text-slate-700">Supplier</th>
                       <th className="px-1.5 py-1 text-right font-medium text-slate-700">Net</th>
                       <th className="px-1.5 py-1 text-right font-medium text-slate-700">PPN</th>
