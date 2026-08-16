@@ -26,11 +26,12 @@ interface Inquiry {
 
 interface EmailComposerProps {
   inquiry?: Inquiry;
+  contactId?: string | null;
   onClose?: () => void;
   onSent?: () => void;
 }
 
-export function EmailComposer({ inquiry, onClose, onSent }: EmailComposerProps) {
+export function EmailComposer({ inquiry, contactId, onClose, onSent }: EmailComposerProps) {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
   const [toEmail, setToEmail] = useState('');
@@ -94,7 +95,7 @@ export function EmailComposer({ inquiry, onClose, onSent }: EmailComposerProps) 
 
       const emailData = {
         inquiry_id: inquiry?.id || null,
-        contact_id: null,
+        contact_id: contactId || null,
         email_type: 'sent',
         from_email: user.email,
         to_email: emailAddresses,

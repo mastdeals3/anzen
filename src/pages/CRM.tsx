@@ -23,6 +23,8 @@ import { CompactInquiryForm } from '../components/crm/CompactInquiryForm';
 import { CustomerSelectionDialog } from '../components/crm/CustomerSelectionDialog';
 import { CustomerConfirmationDialog } from '../components/crm/CustomerConfirmationDialog';
 import { CustomerUpdateDialog } from '../components/crm/CustomerUpdateDialog';
+import { Customer360Panel } from '../components/crm/Customer360Panel';
+import { CRMWorkQueue } from '../components/crm/CRMWorkQueue';
 import {
   ensureUniqueCrmContactName,
   findOrCreateCrmContact,
@@ -103,7 +105,7 @@ export function CRM() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'inquiry-360' | 'table' | 'pipeline' | 'calendar' | 'email' | 'customers' | 'activities' | 'archive' | 'sales-team' | 'delivery-log' | 'documents'>('inquiry-360');
+  const [activeTab, setActiveTab] = useState<'work' | 'inquiry-360' | 'customer-360' | 'table' | 'pipeline' | 'calendar' | 'email' | 'customers' | 'activities' | 'archive' | 'sales-team' | 'delivery-log' | 'documents'>('work');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingInquiry, setEditingInquiry] = useState<Inquiry | null>(null);
   // Prefill payload for creating a NEW inquiry (e.g. from AI Pricing "Create new
@@ -508,7 +510,9 @@ export function CRM() {
           <div className="border-b border-gray-200">
             <div className="flex overflow-x-auto">
               {([
+                ['work',        Clock,       "Today's Work",      'purple'],
                 ['inquiry-360', Orbit,       'Inquiry 360',       'purple'],
+                ['customer-360',Users,       'Customer 360',      'purple'],
                 ['email',       Inbox,       t('crm.emailInbox'), 'blue'],
                 ['table',       Table,       t('crm.inquiries'),  'blue'],
                 ['pipeline',    LayoutGrid,  t('crm.pipeline'),   'blue'],
@@ -556,6 +560,10 @@ export function CRM() {
             {activeTab === 'inquiry-360' && (
               <Inquiry360View inquiries={inquiries as any} />
             )}
+
+            {activeTab === 'work' && <CRMWorkQueue inquiries={inquiries as any} />}
+
+            {activeTab === 'customer-360' && <Customer360Panel />}
 
             {activeTab === 'email' && (
               <GmailBrowserInbox />

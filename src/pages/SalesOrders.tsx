@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ComponentProps } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -82,6 +82,7 @@ interface SalesOrder {
   total_amount: number;
   created_by: string;
   created_at: string;
+  inquiry_id?: string | null;
   approved_by?: string;
   approved_at?: string;
   rejected_by?: string;
@@ -108,6 +109,7 @@ export default function SalesOrders() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null);
+  const [createPrefill, setCreatePrefill] = useState<ComponentProps<typeof SalesOrderForm>['prefill']>();
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [orderToReject, setOrderToReject] = useState<string | null>(null);
@@ -149,6 +151,15 @@ export default function SalesOrders() {
       clearNavigationData();
     }
   }, [navigationData, salesOrders, clearNavigationData]);
+
+  useEffect(() => {
+    if (navigationData?.createSalesOrder !== true) return;
+    const prefill = navigationData.salesOrderPrefill;
+    setEditingOrder(null);
+    setCreatePrefill(prefill && typeof prefill === 'object' ? prefill as ComponentProps<typeof SalesOrderForm>['prefill'] : undefined);
+    setShowCreateModal(true);
+    clearNavigationData();
+  }, [navigationData, clearNavigationData]);
 
   const fetchSOStatuses = async (orderIds: string[]) => {
     if (orderIds.length === 0) return;
@@ -1005,14 +1016,17 @@ export default function SalesOrders() {
         >
           <SalesOrderForm
             existingOrder={(editingOrder as any) || undefined}
+            prefill={!editingOrder ? createPrefill : undefined}
             onSuccess={() => {
               setShowCreateModal(false);
               setEditingOrder(null);
+              setCreatePrefill(undefined);
               fetchSalesOrders();
             }}
             onCancel={() => {
               setShowCreateModal(false);
               setEditingOrder(null);
+              setCreatePrefill(undefined);
             }}
           />
         </Modal>
