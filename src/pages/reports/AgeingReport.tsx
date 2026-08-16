@@ -4,6 +4,7 @@ import { FALLBACK_COMPANY } from '../../types/company';
 import { FileDown, ChevronDown, ChevronUp, AlertTriangle, Mail, CheckSquare, X, Send, Loader, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFinance } from '../../contexts/FinanceContext';
 
 interface InvoiceDetail {
   id: string;
@@ -38,9 +39,10 @@ interface TaskModal {
 export function AgeingReport() {
   const { t } = useLanguage();
   const { profile } = useAuth();
+  const { dateRange } = useFinance();
   const [ageingData, setAgeingData] = useState<CustomerAgeing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
+  const [asOfDate, setAsOfDate] = useState(dateRange.endDate);
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
   const [reminderModal, setReminderModal] = useState<ReminderModal | null>(null);
   const [taskModal, setTaskModal] = useState<TaskModal | null>(null);
@@ -55,6 +57,13 @@ export function AgeingReport() {
   useEffect(() => {
     loadAgeingData();
   }, [asOfDate]);
+
+  // Keep the dedicated ageing report aligned with Finance's global reporting
+  // period when the user changes the end date. The local control remains
+  // available for an explicit as-of override within the report.
+  useEffect(() => {
+    setAsOfDate(dateRange.endDate);
+  }, [dateRange.endDate]);
 
   useEffect(() => {
     supabase

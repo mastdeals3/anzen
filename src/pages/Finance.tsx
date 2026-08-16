@@ -227,6 +227,7 @@ function FinanceContent() {
     const bankLineId = searchParams.get('bankLine');
     const accountCode = searchParams.get('account');
     if (activeTab === 'expenses') setFocusExpenseId(documentId);
+    if (activeTab === 'purchase') setFocusPurchaseInvoiceId(documentId);
     if (activeTab === 'receipt') setFocusReceiptId(documentId);
     if (activeTab === 'payment') setFocusPaymentId(documentId);
     if (activeTab === 'petty_cash') setFocusPettyCashId(documentId);
