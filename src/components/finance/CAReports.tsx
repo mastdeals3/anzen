@@ -30,9 +30,10 @@ interface DateRange {
 
 interface CAReportsProps {
   onOpenJournal?: (journalEntryId: string) => void;
+  onDrillDown?: (code: string, name: string) => void;
 }
 
-export function CAReports({ onOpenJournal }: CAReportsProps) {
+export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
   const { profile } = useAuth();
   const { dateRange: contextDateRange } = useFinance();
   const [selectedReport, setSelectedReport] = useState<ReportType>('inventory_movement');
@@ -188,13 +189,17 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
         accountIds = [selectedBank.coa_id];
       }
     } else {
-      const { data: allBankAccounts } = await supabase
-        .from('chart_of_accounts')
-        .select('id, code, name')
-        .like('code', '1111%');
+      const { data: mappedBankAccounts, error: bankMappingError } = await supabase
+        .from('bank_accounts')
+        .select('coa_id')
+        .eq('is_active', true)
+        .not('coa_id', 'is', null);
 
-      if (!allBankAccounts || allBankAccounts.length === 0) return [];
-      accountIds = allBankAccounts.map(a => a.id);
+      if (bankMappingError) throw bankMappingError;
+      accountIds = Array.from(new Set((mappedBankAccounts || [])
+        .map(account => account.coa_id)
+        .filter((coaId): coaId is string => Boolean(coaId))));
+      if (accountIds.length === 0) return [];
     }
 
     if (accountIds.length === 0) return [];
@@ -721,8 +726,8 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
         })}
       </div>
 
-      {selectedReport === 'profit_and_loss' && <FinancialReports initialReport="pnl" onDrillDown={() => undefined} />}
-      {selectedReport === 'balance_sheet' && <FinancialReports initialReport="balance_sheet" onDrillDown={() => undefined} />}
+      {selectedReport === 'profit_and_loss' && <FinancialReports initialReport="pnl" onDrillDown={onDrillDown} />}
+      {selectedReport === 'balance_sheet' && <FinancialReports initialReport="balance_sheet" onDrillDown={onDrillDown} />}
       {selectedReport === 'tax_compliance' && <TaxReportsPanel />}
 
       {!['profit_and_loss', 'balance_sheet', 'tax_compliance'].includes(selectedReport) && <div className="bg-white rounded-lg border border-slate-200 p-6">
@@ -938,8 +943,8 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
                 ))}
                 {selectedReport === 'purchase_register' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-1.5 py-1 text-slate-900">{row.po_date}</td>
-                    <td className="px-1.5 py-1 text-slate-900">{row.po_number}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.invoice_date}</td>
+                    <td className="px-1.5 py-1 text-slate-900">{row.invoice_number}</td>
                     <td className="px-1.5 py-1 text-slate-900">{row.supplier_name}</td>
                     <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.net_amount || 0).toFixed(2)}</td>
                     <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.ppn || 0).toFixed(2)}</td>

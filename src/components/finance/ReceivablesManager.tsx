@@ -75,7 +75,6 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
           // perf: projected columns (was select('*'))
           .select('id, invoice_number, customer_id, invoice_date, due_date, total_amount, payment_status, customers(company_name)')
           .in('payment_status', ['pending', 'partial'])
-          .gte('invoice_date', dateRange.startDate)
           .lte('invoice_date', dateRange.endDate)
           .order('due_date', { ascending: true }),
         supabase

@@ -450,7 +450,10 @@ function FinanceContent() {
           onOpenJournal={handleOpenJournal}
         />;
       case 'ca_reports':
-        return <CAReports onOpenJournal={handleOpenJournal} />;
+        return <CAReports
+          onOpenJournal={handleOpenJournal}
+          onDrillDown={(code) => { setLedgerDrillCode(code); setActiveTab('ledger'); }}
+        />;
       case 'integrity_monitor':
         return <IntegrityMonitor />;
       case 'exception_correction':
