@@ -123,8 +123,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
 
   const loadOutstandingExpenseBills = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase.rpc('get_outstanding_expense_bills', { p_as_of_date: today });
+      const { data, error } = await supabase.rpc('get_outstanding_expense_bills', { p_as_of_date: dateRange.endDate });
       if (error) throw error;
       setOutstandingExpenseBills(data || []);
     } catch (error) {

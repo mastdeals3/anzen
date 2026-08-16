@@ -33,9 +33,10 @@ interface Account {
 interface AccountLedgerProps {
   initialCode?: string;
   onCodeConsumed?: () => void;
+  onOpenJournal?: (journalEntryId: string) => void;
 }
 
-export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProps = {}) {
+export function AccountLedger({ initialCode, onCodeConsumed, onOpenJournal }: AccountLedgerProps = {}) {
   const { dateRange } = useFinance();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
@@ -495,7 +496,11 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
                         {new Date(line.entry_date).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </td>
                       <td className="px-1.5 py-1 whitespace-nowrap font-mono text-blue-600" title={line.entry_number !== line.canonical_number ? `Journal: ${line.entry_number}` : undefined}>
-                        {line.canonical_number}
+                        {onOpenJournal ? (
+                          <button type="button" className="hover:underline" onClick={() => onOpenJournal(line.journal_entry_id)}>
+                            {line.canonical_number}
+                          </button>
+                        ) : line.canonical_number}
                       </td>
                       <td className="px-1.5 py-1 whitespace-nowrap">
                         <span className="px-2 py-1 text-xs bg-gray-100 rounded">

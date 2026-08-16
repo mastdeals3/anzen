@@ -7,6 +7,7 @@ import { TrendingUp, RefreshCw, BarChart2 } from 'lucide-react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { formatDate } from '../../utils/dateFormat';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
+import { useFinance } from '../../contexts/FinanceContext';
 
 interface SalesInvoice {
   id: string;
@@ -45,6 +46,7 @@ const firstRelation = <T,>(value: T | T[] | null | undefined): T | null =>
 
 export function ReceivablesManager({ canManage }: { canManage: boolean }) {
   const { setCurrentPage } = useNavigation();
+  const { dateRange } = useFinance();
   const [view, setView] = useState<'invoices' | 'payments' | 'ageing'>('invoices');
   const [invoices, setInvoices] = useState<SalesInvoice[]>([]);
   const [payments, setPayments] = useState<ReceiptVoucher[]>([]);
@@ -73,6 +75,8 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
           // perf: projected columns (was select('*'))
           .select('id, invoice_number, customer_id, invoice_date, due_date, total_amount, payment_status, customers(company_name)')
           .in('payment_status', ['pending', 'partial'])
+          .gte('invoice_date', dateRange.startDate)
+          .lte('invoice_date', dateRange.endDate)
           .order('due_date', { ascending: true }),
         supabase
           .from('receipt_vouchers')
@@ -90,6 +94,8 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
             customers(company_name),
             bank_accounts(account_name, alias)
           `)
+          .gte('voucher_date', dateRange.startDate)
+          .lte('voucher_date', dateRange.endDate)
           .order('voucher_date', { ascending: false })
           .limit(50),
         supabase
@@ -176,7 +182,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [dateRange.startDate, dateRange.endDate]);
 
   const loadDataRef = useRef(loadData);
   useEffect(() => {

@@ -405,7 +405,7 @@ function FinanceContent() {
           />
         );
       case 'ledger':
-        return <AccountLedger initialCode={ledgerDrillCode ?? undefined} onCodeConsumed={() => setLedgerDrillCode(null)} />;
+        return <AccountLedger initialCode={ledgerDrillCode ?? undefined} onCodeConsumed={() => setLedgerDrillCode(null)} onOpenJournal={handleOpenJournal} />;
       case 'journal_register':
         return <JournalEntryViewer canManage={canManage} onEditEntry={handleEditJournalEntry}
           initialViewEntryId={focusJournalId} onInitialViewHandled={() => setFocusJournalId(null)} onOpenSource={handleOpenJournalSource} />;
