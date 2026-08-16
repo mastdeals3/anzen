@@ -102,7 +102,7 @@ const isExpired = (expiryDate: string | null): boolean => {
 
 export function DeliveryChallan() {
   const { profile } = useAuth();
-  const { navigationData, clearNavigationData, setCurrentPage, setNavigationData } = useNavigation();
+  const { setCurrentPage, setNavigationData } = useNavigation();
   const { dateRange } = useFinance();
   const [challans, setChallans] = useState<DeliveryChallan[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -270,26 +270,6 @@ export function DeliveryChallan() {
     setChallanItems(items);
     setViewModalOpen(true);
   };
-
-  useEffect(() => {
-    const requestedId = navigationData?.challanId;
-    if (typeof requestedId !== 'string') return;
-    const openRequested = async () => {
-      const inList = challans.find(challan => challan.id === requestedId);
-      if (inList) {
-        await openChallanPreview(inList);
-      } else {
-        const { data } = await supabase
-          .from('delivery_challans')
-          .select('*, customers(company_name, address, city, phone, pbf_license), sales_orders(so_number, so_date)')
-          .eq('id', requestedId)
-          .maybeSingle();
-        if (data) await openChallanPreview(data as DeliveryChallan);
-      }
-      clearNavigationData();
-    };
-    void openRequested();
-  }, [navigationData, challans, clearNavigationData]);
 
   const openSalesOrderPreview = async (soId: string) => {
     if (!soId) return;
@@ -543,17 +523,6 @@ export function DeliveryChallan() {
       }]);
     }
   };
-
-  useEffect(() => {
-    const requestedSoId = navigationData?.createDeliveryChallanFromSO;
-    if (typeof requestedSoId !== 'string' || !salesOrders.length || !batches.length || !customers.length) return;
-    const so = salesOrders.find(order => order.id === requestedSoId);
-    if (!so) return;
-    resetForm();
-    setModalOpen(true);
-    void handleSalesOrderChange(requestedSoId);
-    clearNavigationData();
-  }, [navigationData, salesOrders, batches, customers, clearNavigationData]);
 
   const handleBatchChange = (index: number, batchId: string) => {
     const batch = batches.find(b => b.id === batchId);
@@ -1237,7 +1206,7 @@ export function DeliveryChallan() {
               </button>
               {canManage && (
                 <>
-                  {challan.approval_status === 'approved' && <button
+                  <button
                     onClick={async () => {
                       const items = await loadChallanItems(challan.id);
                       setNavigationData({
@@ -1253,7 +1222,7 @@ export function DeliveryChallan() {
                     title="Create Invoice from DO"
                   >
                     <FileText className="w-4 h-4" />
-                  </button>}
+                  </button>
                   {/* Edit and Delete only for admin on approved DCs */}
                   {(challan.approval_status !== 'approved' || profile?.role === 'admin') && (
                     <>

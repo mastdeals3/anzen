@@ -94,29 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Re-check/refresh a session when a suspended tab becomes active again.
-    // Supabase's own auto-refresh remains authoritative; this only nudges it
-    // after a long browser suspension so the first user action is not made
-    // against an expired access token.
-    const recoverSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const expiresAt = session.expires_at ?? 0;
-      if (expiresAt && expiresAt * 1000 - Date.now() < 60_000) {
-        await supabase.auth.refreshSession();
-      }
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') void recoverSession();
-    };
-    window.addEventListener('online', recoverSession);
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      subscription.unsubscribe();
-      window.removeEventListener('online', recoverSession);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
   const loadProfileAndPermissions = async (userId: string) => {

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ElementType } from 'react';
-import { Layout } from '../components/Layout';
+import { Layout, getRandomFallbackQuote, Quote } from '../components/Layout';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -10,7 +10,7 @@ import { SalesPipelineChart } from '../components/dashboard/SalesPipelineChart';
 import { PaymentOverview } from '../components/dashboard/PaymentOverview';
 import { SalesDashboard } from '../components/dashboard/SalesDashboard';
 import { WarehouseDeliveryDashboard } from '../components/dashboard/WarehouseDeliveryDashboard';
-import { AlertTriangle, Clock, TrendingUp, FileText, ClipboardCheck, ClipboardList, Zap, CircleUser as UserCircle, ArrowRight } from 'lucide-react';
+import { AlertTriangle, Clock, TrendingUp, FileText, ClipboardCheck, ClipboardList, Zap, CircleUser as UserCircle, ArrowRight, Sparkles } from 'lucide-react';
 import { fetchSalesOrderDeliveryAlerts, summarizeDeliveryAlerts } from '../utils/salesOrderDeliveryAlerts';
 import { TaxComplianceDashboardCards } from '../components/finance/tax/TaxComplianceDashboardCards';
 import { formatCurrency } from '../utils/currency';
@@ -28,7 +28,6 @@ interface DashboardStats {
   pendingDeliveryChallans: number;
   pendingExpenses: number;
   pendingPettyCash: number;
-  pendingInvoices: number;
   overdueInvoicesCount: number;
   overdueInvoicesAmount: number;
   deliveryDueSoon: number;
@@ -52,7 +51,6 @@ export function Dashboard() {
     pendingDeliveryChallans: 0,
     pendingExpenses: 0,
     pendingPettyCash: 0,
-    pendingInvoices: 0,
     overdueInvoicesCount: 0,
     overdueInvoicesAmount: 0,
     deliveryDueSoon: 0,
@@ -60,9 +58,11 @@ export function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [quote, setQuote] = useState<Quote>({ content: 'Welcome back!', author: '' });
 
   useEffect(() => {
     loadDashboardData();
+    setQuote(getRandomFallbackQuote());
   }, []);
 
   const loadDashboardData = async () => {
@@ -84,7 +84,6 @@ export function Dashboard() {
         pendingDCResult,
         pendingExpensesResult,
         pendingPettyCashResult,
-        pendingInvoicesResult,
         overdueInvoicesResult,
         deliveryAlerts,
       ] = await Promise.all([
@@ -118,10 +117,6 @@ export function Dashboard() {
           .select('id', { count: 'exact', head: true })
           .is('fund_transfer_id', null)
           .eq('approval_status', 'pending_approval'),
-        supabase
-          .from('sales_invoices')
-          .select('id', { count: 'exact', head: true })
-          .in('payment_status', ['pending', 'partial']),
         supabase
           .from('sales_invoices')
           .select('id, total_amount, due_date')
@@ -171,7 +166,6 @@ export function Dashboard() {
         pendingDeliveryChallans: pendingDCResult.count || 0,
         pendingExpenses: pendingExpensesResult.count || 0,
         pendingPettyCash: pendingPettyCashResult.count || 0,
-        pendingInvoices: pendingInvoicesResult.count || 0,
         overdueInvoicesCount: overdueInvoicesResult.data?.length || 0,
         overdueInvoicesAmount: overdueAmount,
         deliveryDueSoon: deliveryAlertSummary.dueSoon.length,
@@ -210,14 +204,6 @@ export function Dashboard() {
       icon: AlertTriangle,
       color: 'red-gradient',
       link: 'sales'
-    });
-    statCards.push({
-      title: 'Pending Invoices',
-      value: stats.pendingInvoices,
-      subtitle: 'Awaiting collection',
-      icon: FileText,
-      color: 'yellow',
-      link: 'sales',
     });
   }
   if (isAdmin || isSales || isWarehouse || isManager) {
@@ -349,7 +335,13 @@ export function Dashboard() {
           <h1 className="text-2xl font-bold text-gray-900">
             Welcome, {profile?.full_name || profile?.username || 'User'}!
           </h1>
-          <p className="text-sm text-gray-600 mt-1">Here’s what needs attention today.</p>
+          <div className="flex items-start gap-2 mt-2">
+            <Sparkles className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-gray-600 italic">
+              "{quote.content}"
+              {quote.author && <span className="text-gray-500"> — {quote.author}</span>}
+            </p>
+          </div>
         </div>
 
         {error ? (

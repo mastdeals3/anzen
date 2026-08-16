@@ -436,7 +436,7 @@ export function FundTransferManager({
 
       setModalOpen(false);
       resetForm();
-      await loadData();
+      loadData();
     } catch (error: any) {
       console.error('Error with fund transfer:', error.message);
       showToast({ type: 'error', title: 'Error', message: 'Failed to save fund transfer: ' + error.message });
