@@ -61,7 +61,7 @@ export function Login() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
               placeholder="username"
             />
-            <p className="text-xs text-gray-500 mt-1">Enter your username (e.g., admin, kunal, sales)</p>
+            <p className="text-xs text-gray-500 mt-1">Enter your company username.</p>
           </div>
 
           <div>

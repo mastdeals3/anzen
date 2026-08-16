@@ -186,7 +186,6 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
             <div className={`text-xs px-2 py-1 rounded-full ${overdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{nextFollowUp ? `Next: ${new Date(nextFollowUp).toLocaleDateString()}` : 'No follow-up'}</div>
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            <button className="px-2 py-1 border rounded">Send Email</button><button className="px-2 py-1 border rounded">Create Reminder</button><button className="px-2 py-1 border rounded">Mark Follow-up Done</button>
             {normalizeStatus(selected.pipeline_status || selected.status) === 'won' && selected.customer_id && (
               <button
                 className="px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium"
@@ -210,7 +209,6 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
             {normalizeStatus(selected.pipeline_status || selected.status) === 'won' && !selected.customer_id && (
               <span className="px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200">Promote this prospect to a customer before creating an SO</span>
             )}
-            <button className="px-2 py-1 border rounded">Link Document</button>
           </div>
 
           <div className="grid md:grid-cols-2 gap-3 mt-3 text-sm">

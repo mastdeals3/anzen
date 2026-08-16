@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { UserPlus, Trash2, CheckCircle, XCircle, Lock, User as UserIcon, CreditCard as Edit2, Shield, ChevronDown, ChevronUp } from 'lucide-react';
+import { UserPlus, Trash2, CheckCircle, XCircle, UserX, Lock, User as UserIcon, Pencil as Edit2, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { Modal } from '../Modal';
 import { showToast } from '../ToastNotification';
 import { showConfirm } from '../ConfirmDialog';
@@ -296,7 +296,7 @@ export function UserManagement({ users, onRefresh }: UserManagementProps) {
                     className={`p-2 rounded-lg transition ${user.is_active ? 'text-green-600 hover:bg-green-50' : 'text-red-500 hover:bg-red-50'}`}
                     title={user.is_active ? 'Deactivate' : 'Activate'}
                   >
-                    {user.is_active ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                    {user.is_active ? <UserX className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                   </button>
                   <button onClick={() => deleteUser(user.id, user.username)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete user">
                     <Trash2 className="w-4 h-4" />
@@ -314,7 +314,7 @@ export function UserManagement({ users, onRefresh }: UserManagementProps) {
       </div>
 
       {/* Add User Modal */}
-      <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); resetForm(); }} title="Add New User">
+      <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); resetForm(); }} title="New User">
         <form onSubmit={handleAddUser} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Full Name <span className="text-red-500">*</span></label>

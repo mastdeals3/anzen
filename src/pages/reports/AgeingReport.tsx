@@ -342,7 +342,7 @@ export function AgeingReport() {
       {/* Header */}
       <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 bg-white rounded-lg border border-gray-200 px-4 py-3">
         <div className="flex items-center gap-3">
-          <div className="text-xs font-medium text-gray-700">{t('as_of_date', 'As of Date')}:</div>
+          <div className="text-xs font-medium text-gray-700">As of:</div>
           <input
             type="date"
             value={asOfDate}

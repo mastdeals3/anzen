@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { DataTable } from '../DataTable';
 import { FinanceModal as Modal } from './FinanceModal';
 import { MoneyInput } from '../MoneyInput';
-import { Plus, CreditCard as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
+import { Plus, Pencil as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
 import { formatDate } from '../../utils/dateFormat';
 import { useExpenseCategories } from './useExpenseCategories';
 import { useFinance } from '../../contexts/FinanceContext';

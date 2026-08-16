@@ -232,10 +232,10 @@ export function Layout({ children }: LayoutProps) {
   const groups: MenuGroup[] = [
     { label: 'Main',      items: allItems.filter(i => ['dashboard', 'crm', 'customers'].includes(i.id)) },
     { label: 'Sales',     items: allItems.filter(i => ['sales-orders', 'delivery-challan', 'sales'].includes(i.id)) },
-    { label: 'Operations',items: allItems.filter(i => ['products', 'batches', 'stock', 'inventory'].includes(i.id)) },
+    { label: 'Stock',     items: allItems.filter(i => ['products', 'batches', 'stock'].includes(i.id)) },
     { label: 'Purchases', items: allItems.filter(i => ['purchase-orders', 'import-requirements', 'import-containers'].includes(i.id)) },
     { label: 'Finance',   items: allItems.filter(i => ['finance', 'price-calculator'].includes(i.id)) },
-    { label: 'Pricing',   items: allItems.filter(i => ['pricing-dashboard', 'sourcing-outbox', 'pricing-worksheet', 'pricing-ledger'].includes(i.id)) },
+    { label: 'Pricing',   items: allItems.filter(i => ['pricing-dashboard'].includes(i.id)) },
     { label: 'Reports',   items: allItems.filter(i => ['reports'].includes(i.id)) },
     { label: 'System',    items: allItems.filter(i => ['tasks', 'command-center', 'settings'].includes(i.id)) },
   ];
@@ -243,6 +243,8 @@ export function Layout({ children }: LayoutProps) {
   const toggleLanguage = () => {
     setLanguage(language === 'en' ? 'id' : 'en');
   };
+
+  const showDateRange = !['dashboard', 'crm', 'command-center', 'settings'].includes(currentPage);
 
   const navigate = (id: string) => {
     setCurrentPage(id);
@@ -398,8 +400,8 @@ export function Layout({ children }: LayoutProps) {
             </div>
 
             {/* Desktop date range */}
-            <div className="flex-1 hidden md:flex items-center justify-center px-2">
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+            <div className={`flex-1 hidden md:flex items-center justify-center px-2 ${!showDateRange ? 'invisible' : ''}`} aria-hidden={!showDateRange}>
+              {showDateRange && <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
                 <Calendar className="w-3.5 h-3.5 text-gray-500" />
                 <input
                   type="date"
@@ -414,18 +416,18 @@ export function Layout({ children }: LayoutProps) {
                   onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
                   className="px-1.5 py-0.5 text-xs border border-gray-200 rounded bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                 />
-              </div>
+              </div>}
             </div>
 
             {/* Mobile date range toggle */}
-            <div className="md:hidden relative" ref={datePickerRef}>
-              <button
+            <div className={`md:hidden relative ${!showDateRange ? 'invisible' : ''}`} ref={datePickerRef} aria-hidden={!showDateRange}>
+              {showDateRange && <button
                 onClick={() => setDatePickerOpen(!datePickerOpen)}
                 className="p-1.5 rounded hover:bg-gray-100 flex items-center gap-1 text-gray-600"
               >
                 <Calendar className="w-4 h-4" />
-              </button>
-              {datePickerOpen && (
+              </button>}
+              {showDateRange && datePickerOpen && (
                 <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-50 w-64">
                   <p className="text-xs font-medium text-gray-600 mb-2">Date Range Filter</p>
                   <div className="space-y-2">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Search, Building2 } from 'lucide-react';
+import { Plus, Search, Truck } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { FinancePage } from './FinancePage';
 import { FinanceActionButton, FinanceBadge, FinanceButton } from './FinanceUI';
@@ -287,7 +287,7 @@ export function SuppliersManager({ canManage }: SuppliersManagerProps) {
                 <td className="px-2 py-1.5 font-mono text-sm">{supplier.supplier_code || '-'}</td>
                 <td className="px-2 py-1.5">
                   <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-gray-400" />
+                    <Truck className="w-4 h-4 text-gray-400" />
                     <div>
                       <div className="font-medium">{supplier.company_name}</div>
                       {supplier.city && <div className="text-sm text-gray-500">{supplier.city}</div>}

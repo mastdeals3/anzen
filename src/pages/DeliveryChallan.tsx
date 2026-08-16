@@ -11,7 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useFinance } from '../contexts/FinanceContext';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, Eye, CreditCard as Edit, FileText, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Trash2, Eye, Pencil as Edit, FileText, CheckCircle, XCircle } from 'lucide-react';
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
@@ -1207,7 +1207,7 @@ export function DeliveryChallan() {
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
             >
               <Plus className="w-5 h-5" />
-              Create Delivery Challan
+              New Delivery Challan
             </button>
           )}
         </div>
@@ -1237,7 +1237,7 @@ export function DeliveryChallan() {
               </button>
               {canManage && (
                 <>
-                  {challan.approval_status === 'approved' && <button
+                  {challan.approval_status === 'approved' && challan.invoicing_status !== 'fully_invoiced' && <button
                     onClick={async () => {
                       const items = await loadChallanItems(challan.id);
                       setNavigationData({
@@ -1250,7 +1250,7 @@ export function DeliveryChallan() {
                       setCurrentPage('sales');
                     }}
                     className="p-1 text-purple-600 hover:bg-purple-50 rounded"
-                    title="Create Invoice from DO"
+                    title="Create Invoice"
                   >
                     <FileText className="w-4 h-4" />
                   </button>}
@@ -1259,7 +1259,7 @@ export function DeliveryChallan() {
                     <>
                       <button
                         onClick={() => handleEdit(challan)}
-                        className="p-1 text-green-600 hover:bg-green-50 rounded"
+                        className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
                         title="Edit Challan"
                       >
                         <Edit className="w-4 h-4" />
