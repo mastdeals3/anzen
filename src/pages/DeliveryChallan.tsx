@@ -34,6 +34,8 @@ interface DeliveryChallan {
   invoicing_status?: 'not_invoiced' | 'partially_invoiced' | 'fully_invoiced';
   total_items?: number;
   invoiced_items?: number;
+  /** Quantity still available to invoice, supplied by dc_invoicing_summary. */
+  total_remaining_quantity?: number | null;
   linked_invoices?: string[];
   product_names?: string;
   sales_orders?: {
@@ -207,6 +209,7 @@ export function DeliveryChallan() {
           not_invoiced_items: inv.not_invoiced_items,
           partially_invoiced_items: inv.partially_invoiced_items,
           fully_invoiced_items: inv.fully_invoiced_items,
+          total_remaining_quantity: inv.total_remaining_quantity,
           linked_invoices: inv.linked_invoice_numbers || []
         });
       });
@@ -218,6 +221,7 @@ export function DeliveryChallan() {
           invoicing_status: invStatus?.status || 'not_invoiced',
           total_items: invStatus?.total_items || 0,
           invoiced_items: (invStatus?.fully_invoiced_items || 0) + (invStatus?.partially_invoiced_items || 0),
+          total_remaining_quantity: invStatus?.total_remaining_quantity ?? null,
           linked_invoices: invStatus?.linked_invoices || []
         };
       });
@@ -1237,7 +1241,12 @@ export function DeliveryChallan() {
               </button>
               {canManage && (
                 <>
-                  {challan.approval_status === 'approved' && challan.invoicing_status !== 'fully_invoiced' && <button
+                  {challan.approval_status === 'approved' &&
+                    // The summary view is the source of truth for invoiceable quantity.
+                    // Keep the status fallback for older/temporarily unavailable view rows.
+                    (challan.total_remaining_quantity == null
+                      ? challan.invoicing_status !== 'fully_invoiced'
+                      : Number(challan.total_remaining_quantity) > 0) && <button
                     onClick={async () => {
                       const items = await loadChallanItems(challan.id);
                       setNavigationData({

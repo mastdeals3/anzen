@@ -21,7 +21,7 @@ export function ConversionIntelligence() {
     const load = async () => {
       setLoading(true);
       const [{ data: inquiries }, { data: products }, { data: invoiceItems }, { data: orderItems }, { data: reminders }] = await Promise.all([
-        supabase.from('crm_inquiries').select('id,customer_id,company_name,product_name,created_at,pipeline_status,status,price_quoted,quote_sent_at,offered_price,coa_required,sample_required,converted_to_order'),
+        supabase.from('crm_inquiries').select('id,customer_id,company_name,product_name,created_at,pipeline_status,status,price_quoted,quote_status,quote_sent_at,offered_price,coa_required,sample_required,converted_to_order'),
         supabase.from('products').select('id,product_name').eq('is_active', true),
         supabase.from('sales_invoice_items').select('product_id,unit_price,quantity,sales_invoices!inner(customer_id,invoice_date)').order('created_at', { ascending: false }),
         supabase.from('sales_order_items').select('product_id,unit_price,quantity,sales_orders!inner(customer_id,so_date,status)').order('created_at', { ascending: false }),
@@ -45,7 +45,9 @@ export function ConversionIntelligence() {
         const customerId = newest.customer_id;
         const inv = (invoiceItems || []).filter((x: any) => x.product_id === productId && x.sales_invoices?.customer_id === customerId);
         const orders = (orderItems || []).filter((x: any) => x.product_id === productId && x.sales_orders?.customer_id === customerId);
-        const quoted = group.filter((i: any) => i.price_quoted || i.quote_sent_at || ['in_progress', 'follow_up'].includes(i.pipeline_status));
+        // A target/internal price is not a customer quote. Only an explicit sent
+        // quote (or a recorded quote timestamp) counts as quoted/waiting.
+        const quoted = group.filter((i: any) => Boolean(i.quote_sent_at) || ['sent', 'follow_up_due', 'accepted', 'rejected'].includes((i.quote_status || '').toLowerCase()));
         const lastInquiryValues = group.map((i: any) => i.created_at).sort();
         const lastQuoteValues = quoted.map((i: any) => i.quote_sent_at || i.created_at).sort();
         const lastOrderValues = orders.map((i: any) => i.sales_orders?.so_date).filter(Boolean).sort();
