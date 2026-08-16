@@ -82,9 +82,11 @@ interface PurchaseInvoice {
 interface PurchaseInvoiceManagerProps {
   canManage: boolean;
   onPayInvoice?: (invoice: { id: string; invoice_number: string; supplier_id: string; balance_amount: number }) => void;
+  initialViewInvoiceId?: string | null;
+  onInitialViewHandled?: () => void;
 }
 
-export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvoiceManagerProps) {
+export function PurchaseInvoiceManager({ canManage, onPayInvoice, initialViewInvoiceId, onInitialViewHandled }: PurchaseInvoiceManagerProps) {
   const { dateRange } = useFinance();
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -135,6 +137,13 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice }: PurchaseInvo
   useEffect(() => {
     loadInvoices();
   }, [dateRange.startDate, dateRange.endDate]);
+
+  useEffect(() => {
+    if (!initialViewInvoiceId || loading) return;
+    const invoice = invoices.find(item => item.id === initialViewInvoiceId);
+    if (invoice) void handleOpenView(invoice);
+    onInitialViewHandled?.();
+  }, [initialViewInvoiceId, loading, invoices, onInitialViewHandled]);
 
   useEffect(() => {
     loadSuppliers();

@@ -133,7 +133,7 @@ const getFinanceMenu = (t: TFunction): MenuGroup[] => [
 function FinanceContent() {
   const { profile } = useAuth();
   const { t } = useLanguage();
-  const { navigationData, clearNavigationData } = useNavigation();
+  const { navigationData, clearNavigationData, setNavigationData, setCurrentPage } = useNavigation();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -186,6 +186,7 @@ function FinanceContent() {
   const [payInvoice, setPayInvoice] = useState<{ id: string; invoice_number: string; supplier_id: string; balance_amount: number } | null>(null);
   const [payExpenseBill, setPayExpenseBill] = useState<{ id: string; supplier_id: string | null; staff_id?: string | null; balance_amount: number } | null>(null);
   const [focusExpenseId, setFocusExpenseId] = useState<string | null>(null);
+  const [focusPurchaseInvoiceId, setFocusPurchaseInvoiceId] = useState<string | null>(null);
   const [focusReceiptId, setFocusReceiptId] = useState<string | null>(null);
   const [focusPaymentId, setFocusPaymentId] = useState<string | null>(null);
   const [focusJournalId, setFocusJournalId] = useState<string | null>(null);
@@ -271,8 +272,14 @@ function FinanceContent() {
     } else if (sourceModule === 'bank_reconciliation') {
       const { data } = await supabase.from('bank_statement_lines').select('bank_account_id').eq('id', referenceId).maybeSingle();
       if (data?.bank_account_id) handleOpenBankReconciliation(data.bank_account_id, referenceId);
+    } else if (sourceModule === 'purchase' || sourceModule === 'purchase_invoice' || sourceModule === 'purchase_invoices') {
+      setFocusPurchaseInvoiceId(referenceId);
+      setActiveTab('purchase');
+    } else if (sourceModule === 'sales' || sourceModule === 'sales_invoice' || sourceModule === 'sales_invoices' || sourceModule === 'sales_invoice_cogs') {
+      setNavigationData({ sourceType: 'sales_invoice', invoiceId: referenceId });
+      setCurrentPage('sales');
     }
-  }, [handleOpenBankReconciliation, setActiveTab]);
+  }, [handleOpenBankReconciliation, setActiveTab, setCurrentPage, setNavigationData]);
 
   const financeMenu = useMemo(() => {
     if (!t || !t.finance) return [];
@@ -359,7 +366,7 @@ function FinanceContent() {
   const renderContent = () => {
     switch (activeTab) {
       case 'purchase':
-        return <PurchaseInvoiceManager canManage={canManage} onPayInvoice={handlePayInvoice} />;
+        return <PurchaseInvoiceManager canManage={canManage} onPayInvoice={handlePayInvoice} initialViewInvoiceId={focusPurchaseInvoiceId} onInitialViewHandled={() => setFocusPurchaseInvoiceId(null)} />;
       case 'receipt':
         return <ReceiptVoucherManager canManage={canManage} initialViewVoucherId={focusReceiptId} onInitialViewHandled={() => setFocusReceiptId(null)} />;
       case 'payment':

@@ -1273,6 +1273,24 @@ export function Sales() {
     setViewModalOpen(true);
   };
 
+  useEffect(() => {
+    if (navigationData?.sourceType !== 'sales_invoice' || !navigationData.invoiceId) return;
+    const openSourceInvoice = async () => {
+      const { data, error } = await supabase
+        .from('sales_invoices')
+        .select('*, customers(company_name)')
+        .eq('id', String(navigationData.invoiceId))
+        .maybeSingle();
+      if (error) {
+        console.error('Error opening journal source sales invoice:', error);
+      } else if (data) {
+        await handleView(data as SalesInvoice);
+      }
+      clearNavigationData();
+    };
+    void openSourceInvoice();
+  }, [navigationData, clearNavigationData]);
+
   const handleEdit = async (invoice: SalesInvoice) => {
     setEditingInvoice(invoice);
     setFormData({

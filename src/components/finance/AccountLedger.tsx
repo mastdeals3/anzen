@@ -12,6 +12,7 @@ interface AccountLedger {
   entry_number: string;
   source_module: string | null;
   reference_number: string | null;
+  counterpart: string;
   // canonical_number: the human-readable voucher / transaction number that
   // matches what the source module (Expenses / Petty Cash / Vouchers) shows.
   // Falls back to entry_number when no source-side voucher exists.
@@ -155,6 +156,29 @@ export function AccountLedger({ initialCode, onCodeConsumed, onOpenJournal }: Ac
         return a.line_number - b.line_number;
       });
 
+      const journalIds = Array.from(new Set(sortedData.map((line: any) => line.journal_entries.id)));
+      const counterpartByJournal = new Map<string, string>();
+      if (journalIds.length > 0) {
+        const { data: counterpartLines, error: counterpartError } = await supabase
+          .from('journal_entry_lines')
+          .select('journal_entry_id, account_id, chart_of_accounts(code, name)')
+          .in('journal_entry_id', journalIds)
+          .neq('account_id', selectedAccount.id)
+          .order('line_number');
+        if (counterpartError) throw counterpartError;
+
+        const namesByJournal = new Map<string, string[]>();
+        for (const line of counterpartLines || []) {
+          const account = Array.isArray(line.chart_of_accounts) ? line.chart_of_accounts[0] : line.chart_of_accounts;
+          if (!account) continue;
+          const label = `${account.code} — ${account.name}`;
+          const labels = namesByJournal.get(line.journal_entry_id) || [];
+          if (!labels.includes(label)) labels.push(label);
+          namesByJournal.set(line.journal_entry_id, labels);
+        }
+        namesByJournal.forEach((labels, journalId) => counterpartByJournal.set(journalId, labels.join(' / ')));
+      }
+
       let runningBalance = opening;
       const baseLedger = sortedData.map((line: any) => {
         const entry = line.journal_entries;
@@ -175,6 +199,7 @@ export function AccountLedger({ initialCode, onCodeConsumed, onOpenJournal }: Ac
           entry_number: entry.entry_number,
           source_module: entry.source_module,
           reference_number: entry.reference_number,
+          counterpart: counterpartByJournal.get(entry.id) || '—',
           // Default to entry_number; resolveJournalCanonicalNumbers will
           // upgrade this to the source module's voucher number when one exists.
           canonical_number: entry.entry_number,
@@ -324,13 +349,14 @@ export function AccountLedger({ initialCode, onCodeConsumed, onOpenJournal }: Ac
   const exportToCSV = () => {
     if (!selectedAccount || ledgerData.length === 0) return;
 
-    const headers = ['Date', 'Number', 'Type', 'Account', 'Currency', 'Description', 'Debit', 'Credit', 'Balance', 'Linked Ref'];
+    const headers = ['Date', 'Number', 'Type', 'Account', 'Counterpart', 'Currency', 'Description', 'Debit', 'Credit', 'Balance', 'Linked Ref'];
     const accountLabel = `${selectedAccount.code} - ${selectedAccount.name}`;
     const rows = ledgerData.map(line => [
       line.entry_date,
       line.canonical_number,
       sourceLabel(line.source_module),
       accountLabel,
+      line.counterpart,
       displayCurrency,
       line.description || '',
       line.debit ? formatCurrency(line.debit, displayCurrency) : '',
@@ -483,6 +509,7 @@ export function AccountLedger({ initialCode, onCodeConsumed, onOpenJournal }: Ac
                     <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase">Date</th>
                     <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase">Voucher No</th>
                     <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase">Type</th>
+                    <th className="px-1.5 py-1 text-left text-xs font-medium text-gray-700 uppercase">Counterpart</th>
                     <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-700 uppercase">Debit</th>
                     <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-700 uppercase">Credit</th>
                     <th className="px-1.5 py-1 text-right text-xs font-medium text-gray-700 uppercase">Balance</th>
@@ -507,6 +534,9 @@ export function AccountLedger({ initialCode, onCodeConsumed, onOpenJournal }: Ac
                           {sourceLabel(line.source_module)}
                         </span>
                       </td>
+                      <td className="px-1.5 py-1 text-gray-600 text-xs max-w-xs truncate" title={line.counterpart}>
+                        {line.counterpart}
+                      </td>
                       <td className="px-1.5 py-1 text-right whitespace-nowrap text-blue-600">
                         {line.debit > 0 ? formatCurrency(line.debit, displayCurrency) : ''}
                       </td>
@@ -526,7 +556,7 @@ export function AccountLedger({ initialCode, onCodeConsumed, onOpenJournal }: Ac
                 </tbody>
                 <tfoot className="bg-gray-50 border-t-2 border-gray-200 font-bold">
                   <tr>
-                    <td colSpan={3} className="px-1.5 py-1 text-right">Total:</td>
+                    <td colSpan={4} className="px-1.5 py-1 text-right">Total:</td>
                     <td className="px-1.5 py-1 text-right text-blue-700">
                       {formatCurrency(totals.debit, displayCurrency)}
                     </td>
@@ -536,7 +566,7 @@ export function AccountLedger({ initialCode, onCodeConsumed, onOpenJournal }: Ac
                     <td colSpan={2}></td>
                   </tr>
                   <tr>
-                    <td colSpan={5} className="px-1.5 py-1 text-right">Closing Balance:</td>
+                    <td colSpan={6} className="px-1.5 py-1 text-right">Closing Balance:</td>
                     <td className="px-1.5 py-1 text-right">
                       <span className={closingBalance >= 0 ? 'text-green-700' : 'text-red-700'}>
                         {formatCurrency(Math.abs(closingBalance), displayCurrency)}
