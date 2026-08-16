@@ -169,6 +169,7 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
     if (error) throw error;
 
     return (lines || []).map((line: any) => ({
+      journal_entry_id: line.journal_entry_id,
       date: line.entry_date,
       voucher_no: line.entry_number,
       account_name: accountMap.get(line.line_account_id)?.name,
@@ -214,6 +215,7 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
     if (error) throw error;
 
     return (lines || []).map((line: any) => ({
+      journal_entry_id: line.journal_entry_id,
       date: line.entry_date,
       voucher_no: line.entry_number,
       account_name: accountMap.get(line.line_account_id)?.name,
@@ -379,6 +381,7 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
     const result = lines.map((line: any) => {
       const account = accountMap.get(line.line_account_id);
       return {
+        journal_entry_id: line.journal_entry_id,
         account_code: account?.code,
         account_name: account?.name,
         entry_date: line.entry_date,
@@ -947,7 +950,11 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
                 {selectedReport === 'cash_ledger' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
                     <td className="px-1.5 py-1 text-slate-900">{row.date}</td>
-                    <td className="px-1.5 py-1 text-slate-900">{row.voucher_no}</td>
+                    <td className="px-1.5 py-1 text-slate-900">
+                      <button type="button" onClick={() => row.journal_entry_id && onOpenJournal?.(row.journal_entry_id)} className="font-mono text-blue-700 hover:underline">
+                        {row.voucher_no}
+                      </button>
+                    </td>
                     <td className="px-1.5 py-1 text-slate-900">{row.account_name}</td>
                     <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
                     <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
@@ -957,7 +964,11 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
                 {selectedReport === 'bank_ledger' && reportData.slice(0, 100).map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
                     <td className="px-1.5 py-1 text-slate-900">{row.date}</td>
-                    <td className="px-1.5 py-1 text-slate-900">{row.voucher_no}</td>
+                    <td className="px-1.5 py-1 text-slate-900">
+                      <button type="button" onClick={() => row.journal_entry_id && onOpenJournal?.(row.journal_entry_id)} className="font-mono text-blue-700 hover:underline">
+                        {row.voucher_no}
+                      </button>
+                    </td>
                     <td className="px-1.5 py-1 text-slate-900">{row.account_name}</td>
                     <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
                     <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
@@ -986,7 +997,11 @@ export function CAReports({ onOpenJournal }: CAReportsProps) {
                     <td className="px-1.5 py-1 text-slate-900 font-mono">{row.account_code}</td>
                     <td className="px-1.5 py-1 text-slate-900">{row.account_name}</td>
                     <td className="px-1.5 py-1 text-slate-900">{row.entry_date}</td>
-                    <td className="px-1.5 py-1 text-slate-900">{row.voucher_number}</td>
+                    <td className="px-1.5 py-1 text-slate-900">
+                      <button type="button" onClick={() => row.journal_entry_id && onOpenJournal?.(row.journal_entry_id)} className="font-mono text-blue-700 hover:underline">
+                        {row.voucher_number}
+                      </button>
+                    </td>
                     <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.debit || 0).toFixed(2)}</td>
                     <td className="px-1.5 py-1 text-right text-slate-900">{parseFloat(row.credit || 0).toFixed(2)}</td>
                     <td className="px-1.5 py-1 text-slate-600">{row.description}</td>
