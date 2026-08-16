@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { Modal } from '../Modal';
+import { EmailComposer } from './EmailComposer';
+import { Mail, Plus, UserRoundCheck, CalendarPlus } from 'lucide-react';
+import { showToast } from '../ToastNotification';
 
 type Inquiry = {
   id: string;
@@ -20,6 +25,8 @@ type Inquiry = {
   offered_price_currency?: string | null;
   delivery_date?: string | null;
   delivery_terms?: string | null;
+  coa_required?: boolean | null;
+  sample_required?: boolean | null;
   assigned_to?: string | null;
   customer_id?: string | null;    // FK to customers (ERP) — only when promoted
   crm_contact_id?: string | null; // FK to crm_contacts — the CRM prospect link
@@ -57,6 +64,7 @@ const prettyStatus = (s: StatusKey) => s.replaceAll('_', ' ').replace(/\b\w/g, (
 
 export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
   const { setCurrentPage, setNavigationData } = useNavigation();
+  const { profile } = useAuth();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [nextFollowUp, setNextFollowUp] = useState<string | null>(null);
@@ -68,6 +76,9 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
   const [documents, setDocuments] = useState<any[]>([]);
   const [requirements, setRequirements] = useState<any[]>([]);
   const [assigneeName, setAssigneeName] = useState<string>('Unassigned');
+  const [productAvailability, setProductAvailability] = useState<{ matched: boolean; available: number; batches: number } | null>(null);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [promoting, setPromoting] = useState(false);
 
   const [filters, setFilters] = useState({ customer: '', product: '', status: 'all', assigned: '', nextDate: '' });
 
@@ -123,6 +134,14 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
       setRequirements(requirementsRes.data || []);
       setAssigneeName((assigneeRes as any)?.data?.full_name || 'Unassigned');
 
+      const { data: matchedProducts } = await supabase.from('products').select('id').ilike('product_name', selected.product_name.trim()).limit(2);
+      if ((matchedProducts || []).length === 1) {
+        const { data: batches } = await supabase.from('batches').select('current_stock,reserved_stock').eq('product_id', matchedProducts![0].id).eq('is_active', true);
+        setProductAvailability({ matched: true, available: (batches || []).reduce((sum: number, b: any) => sum + Math.max(0, Number(b.current_stock || 0) - Number(b.reserved_stock || 0)), 0), batches: (batches || []).length });
+      } else {
+        setProductAvailability({ matched: false, available: 0, batches: 0 });
+      }
+
       const timelineItems: TimelineItem[] = [
         ...activityRows.map((a: any) => ({ id: a.id, type: 'activity' as const, title: a.subject || a.activity_type || 'Activity', detail: a.description, at: a.created_at })),
         ...emailRows.map((e: any) => ({ id: e.id, type: 'email' as const, title: e.subject || 'Email', detail: `${e.from_email || ''}`, at: e.sent_date || e.created_at })),
@@ -150,6 +169,98 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
   }, [selected?.id]);
 
   const overdue = nextFollowUp ? new Date(nextFollowUp) < new Date() : false;
+  const possibleSignals = selected ? [
+    ...(orders.length === 0 && ['quoted', 'price_quoted'].includes((selected.pipeline_status || selected.status || '').toLowerCase()) ? ['Repeated/quoted inquiry has no linked order yet'] : []),
+    ...(selected.coa_required && documents.length === 0 ? ['COA requested; no linked document is recorded'] : []),
+    ...(selected.sample_required && documents.length === 0 ? ['Sample requested; no linked document is recorded'] : []),
+    ...(productAvailability?.matched && productAvailability.available <= 0 ? ['Matched product has no available stock'] : []),
+    ...(lastContactAt && (Date.now() - new Date(lastContactAt).getTime()) / 86400000 > 14 ? ['More than 14 days since recorded customer activity'] : []),
+  ] : [];
+
+  const createReminder = async () => {
+    if (!selected) return;
+    const due = new Date();
+    due.setDate(due.getDate() + 1);
+    const { data: auth } = await supabase.auth.getUser();
+    if (!auth.user) return;
+    const { error } = await supabase.from('crm_reminders').insert({
+      inquiry_id: selected.id,
+      reminder_type: 'follow_up',
+      title: `Follow up: ${selected.company_name} — ${selected.product_name}`,
+      description: `Review inquiry ${selected.inquiry_number} and contact the customer.`,
+      due_date: due.toISOString(),
+      assigned_to: selected.assigned_to || auth.user.id,
+      created_by: auth.user.id,
+    });
+    if (error) {
+      showToast({ type: 'error', title: 'Reminder', message: error.message });
+      return;
+    }
+    showToast({ type: 'success', title: 'Reminder created', message: 'Follow-up added for tomorrow.' });
+    setNextFollowUp(due.toISOString());
+  };
+
+  const promoteOrLinkCustomer = async () => {
+    if (!selected || promoting) return;
+    setPromoting(true);
+    try {
+      const contactId = selected.crm_contact_id;
+      const { data: matches, error: matchError } = await supabase
+        .from('customers')
+        .select('id,company_name,contact_person,email,phone,address,city,country')
+        .ilike('company_name', selected.company_name.trim());
+      if (matchError) throw matchError;
+      if ((matches || []).length > 1) {
+        showToast({ type: 'error', title: 'Manual review required', message: 'More than one ERP customer matches this company name.' });
+        return;
+      }
+      let customerId = matches?.[0]?.id;
+      if (!customerId) {
+        const { data: auth } = await supabase.auth.getUser();
+        const { data: created, error: createError } = await supabase.from('customers').insert({
+          company_name: selected.company_name.trim(),
+          contact_person: selected.contact_person || null,
+          email: selected.contact_email || null,
+          phone: selected.contact_phone || null,
+          country: 'Indonesia',
+          city: 'Jakarta Pusat',
+          created_by: auth.user?.id || profile?.id,
+          is_active: true,
+        }).select('id').single();
+        if (createError) throw createError;
+        customerId = created.id;
+      }
+      const { error: inquiryError } = await supabase.from('crm_inquiries').update({ customer_id: customerId }).eq('id', selected.id);
+      if (inquiryError) throw inquiryError;
+      if (contactId) {
+        await supabase.from('crm_contacts').update({ erp_customer_id: customerId }).eq('id', contactId);
+        await supabase.from('crm_inquiries').update({ customer_id: customerId }).eq('crm_contact_id', contactId).is('customer_id', null);
+      }
+      showToast({ type: 'success', title: 'Customer linked', message: 'This CRM contact now uses the ERP customer identity.' });
+    } catch (error: any) {
+      showToast({ type: 'error', title: 'Customer link failed', message: error.message || 'Please review the customer master.' });
+    } finally {
+      setPromoting(false);
+    }
+  };
+
+  const createSalesOrder = () => {
+    if (!selected?.customer_id) return;
+    setNavigationData({
+      createSalesOrder: true,
+      salesOrderPrefill: {
+        inquiry_id: selected.id,
+        customer_id: selected.customer_id,
+        product_name: selected.product_name,
+        quantity: Number(selected.quantity) || 1,
+        unit_price: Number(selected.offered_price) || 0,
+        quoted_usd_unit_price: selected.offered_price_currency === 'USD' ? Number(selected.offered_price) || null : null,
+        expected_delivery_date: selected.delivery_date || '',
+        notes: `Created from inquiry ${selected.inquiry_number}${selected.delivery_terms ? ` · ${selected.delivery_terms}` : ''}`,
+      },
+    });
+    setCurrentPage('sales-orders');
+  };
 
   return <div className="space-y-3">
     <div className="grid grid-cols-1 md:grid-cols-5 gap-2 bg-white border rounded-lg p-2">
@@ -186,29 +297,10 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
             <div className={`text-xs px-2 py-1 rounded-full ${overdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{nextFollowUp ? `Next: ${new Date(nextFollowUp).toLocaleDateString()}` : 'No follow-up'}</div>
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            {normalizeStatus(selected.pipeline_status || selected.status) === 'won' && selected.customer_id && (
-              <button
-                className="px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium"
-                onClick={() => {
-                  setNavigationData({
-                    createSalesOrder: true,
-                    salesOrderPrefill: {
-                      customer_id: selected.customer_id,
-                      product_name: selected.product_name,
-                      quantity: Number(selected.quantity) || 1,
-                      unit_price: Number(selected.offered_price) || 0,
-                      quoted_usd_unit_price: selected.offered_price_currency === 'USD' ? Number(selected.offered_price) || null : null,
-                      expected_delivery_date: selected.delivery_date || '',
-                      notes: `Created from won inquiry ${selected.inquiry_number}${selected.delivery_terms ? ` · ${selected.delivery_terms}` : ''}`,
-                    },
-                  });
-                  setCurrentPage('sales-orders');
-                }}
-              >Create Sales Order</button>
-            )}
-            {normalizeStatus(selected.pipeline_status || selected.status) === 'won' && !selected.customer_id && (
-              <span className="px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200">Promote this prospect to a customer before creating an SO</span>
-            )}
+            {selected.contact_email && <button onClick={() => setEmailOpen(true)} className="px-2 py-1 border rounded inline-flex items-center gap-1"><Mail className="w-3 h-3" />Send Email</button>}
+            <button onClick={createReminder} className="px-2 py-1 border rounded inline-flex items-center gap-1"><CalendarPlus className="w-3 h-3" />Create Reminder</button>
+            {!selected.customer_id && <button onClick={promoteOrLinkCustomer} disabled={promoting} className="px-2 py-1 border border-amber-300 text-amber-700 rounded inline-flex items-center gap-1"><UserRoundCheck className="w-3 h-3" />{promoting ? 'Linking…' : 'Promote / Link Customer'}</button>}
+            {normalizeStatus(selected.pipeline_status || selected.status) === 'won' && selected.customer_id && <button onClick={createSalesOrder} className="px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium inline-flex items-center gap-1"><Plus className="w-3 h-3" />Create Sales Order</button>}
           </div>
 
           <div className="grid md:grid-cols-2 gap-3 mt-3 text-sm">
@@ -230,6 +322,14 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
                 <div className="text-xs text-amber-700">No ERP linkage — promote to an ERP Customer to track requirements.</div>
               )}
             </div>
+            <div className="border rounded p-2">
+              <div className="font-medium">Product intelligence</div>
+              <div className="text-xs text-gray-600">{productAvailability?.matched ? `${productAvailability.available.toLocaleString()} available across ${productAvailability.batches} active batch(es)` : 'No unambiguous product match — keeping the inquiry product as free text.'}</div>
+            </div>
+            <div className="border rounded p-2">
+              <div className="font-medium">Possible signals</div>
+              {possibleSignals.length ? possibleSignals.map(signal => <div key={signal} className="text-xs text-amber-700">• {signal}</div>) : <div className="text-xs text-gray-500">No evidence-based conversion signal yet.</div>}
+            </div>
           </div>
 
           <div className="mt-3">
@@ -243,6 +343,7 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
           </div>
         </>}
       </div>
+      {selected && emailOpen && <Modal isOpen={emailOpen} onClose={() => setEmailOpen(false)} title="Send Email"><EmailComposer inquiry={selected as any} contactId={selected.crm_contact_id} onClose={() => setEmailOpen(false)} onSent={() => setEmailOpen(false)} /></Modal>}
     </div>
   </div>;
 }

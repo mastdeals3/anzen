@@ -83,6 +83,8 @@ interface SalesOrderFormProps {
     notes?: string;
     currency?: string;
     commercial_usd_to_idr_rate?: number | null;
+    customer_po_number?: string;
+    inquiry_id?: string;
   };
   onSuccess: () => void;
   onCancel: () => void;
@@ -176,6 +178,7 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
       setFormData(prev => ({
         ...prev,
         customer_id: prefill.customer_id || '',
+        customer_po_number: prefill.customer_po_number || '',
         expected_delivery_date: prefill.expected_delivery_date || '',
         notes: prefill.notes || '',
         currency: prefill.currency || 'IDR',
@@ -185,19 +188,7 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
       if (resolvedProductId) {
         const quantity = Number(prefill.quantity) || 1;
         const unitPrice = Number(prefill.unit_price) || 0;
-        setItems([{
-          product_id: resolvedProductId,
-          quantity,
-          unit_price: unitPrice,
-          discount_percent: 0,
-          discount_amount: 0,
-          tax_percent: 0,
-          tax_amount: 0,
-          line_total: quantity * unitPrice,
-          item_delivery_date: prefill.expected_delivery_date || '',
-          notes: '',
-          quoted_usd_unit_price: prefill.quoted_usd_unit_price ?? null,
-        }]);
+        setItems([{ product_id: resolvedProductId, quantity, unit_price: unitPrice, discount_percent: 0, discount_amount: 0, tax_percent: 0, tax_amount: 0, line_total: quantity * unitPrice, item_delivery_date: prefill.expected_delivery_date || '', notes: '', quoted_usd_unit_price: prefill.quoted_usd_unit_price ?? null }]);
         fetchStockInfo(resolvedProductId);
       }
     }
@@ -497,6 +488,7 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
             tax_amount: tax,
             total_amount: total,
             updated_at: new Date().toISOString(),
+            inquiry_id: (existingOrder as any).inquiry_id || prefill?.inquiry_id || null,
           })
           .eq('id', existingOrder.id);
 
@@ -564,6 +556,7 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
             tax_amount: tax,
             total_amount: total,
             created_by: user?.id,
+            inquiry_id: prefill?.inquiry_id || null,
           })
           .select()
           .single();
@@ -590,6 +583,14 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
           .insert(itemsToInsert);
 
         if (itemsError) throw itemsError;
+
+        if (prefill?.inquiry_id) {
+          const { error: inquiryLinkError } = await supabase
+            .from('crm_inquiries')
+            .update({ converted_to_order: soData.id, pipeline_status: 'won' })
+            .eq('id', prefill.inquiry_id);
+          if (inquiryLinkError) console.warn('Sales order saved but CRM inquiry link could not be updated:', inquiryLinkError.message);
+        }
 
         showToast({ type: 'success', title: 'Success', message: `Sales order created successfully${submitForApproval ? ' and submitted for approval' : ''}!` });
       }

@@ -82,6 +82,7 @@ interface SalesOrder {
   total_amount: number;
   created_by: string;
   created_at: string;
+  inquiry_id?: string | null;
   approved_by?: string;
   approved_at?: string;
   rejected_by?: string;

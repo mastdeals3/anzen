@@ -20,6 +20,7 @@ export function LostReasonModal({
   onSuccess,
 }: LostReasonModalProps) {
   const [lostReason, setLostReason] = useState('');
+  const [lostReasonCode, setLostReasonCode] = useState('');
   const [competitorName, setCompetitorName] = useState('');
   const [competitorPrice, setCompetitorPrice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -38,6 +39,7 @@ export function LostReasonModal({
       const updateData: Record<string, unknown> = {
         pipeline_status: 'lost',
         lost_reason: lostReason.trim(),
+        lost_reason_code: lostReasonCode || null,
         lost_at: new Date().toISOString(),
       };
 
@@ -69,6 +71,7 @@ export function LostReasonModal({
 
   const resetForm = () => {
     setLostReason('');
+    setLostReasonCode('');
     setCompetitorName('');
     setCompetitorPrice('');
   };
@@ -89,6 +92,14 @@ export function LostReasonModal({
             <p className="font-medium">You are about to mark this inquiry as lost.</p>
             <p className="mt-1 text-red-700">This will move it to the Archive. Please provide details below.</p>
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Primary signal <span className="text-gray-400">(optional)</span></label>
+          <select value={lostReasonCode} onChange={(e) => setLostReasonCode(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+            <option value="">Select a signal…</option>
+            <option value="price">Price</option><option value="availability">Availability</option><option value="lead_time">Lead time</option><option value="specification">Specification</option><option value="customer_postponed">Customer postponed</option><option value="competitor">Competitor</option><option value="no_response">No response</option><option value="sample_coa">Sample / COA issue</option><option value="other">Other</option>
+          </select>
         </div>
 
         <div>
