@@ -1015,7 +1015,9 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
             </table>
             {reportData.length > 100 && (
               <div className="text-center py-4 text-slate-500 text-sm">
-                Showing first 100 records. Export to Excel to see all {reportData.length} records.
+                {['cash_ledger', 'bank_ledger', 'general_ledger'].includes(selectedReport)
+                  ? `Showing all ${reportData.length} records.`
+                  : `Showing first 100 records. Export to Excel to see all ${reportData.length} records.`}
               </div>
             )}
           </div>

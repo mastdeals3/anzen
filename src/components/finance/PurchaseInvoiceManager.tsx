@@ -140,9 +140,27 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice, initialViewInv
 
   useEffect(() => {
     if (!initialViewInvoiceId || loading) return;
-    const invoice = invoices.find(item => item.id === initialViewInvoiceId);
-    if (invoice) void handleOpenView(invoice);
-    onInitialViewHandled?.();
+    const openInitialInvoice = async () => {
+      const invoice = invoices.find(item => item.id === initialViewInvoiceId);
+      if (invoice) {
+        await handleOpenView(invoice);
+      } else {
+        // Journal drill-down must open the source document even when its date
+        // is outside the normal, globally filtered purchase list.
+        const { data, error } = await supabase
+          .from('purchase_invoices')
+          .select('*, suppliers(company_name, pkp_status)')
+          .eq('id', initialViewInvoiceId)
+          .maybeSingle();
+        if (error) {
+          console.error('Error opening journal source purchase invoice:', error);
+        } else if (data) {
+          await handleOpenView(data as PurchaseInvoice);
+        }
+      }
+      onInitialViewHandled?.();
+    };
+    void openInitialInvoice();
   }, [initialViewInvoiceId, loading, invoices, onInitialViewHandled]);
 
   useEffect(() => {

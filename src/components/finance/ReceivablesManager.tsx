@@ -432,9 +432,9 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       key: 'due_date',
       label: 'Due Date',
       render: (_val: any, inv: SalesInvoice) => {
-        const dueDate = new Date(inv.due_date);
-        const today = new Date();
-        const isOverdue = dueDate < today && inv.payment_status !== 'paid';
+        const dueDate = new Date(`${inv.due_date}T00:00:00`);
+        const asOfDate = new Date(`${dateRange.endDate}T00:00:00`);
+        const isOverdue = dueDate < asOfDate && inv.payment_status !== 'paid';
         return (
           <span className={isOverdue ? 'text-red-600 font-semibold' : ''}>
             {formatDate(inv.due_date)}
