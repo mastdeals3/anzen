@@ -93,83 +93,9 @@ export function AccountLedger({ initialCode, onCodeConsumed }: AccountLedgerProp
       const isDebitNormal = selectedAccount.normal_balance === 'debit' ||
         (!selectedAccount.normal_balance && (selectedAccount.account_type === 'asset' || selectedAccount.account_type === 'expense'));
 
-      // Check if this COA is linked to a bank account — if so, use bank_statement_lines (same as Bank Ledger)
-      const { data: bankAccountData } = await supabase
-        .from('bank_accounts')
-        .select('id, opening_balance, opening_balance_date, currency')
-        .eq('coa_id', selectedAccount.id)
-        .maybeSingle();
-
-      if (bankAccountData) {
-        setDisplayCurrency(bankAccountData.currency || 'IDR');
-        // === BANK ACCOUNT: mirror exactly what Bank Ledger does ===
-        const storedOpeningBalance = Number(bankAccountData.opening_balance) || 0;
-        const openingBalanceDate = bankAccountData.opening_balance_date || '2025-01-01';
-
-        let effectiveOpeningBalance = storedOpeningBalance;
-
-        // Sum all bank statement lines before the filter start date (from opening balance date onwards)
-        if (dateRange.startDate > openingBalanceDate) {
-          const { data: priorLines } = await supabase
-            .from('bank_statement_lines')
-            .select('debit_amount, credit_amount')
-            .eq('bank_account_id', bankAccountData.id)
-            .gte('transaction_date', openingBalanceDate)
-            .lt('transaction_date', dateRange.startDate);
-
-          priorLines?.forEach((line: any) => {
-            effectiveOpeningBalance += Number(line.credit_amount || 0) - Number(line.debit_amount || 0);
-          });
-        }
-
-        setOpeningBalance(effectiveOpeningBalance);
-
-        // Get bank statement lines for the date range
-        const endDatePlusOne = new Date(dateRange.endDate);
-        endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
-        const endDateStr = endDatePlusOne.toISOString().split('T')[0];
-
-        const { data: bankLines } = await supabase
-          .from('bank_statement_lines')
-          .select('id, transaction_date, description, reference, debit_amount, credit_amount, matched_expense_id, matched_receipt_id, matched_payment_id, matched_entry_id')
-          .eq('bank_account_id', bankAccountData.id)
-          .gte('transaction_date', dateRange.startDate)
-          .lt('transaction_date', endDateStr)
-          .order('transaction_date');
-
-        let runningBalance = effectiveOpeningBalance;
-        const baseLedger = (bankLines || []).map((line: any) => {
-          const debit = Number(line.debit_amount || 0);
-          const credit = Number(line.credit_amount || 0);
-          runningBalance += credit - debit;
-          return {
-            id: line.id,
-            line_number: 0,
-            journal_entry_id: '',
-            entry_date: line.transaction_date,
-            entry_number: line.reference || '-',
-            source_module: 'bank',
-            reference_number: line.reference,
-            canonical_number: line.reference || '-',
-            description: line.description || 'Bank Transaction',
-            debit,
-            credit,
-            balance: runningBalance,
-            // raw fields used downstream to resolve the canonical voucher number
-            _matched_expense_id: line.matched_expense_id || null,
-            _matched_receipt_id: line.matched_receipt_id || null,
-            _matched_payment_id: line.matched_payment_id || null,
-            _matched_entry_id: line.matched_entry_id || null,
-          } as any;
-        });
-
-        const ledgerWithBalance = await resolveBankLineCanonicalNumbers(baseLedger);
-
-        setLedgerData(ledgerWithBalance);
-        return;
-      }
-
-      // === NON-BANK ACCOUNT: use journal_entry_lines as before ===
+      // Account Ledger is the General Ledger: it always reads posted journal
+      // lines. Bank statements remain available in Bank Ledger/Reconciliation
+      // as external evidence and must not replace the accounting books here.
       setDisplayCurrency('IDR');
 
       // Get opening balance (all transactions before start date)
