@@ -414,7 +414,7 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
 
       setModalOpen(false);
       resetForm();
-      loadVouchers();
+      await loadVouchers();
     } catch (error: any) {
       console.error('Error saving voucher:', error);
       showToast({ type: 'error', title: 'Error', message: 'Failed to save: ' + error.message });
