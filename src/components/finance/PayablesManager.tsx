@@ -503,12 +503,10 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
   const totalExpenseBillsPayable = outstandingExpenseBills.reduce((sum, b) => sum + b.balance_amount, 0);
   const totalPurchaseInvoicesPayable = outstandingPurchaseInvoices.reduce((sum, invoice) => sum + invoice.balance_amount, 0);
 
-  const totalCombinedPayable = totalPayable + totalExpenseBillsPayable + totalPurchaseInvoicesPayable;
-
-  const overdueBills = bills.filter(b => {
-    if (!b.due_date || b.payment_status === 'paid') return false;
-    return new Date(b.due_date) < new Date();
-  });
+  // The AP headline is the canonical as-of view: purchase invoices plus
+  // expense bills. Legacy vendor_bills remain available separately and are
+  // intentionally not mixed into this accounting answer.
+  const totalCombinedPayable = totalExpenseBillsPayable + totalPurchaseInvoicesPayable;
 
   const overdueExpenseBills = outstandingExpenseBills.filter(b => b.days_overdue > 0);
   const overduePurchaseInvoices = outstandingPurchaseInvoices.filter(invoice => invoice.due_date && new Date(invoice.due_date) < new Date(`${dateRange.endDate}T00:00:00`));
@@ -641,7 +639,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
           <div className="flex items-center justify-between gap-1">
             <div>
               <p className="text-[9px] text-orange-600 uppercase tracking-wide">Overdue</p>
-              <p className="text-sm font-bold text-orange-700 font-mono">{overdueBills.length + overdueExpenseBills.length + overduePurchaseInvoices.length}</p>
+              <p className="text-sm font-bold text-orange-700 font-mono">{overdueExpenseBills.length + overduePurchaseInvoices.length}</p>
             </div>
             <AlertCircle className="w-4 h-4 text-orange-400 shrink-0" />
           </div>
