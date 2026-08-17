@@ -138,24 +138,7 @@ const quillModules = {
 
 const quillFormats = ['bold', 'italic', 'underline', 'list', 'bullet', 'link'];
 
-const REQUIRED_TABLE_TAGS = ['table', 'thead', 'tbody', 'tr', 'td'] as const;
-
-function inspectEmailHtml(html: string) {
-  return REQUIRED_TABLE_TAGS.reduce<Record<typeof REQUIRED_TABLE_TAGS[number], boolean>>((acc, tag) => {
-    acc[tag] = new RegExp(`<${tag}(\\s|>|/)`, 'i').test(html);
-    return acc;
-  }, {} as Record<typeof REQUIRED_TABLE_TAGS[number], boolean>);
-}
-
-function logEmailHtmlEvidence(label: string, html: string, extra?: Record<string, unknown>) {
-  const tableTags = inspectEmailHtml(html);
-  console.groupCollapsed(`[quotation-email-debug] ${label}`);
-  console.log('Editor:', 'ReactQuill for general rich text; HTML preview surface for price quotations because ReactQuill/Quill strips table HTML.');
-  console.log('Quill table support:', 'ReactQuill uses Quill. This app has no table module registered and formats omit table/table-row/table-cell, so pasted HTML tables are sanitized/flattened.');
-  console.log('Contains table tags:', tableTags);
-  console.log('HTML:', html);
-  if (extra) console.log('Extra:', extra);
-  console.groupEnd();
+function logEmailHtmlEvidence(_label: string, _html: string, _extra?: Record<string, unknown>) {
 }
 
 function buildSubject(inquiry: Inquiry, _mode: 'price' | 'coa' | 'general', replyTo?: GmailLikeComposerProps['replyTo']): string {
@@ -477,16 +460,14 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       const inquiryIds = allInquiries.map(inq => inq.id);
-      const readWorkflowEvidence = async (label: string) => {
+      const readWorkflowEvidence = async () => {
         const { data, error } = await supabase
           .from('crm_inquiries')
           .select('id,inquiry_number,status,pipeline_status,price_quoted,price_sent_at,quote_status,quote_sent_at,coa_sent,coa_sent_at')
           .in('id', inquiryIds);
         if (error) {
-          console.warn(`[quotation-workflow-debug] ${label} read failed`, error.message);
           return [] as WorkflowEvidenceRow[];
         }
-        console.log(`[quotation-workflow-debug] ${label}`, data);
         return (data || []) as WorkflowEvidenceRow[];
       };
 
@@ -552,7 +533,7 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
       const shouldMarkCoaSent = mode === 'coa' || selectedContainsCoa;
 
       if (toList.length === 0) throw new Error('At least one TO recipient is required.');
-      const beforeWorkflowRows = await readWorkflowEvidence('Before send');
+      const beforeWorkflowRows = await readWorkflowEvidence();
 
       logEmailHtmlEvidence('Actual HTML submitted to send-bulk-email', body, {
         mode,
@@ -563,28 +544,6 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
         selectedCrmDocCount: selectedDocList.length,
         selectedCrmDocIds: selectedDocList.map(doc => doc.id),
       });
-
-      console.groupCollapsed('[quotation-delivery-debug] Frontend payload');
-      console.log('raw CC input:', ccEmail);
-      console.log('parsed CC recipients:', ccList);
-      console.log('raw BCC input:', bccEmail);
-      console.log('parsed BCC recipients:', bccList);
-      console.log('raw TO input:', toEmail);
-      console.log('parsed TO recipients:', toList);
-      console.log('final Gmail recipient list:', finalRecipientList);
-      console.log('selected document ids:', Array.from(selectedCrmDocs));
-      console.log('CRM Docs count shown in UI:', selectedCrmDocs.size);
-      console.log('local attachment count shown in UI:', attachments.length);
-      console.log('selected contains COA document:', selectedContainsCoa);
-      console.log('attachment payload:', attachmentUrls.map(att => ({
-        filename: att.filename,
-        source: att.source,
-        documentId: att.documentId || null,
-        storagePath: att.storagePath,
-        hasSignedUrl: Boolean(att.url),
-      })));
-      console.log('signed URL count:', attachmentUrls.length);
-      console.groupEnd();
 
       // 3. Send via Gmail
       const isIndiaMode = mode === 'india';
@@ -617,16 +576,6 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
           : (fnData?.error || fnErr?.message || 'Failed to send email');
         throw new Error(composedError);
       }
-
-      console.log('[quotation-delivery-debug] Edge function response', {
-        success: fnData.success,
-        messageId: fnData.messageId || null,
-        threadId: fnData.threadId || null,
-        actualRecipientsSent: fnData.actualRecipientsSent || null,
-        gmailMimeAttachmentCount: fnData.gmailMimeAttachmentCount ?? null,
-        gmailStoredAttachmentCount: fnData.gmailStoredAttachmentCount ?? null,
-        attachmentFilenames: fnData.attachmentFilenames || [],
-      });
 
       // 4. Confirmed-delivery workflow completion: delivery log, CRM activity, and durable status fields.
       const allAttachmentPaths = [
@@ -664,13 +613,6 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
       const { error: recipientsError } = await supabase.from('bulk_email_recipients').insert(recipientRows);
       if (recipientsError) throw new Error(`Delivery Log recipients failed: ${recipientsError.message}`);
 
-      console.log('[quotation-workflow-debug] Delivery Log entry created', {
-        campaignId: campaign.id,
-        recipientCount: recipientRows.length,
-        recipients: recipientRows.map(row => row.email),
-        hasAttachments: attachmentUrls.length > 0,
-      });
-
       const activityIds: string[] = [];
       for (const inq of allInquiries) {
         const { data: activityData, error: activityError } = await supabase.from('crm_email_activities').insert([{
@@ -688,11 +630,7 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
         }]).select('id').single();
 
         if (activityError) {
-          console.error('[quotation-workflow-debug] crm_email_activities insert failed; continuing workflow completion', {
-            inquiryId: inq.id,
-            inquiryNumber: inq.inquiry_number,
-            error: activityError.message,
-          });
+          throw new Error(`Email activity log failed for ${inq.inquiry_number}: ${activityError.message}`);
         }
         if (activityData?.id) activityIds.push(activityData.id);
 
@@ -702,7 +640,6 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
             const docType = inferDocumentType(fileName, mode);
             return {
               inquiry_id: inq.id,
-              email_activity_id: activityData?.id || null,
               product_name: inq.product_name,
               make: inq.supplier_name || null,
               document_type: docType,
@@ -715,7 +652,7 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
           });
           const { error: productDocError } = await supabase.from('crm_product_documents').insert(rows);
           if (productDocError) {
-            console.warn('[quotation-workflow-debug] crm_product_documents insert failed; continuing workflow completion', productDocError.message);
+            throw new Error(`Product document save failed: ${productDocError.message}`);
           }
         }
       }
@@ -732,7 +669,7 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
         event_timestamp: quoteSentAt,
       }));
       const { error: timelineError } = await supabase.from('crm_inquiry_timeline').insert(timelineRows);
-      if (timelineError) console.warn('[quotation-workflow-debug] Timeline insert failed', timelineError.message);
+      if (timelineError) throw new Error(`Inquiry timeline failed: ${timelineError.message}`);
 
       const activityLogRows = allInquiries.map(inq => ({
         inquiry_id: inq.id,
@@ -744,7 +681,7 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
         created_by: user.id,
       }));
       const { error: activityLogError } = await supabase.from('crm_activity_logs').insert(activityLogRows);
-      if (activityLogError) console.warn('[quotation-workflow-debug] Activity log insert failed', activityLogError.message);
+      if (activityLogError) throw new Error(`Activity log failed: ${activityLogError.message}`);
 
       // 6. Auto-update inquiry status after confirmed Gmail delivery.
       for (const inq of allInquiries) {
@@ -775,18 +712,6 @@ export function GmailLikeComposer({ isOpen, onClose, inquiry, inquiries, mode = 
           if (updateError) throw new Error(`Status update failed for ${inq.inquiry_number}: ${updateError.message}`);
         }
       }
-
-      const afterWorkflowRows = await readWorkflowEvidence('After send');
-      const persistedWorkflowRows = await readWorkflowEvidence('After page refresh equivalent');
-      console.log('[quotation-workflow-debug] Status transition completed', {
-        before: beforeWorkflowRows,
-        after: afterWorkflowRows,
-        persisted: persistedWorkflowRows,
-        removedFromReplyPending: persistedWorkflowRows.every(row => row.quote_status === 'sent' || Boolean(row.quote_sent_at)),
-        cIndicatorGreen: shouldMarkCoaSent
-          ? persistedWorkflowRows.every(row => Boolean(row.coa_sent_at))
-          : 'not_applicable_no_coa_document_selected',
-      });
 
       onClose();
     } catch (err: any) {

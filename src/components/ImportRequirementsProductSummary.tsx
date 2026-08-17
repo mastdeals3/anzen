@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { ChevronDown, ChevronRight, Package, ExternalLink, Box } from 'lucide-react';
 import { formatDate } from '../utils/dateFormat';
 import { type ImportRequirement, STATUS_OPTIONS } from './ImportRequirementsTable';
@@ -151,10 +151,9 @@ export function ImportRequirementsProductSummary({
             const containerCount = allocatedContainerIds.size;
 
             return (
-              <>
+              <Fragment key={row.product_id}>
                 {/* Summary row — click anywhere to expand */}
                 <tr
-                  key={row.product_id}
                   className="hover:bg-gray-50 cursor-pointer transition-colors"
                   onClick={() => toggleExpand(row.product_id)}
                 >
@@ -306,7 +305,7 @@ export function ImportRequirementsProductSummary({
                     </tr>
                   );
                 })}
-              </>
+              </Fragment>
             );
           })}
         </tbody>

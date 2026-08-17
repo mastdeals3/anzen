@@ -109,13 +109,11 @@ export function EmailListPanel({ onEmailSelect, selectedEmailId }: EmailListPane
     const checkPendingEmail = async () => {
       const pendingEmail = sessionStorage.getItem('pendingEmailForInquiry');
       if (pendingEmail) {
-        console.log('[EmailListPanel] Found pending email in sessionStorage');
         sessionStorage.removeItem('pendingEmailForInquiry');
         document.body.style.cursor = 'wait';
 
         try {
           const emailData = JSON.parse(pendingEmail);
-          console.log('[EmailListPanel] Parsed email data:', emailData);
 
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
@@ -137,26 +135,15 @@ export function EmailListPanel({ onEmailSelect, selectedEmailId }: EmailListPane
               );
 
               if (!shouldReprocess) {
-                console.log('[EmailListPanel] User declined to reprocess existing inquiry');
                 sessionStorage.removeItem('pendingEmailForCommandCenter');
                 return;
               }
-              console.log('[EmailListPanel] User confirmed reprocessing existing inquiry');
             }
-          } catch (error) {
-            console.warn('[EmailListPanel] Could not check for duplicates (continuing anyway):', error);
+          } catch {
+            // Duplicate check is optional; continue parsing the pending email.
           }
 
-          console.log('[EmailListPanel] Calling parse-pharma-email edge function');
           const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-pharma-email`;
-
-          console.log('[EmailListPanel] API URL:', apiUrl);
-          console.log('[EmailListPanel] Request body:', {
-            emailSubject: emailData.subject,
-            emailBody: emailData.body.substring(0, 100) + '...',
-            fromEmail: emailData.fromEmail,
-            fromName: emailData.fromName,
-          });
 
           const response = await fetch(apiUrl, {
             method: 'POST',
@@ -172,8 +159,6 @@ export function EmailListPanel({ onEmailSelect, selectedEmailId }: EmailListPane
             }),
           });
 
-          console.log('[EmailListPanel] Response status:', response.status);
-
           if (!response.ok) {
             const errorText = await response.text();
             console.error('[EmailListPanel] Response error:', errorText);
@@ -181,7 +166,6 @@ export function EmailListPanel({ onEmailSelect, selectedEmailId }: EmailListPane
           }
 
           const result = await response.json();
-          console.log('[EmailListPanel] Parse result:', result);
 
           if (result.success || result.fallbackData) {
             const mockEmail: Email = {
@@ -197,7 +181,6 @@ export function EmailListPanel({ onEmailSelect, selectedEmailId }: EmailListPane
               converted_to_inquiry: null,
             };
 
-            console.log('[EmailListPanel] Calling onEmailSelect with mock email');
             onEmailSelect(mockEmail, result.data || result.fallbackData);
           } else {
             console.error('[EmailListPanel] Parse failed:', result.error);
@@ -209,8 +192,6 @@ export function EmailListPanel({ onEmailSelect, selectedEmailId }: EmailListPane
         } finally {
           document.body.style.cursor = 'default';
         }
-      } else {
-        console.log('[EmailListPanel] No pending email found in sessionStorage');
       }
     };
 

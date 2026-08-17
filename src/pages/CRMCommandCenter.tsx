@@ -62,15 +62,14 @@ function parseDeliveryDate(dateStr: string | undefined | null): string | null {
     if (!isNaN(date.getTime())) {
       return date.toISOString().split('T')[0];
     }
-  } catch (e) {
-    console.warn('Could not parse date:', trimmed);
+  } catch {
+    return null;
   }
 
   return null;
 }
 
 export function CRMCommandCenter() {
-  console.log('[CRMCommandCenter] Component loaded - Dec 7 2025 v1.2'); // Version check
   const { profile } = useAuth();
   const { t } = useLanguage();
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
@@ -79,7 +78,6 @@ export function CRMCommandCenter() {
   const [saving, setSaving] = useState(false);
 
   const handleEmailSelect = (email: Email, data: ParsedEmailData | null) => {
-    console.log('[CRMCommandCenter] handleEmailSelect called', { email, data });
     setSelectedEmail(email);
     setParsedData(data);
     setCreatedInquiry(null);
@@ -98,8 +96,6 @@ export function CRMCommandCenter() {
       let customerId = null;
       // Use only the first email address for lookup if multiple emails provided
       const primaryEmail = formData.contactEmail.split(/[,;]/)[0].trim();
-
-      console.log('[CRMCommandCenter] Looking up customer with primaryEmail:', primaryEmail);
 
       const { data: existingCustomers, error: lookupError } = await supabase
         .from('crm_contacts')
@@ -230,8 +226,6 @@ export function CRMCommandCenter() {
           has_items: false,
         }));
 
-        console.log('[CRMCommandCenter] Inserting multi-product inquiries:', inquiriesToInsert.length, 'items');
-
         const { data: inquiries, error: inquiryError } = await supabase
           .from('crm_inquiries')
           .insert(inquiriesToInsert)
@@ -257,8 +251,6 @@ export function CRMCommandCenter() {
         }
       } else {
         // Single product inquiry
-        console.log('[CRMCommandCenter] Inserting single product inquiry');
-
         const { data: singleInquiry, error: inquiryError } = await supabase
           .from('crm_inquiries')
           .insert([{

@@ -616,13 +616,6 @@ export function BankReconciliationEnhanced({
           .select('id, expense_category, amount, description, expense_date, voucher_number, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items')
           .in('id', expenseIds);
         expenses?.forEach(e => expenseMap.set(e.id, e));
-        // ── TEMP DIAG for expense batch (paired with the block below) ───
-        if (expenses && expenseIds.length !== new Set(expenses.map(e => e.id)).size) {
-          const returnedIds = new Set(expenses.map(e => e.id));
-          const missing = expenseIds.filter(id => !returnedIds.has(id));
-
-          console.warn('[BRE-DIAG] finance_expenses missing:', { requested: expenseIds, returned: [...returnedIds], missing });
-        }
       }
 
       const paymentMap = new Map();
@@ -661,35 +654,7 @@ export function BankReconciliationEnhanced({
             customer_name: (r.customers as any)?.company_name
           });
         });
-        if (receipts && receiptIds.length !== new Set(receipts.map(r => r.id)).size) {
-          const returnedIds = new Set(receipts.map(r => r.id));
-          const missing = receiptIds.filter(id => !returnedIds.has(id));
-
-          console.warn('[BRE-DIAG] receipt_vouchers missing:', { requested: receiptIds, returned: [...returnedIds], missing });
-        }
       }
-
-      // ── TEMP DIAG (bank-recon orphan investigation) ─────────────────────────
-      // Prints requested vs returned vs missing IDs for every batch fetch so we
-      // can see whether an unresolved link is (a) RLS-masked, (b) truly gone,
-      // or (c) something else. Remove once the "TARIKAN TUNAI" row is resolved.
-      const logMissing = (
-        table: string,
-        requested: string[],
-        returned: { id: string }[] | null | undefined,
-      ) => {
-        if (!requested.length) return;
-        const returnedIds = new Set((returned || []).map(r => r.id));
-        const missing = requested.filter(id => !returnedIds.has(id));
-        if (missing.length === 0) return;
-
-        console.warn(`[BRE-DIAG] ${table}: requested=${requested.length}, returned=${returnedIds.size}, missing=${missing.length}`, {
-          table,
-          requestedIds: requested,
-          returnedIds: [...returnedIds],
-          missingIds: missing,
-        });
-      };
 
       // Batch load all fund transfers
       const fundTransferMap = new Map();
@@ -699,19 +664,17 @@ export function BankReconciliationEnhanced({
           .select('id, transfer_number, amount, description, transfer_date, from_account_type, to_account_type')
           .in('id', fundTransferIds);
         fundTransfers?.forEach(f => fundTransferMap.set(f.id, f));
-        logMissing('fund_transfers', fundTransferIds, fundTransfers as any);
       }
 
-      // Batch load all petty cash transactions
+      // Batch load matched petty cash by id. Do not exclude fund-transfer-backed
+      // rows here — that filter hid valid matches and left the UI unresolved.
       const pettyCashMap = new Map();
       if (pettyCashIds.length > 0) {
         const { data: pettyCash } = await supabase
           .from('petty_cash_transactions')
           .select('id, description, amount, transaction_date, transaction_type')
-          .is('fund_transfer_id', null)
           .in('id', pettyCashIds);
         pettyCash?.forEach(p => pettyCashMap.set(p.id, p));
-        logMissing('petty_cash_transactions', pettyCashIds, pettyCash as any);
       }
 
       // Batch load all journal entries (canonical link fallback for display)
@@ -722,7 +685,6 @@ export function BankReconciliationEnhanced({
           .select('id, source_module, reference_id, reference_number, description, entry_date, entry_number')
           .in('id', entryIds);
         entries?.forEach(e => entryMap.set(e.id, e));
-        logMissing('journal_entries', entryIds, entries as any);
       }
 
       // Batch load all tax payments
@@ -772,31 +734,6 @@ export function BankReconciliationEnhanced({
       });
 
       setStatementLines(lines);
-
-      // Auto-diagnose unresolved links: for each affected row, ask the SECURITY
-      // DEFINER RPC why the batch fetch didn't return the target. Print once
-      // per session per line. Fires only when there IS an FK on the row.
-      try {
-        const unresolved = lines.filter(l =>
-          (l.matchedExpenseId && !l.matchedExpense) ||
-          (l.matchedReceiptId && !l.matchedReceipt) ||
-          (l.matchedPaymentId && !l.matchedPayment) ||
-          (l.matchedFundTransferId && !l.matchedFundTransfer) ||
-          (l.matchedPettyCashId && !l.matchedPettyCash) ||
-          (l.matchedEntry && !l.matchedEntryRecord)
-        );
-        const w = (window as any);
-        w.__bre_diag_done = w.__bre_diag_done || new Set();
-        for (const l of unresolved) {
-          if (w.__bre_diag_done.has(l.id)) continue;
-          w.__bre_diag_done.add(l.id);
-          supabase.rpc('diagnose_bank_line_link', { p_bank_line_id: l.id })
-            .then(({ data, error }) => {
-              if (error) console.warn('[BRE-DIAG] rpc error', l.id, error);
-              else console.warn('[BRE-DIAG]', data);
-            });
-        }
-      } catch { /* diag is best-effort */ }
     } catch (err) {
       console.error('Error loading statement lines:', err);
       setStatementLines([]);
@@ -840,7 +777,6 @@ export function BankReconciliationEnhanced({
           const semicolonCount = (firstLines.match(/;/g) || []).length;
           const detectedDelimiter = commaCount > semicolonCount ? ',' : ';';
 
-          console.log(`📊 Detected delimiter: "${detectedDelimiter}" (commas: ${commaCount}, semicolons: ${semicolonCount})`);
 
           const rows: any[][] = [];
           let currentLine = '';
@@ -868,12 +804,6 @@ export function BankReconciliationEnhanced({
             rows.push(cells);
           }
 
-          console.log('📊 CSV rows parsed:', rows.length);
-          console.log('📋 First 10 rows:');
-          rows.slice(0, 10).forEach((row, i) => {
-            console.log(`Row ${i}:`, row);
-          });
-
           // Ask user for the year since CSV only has dd/MM format
           const currentYear = new Date().getFullYear();
           const userYear = prompt(`CSV contains dates without year (e.g., 01/12).\nWhich year is this statement for?`, String(currentYear));
@@ -889,11 +819,9 @@ export function BankReconciliationEnhanced({
 
           const { lines: parsedLines, metadata } = parseStatementDataWithMetadata(rows, statementYear);
 
-          console.log('✅ Parsed lines:', parsedLines.length);
-          console.log('📈 Metadata:', metadata);
 
           if (parsedLines.length === 0) {
-            alert('❌ No transactions found in the CSV file. Check browser console for details.');
+            alert('No transactions found in the CSV file. Check that the file has date and amount columns.');
             return;
           }
 
@@ -1182,22 +1110,10 @@ export function BankReconciliationEnhanced({
           const worksheet = workbook.Sheets[sheetName];
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
 
-          console.log('📊 Raw Excel data rows:', jsonData.length);
-          console.log('📋 First 10 rows:');
-          jsonData.slice(0, 10).forEach((row, i) => {
-            console.log(`Row ${i}:`, row);
-          });
-
           const { lines, metadata } = parseStatementDataWithMetadata(jsonData);
 
-          console.log('✅ Parsed lines:', lines.length);
-          console.log('📈 Metadata:', metadata);
-          if (lines.length > 0) {
-            console.log('🔍 First 3 transactions:', lines.slice(0, 3));
-          }
-
           if (lines.length === 0) {
-            alert('❌ No valid transactions found in the file. Check browser console (F12) for details.');
+            alert('No valid transactions found in the file. Confirm the statement has a date column and transaction rows.');
             return;
           }
 
@@ -1388,19 +1304,12 @@ export function BankReconciliationEnhanced({
           (rowStr.includes('keterangan') || rowStr.includes('description') || rowStr.includes('desc') ||
            rowStr.includes('mutasi') || rowStr.includes('amount') || rowStr.includes('saldo') || rowStr.includes('balance'))) {
         headerRowIdx = i;
-        console.log(`✅ Found header at row ${i}:`, row);
         break;
       }
     }
 
-    console.log('🔍 Header row index:', headerRowIdx);
 
     if (headerRowIdx === -1) {
-      console.error('❌ Could not find column headers');
-      console.log('📋 All rows checked:');
-      rows.slice(0, 20).forEach((r, i) => {
-        console.log(`  Row ${i}:`, r);
-      });
       return { lines, metadata };
     }
 
@@ -1419,22 +1328,14 @@ export function BankReconciliationEnhanced({
       if (cellStr.includes('saldo') || cellStr.includes('balance')) balanceCol = idx;
     });
 
-    console.log('📍 Column positions:', { dateCol, descCol, branchCol, amountCol, debitCol, creditCol, balanceCol });
-    console.log('📋 Header row cells:', headerRow.map((cell, idx) => `[${idx}]: "${cell}"`));
 
     if (dateCol === -1) {
-      console.error('❌ Missing date column');
-      console.log('📋 Header row:', headerRow);
       return { lines, metadata };
     }
-
-    let processedCount = 0;
-    let skippedCount = 0;
 
     for (let i = headerRowIdx + 1; i < rows.length; i++) {
       const row = rows[i];
       if (!row || row.length === 0) {
-        skippedCount++;
         continue;
       }
 
@@ -1443,21 +1344,17 @@ export function BankReconciliationEnhanced({
       const rowText = `${firstCell} ${secondCell}`.toUpperCase();
 
       if (rowText.includes('SALDO AWAL')) {
-        skippedCount++;
         continue;
       }
 
       if (rowText.includes('MUTASI DEBET') ||
           rowText.includes('MUTASI KREDIT') ||
           rowText.includes('SALDO AKHIR')) {
-        console.log(`⏹️ Stopped at footer row ${i}: ${firstCell}`);
         break;
       }
 
       const dateVal = row[dateCol];
       if (!dateVal) {
-        skippedCount++;
-        if (i < headerRowIdx + 5) console.log(`⏭️ Row ${i}: No date value`);
         continue;
       }
 
@@ -1468,9 +1365,6 @@ export function BankReconciliationEnhanced({
         const daysOffset = dateVal - 2;
         const jsDate = new Date(excelEpoch.getTime() + daysOffset * 24 * 60 * 60 * 1000);
         parsedDate = `${jsDate.getFullYear()}-${String(jsDate.getMonth() + 1).padStart(2, '0')}-${String(jsDate.getDate()).padStart(2, '0')}`;
-
-        if (i < headerRowIdx + 5) console.log(`✅ Row ${i}: Excel serial ${dateVal} → ${parsedDate}`);
-        processedCount++;
       } else {
         const dateStr = String(dateVal).trim();
         const numericMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})$/);
@@ -1496,13 +1390,10 @@ export function BankReconciliationEnhanced({
         }
 
         if (day < 1 || day > 31 || mon < 1 || mon > 12) {
-          skippedCount++;
-          if (i < headerRowIdx + 5) console.log(`⏭️ Row ${i}: Date doesn't match pattern: "${dateStr}"`);
           continue;
         }
 
         parsedDate = `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        processedCount++;
       }
 
       let debit = 0, credit = 0;
@@ -1518,16 +1409,6 @@ export function BankReconciliationEnhanced({
         const isCR = dbCrIndicator === 'CR' || amountStr.includes(' CR');
         const isDB = dbCrIndicator === 'DB' || amountStr.includes(' DB');
         const amount = parseIndonesianNumber(amountStr);
-
-        if (i < headerRowIdx + 3) {
-          console.log(`💰 Row ${i} amount parsing:`, {
-            amountStr,
-            dbCrIndicator,
-            isCR,
-            isDB,
-            amount
-          });
-        }
 
         if (isCR) {
           credit = amount;
@@ -1550,16 +1431,6 @@ export function BankReconciliationEnhanced({
       }
       const branch = branchCol >= 0 ? String(row[branchCol] || '').trim() : '';
 
-      if (i < headerRowIdx + 3) {
-        console.log(`🔍 Row ${i} parsed:`, {
-          date: parsedDate,
-          debit,
-          credit,
-          balance,
-          description: description.substring(0, 50)
-        });
-      }
-
       lines.push({
         id: `temp-${i}`,
         date: parsedDate,
@@ -1576,7 +1447,6 @@ export function BankReconciliationEnhanced({
       });
     }
 
-    console.log(`✅ Parsing complete: ${lines.length} transactions, ${skippedCount} rows skipped`);
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -3045,42 +2915,6 @@ export function BankReconciliationEnhanced({
                           line.matchedTaxPayment ||
                           line.matchedEntryRecord
                         );
-                        if (hasAnyFk && !hasResolvedLink) {
-                          // Instrumentation for ops: log the raw row + all lookup results so we
-                          // can see WHY a live FK failed to resolve (RLS, race, etc.). Once per
-                          // session per row.
-                          if (typeof window !== 'undefined') {
-                            const key = `bre_unresolved_warned_${line.id}`;
-                            const w = (window as any);
-                            w.__bre_unresolved_warned = w.__bre_unresolved_warned || new Set();
-                            if (!w.__bre_unresolved_warned.has(key)) {
-                              w.__bre_unresolved_warned.add(key);
-                              console.warn('[BRE] Link present but not resolved:', {
-                                id: line.id,
-                                description: line.description,
-                                status: line.status,
-                                fks: {
-                                  matched_entry_id: line.matchedEntry,
-                                  matched_expense_id: line.matchedExpenseId,
-                                  matched_receipt_id: line.matchedReceiptId,
-                                  matched_payment_id: line.matchedPaymentId,
-                                  matched_fund_transfer_id: line.matchedFundTransferId,
-                                  matched_petty_cash_id: line.matchedPettyCashId,
-                                  matched_tax_payment_id: line.matchedTaxPaymentId,
-                                },
-                                resolved: {
-                                  matchedExpense: line.matchedExpense,
-                                  matchedReceipt: line.matchedReceipt,
-                                  matchedPayment: line.matchedPayment,
-                                  matchedFundTransfer: line.matchedFundTransfer,
-                                  matchedPettyCash: line.matchedPettyCash,
-                                  matchedTaxPayment: line.matchedTaxPayment,
-                                  matchedEntryRecord: line.matchedEntryRecord,
-                                },
-                              });
-                            }
-                          }
-                        }
                         return (
                           <>
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
@@ -4269,7 +4103,7 @@ export function BankReconciliationEnhanced({
                   </thead>
                   <tbody>
                     {ocrPreview.transactions.map((txn: any, idx: number) => (
-                      <tr key={idx} className="border-t">
+                      <tr key={`${txn.date}-${txn.description}-${txn.debitAmount ?? ''}-${txn.creditAmount ?? ''}-${idx}`} className="border-t">
                         <td className="px-2 py-1">{txn.date}</td>
                         <td className="px-2 py-1 truncate max-w-xs">{txn.description}</td>
                         <td className="px-2 py-1 text-right">
@@ -4728,7 +4562,7 @@ export function BankReconciliationEnhanced({
                     const amt = e.debit_amount || e.credit_amount;
                     const isDebit = !!e.debit_amount;
                     return (
-                      <div key={i} className="px-1.5 py-1 flex items-center justify-between text-sm">
+                      <div key={`${e.transaction_date}-${e.description}-${e.debit_amount ?? ''}-${e.credit_amount ?? ''}-${i}`} className="px-1.5 py-1 flex items-center justify-between text-sm">
                         <div>
                           <span className="text-gray-500 text-xs font-mono">{d}</span>
                           <span className="ml-2 text-gray-800">{String(e.description).substring(0, 55)}</span>

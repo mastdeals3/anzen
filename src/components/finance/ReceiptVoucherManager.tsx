@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { Search, ArrowDownCircle, Printer, Lock, RotateCcw, CheckCircle, Download } from 'lucide-react';
+import { Search, ArrowDownCircle, Printer, Lock, RotateCcw, CheckCircle, Download, Link2, FileText, Banknote } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
@@ -105,6 +105,8 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
   const [editMode, setEditMode] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<ReceiptVoucher | null>(null);
   const [voucherAllocations, setVoucherAllocations] = useState<any[]>([]);
+  const [receiptBankLines, setReceiptBankLines] = useState<any[]>([]);
+  const [receiptJournalLines, setReceiptJournalLines] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [allocations, setAllocations] = useState<{ targetId: string; targetType: 'invoice' | 'salesorder'; amount: number }[]>([]);
   const [roundingTolerance, setRoundingTolerance] = useState(100);
@@ -489,17 +491,28 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
   const handleView = async (voucher: ReceiptVoucher) => {
     setSelectedVoucher(voucher);
 
-    // Load allocations for this voucher
-    const { data: allocs } = await supabase
+    // Detail presentation uses the same canonical linked records as Bank
+    // Reconciliation and GL; this is read-only UI enrichment.
+    const [{ data: allocs }, { data: bankLines }, { data: journalLines }] = await Promise.all([
+      supabase
       .from('voucher_allocations')
       .select(`
         *,
-        sales_invoices(invoice_number, total_amount),
-        sales_orders(so_number, total_amount)
+        sales_invoices(invoice_number, invoice_date, total_amount),
+        sales_orders(so_number, so_date, total_amount)
       `)
-      .eq('receipt_voucher_id', voucher.id);
+      .eq('receipt_voucher_id', voucher.id),
+      supabase.from('bank_statement_lines')
+        .select('id, transaction_date, description, reference, debit_amount, credit_amount, reconciliation_status, bank_accounts(bank_name, account_name, alias, currency)')
+        .eq('matched_receipt_id', voucher.id),
+      voucher.journal_entry_id
+        ? supabase.from('journal_entry_lines').select('line_number, debit, credit, description, chart_of_accounts(code, name)').eq('journal_entry_id', voucher.journal_entry_id).order('line_number')
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
 
     setVoucherAllocations(allocs || []);
+    setReceiptBankLines(bankLines || []);
+    setReceiptJournalLines(journalLines || []);
     setViewModalOpen(true);
   };
 
@@ -656,17 +669,17 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
           <span className="text-[10px] text-gray-400 truncate">Customer receipts and invoice allocation</span>
         </div>
         {canManage && (
-          <button onClick={() => void exportExcel()} className="inline-flex items-center gap-1 h-7 px-2 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-50">
-            <Download className="w-3 h-3" /> Excel
-          </button>
-        )}
-        {canManage && (
-          <button
-            onClick={() => { resetForm(); setModalOpen(true); }}
-            className="inline-flex items-center gap-1 h-7 px-2 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700"
-          >
-            <ArrowDownCircle className="w-3 h-3" /> New Receipt
-          </button>
+          <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <button onClick={() => void exportExcel()} className="inline-flex items-center gap-1 h-7 px-2 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-50">
+              <Download className="w-3 h-3" /> Excel
+            </button>
+            <button
+              onClick={() => { resetForm(); setModalOpen(true); }}
+              className="inline-flex items-center gap-1 h-7 px-2 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700"
+            >
+              <ArrowDownCircle className="w-3 h-3" /> New Receipt
+            </button>
+          </div>
         )}
       </div>
 
@@ -716,8 +729,8 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
                 <td className="px-2 py-1.5 text-right font-medium text-green-600">
                   {formatCurrency(voucher.amount, voucherCurrency(voucher))}
                 </td>
-                <td className="px-2 py-1.5">
-                  <div className="flex items-center justify-center gap-1">
+                <td className="px-2 py-1.5 align-middle">
+                  <div className="flex h-7 items-center justify-center gap-0.5 whitespace-nowrap">
                     <FinanceActionButton action="view" label="View Details" onClick={() => handleView(voucher)} />
                     {canManage && !voucher.is_posted && (
                       <>
@@ -962,10 +975,11 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
         isOpen={viewModalOpen}
         onClose={() => { setViewModalOpen(false); setSelectedVoucher(null); setVoucherAllocations([]); }}
         title="Receipt Voucher Details"
+        size="xl"
       >
         {selectedVoucher && (
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-500">Voucher Number</label>
                 <p className="font-mono font-medium">{selectedVoucher.voucher_number}</p>
@@ -990,19 +1004,19 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
                 <label className="block text-sm font-medium text-gray-500">Reference</label>
                 <p>{selectedVoucher.reference_number || '-'}</p>
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="block text-sm font-medium text-gray-500">Amount</label>
                 <p className="text-sm font-bold text-green-600">{formatCurrency(selectedVoucher.amount, voucherCurrency(selectedVoucher))}</p>
               </div>
               {selectedVoucher.description && (
-                <div className="col-span-2">
+                <div className="sm:col-span-2 lg:col-span-3">
                   <label className="block text-sm font-medium text-gray-500">Description</label>
                   <p className="text-gray-700">{selectedVoucher.description}</p>
                 </div>
               )}
             </div>
 
-            <div className="border-t pt-4">
+            <div className="border-t pt-3">
               <h4 className="font-medium text-gray-700 mb-3">Allocations</h4>
               {voucherAllocations.length > 0 ? (
                 <div className="border rounded-lg overflow-hidden">
@@ -1018,7 +1032,8 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
                       {voucherAllocations.map((alloc, idx) => (
                         <tr key={idx}>
                           <td className="px-3 py-2 font-mono text-xs">
-                            {alloc.sales_invoices ? alloc.sales_invoices.invoice_number : alloc.sales_orders?.so_number}
+                            <div>{alloc.sales_invoices ? alloc.sales_invoices.invoice_number : alloc.sales_orders?.so_number}</div>
+                            <div className="mt-0.5 text-[10px] text-gray-400">{alloc.sales_invoices?.invoice_date || alloc.sales_orders?.so_date || '—'}</div>
                           </td>
                           <td className="px-3 py-2 text-center">
                             <span className={`px-2 py-0.5 rounded text-xs font-medium ${
@@ -1040,6 +1055,35 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
               ) : (
                 <p className="text-gray-500 text-sm">No allocations</p>
               )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 border-t border-gray-100">
+              <div className="py-3 md:pr-4 md:border-r border-gray-100">
+                <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Bank Reconciliation</h4>
+                {receiptBankLines.length ? receiptBankLines.map(line => {
+                  const bank = line.bank_accounts;
+                  const amount = Number(line.debit_amount || line.credit_amount || 0);
+                  return <div key={line.id} className="rounded border border-gray-200 bg-white px-2 py-1.5 text-xs space-y-1">
+                    <div className="flex items-center justify-between"><span className="inline-flex items-center gap-1 text-green-700"><CheckCircle className="w-3 h-3" /> Reconciled</span><span className="font-mono font-semibold">{formatCurrency(amount, bank?.currency || voucherCurrency(selectedVoucher))}</span></div>
+                    <div className="text-gray-600">{new Date(line.transaction_date).toLocaleDateString('id-ID')} · {bank?.alias || (bank ? `${bank.bank_name} - ${bank.account_name}` : 'Bank')}</div>
+                    <div className="text-gray-800 break-words">{line.description || '—'}</div>
+                    {line.reference && <div className="font-mono text-gray-500">Ref: {line.reference}</div>}
+                  </div>;
+                }) : <div className="flex items-center gap-1.5 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-500"><Link2 className="w-3.5 h-3.5" /> Not linked to a bank transaction</div>}
+              </div>
+              <div className="py-3 md:pl-4">
+                <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Related Records</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-2 py-1 text-[11px]"><FileText className="w-3 h-3 text-gray-500" /> {selectedVoucher.voucher_number}</span>
+                  {voucherAllocations.map((alloc, index) => <span key={index} className="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-2 py-1 text-[11px]"><Link2 className="w-3 h-3 text-gray-500" /> {alloc.sales_invoices?.invoice_number || alloc.sales_orders?.so_number}</span>)}
+                  {!voucherAllocations.length && <span className="text-xs text-gray-500">No allocated invoice or sales order</span>}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 py-3">
+              <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1"><Banknote className="w-3.5 h-3.5" /> Accounting Impact</h4>
+              {receiptJournalLines.length ? <div className="overflow-x-auto border rounded"><table className="w-full text-xs"><thead className="bg-gray-50"><tr><th className="px-2 py-1.5 text-left">COA</th><th className="px-2 py-1.5 text-left">Description</th><th className="px-2 py-1.5 text-right">Debit</th><th className="px-2 py-1.5 text-right">Credit</th></tr></thead><tbody className="divide-y">{receiptJournalLines.map(line => <tr key={line.line_number}><td className="px-2 py-1.5 font-mono">{line.chart_of_accounts?.code || '—'} · {line.chart_of_accounts?.name || ''}</td><td className="px-2 py-1.5">{line.description || '—'}</td><td className="px-2 py-1.5 text-right font-mono">{Number(line.debit || 0) ? formatCurrency(line.debit, voucherCurrency(selectedVoucher)) : '—'}</td><td className="px-2 py-1.5 text-right font-mono">{Number(line.credit || 0) ? formatCurrency(line.credit, voucherCurrency(selectedVoucher)) : '—'}</td></tr>)}</tbody></table></div> : <div className="text-xs text-gray-500">No posted journal entry.</div>}
             </div>
 
             <div className="flex items-center justify-between pt-4 border-t border-gray-100">
