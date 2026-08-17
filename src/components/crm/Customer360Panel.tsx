@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { Phone, Mail, Clock3 } from 'lucide-react';
 import { showToast } from '../ToastNotification';
 
-type CustomerRow = { id: string; company_name: string; contact_person?: string | null; email?: string | null; phone?: string | null; erp_customer_id?: string | null };
+type CustomerRow = { id: string; company_name: string; contact_person?: string | null; email?: string | null; phone?: string | null };
 type CustomerIntel = CustomerRow & { erp?: any; inquiries: any[]; orders: any[]; deliveries: any[]; invoices: any[]; items: any[]; reminders: any[]; activities: any[]; lastPurchase: string | null; outstanding: number; purchaseFrequencyDays: number | null };
 
 const daysSince = (date: string | null) => date ? Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 86400000)) : null;
@@ -22,25 +22,31 @@ export function Customer360Panel() {
       // hide the ERP customers that users need to work with.
       const [{ data: customers, error: customersError }, contactsResult] = await Promise.all([
         supabase.from('customers').select('id,company_name,contact_person,email,phone').eq('is_active', true).order('company_name'),
-        supabase.from('crm_contacts').select('id,company_name,contact_person,email,phone,erp_customer_id').eq('is_active', true).order('company_name'),
+        supabase.from('crm_contacts').select('id,company_name,contact_person,email,phone').eq('is_active', true).order('company_name'),
       ]);
       if (customersError) throw customersError;
       if (contactsResult.error) console.warn('Customer 360 CRM contacts unavailable:', contactsResult.error.message);
       const contacts = contactsResult.data || [];
-      // Only an explicit CRM → ERP link is used. Names are deliberately not
-      // auto-linked here: identical names can be ambiguous business entities.
-      const contactByCustomerId = new Map((contacts || []).filter((c: any) => c.erp_customer_id).map((c: any) => [c.erp_customer_id, c]));
+      const erpIds = (customers || []).map((erp: any) => erp.id);
+      const [{ data: inquiries }, { data: orders }, { data: deliveries }, { data: invoices }] = await Promise.all([
+        erpIds.length ? supabase.from('crm_inquiries').select('id,crm_contact_id,customer_id,product_name,quantity,offered_price,created_at,pipeline_status,status').in('customer_id', erpIds) : Promise.resolve({ data: [] }),
+        erpIds.length ? supabase.from('sales_orders').select('id,customer_id,so_number,status,so_date,created_at,total_amount').in('customer_id', erpIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
+        erpIds.length ? supabase.from('delivery_challans').select('id,customer_id,challan_number,challan_date,approval_status').in('customer_id', erpIds).order('challan_date', { ascending: false }) : Promise.resolve({ data: [] }),
+        erpIds.length ? supabase.from('sales_invoices').select('id,customer_id,invoice_number,invoice_date,total_amount,paid_amount,payment_status').in('customer_id', erpIds).order('invoice_date', { ascending: false }) : Promise.resolve({ data: [] }),
+      ]);
+      // Explicit link only: crm_inquiries.customer_id (ERP) + crm_contact_id (CRM).
+      // crm_contacts has no erp_customer_id column; names are not auto-linked.
+      const contactsById = new Map((contacts || []).map((c: any) => [c.id, c]));
+      const contactByCustomerId = new Map<string, any>();
+      (inquiries || []).forEach((inquiry: any) => {
+        if (!inquiry.customer_id || !inquiry.crm_contact_id || contactByCustomerId.has(inquiry.customer_id)) return;
+        const linked = contactsById.get(inquiry.crm_contact_id);
+        if (linked) contactByCustomerId.set(inquiry.customer_id, linked);
+      });
       const contactRows = (customers || []).map((erp: any) => {
         const linked = contactByCustomerId.get(erp.id);
         return { ...(linked || {}), id: linked?.id || `erp-${erp.id}`, company_name: erp.company_name, contact_person: linked?.contact_person || erp.contact_person, email: linked?.email || erp.email, phone: linked?.phone || erp.phone, erp };
       });
-      const erpIds = contactRows.map((c: any) => c.erp?.id).filter(Boolean);
-      const [{ data: inquiries }, { data: orders }, { data: deliveries }, { data: invoices }] = await Promise.all([
-        erpIds.length ? supabase.from('crm_inquiries').select('id,crm_contact_id,customer_id,product_name,quantity,offered_price,created_at,pipeline_status,status').in('customer_id', erpIds) : Promise.resolve({ data: [] }),
-        erpIds.length ? supabase.from('sales_orders').select('id,customer_id,so_number,status,so_date,created_at,total_amount').in('customer_id', erpIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
-        erpIds.length ? supabase.from('delivery_challans').select('id,customer_id,challan_number,challan_date,approval_status,invoicing_status').in('customer_id', erpIds).order('challan_date', { ascending: false }) : Promise.resolve({ data: [] }),
-        erpIds.length ? supabase.from('sales_invoices').select('id,customer_id,invoice_number,invoice_date,total_amount,paid_amount,payment_status').in('customer_id', erpIds).order('invoice_date', { ascending: false }) : Promise.resolve({ data: [] }),
-      ]);
       const invoiceIds = (invoices || []).map((i: any) => i.id);
       const contactIds = (contacts || []).map((c: any) => c.id);
       const [{ data: items }, { data: reminders }, { data: activities }] = await Promise.all([

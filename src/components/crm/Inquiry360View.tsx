@@ -224,10 +224,9 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
       const { error: inquiryError } = await supabase.from('crm_inquiries').update({ customer_id: customerId }).eq('id', selected.id);
       if (inquiryError) throw inquiryError;
       if (contactId) {
-        await supabase.from('crm_contacts').update({ erp_customer_id: customerId }).eq('id', contactId);
         await supabase.from('crm_inquiries').update({ customer_id: customerId }).eq('crm_contact_id', contactId).is('customer_id', null);
       }
-      showToast({ type: 'success', title: 'Customer linked', message: 'This CRM contact now uses the ERP customer identity.' });
+      showToast({ type: 'success', title: 'Customer linked', message: 'This inquiry now uses the explicit ERP customer link.' });
     } catch (error: any) {
       showToast({ type: 'error', title: 'Customer link failed', message: error.message || 'Please review the customer master.' });
     } finally {
