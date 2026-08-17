@@ -453,11 +453,11 @@ export function DeliveryChallan() {
     return (batch.current_stock - (batch.reserved_stock || 0)) + soReservedForThisBatch;
   };
 
-  const handleSalesOrderChange = async (soId: string) => {
-    setFormData({ ...formData, sales_order_id: soId });
+  const handleSalesOrderChange = async (soId: string, sourceOrder?: { id: string; customer_id: string }) => {
+    setFormData(prev => ({ ...prev, sales_order_id: soId, customer_id: sourceOrder?.customer_id || prev.customer_id }));
 
     if (soId) {
-      const so = salesOrders.find(s => s.id === soId);
+      const so = sourceOrder || salesOrders.find(s => s.id === soId);
       if (so) {
         setFormData(prev => ({ ...prev, customer_id: so.customer_id }));
 
@@ -550,14 +550,33 @@ export function DeliveryChallan() {
 
   useEffect(() => {
     const requestedSoId = navigationData?.createDeliveryChallanFromSO;
-    if (typeof requestedSoId !== 'string' || !salesOrders.length || !batches.length || !customers.length) return;
-    const so = salesOrders.find(order => order.id === requestedSoId);
-    if (!so) return;
-    resetForm();
-    setModalOpen(true);
-    void handleSalesOrderChange(requestedSoId);
-    clearNavigationData();
-  }, [navigationData, salesOrders, batches, customers, clearNavigationData]);
+    if (typeof requestedSoId !== 'string' || !batches.length || !customers.length) return;
+    let cancelled = false;
+    const openPrefilledChallan = async () => {
+      const { data: so, error } = await supabase
+        .from('sales_orders')
+        .select('id,customer_id')
+        .eq('id', requestedSoId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !so) {
+        console.error('Unable to load Sales Order for Delivery Challan:', error);
+        showToast({ type: 'error', title: 'Delivery Challan', message: 'The Sales Order could not be loaded.' });
+        clearNavigationData();
+        return;
+      }
+      resetForm();
+      setModalOpen(true);
+      // Load the customer-scoped choices for the form, then hydrate the SO
+      // lines/reservations directly by ID. This avoids falling back to the DC
+      // list when the SO is outside the currently loaded list.
+      void loadSalesOrders(so.customer_id);
+      await handleSalesOrderChange(requestedSoId, so);
+      if (!cancelled) clearNavigationData();
+    };
+    void openPrefilledChallan();
+    return () => { cancelled = true; };
+  }, [navigationData, batches, customers, clearNavigationData]);
 
   const handleBatchChange = (index: number, batchId: string) => {
     const batch = batches.find(b => b.id === batchId);

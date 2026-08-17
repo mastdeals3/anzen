@@ -8,7 +8,7 @@ type CustomerWorkStatus = { id: string; company_name: string; days: number | nul
 
 const hasSentQuote = (inquiry: Inquiry) => {
   const quoteStatus = (inquiry.quote_status || '').toLowerCase();
-  return Boolean(inquiry.quote_sent_at) || ['sent', 'follow_up_due', 'accepted', 'rejected'].includes(quoteStatus);
+  return Boolean(inquiry.quote_sent_at) || ['sent', 'follow_up_due'].includes(quoteStatus);
 };
 
 export function CRMWorkQueue({ inquiries }: { inquiries: Inquiry[] }) {

@@ -17,15 +17,21 @@ export function Customer360Panel() {
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data: contacts, error: contactsError }, { data: customers, error: customersError }] = await Promise.all([
-        supabase.from('crm_contacts').select('id,company_name,contact_person,email,phone,erp_customer_id').eq('is_active', true).order('company_name'),
+      // The ERP customer master owns this view's default list. CRM contacts are
+      // optional relationship records, so a CRM-contact query failure must not
+      // hide the ERP customers that users need to work with.
+      const [{ data: customers, error: customersError }, contactsResult] = await Promise.all([
         supabase.from('customers').select('id,company_name,contact_person,email,phone').eq('is_active', true).order('company_name'),
+        supabase.from('crm_contacts').select('id,company_name,contact_person,email,phone,erp_customer_id').eq('is_active', true).order('company_name'),
       ]);
-      if (contactsError) throw contactsError;
       if (customersError) throw customersError;
+      if (contactsResult.error) console.warn('Customer 360 CRM contacts unavailable:', contactsResult.error.message);
+      const contacts = contactsResult.data || [];
+      // Only an explicit CRM → ERP link is used. Names are deliberately not
+      // auto-linked here: identical names can be ambiguous business entities.
       const contactByCustomerId = new Map((contacts || []).filter((c: any) => c.erp_customer_id).map((c: any) => [c.erp_customer_id, c]));
       const contactRows = (customers || []).map((erp: any) => {
-        const linked = contactByCustomerId.get(erp.id) || (contacts || []).find((c: any) => c.company_name.trim().toLowerCase() === erp.company_name.trim().toLowerCase());
+        const linked = contactByCustomerId.get(erp.id);
         return { ...(linked || {}), id: linked?.id || `erp-${erp.id}`, company_name: erp.company_name, contact_person: linked?.contact_person || erp.contact_person, email: linked?.email || erp.email, phone: linked?.phone || erp.phone, erp };
       });
       const erpIds = contactRows.map((c: any) => c.erp?.id).filter(Boolean);

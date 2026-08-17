@@ -47,7 +47,7 @@ export function ConversionIntelligence() {
         const orders = (orderItems || []).filter((x: any) => x.product_id === productId && x.sales_orders?.customer_id === customerId);
         // A target/internal price is not a customer quote. Only an explicit sent
         // quote (or a recorded quote timestamp) counts as quoted/waiting.
-        const quoted = group.filter((i: any) => Boolean(i.quote_sent_at) || ['sent', 'follow_up_due', 'accepted', 'rejected'].includes((i.quote_status || '').toLowerCase()));
+        const quoted = group.filter((i: any) => Boolean(i.quote_sent_at) || ['sent', 'follow_up_due'].includes((i.quote_status || '').toLowerCase()));
         const lastInquiryValues = group.map((i: any) => i.created_at).sort();
         const lastQuoteValues = quoted.map((i: any) => i.quote_sent_at || i.created_at).sort();
         const lastOrderValues = orders.map((i: any) => i.sales_orders?.so_date).filter(Boolean).sort();
