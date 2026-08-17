@@ -57,7 +57,11 @@ function bankLabel(b: BankAccount): string {
   return b.alias || `${b.bank_name} - ${b.account_name}`;
 }
 
-export function TaxPaymentsPanel() {
+interface TaxPaymentsPanelProps {
+  onOpenJournal?: (journalEntryId: string) => void;
+}
+
+export function TaxPaymentsPanel({ onOpenJournal }: TaxPaymentsPanelProps) {
   const { dateRange } = useFinance();
   const [periods, setPeriods] = useState<Period[]>([]);
   const [banks, setBanks] = useState<BankAccount[]>([]);
@@ -636,6 +640,15 @@ export function TaxPaymentsPanel() {
                       >
                         Files
                       </button>
+                      {p.journal_entry_id && (
+                        <button
+                          onClick={() => onOpenJournal?.(p.journal_entry_id!)}
+                          className="text-xs px-2 py-1 border rounded hover:bg-blue-50 text-blue-700 border-blue-200 inline-flex items-center gap-1"
+                          title="Open the posted journal entry"
+                        >
+                          Journal
+                        </button>
+                      )}
                       {p.status === 'posted' && p.journal_entry_id && (
                         <button
                           onClick={() => void openBslPicker(p)}

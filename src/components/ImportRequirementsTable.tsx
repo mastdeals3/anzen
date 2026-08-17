@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { CheckSquare, Calendar, AlertTriangle, Package, TrendingUp, CreditCard as Edit2 } from 'lucide-react';
+import { CheckSquare, Calendar, AlertTriangle, Package, TrendingUp, Pencil as Edit2 } from 'lucide-react';
 import { formatDate } from '../utils/dateFormat';
 
 export interface ImportRequirement {

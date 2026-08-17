@@ -5,7 +5,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useFinance } from '../contexts/FinanceContext';
 import { Layout } from '../components/Layout';
-import { FileText, Plus, Search, Eye, CreditCard as Edit, Trash2, XCircle, FileCheck, CheckCircle, Paperclip, Download, AlertTriangle, Clock, ExternalLink } from 'lucide-react';
+import { FileText, Plus, Search, Eye, Pencil as Edit, Trash2, XCircle, FileCheck, CheckCircle, Paperclip, Download, AlertTriangle, Clock, ExternalLink, Truck } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import SalesOrderForm from '../components/SalesOrderForm';
 import { ProformaInvoiceView } from '../components/ProformaInvoiceView';
@@ -98,7 +98,7 @@ type SortDirection = 'asc' | 'desc';
 
 export default function SalesOrders() {
   const { profile } = useAuth();
-  const { navigationData, clearNavigationData } = useNavigation();
+  const { navigationData, clearNavigationData, setNavigationData, setCurrentPage } = useNavigation();
   const { t } = useLanguage();
   const { dateRange } = useFinance();
   const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
@@ -930,7 +930,7 @@ export default function SalesOrders() {
                         <button
                           onClick={() => handleViewOrder(order)}
                           className="text-blue-600 hover:text-blue-800"
-                          title="View Proforma Invoice"
+                          title="View Sales Order"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -971,6 +971,19 @@ export default function SalesOrders() {
                             title="Cancel"
                           >
                             <XCircle className="w-4 h-4" />
+                          </button>
+                        )}
+                        {['approved', 'stock_reserved', 'pending_delivery', 'partially_delivered'].includes(order.status)
+                          && !approvedDeliverySoIds.has(order.id) && (
+                          <button
+                            onClick={() => {
+                              setNavigationData({ createDeliveryChallanFromSO: order.id });
+                              setCurrentPage('delivery-challan');
+                            }}
+                            className="text-green-600 hover:text-green-800"
+                            title="Create Delivery Challan"
+                          >
+                            <Truck className="w-4 h-4" />
                           </button>
                         )}
                         {activeTab === 'active' && ['admin', 'sales'].includes(profile?.role || '') && ['delivered', 'cancelled'].includes(order.status) && (

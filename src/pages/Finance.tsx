@@ -133,7 +133,7 @@ const getFinanceMenu = (t: TFunction): MenuGroup[] => [
 function FinanceContent() {
   const { profile } = useAuth();
   const { t } = useLanguage();
-  const { navigationData, clearNavigationData } = useNavigation();
+  const { navigationData, clearNavigationData, setNavigationData, setCurrentPage } = useNavigation();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -145,9 +145,16 @@ function FinanceContent() {
     return FINANCE_TAB_BY_ROUTE[segment]
       ?? ((FINANCE_TABS as readonly string[]).includes(segment) ? segment as FinanceTab : DEFAULT_FINANCE_TAB);
   }, [location.pathname]);
-  const setActiveTab = useCallback((tab: FinanceTab) => {
-    navigate(`/finance/${FINANCE_ROUTE_BY_TAB[tab]}${location.search}`);
-  }, [navigate, location.search]);
+  const setActiveTab = useCallback((tab: FinanceTab, query?: URLSearchParams) => {
+    const search = query && query.toString() ? `?${query.toString()}` : '';
+    navigate(`/finance/${FINANCE_ROUTE_BY_TAB[tab]}${search}`);
+  }, [navigate]);
+
+  const openFinanceTarget = useCallback((tab: FinanceTab, key: string, id: string) => {
+    const query = new URLSearchParams();
+    query.set(key, id);
+    setActiveTab(tab, query);
+  }, [setActiveTab]);
   // Persist Finance sidebar state so the user's choice survives page navigation.
   const SIDEBAR_KEY = 'anzen.finance.sidebarCollapsed';
   const GROUPS_KEY  = 'anzen.finance.collapsedGroups';
@@ -186,6 +193,7 @@ function FinanceContent() {
   const [payInvoice, setPayInvoice] = useState<{ id: string; invoice_number: string; supplier_id: string; balance_amount: number } | null>(null);
   const [payExpenseBill, setPayExpenseBill] = useState<{ id: string; supplier_id: string | null; staff_id?: string | null; balance_amount: number } | null>(null);
   const [focusExpenseId, setFocusExpenseId] = useState<string | null>(null);
+  const [focusPurchaseInvoiceId, setFocusPurchaseInvoiceId] = useState<string | null>(null);
   const [focusReceiptId, setFocusReceiptId] = useState<string | null>(null);
   const [focusPaymentId, setFocusPaymentId] = useState<string | null>(null);
   const [focusJournalId, setFocusJournalId] = useState<string | null>(null);
@@ -200,9 +208,8 @@ function FinanceContent() {
     bankAccountId: string; statementLineId: string; date: string; amount: number; currency: 'IDR' | 'USD'; reference: string; description: string;
   } | null>(null);
   const handleOpenBankReconciliation = useCallback((bankAccountId: string, bankStatementLineId: string) => {
-    setFocusBankAccountId(bankAccountId);
-    setFocusBankStatementLineId(bankStatementLineId);
-    setActiveTab('bank_recon');
+    const query = new URLSearchParams({ bank: bankAccountId, bankLine: bankStatementLineId });
+    setActiveTab('bank_recon', query);
   }, [setActiveTab]);
   const handleBankReconciliationFocusHandled = useCallback(() => {
     setFocusBankAccountId(null);
@@ -220,6 +227,7 @@ function FinanceContent() {
     const bankLineId = searchParams.get('bankLine');
     const accountCode = searchParams.get('account');
     if (activeTab === 'expenses') setFocusExpenseId(documentId);
+    if (activeTab === 'purchase') setFocusPurchaseInvoiceId(documentId);
     if (activeTab === 'receipt') setFocusReceiptId(documentId);
     if (activeTab === 'payment') setFocusPaymentId(documentId);
     if (activeTab === 'petty_cash') setFocusPettyCashId(documentId);
@@ -248,31 +256,30 @@ function FinanceContent() {
   };
 
   const handleOpenJournal = useCallback((entryId: string) => {
-    setFocusJournalId(entryId);
-    setActiveTab('journal_register');
-  }, [setActiveTab]);
+    openFinanceTarget('journal_register', 'journal', entryId);
+  }, [openFinanceTarget]);
 
   const handleOpenJournalSource = useCallback(async (sourceModule: string, referenceId: string) => {
     if (sourceModule === 'expense' || sourceModule === 'expenses') {
-      setFocusExpenseId(referenceId);
-      setActiveTab('expenses');
+      openFinanceTarget('expenses', 'document', referenceId);
     } else if (sourceModule === 'receipt') {
-      setFocusReceiptId(referenceId);
-      setActiveTab('receipt');
+      openFinanceTarget('receipt', 'document', referenceId);
     } else if (sourceModule === 'payment') {
-      setFocusPaymentId(referenceId);
-      setActiveTab('payment');
+      openFinanceTarget('payment', 'document', referenceId);
     } else if (sourceModule === 'petty_cash') {
-      setFocusPettyCashId(referenceId);
-      setActiveTab('petty_cash');
+      openFinanceTarget('petty_cash', 'document', referenceId);
     } else if (sourceModule === 'fund_transfer' || sourceModule === 'fund_transfers') {
-      setFocusFundTransferId(referenceId);
-      setActiveTab('contra');
+      openFinanceTarget('contra', 'document', referenceId);
     } else if (sourceModule === 'bank_reconciliation') {
       const { data } = await supabase.from('bank_statement_lines').select('bank_account_id').eq('id', referenceId).maybeSingle();
       if (data?.bank_account_id) handleOpenBankReconciliation(data.bank_account_id, referenceId);
+    } else if (sourceModule === 'purchase' || sourceModule === 'purchase_invoice' || sourceModule === 'purchase_invoices') {
+      openFinanceTarget('purchase', 'document', referenceId);
+    } else if (sourceModule === 'sales' || sourceModule === 'sales_invoice' || sourceModule === 'sales_invoices' || sourceModule === 'sales_invoice_cogs') {
+      setNavigationData({ sourceType: 'sales_invoice', invoiceId: referenceId });
+      setCurrentPage('sales');
     }
-  }, [handleOpenBankReconciliation, setActiveTab]);
+  }, [handleOpenBankReconciliation, openFinanceTarget, setCurrentPage, setNavigationData]);
 
   const financeMenu = useMemo(() => {
     if (!t || !t.finance) return [];
@@ -359,11 +366,11 @@ function FinanceContent() {
   const renderContent = () => {
     switch (activeTab) {
       case 'purchase':
-        return <PurchaseInvoiceManager canManage={canManage} onPayInvoice={handlePayInvoice} />;
+        return <PurchaseInvoiceManager canManage={canManage} onPayInvoice={handlePayInvoice} initialViewInvoiceId={focusPurchaseInvoiceId} onInitialViewHandled={() => setFocusPurchaseInvoiceId(null)} />;
       case 'receipt':
         return <ReceiptVoucherManager canManage={canManage} initialViewVoucherId={focusReceiptId} onInitialViewHandled={() => setFocusReceiptId(null)} />;
       case 'payment':
-        return <PaymentVoucherManager canManage={canManage} initialViewVoucherId={focusPaymentId} onInitialViewHandled={() => setFocusPaymentId(null)} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} prefillExpenseBill={payExpenseBill} onPrefillExpenseBillConsumed={() => setPayExpenseBill(null)} onViewInvoice={() => setActiveTab('purchase')} onViewExpense={(expenseId) => { setFocusExpenseId(expenseId); setActiveTab('expenses'); }} prefillFromBankReconciliation={paymentReconPrefill} onBankReconciliationPrefillConsumed={() => setPaymentReconPrefill(null)} />;
+        return <PaymentVoucherManager canManage={canManage} initialViewVoucherId={focusPaymentId} onInitialViewHandled={() => setFocusPaymentId(null)} prefillInvoice={payInvoice} onPrefillConsumed={() => setPayInvoice(null)} prefillExpenseBill={payExpenseBill} onPrefillExpenseBillConsumed={() => setPayExpenseBill(null)} onViewInvoice={(invoiceId) => openFinanceTarget('purchase', 'document', invoiceId)} onViewExpense={(expenseId) => openFinanceTarget('expenses', 'document', expenseId)} prefillFromBankReconciliation={paymentReconPrefill} onBankReconciliationPrefillConsumed={() => setPaymentReconPrefill(null)} />;
       case 'journal':
         return <GeneralJournalEntry
           canManage={canManage}
@@ -389,7 +396,7 @@ function FinanceContent() {
             initialViewExpenseId={focusExpenseId}
             onInitialViewHandled={() => setFocusExpenseId(null)}
             onSettleBill={handleSettleExpenseBill}
-            onViewPaymentVoucher={(paymentVoucherId) => { setFocusPaymentId(paymentVoucherId); setActiveTab('payment'); }}
+            onViewPaymentVoucher={(paymentVoucherId) => openFinanceTarget('payment', 'document', paymentVoucherId)}
           />
         );
       case 'petty_cash':
@@ -397,8 +404,7 @@ function FinanceContent() {
           <PettyCashManager
             canManage={canManage}
             onNavigateToFundTransfer={(fundTransferId) => {
-              setFocusFundTransferId(fundTransferId || null);
-              setActiveTab('contra');
+              if (fundTransferId) openFinanceTarget('contra', 'document', fundTransferId);
             }}
             initialViewTransactionId={focusPettyCashId}
             onInitialViewHandled={() => setFocusPettyCashId(null)}
@@ -432,11 +438,11 @@ function FinanceContent() {
           />
         );
       case 'trial_balance':
-        return <FinancialReports initialReport="trial_balance" onDrillDown={(code) => { setLedgerDrillCode(code); setActiveTab('ledger'); }} />;
+        return <FinancialReports initialReport="trial_balance" onDrillDown={(code) => openFinanceTarget('ledger', 'account', code)} />;
       case 'pnl':
-        return <FinancialReports initialReport="pnl" onDrillDown={(code) => { setLedgerDrillCode(code); setActiveTab('ledger'); }} />;
+        return <FinancialReports initialReport="pnl" onDrillDown={(code) => openFinanceTarget('ledger', 'account', code)} />;
       case 'balance_sheet':
-        return <FinancialReports initialReport="balance_sheet" onDrillDown={(code) => { setLedgerDrillCode(code); setActiveTab('ledger'); }} />;
+        return <FinancialReports initialReport="balance_sheet" onDrillDown={(code) => openFinanceTarget('ledger', 'account', code)} />;
       case 'receivables':
         return <ReceivablesManager canManage={canManage} />;
       case 'payables':
@@ -445,14 +451,14 @@ function FinanceContent() {
         return <AgeingReport />;
       case 'tax':
         return <TaxComplianceCentre
-          onOpenExpense={(expenseId) => { setFocusExpenseId(expenseId); setActiveTab('expenses'); }}
-          onOpenPayment={(paymentId) => { setFocusPaymentId(paymentId); setActiveTab('payment'); }}
+          onOpenExpense={(expenseId) => openFinanceTarget('expenses', 'document', expenseId)}
+          onOpenPayment={(paymentId) => openFinanceTarget('payment', 'document', paymentId)}
           onOpenJournal={handleOpenJournal}
         />;
       case 'ca_reports':
         return <CAReports
           onOpenJournal={handleOpenJournal}
-          onDrillDown={(code) => { setLedgerDrillCode(code); setActiveTab('ledger'); }}
+          onDrillDown={(code) => openFinanceTarget('ledger', 'account', code)}
         />;
       case 'integrity_monitor':
         return <IntegrityMonitor />;

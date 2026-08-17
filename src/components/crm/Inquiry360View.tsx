@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { useAuth } from '../../contexts/AuthContext';
 import { Modal } from '../Modal';
 import { EmailComposer } from './EmailComposer';
 import { Mail, Plus, UserRoundCheck, CalendarPlus } from 'lucide-react';
@@ -30,6 +29,7 @@ type Inquiry = {
   assigned_to?: string | null;
   customer_id?: string | null;    // FK to customers (ERP) — only when promoted
   crm_contact_id?: string | null; // FK to crm_contacts — the CRM prospect link
+  converted_to_order?: string | null;
 };
 
 type TimelineItem = { id: string; type: 'activity' | 'email' | 'document' | 'reminder' | 'order'; title: string; detail?: string | null; at: string; };
@@ -64,7 +64,6 @@ const prettyStatus = (s: StatusKey) => s.replaceAll('_', ' ').replace(/\b\w/g, (
 
 export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
   const { setCurrentPage, setNavigationData } = useNavigation();
-  const { profile } = useAuth();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [nextFollowUp, setNextFollowUp] = useState<string | null>(null);
@@ -214,21 +213,13 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
         showToast({ type: 'error', title: 'Manual review required', message: 'More than one ERP customer matches this company name.' });
         return;
       }
-      let customerId = matches?.[0]?.id;
+      const customerId = matches?.[0]?.id;
       if (!customerId) {
-        const { data: auth } = await supabase.auth.getUser();
-        const { data: created, error: createError } = await supabase.from('customers').insert({
-          company_name: selected.company_name.trim(),
-          contact_person: selected.contact_person || null,
-          email: selected.contact_email || null,
-          phone: selected.contact_phone || null,
-          country: 'Indonesia',
-          city: 'Jakarta Pusat',
-          created_by: auth.user?.id || profile?.id,
-          is_active: true,
-        }).select('id').single();
-        if (createError) throw createError;
-        customerId = created.id;
+        // CRM contacts remain CRM-only until an employee selects or creates
+        // an ERP customer through the dedicated customer workflow. Do not
+        // silently create or merge an ERP billing master from an inquiry.
+        showToast({ type: 'error', title: 'Manual review required', message: 'No unambiguous ERP customer match was found. Keep this inquiry in CRM and link it after confirming the customer master.' });
+        return;
       }
       const { error: inquiryError } = await supabase.from('crm_inquiries').update({ customer_id: customerId }).eq('id', selected.id);
       if (inquiryError) throw inquiryError;
@@ -300,7 +291,7 @@ export function Inquiry360View({ inquiries }: { inquiries: Inquiry[] }) {
             {selected.contact_email && <button onClick={() => setEmailOpen(true)} className="px-2 py-1 border rounded inline-flex items-center gap-1"><Mail className="w-3 h-3" />Send Email</button>}
             <button onClick={createReminder} className="px-2 py-1 border rounded inline-flex items-center gap-1"><CalendarPlus className="w-3 h-3" />Create Reminder</button>
             {!selected.customer_id && <button onClick={promoteOrLinkCustomer} disabled={promoting} className="px-2 py-1 border border-amber-300 text-amber-700 rounded inline-flex items-center gap-1"><UserRoundCheck className="w-3 h-3" />{promoting ? 'Linking…' : 'Promote / Link Customer'}</button>}
-            {normalizeStatus(selected.pipeline_status || selected.status) === 'won' && selected.customer_id && <button onClick={createSalesOrder} className="px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium inline-flex items-center gap-1"><Plus className="w-3 h-3" />Create Sales Order</button>}
+            {selected.customer_id && !selected.converted_to_order && normalizeStatus(selected.pipeline_status || selected.status) !== 'lost' && <button onClick={createSalesOrder} className="px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium inline-flex items-center gap-1"><Plus className="w-3 h-3" />Create Sales Order</button>}
           </div>
 
           <div className="grid md:grid-cols-2 gap-3 mt-3 text-sm">

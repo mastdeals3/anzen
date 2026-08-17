@@ -87,6 +87,11 @@ export function PipelineBoard({ canManage, onInquiryClick }: PipelineBoardProps)
   };
 
   const stageToStatusMap: Record<string, string> = {
+    'NEW': 'new',
+    'QUOTED': 'in_progress',
+    'WAITING': 'follow_up',
+    'WON': 'won',
+    'LOST': 'lost',
     'New': 'new',
     'New Inquiry': 'new',
     'In Progress': 'in_progress',
@@ -102,19 +107,16 @@ export function PipelineBoard({ canManage, onInquiryClick }: PipelineBoardProps)
   };
 
   const pipelineStageLabels = [
-    { value: 'new', label: 'New' },
-    { value: 'in_progress', label: 'In Progress' },
-    { value: 'follow_up', label: 'Follow Up' },
-    { value: 'won', label: 'Won' },
-    { value: 'lost', label: 'Lost' },
-    { value: 'on_hold', label: 'On Hold' },
+    { value: 'new', label: 'NEW' },
+    { value: 'in_progress', label: 'QUOTED' },
+    { value: 'follow_up', label: 'WAITING' },
+    { value: 'won', label: 'WON' },
+    { value: 'lost', label: 'LOST' },
   ];
 
   const getInquiriesForStage = (stageName: string) => {
     const mappedStatus = stageToStatusMap[stageName];
-    if (mappedStatus) {
-      return inquiries.filter(i => (i.pipeline_status || i.status) === mappedStatus);
-    }
+    if (mappedStatus) return inquiries.filter(i => (i.pipeline_status || i.status) === mappedStatus);
     const lowerStage = stageName.toLowerCase().replace(/\s+/g, '_');
     return inquiries.filter(i => (i.pipeline_status || i.status) === lowerStage);
   };
@@ -132,7 +134,8 @@ export function PipelineBoard({ canManage, onInquiryClick }: PipelineBoardProps)
   const handleDrop = async (stageName: string) => {
     if (!draggedInquiry || !canManage) return;
 
-    const newStatus = stageToStatusMap[stageName] || stageName.toLowerCase().replace(/\s+/g, '_');
+    const target = pipelineStageLabels.find(stage => stage.label === stageName);
+    const newStatus = target?.value || stageToStatusMap[stageName] || stageName.toLowerCase().replace(/\s+/g, '_');
     const currentStatus = draggedInquiry.pipeline_status || draggedInquiry.status;
     if (currentStatus === newStatus) {
       setDraggedInquiry(null);
@@ -142,7 +145,7 @@ export function PipelineBoard({ canManage, onInquiryClick }: PipelineBoardProps)
     try {
       const { error } = await supabase
         .from('crm_inquiries')
-        .update({ pipeline_status: newStatus, status: newStatus })
+        .update({ pipeline_status: newStatus })
         .eq('id', draggedInquiry.id);
 
       if (error) throw error;

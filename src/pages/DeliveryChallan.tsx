@@ -11,7 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useFinance } from '../contexts/FinanceContext';
 import { supabase } from '../lib/supabase';
-import { Plus, Trash2, Eye, CreditCard as Edit, FileText, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Trash2, Eye, Pencil as Edit, FileText, CheckCircle, XCircle } from 'lucide-react';
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
@@ -34,6 +34,8 @@ interface DeliveryChallan {
   invoicing_status?: 'not_invoiced' | 'partially_invoiced' | 'fully_invoiced';
   total_items?: number;
   invoiced_items?: number;
+  /** Quantity still available to invoice, supplied by dc_invoicing_summary. */
+  total_remaining_quantity?: number | null;
   linked_invoices?: string[];
   product_names?: string;
   sales_orders?: {
@@ -102,7 +104,7 @@ const isExpired = (expiryDate: string | null): boolean => {
 
 export function DeliveryChallan() {
   const { profile } = useAuth();
-  const { setCurrentPage, setNavigationData } = useNavigation();
+  const { navigationData, clearNavigationData, setCurrentPage, setNavigationData } = useNavigation();
   const { dateRange } = useFinance();
   const [challans, setChallans] = useState<DeliveryChallan[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -207,6 +209,7 @@ export function DeliveryChallan() {
           not_invoiced_items: inv.not_invoiced_items,
           partially_invoiced_items: inv.partially_invoiced_items,
           fully_invoiced_items: inv.fully_invoiced_items,
+          total_remaining_quantity: inv.total_remaining_quantity,
           linked_invoices: inv.linked_invoice_numbers || []
         });
       });
@@ -218,6 +221,7 @@ export function DeliveryChallan() {
           invoicing_status: invStatus?.status || 'not_invoiced',
           total_items: invStatus?.total_items || 0,
           invoiced_items: (invStatus?.fully_invoiced_items || 0) + (invStatus?.partially_invoiced_items || 0),
+          total_remaining_quantity: invStatus?.total_remaining_quantity ?? null,
           linked_invoices: invStatus?.linked_invoices || []
         };
       });
@@ -270,6 +274,26 @@ export function DeliveryChallan() {
     setChallanItems(items);
     setViewModalOpen(true);
   };
+
+  useEffect(() => {
+    const requestedId = navigationData?.challanId;
+    if (typeof requestedId !== 'string') return;
+    const openRequested = async () => {
+      const inList = challans.find(challan => challan.id === requestedId);
+      if (inList) {
+        await openChallanPreview(inList);
+      } else {
+        const { data } = await supabase
+          .from('delivery_challans')
+          .select('*, customers(company_name, address, city, phone, pbf_license), sales_orders(so_number, so_date)')
+          .eq('id', requestedId)
+          .maybeSingle();
+        if (data) await openChallanPreview(data as DeliveryChallan);
+      }
+      clearNavigationData();
+    };
+    void openRequested();
+  }, [navigationData, challans, clearNavigationData]);
 
   const openSalesOrderPreview = async (soId: string) => {
     if (!soId) return;
@@ -429,11 +453,11 @@ export function DeliveryChallan() {
     return (batch.current_stock - (batch.reserved_stock || 0)) + soReservedForThisBatch;
   };
 
-  const handleSalesOrderChange = async (soId: string) => {
-    setFormData({ ...formData, sales_order_id: soId });
+  const handleSalesOrderChange = async (soId: string, sourceOrder?: { id: string; customer_id: string }) => {
+    setFormData(prev => ({ ...prev, sales_order_id: soId, customer_id: sourceOrder?.customer_id || prev.customer_id }));
 
     if (soId) {
-      const so = salesOrders.find(s => s.id === soId);
+      const so = sourceOrder || salesOrders.find(s => s.id === soId);
       if (so) {
         setFormData(prev => ({ ...prev, customer_id: so.customer_id }));
 
@@ -523,6 +547,36 @@ export function DeliveryChallan() {
       }]);
     }
   };
+
+  useEffect(() => {
+    const requestedSoId = navigationData?.createDeliveryChallanFromSO;
+    if (typeof requestedSoId !== 'string' || !batches.length || !customers.length) return;
+    let cancelled = false;
+    const openPrefilledChallan = async () => {
+      const { data: so, error } = await supabase
+        .from('sales_orders')
+        .select('id,customer_id')
+        .eq('id', requestedSoId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !so) {
+        console.error('Unable to load Sales Order for Delivery Challan:', error);
+        showToast({ type: 'error', title: 'Delivery Challan', message: 'The Sales Order could not be loaded.' });
+        clearNavigationData();
+        return;
+      }
+      resetForm();
+      setModalOpen(true);
+      // Load the customer-scoped choices for the form, then hydrate the SO
+      // lines/reservations directly by ID. This avoids falling back to the DC
+      // list when the SO is outside the currently loaded list.
+      void loadSalesOrders(so.customer_id);
+      await handleSalesOrderChange(requestedSoId, so);
+      if (!cancelled) clearNavigationData();
+    };
+    void openPrefilledChallan();
+    return () => { cancelled = true; };
+  }, [navigationData, batches, customers, clearNavigationData]);
 
   const handleBatchChange = (index: number, batchId: string) => {
     const batch = batches.find(b => b.id === batchId);
@@ -1176,7 +1230,7 @@ export function DeliveryChallan() {
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
             >
               <Plus className="w-5 h-5" />
-              Create Delivery Challan
+              New Delivery Challan
             </button>
           )}
         </div>
@@ -1206,7 +1260,12 @@ export function DeliveryChallan() {
               </button>
               {canManage && (
                 <>
-                  <button
+                  {challan.approval_status === 'approved' &&
+                    // The summary view is the source of truth for invoiceable quantity.
+                    // Keep the status fallback for older/temporarily unavailable view rows.
+                    (challan.total_remaining_quantity == null
+                      ? challan.invoicing_status !== 'fully_invoiced'
+                      : Number(challan.total_remaining_quantity) > 0) && <button
                     onClick={async () => {
                       const items = await loadChallanItems(challan.id);
                       setNavigationData({
@@ -1219,16 +1278,16 @@ export function DeliveryChallan() {
                       setCurrentPage('sales');
                     }}
                     className="p-1 text-purple-600 hover:bg-purple-50 rounded"
-                    title="Create Invoice from DO"
+                    title="Create Invoice"
                   >
                     <FileText className="w-4 h-4" />
-                  </button>
+                  </button>}
                   {/* Edit and Delete only for admin on approved DCs */}
                   {(challan.approval_status !== 'approved' || profile?.role === 'admin') && (
                     <>
                       <button
                         onClick={() => handleEdit(challan)}
-                        className="p-1 text-green-600 hover:bg-green-50 rounded"
+                        className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
                         title="Edit Challan"
                       >
                         <Edit className="w-4 h-4" />

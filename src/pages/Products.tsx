@@ -5,7 +5,7 @@ import { Modal } from '../components/Modal';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Plus, CreditCard as Edit, Trash2, Upload, X, ExternalLink, Download, FileText, Eye } from 'lucide-react';
+import { Plus, Pencil as Edit, Trash2, Upload, X, ExternalLink, Download, FileText, Eye } from 'lucide-react';
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { resolveStorageUrlCached } from '../utils/signedUrlCache';

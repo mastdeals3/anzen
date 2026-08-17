@@ -420,14 +420,16 @@ export function EmailListPanel({ onEmailSelect, selectedEmailId }: EmailListPane
                       })}
                     </span>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSourceReplyEmail(email); }}
-                        className="text-xs text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
-                        title="Parse this email as a supplier source reply"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        Parse Source Reply
-                      </button>
+                      {email.from_email && /supplier|vendor|source/i.test(email.from_email) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSourceReplyEmail(email); }}
+                          className="text-xs text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
+                          title="Parse this email as a supplier source reply"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          Parse Source Reply
+                        </button>
+                      )}
                       {!isParsing && (
                         <span className="text-xs text-blue-600 font-medium flex items-center gap-1">
                           <Sparkles className="w-3 h-3" />

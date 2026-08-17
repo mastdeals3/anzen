@@ -12,7 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useFinance } from '../contexts/FinanceContext';
 import { supabase } from '../lib/supabase';
-import { Plus, CreditCard as Edit, Trash2, FileText, Eye, FileX } from 'lucide-react';
+import { Plus, Pencil as Edit, Trash2, FileText, Eye, FileX } from 'lucide-react';
 import { showToast } from '../components/ToastNotification';
 import { showConfirm } from '../components/ConfirmDialog';
 import { formatDate } from '../utils/dateFormat';
@@ -1273,6 +1273,24 @@ export function Sales() {
     setViewModalOpen(true);
   };
 
+  useEffect(() => {
+    if (navigationData?.sourceType !== 'sales_invoice' || !navigationData.invoiceId) return;
+    const openSourceInvoice = async () => {
+      const { data, error } = await supabase
+        .from('sales_invoices')
+        .select('*, customers(company_name)')
+        .eq('id', String(navigationData.invoiceId))
+        .maybeSingle();
+      if (error) {
+        console.error('Error opening journal source sales invoice:', error);
+      } else if (data) {
+        await handleView(data as SalesInvoice);
+      }
+      clearNavigationData();
+    };
+    void openSourceInvoice();
+  }, [navigationData, clearNavigationData]);
+
   const handleEdit = async (invoice: SalesInvoice) => {
     setEditingInvoice(invoice);
     setFormData({
@@ -1573,7 +1591,7 @@ export function Sales() {
                 <>
                   <button
                     onClick={() => handleEdit(invoice)}
-                    className="p-1 text-green-600 hover:bg-green-50 rounded"
+                    className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
                     title={t('common.edit')}
                   >
                     <Edit className="w-4 h-4" />

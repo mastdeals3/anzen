@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { DataTable } from '../DataTable';
 import { FinanceModal as Modal } from './FinanceModal';
 import { MoneyInput } from '../MoneyInput';
-import { Plus, CreditCard as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
+import { Plus, Pencil as Edit, Trash2, FileText, DollarSign, Calendar, AlertCircle } from 'lucide-react';
 import { formatDate } from '../../utils/dateFormat';
 import { useExpenseCategories } from './useExpenseCategories';
 import { useFinance } from '../../contexts/FinanceContext';
@@ -70,6 +70,18 @@ interface OutstandingExpenseBill {
   days_overdue: number;
 }
 
+interface OutstandingPurchaseInvoice {
+  id: string;
+  invoice_number: string;
+  invoice_date: string;
+  due_date: string | null;
+  total_amount: number;
+  paid_amount: number;
+  balance_amount: number;
+  currency: string;
+  suppliers?: { company_name: string } | null;
+}
+
 interface PayablesManagerProps {
   canManage: boolean;
 }
@@ -85,6 +97,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
   const [payments, setPayments] = useState<VendorPayment[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [outstandingExpenseBills, setOutstandingExpenseBills] = useState<OutstandingExpenseBill[]>([]);
+  const [outstandingPurchaseInvoices, setOutstandingPurchaseInvoices] = useState<OutstandingPurchaseInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [billModalOpen, setBillModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -117,7 +130,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
 
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([loadBills(), loadPayments(), loadBankAccounts(), loadOutstandingExpenseBills()]);
+    await Promise.all([loadBills(), loadPayments(), loadBankAccounts(), loadOutstandingExpenseBills(), loadOutstandingPurchaseInvoices()]);
     setLoading(false);
   };
 
@@ -128,6 +141,25 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
       setOutstandingExpenseBills(data || []);
     } catch (error) {
       console.error('Error loading outstanding expense bills:', error);
+    }
+  };
+
+  const loadOutstandingPurchaseInvoices = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('purchase_invoices')
+        .select('id, invoice_number, invoice_date, due_date, total_amount, paid_amount, balance_amount, currency, suppliers(company_name)')
+        .in('status', ['pending', 'partial'])
+        .gt('balance_amount', 0)
+        .lte('invoice_date', dateRange.endDate)
+        .order('due_date', { ascending: true });
+      if (error) throw error;
+      setOutstandingPurchaseInvoices((data || []).map(invoice => ({
+        ...invoice,
+        suppliers: Array.isArray(invoice.suppliers) ? invoice.suppliers[0] || null : invoice.suppliers,
+      })) as OutstandingPurchaseInvoice[]);
+    } catch (error) {
+      console.error('Error loading outstanding purchase invoices:', error);
     }
   };
 
@@ -469,15 +501,15 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
     .reduce((sum, b) => sum + b.total_amount, 0);
 
   const totalExpenseBillsPayable = outstandingExpenseBills.reduce((sum, b) => sum + b.balance_amount, 0);
+  const totalPurchaseInvoicesPayable = outstandingPurchaseInvoices.reduce((sum, invoice) => sum + invoice.balance_amount, 0);
 
-  const totalCombinedPayable = totalPayable + totalExpenseBillsPayable;
-
-  const overdueBills = bills.filter(b => {
-    if (!b.due_date || b.payment_status === 'paid') return false;
-    return new Date(b.due_date) < new Date();
-  });
+  // The AP headline is the canonical as-of view: purchase invoices plus
+  // expense bills. Legacy vendor_bills remain available separately and are
+  // intentionally not mixed into this accounting answer.
+  const totalCombinedPayable = totalExpenseBillsPayable + totalPurchaseInvoicesPayable;
 
   const overdueExpenseBills = outstandingExpenseBills.filter(b => b.days_overdue > 0);
+  const overduePurchaseInvoices = outstandingPurchaseInvoices.filter(invoice => invoice.due_date && new Date(invoice.due_date) < new Date(`${dateRange.endDate}T00:00:00`));
 
   const categoryLabel = (cat: string) =>
     expenseCategories.find(category => category.value === cat)?.label
@@ -607,7 +639,7 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
           <div className="flex items-center justify-between gap-1">
             <div>
               <p className="text-[9px] text-orange-600 uppercase tracking-wide">Overdue</p>
-              <p className="text-sm font-bold text-orange-700 font-mono">{overdueBills.length + overdueExpenseBills.length}</p>
+              <p className="text-sm font-bold text-orange-700 font-mono">{overdueExpenseBills.length + overduePurchaseInvoices.length}</p>
             </div>
             <AlertCircle className="w-4 h-4 text-orange-400 shrink-0" />
           </div>
@@ -642,10 +674,10 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
             }`}
           >
             <FileText className="w-3 h-3" />
-            Expense Bills (AP)
-            {outstandingExpenseBills.length > 0 && (
+            Outstanding (AP)
+            {(outstandingExpenseBills.length + outstandingPurchaseInvoices.length) > 0 && (
               <span className={`ml-1 px-1 py-0 rounded text-[10px] font-semibold ${viewMode === 'expense_bills' ? 'bg-purple-800 text-purple-50' : 'bg-purple-200 text-purple-800'}`}>
-                {outstandingExpenseBills.length}
+                {outstandingExpenseBills.length + outstandingPurchaseInvoices.length}
               </span>
             )}
           </button>
@@ -693,12 +725,48 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
 
       {viewMode === 'expense_bills' ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+          {!loading && outstandingPurchaseInvoices.length > 0 && (
+            <div className="border-b border-gray-200">
+              <div className="px-3 py-2 bg-blue-50 text-xs font-semibold text-blue-800">
+                Purchase Invoices outstanding as of {dateRange.endDate}
+              </div>
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Supplier</th>
+                    <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Invoice #</th>
+                    <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Invoice Date</th>
+                    <th className="px-1.5 py-1 text-left text-xs font-semibold text-gray-600">Due Date</th>
+                    <th className="px-1.5 py-1 text-right text-xs font-semibold text-gray-600">Total</th>
+                    <th className="px-1.5 py-1 text-right text-xs font-semibold text-gray-600">Paid</th>
+                    <th className="px-1.5 py-1 text-right text-xs font-semibold text-gray-600">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {outstandingPurchaseInvoices.map(invoice => (
+                    <tr key={invoice.id} className="hover:bg-blue-50/40">
+                      <td className="px-1.5 py-1 text-xs text-gray-900">{invoice.suppliers?.company_name || '—'}</td>
+                      <td className="px-1.5 py-1 text-xs font-mono text-gray-700">{invoice.invoice_number}</td>
+                      <td className="px-1.5 py-1 text-xs text-gray-700">{formatDate(invoice.invoice_date)}</td>
+                      <td className="px-1.5 py-1 text-xs text-gray-700">{invoice.due_date ? formatDate(invoice.due_date) : '—'}</td>
+                      <td className="px-1.5 py-1 text-right text-xs text-gray-700">{invoice.total_amount.toLocaleString('id-ID')}</td>
+                      <td className="px-1.5 py-1 text-right text-xs text-green-700">{invoice.paid_amount.toLocaleString('id-ID')}</td>
+                      <td className="px-1.5 py-1 text-right text-xs font-semibold text-red-600">{invoice.balance_amount.toLocaleString('id-ID')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-blue-50 border-t border-blue-200">
+                  <tr><td colSpan={6} className="px-1.5 py-1 text-right text-xs font-bold">Purchase invoice balance:</td><td className="px-1.5 py-1 text-right text-xs font-bold text-red-700">{totalPurchaseInvoicesPayable.toLocaleString('id-ID')}</td></tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
           {loading ? (
             <div className="px-6 py-8 text-center text-gray-500">Loading...</div>
-          ) : outstandingExpenseBills.length === 0 ? (
+          ) : outstandingExpenseBills.length === 0 && outstandingPurchaseInvoices.length === 0 ? (
             <div className="px-6 py-8 text-center text-gray-500">
               <FileText className="w-10 h-10 mx-auto text-gray-300 mb-3" />
-              <p className="text-sm font-medium text-gray-600">No outstanding expense bills</p>
+              <p className="text-sm font-medium text-gray-600">No outstanding purchase invoices or expense bills</p>
               <p className="text-xs text-gray-500 mt-1">
                 Expense bills recorded as "Outstanding (A/P)" in the Expense module will appear here.
               </p>

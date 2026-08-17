@@ -541,7 +541,7 @@ export function JournalEntryViewerEnhanced({
             )}
 
             {selectedEntry.source_module && selectedEntry.reference_id && onOpenSource
-              && ['expense','expenses','receipt','payment','petty_cash','fund_transfer','fund_transfers','bank_reconciliation'].includes(selectedEntry.source_module) && (
+              && ['expense','expenses','receipt','payment','petty_cash','fund_transfer','fund_transfers','bank_reconciliation','purchase','purchase_invoice','purchase_invoices','sales','sales_invoice','sales_invoices','sales_invoice_cogs'].includes(selectedEntry.source_module) && (
               <button
                 type="button"
                 onClick={() => onOpenSource(selectedEntry.source_module || '', selectedEntry.reference_id || '')}

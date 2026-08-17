@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Package, Boxes, Warehouse, Users, CircleUser as UserCircle,
   ShoppingCart, DollarSign, Settings, LogOut, Menu, X, Globe, Truck, Zap,
   CheckSquare, FileText, TrendingUp, ClipboardList, Calendar, Calculator,
-  BarChart2, Tags,
+  BarChart2, Tags, Search,
 } from 'lucide-react';
 import logo from '../assets/Untitled-1.svg';
 
@@ -87,13 +87,17 @@ export function Layout({ children }: LayoutProps) {
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const [currentCompanyName, setCurrentCompanyName] = useState(FALLBACK_COMPANY.company_name);
   const [setupMode, setSetupMode] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<Array<{ kind: string; id: string; label: string; detail: string; page: string }>>([]);
+  const [searching, setSearching] = useState(false);
   const datePickerRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { profile, accessibleModules, signOut } = useAuth();
   const { language, setLanguage, t } = useLanguage();
-  const { currentPage, setCurrentPage, sidebarCollapsed, setSidebarCollapsed } = useNavigation();
+  const { currentPage, setCurrentPage, setNavigationData, sidebarCollapsed, setSidebarCollapsed } = useNavigation();
   const { dateRange, setDateRange } = useFinance();
 
   useEffect(() => {
@@ -117,6 +121,46 @@ export function Layout({ children }: LayoutProps) {
       .maybeSingle()
       .then(({ data }) => { if (data) setSetupMode(Boolean((data as { setup_mode?: boolean }).setup_mode)); });
   }, []);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+      if (event.key === 'Escape') setSearchOpen(false);
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    const term = searchTerm.trim();
+    if (term.length < 2) { setSearchResults([]); return; }
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      const pattern = `%${term}%`;
+      const [invoices, orders, challans, customers, batches, purchases] = await Promise.all([
+        supabase.from('sales_invoices').select('id, invoice_number, customer_id, customers(company_name)').ilike('invoice_number', pattern).limit(8),
+        supabase.from('sales_orders').select('id, so_number, customer_id, customers(company_name)').ilike('so_number', pattern).limit(8),
+        supabase.from('delivery_challans').select('id, challan_number, customer_id, customers(company_name)').ilike('challan_number', pattern).limit(8),
+        supabase.from('customers').select('id, company_name').ilike('company_name', pattern).limit(8),
+        supabase.from('batches').select('id, batch_number, product_id, products(product_name)').ilike('batch_number', pattern).limit(8),
+        supabase.from('purchase_invoices').select('id, invoice_number, supplier_id, suppliers(company_name)').ilike('invoice_number', pattern).limit(8),
+      ]);
+      const customerName = (row: any) => Array.isArray(row.customers) ? row.customers[0]?.company_name : row.customers?.company_name;
+      setSearchResults([
+        ...(invoices.data || []).map((r: any) => ({ kind: 'Invoice', id: r.id, label: r.invoice_number, detail: customerName(r) || '', page: 'sales' })),
+        ...(orders.data || []).map((r: any) => ({ kind: 'Sales Order', id: r.id, label: r.so_number, detail: customerName(r) || '', page: 'sales-orders' })),
+        ...(challans.data || []).map((r: any) => ({ kind: 'Delivery Challan', id: r.id, label: r.challan_number, detail: customerName(r) || '', page: 'delivery-challan' })),
+        ...(customers.data || []).map((r: any) => ({ kind: 'Customer', id: r.id, label: r.company_name, detail: '', page: 'customers' })),
+        ...(batches.data || []).map((r: any) => ({ kind: 'Batch', id: r.id, label: r.batch_number, detail: Array.isArray(r.products) ? r.products[0]?.product_name || '' : r.products?.product_name || '', page: 'batches' })),
+        ...(purchases.data || []).map((r: any) => ({ kind: 'Purchase Invoice', id: r.id, label: r.invoice_number, detail: Array.isArray(r.suppliers) ? r.suppliers[0]?.company_name || '' : r.suppliers?.company_name || '', page: 'finance' })),
+      ].slice(0, 30));
+      setSearching(false);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -188,10 +232,10 @@ export function Layout({ children }: LayoutProps) {
   const groups: MenuGroup[] = [
     { label: 'Main',      items: allItems.filter(i => ['dashboard', 'crm', 'customers'].includes(i.id)) },
     { label: 'Sales',     items: allItems.filter(i => ['sales-orders', 'delivery-challan', 'sales'].includes(i.id)) },
-    { label: 'Operations',items: allItems.filter(i => ['products', 'batches', 'stock', 'inventory'].includes(i.id)) },
+    { label: 'Stock',     items: allItems.filter(i => ['products', 'batches', 'stock'].includes(i.id)) },
     { label: 'Purchases', items: allItems.filter(i => ['purchase-orders', 'import-requirements', 'import-containers'].includes(i.id)) },
     { label: 'Finance',   items: allItems.filter(i => ['finance', 'price-calculator'].includes(i.id)) },
-    { label: 'Pricing',   items: allItems.filter(i => ['pricing-dashboard', 'sourcing-outbox', 'pricing-worksheet', 'pricing-ledger'].includes(i.id)) },
+    { label: 'Pricing',   items: allItems.filter(i => ['pricing-dashboard'].includes(i.id)) },
     { label: 'Reports',   items: allItems.filter(i => ['reports'].includes(i.id)) },
     { label: 'System',    items: allItems.filter(i => ['tasks', 'command-center', 'settings'].includes(i.id)) },
   ];
@@ -199,6 +243,8 @@ export function Layout({ children }: LayoutProps) {
   const toggleLanguage = () => {
     setLanguage(language === 'en' ? 'id' : 'en');
   };
+
+  const showDateRange = !['dashboard', 'crm', 'command-center', 'settings'].includes(currentPage);
 
   const navigate = (id: string) => {
     setCurrentPage(id);
@@ -354,8 +400,8 @@ export function Layout({ children }: LayoutProps) {
             </div>
 
             {/* Desktop date range */}
-            <div className="flex-1 hidden md:flex items-center justify-center px-2">
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+            <div className={`flex-1 hidden md:flex items-center justify-center px-2 ${!showDateRange ? 'invisible' : ''}`} aria-hidden={!showDateRange}>
+              {showDateRange && <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
                 <Calendar className="w-3.5 h-3.5 text-gray-500" />
                 <input
                   type="date"
@@ -370,18 +416,18 @@ export function Layout({ children }: LayoutProps) {
                   onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
                   className="px-1.5 py-0.5 text-xs border border-gray-200 rounded bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                 />
-              </div>
+              </div>}
             </div>
 
             {/* Mobile date range toggle */}
-            <div className="md:hidden relative" ref={datePickerRef}>
-              <button
+            <div className={`md:hidden relative ${!showDateRange ? 'invisible' : ''}`} ref={datePickerRef} aria-hidden={!showDateRange}>
+              {showDateRange && <button
                 onClick={() => setDatePickerOpen(!datePickerOpen)}
                 className="p-1.5 rounded hover:bg-gray-100 flex items-center gap-1 text-gray-600"
               >
                 <Calendar className="w-4 h-4" />
-              </button>
-              {datePickerOpen && (
+              </button>}
+              {showDateRange && datePickerOpen && (
                 <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-50 w-64">
                   <p className="text-xs font-medium text-gray-600 mb-2">Date Range Filter</p>
                   <div className="space-y-2">
@@ -415,6 +461,14 @@ export function Layout({ children }: LayoutProps) {
             </div>
 
             <div className="flex items-center gap-1">
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="hidden sm:flex items-center gap-1 px-2 py-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 text-xs"
+                title="Search (Ctrl/Cmd+K)"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Search</span><kbd className="text-[10px] bg-gray-100 px-1 rounded">⌘K</kbd>
+              </button>
               <NotificationDropdown />
 
               <button
@@ -442,6 +496,35 @@ export function Layout({ children }: LayoutProps) {
           {children}
         </main>
       </div>
+
+      {searchOpen && (
+        <div className="fixed inset-0 z-[70] bg-black/30 flex items-start justify-center pt-[12vh] px-4" onMouseDown={() => setSearchOpen(false)}>
+          <div className="w-full max-w-xl bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden" onMouseDown={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-3 py-2 border-b">
+              <Search className="w-4 h-4 text-gray-400" />
+              <input autoFocus value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search invoices, SOs, DCs, customers, batches…" className="flex-1 outline-none text-sm" />
+              <button onClick={() => setSearchOpen(false)} className="text-xs text-gray-400">Esc</button>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {searching && <p className="px-3 py-4 text-sm text-gray-500">Searching…</p>}
+              {!searching && searchTerm.trim().length >= 2 && searchResults.length === 0 && <p className="px-3 py-4 text-sm text-gray-500">No matching documents found.</p>}
+              {searchResults.map(result => (
+                <button key={`${result.kind}-${result.id}`} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b last:border-0" onClick={() => {
+                  if (result.kind === 'Invoice') setNavigationData({ sourceType: 'sales_invoice', invoiceId: result.id });
+                  if (result.kind === 'Sales Order') setNavigationData({ salesOrderId: result.id });
+                  if (result.kind === 'Delivery Challan') setNavigationData({ challanId: result.id });
+                  setCurrentPage(result.page);
+                  setSearchOpen(false); setSearchTerm('');
+                }}>
+                  <span className="text-[10px] uppercase tracking-wide text-blue-600">{result.kind}</span>
+                  <span className="block text-sm font-medium text-gray-900">{result.label}</span>
+                  {result.detail && <span className="block text-xs text-gray-500">{result.detail}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

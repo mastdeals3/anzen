@@ -6,7 +6,7 @@ import { SearchableSelect } from '../components/SearchableSelect';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Plus, CreditCard as Edit, Trash2, AlertTriangle, Package, DollarSign, FileText, ExternalLink, Search, ChevronDown, ChevronRight, Archive, Eye, EyeOff, ExternalLink as LinkIcon } from 'lucide-react';
+import { Plus, Pencil as Edit, Trash2, AlertTriangle, Package, DollarSign, FileText, ExternalLink, Search, ChevronDown, ChevronRight, Archive, Eye, EyeOff, ExternalLink as LinkIcon } from 'lucide-react';
 import { ProformaInvoiceView } from '../components/ProformaInvoiceView';
 import { DeliveryChallanView } from '../components/DeliveryChallanView';
 import { InvoiceView } from '../components/InvoiceView';
@@ -1803,7 +1803,7 @@ export function Batches() {
                               isReleasedRes ? 'bg-gray-200 text-gray-600 line-through' :
                               'bg-gray-200 text-gray-700'
                             }`}>
-                              {txn.transaction_type.replace(/_/g, ' ')}
+                              {txn.transaction_type.replace(/_/g, ' ').replace(/^delivery challan$/i, 'Delivery')}
                             </span>
                           </div>
                           <div className="text-sm text-gray-600 space-y-0.5">

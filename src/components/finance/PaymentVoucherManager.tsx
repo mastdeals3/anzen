@@ -983,7 +983,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
 
       setModalOpen(false);
       resetForm();
-      loadVouchers();
+      await loadVouchers();
     } catch (error: unknown) {
       console.error('Error saving voucher:', error);
       const msg = (error instanceof Error ? error.message : null)

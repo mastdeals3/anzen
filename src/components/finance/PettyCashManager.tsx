@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, ArrowDownCircle, ArrowUpCircle, Upload, X, FileText, Image, Eye, CreditCard as Edit2, Trash2, ExternalLink, Download, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw, Search } from 'lucide-react';
+import { Plus, ArrowDownCircle, ArrowUpCircle, Upload, X, FileText, Image, Eye, Pencil as Edit2, Trash2, ExternalLink, Download, DollarSign, Package, Truck, Building2, CheckCircle, XCircle, Clock, Lock, RotateCcw, Search } from 'lucide-react';
 import { FinanceModal as Modal } from './FinanceModal';
 import { MoneyInput } from '../MoneyInput';
 import { FinanceModal } from './FinanceModal';

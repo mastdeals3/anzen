@@ -374,14 +374,13 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
   };
 
   const ageingRows = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const asOfDate = new Date(`${dateRange.endDate}T00:00:00`);
 
     return invoices.map((inv) => {
       const balance = inv.total_amount - (inv.paid_amount || 0);
       const due = new Date(inv.due_date);
       due.setHours(0, 0, 0, 0);
-      const daysOverdue = Math.max(0, Math.floor((today.getTime() - due.getTime()) / 86400000));
+      const daysOverdue = Math.max(0, Math.floor((asOfDate.getTime() - due.getTime()) / 86400000));
 
       return {
         ...inv,
@@ -393,7 +392,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
         bucket90plus: daysOverdue > 90 ? balance : 0,
       };
     }).sort((a, b) => b.daysOverdue - a.daysOverdue);
-  }, [invoices]);
+  }, [invoices, dateRange.endDate]);
 
   const ageingTotals = useMemo(() => ageingRows.reduce(
     (acc, r) => ({
@@ -433,9 +432,9 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       key: 'due_date',
       label: 'Due Date',
       render: (_val: any, inv: SalesInvoice) => {
-        const dueDate = new Date(inv.due_date);
-        const today = new Date();
-        const isOverdue = dueDate < today && inv.payment_status !== 'paid';
+        const dueDate = new Date(`${inv.due_date}T00:00:00`);
+        const asOfDate = new Date(`${dateRange.endDate}T00:00:00`);
+        const isOverdue = dueDate < asOfDate && inv.payment_status !== 'paid';
         return (
           <span className={isOverdue ? 'text-red-600 font-semibold' : ''}>
             {formatDate(inv.due_date)}

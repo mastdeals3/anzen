@@ -55,7 +55,7 @@ export function TaxComplianceCentre({ onOpenExpense, onOpenPayment, onOpenJourna
         {active === 'calendar' && <TaxCalendarPanel />}
         {active === 'periods'  && <TaxPeriodsPanel />}
         {active === 'pph'      && <PphRegisterPanel onOpenExpense={onOpenExpense} onOpenPayment={onOpenPayment} onOpenJournal={onOpenJournal} />}
-        {active === 'payments' && <TaxPaymentsPanel />}
+        {active === 'payments' && <TaxPaymentsPanel onOpenJournal={onOpenJournal} />}
         {active === 'faktur'   && <FakturPajakPanel />}
         {active === 'close'    && <PeriodClosePanel />}
         {active === 'reports'  && <TaxReportsPanel />}

@@ -87,7 +87,7 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
   };
 
   const loadReportData = async () => {
-    if (selectedReport === 'profit_and_loss' || selectedReport === 'balance_sheet' || selectedReport === 'tax_compliance') {
+    if (selectedReport === 'trial_balance' || selectedReport === 'profit_and_loss' || selectedReport === 'balance_sheet' || selectedReport === 'tax_compliance') {
       setReportData(null);
       setError(null);
       setLoading(false);
@@ -122,9 +122,6 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
           break;
         case 'general_ledger':
           data = await loadGeneralLedger();
-          break;
-        case 'trial_balance':
-          data = await loadTrialBalance();
           break;
         case 'fixed_assets':
           data = await loadFixedAssets();
@@ -403,23 +400,6 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
       }
       return (a.entry_date || '').localeCompare(b.entry_date || '');
     });
-  };
-
-  const loadTrialBalance = async () => {
-    const { data, error } = await supabase.rpc('get_trial_balance', {
-      p_start_date: dateRange.from,
-      p_end_date: dateRange.to,
-      p_usd_rate: 1,
-    });
-
-    if (error) throw error;
-    return ((data || []) as any[]).map(row => ({
-      code: row.code,
-      name: row.name,
-      account_type: row.account_type,
-      debit: Number(row.total_debit || 0),
-      credit: Number(row.total_credit || 0),
-    }));
   };
 
   const loadFixedAssets = async () => {
@@ -726,11 +706,12 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
         })}
       </div>
 
+      {selectedReport === 'trial_balance' && <FinancialReports initialReport="trial_balance" onDrillDown={onDrillDown} />}
       {selectedReport === 'profit_and_loss' && <FinancialReports initialReport="pnl" onDrillDown={onDrillDown} />}
       {selectedReport === 'balance_sheet' && <FinancialReports initialReport="balance_sheet" onDrillDown={onDrillDown} />}
       {selectedReport === 'tax_compliance' && <TaxReportsPanel />}
 
-      {!['profit_and_loss', 'balance_sheet', 'tax_compliance'].includes(selectedReport) && <div className="bg-white rounded-lg border border-slate-200 p-6">
+      {!['trial_balance', 'profit_and_loss', 'balance_sheet', 'tax_compliance'].includes(selectedReport) && <div className="bg-white rounded-lg border border-slate-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-slate-900">
             {reports.find(r => r.id === selectedReport)?.name}
@@ -952,7 +933,7 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
                     <td className="px-1.5 py-1 text-slate-600">{row.currency}</td>
                   </tr>
                 ))}
-                {selectedReport === 'cash_ledger' && reportData.slice(0, 100).map((row: any, idx: number) => (
+                {selectedReport === 'cash_ledger' && reportData.map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
                     <td className="px-1.5 py-1 text-slate-900">{row.date}</td>
                     <td className="px-1.5 py-1 text-slate-900">
@@ -966,7 +947,7 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
                     <td className="px-1.5 py-1 text-slate-600">{row.narration}</td>
                   </tr>
                 ))}
-                {selectedReport === 'bank_ledger' && reportData.slice(0, 100).map((row: any, idx: number) => (
+                {selectedReport === 'bank_ledger' && reportData.map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
                     <td className="px-1.5 py-1 text-slate-900">{row.date}</td>
                     <td className="px-1.5 py-1 text-slate-900">
@@ -997,7 +978,7 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
                     <td className="px-1.5 py-1 text-slate-600">{row.narration}</td>
                   </tr>
                 ))}
-                {selectedReport === 'general_ledger' && reportData.slice(0, 100).map((row: any, idx: number) => (
+                {selectedReport === 'general_ledger' && reportData.map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-50">
                     <td className="px-1.5 py-1 text-slate-900 font-mono">{row.account_code}</td>
                     <td className="px-1.5 py-1 text-slate-900">{row.account_name}</td>
@@ -1034,7 +1015,9 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
             </table>
             {reportData.length > 100 && (
               <div className="text-center py-4 text-slate-500 text-sm">
-                Showing first 100 records. Export to Excel to see all {reportData.length} records.
+                {['cash_ledger', 'bank_ledger', 'general_ledger'].includes(selectedReport)
+                  ? `Showing all ${reportData.length} records.`
+                  : `Showing first 100 records. Export to Excel to see all ${reportData.length} records.`}
               </div>
             )}
           </div>
