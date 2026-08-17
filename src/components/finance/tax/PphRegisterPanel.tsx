@@ -55,6 +55,19 @@ interface SourceLine {
   tax_period_id: string | null;
 }
 
+interface HistoricalTaxPayment {
+  id: string;
+  tax_type: string;
+  payment_date: string;
+  amount: number | string;
+  billing_code: string | null;
+  ntpn: string | null;
+  payment_reference: string | null;
+  historical_source_note: string | null;
+  journal_entry_id: string | null;
+  status: string | null;
+}
+
 interface TaxPeriodOption {
   id: string;
   fiscal_year: number;
@@ -258,7 +271,8 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
         }))
     : [];
 
-  const historicalPayments: SourceLine[] = ((historicalRes.data ?? []) as any[])
+  const historicalRows = (historicalRes.data ?? []) as HistoricalTaxPayment[];
+  const historicalPayments: SourceLine[] = historicalRows
     .filter(payment => pphType === 'PPh_Unifikasi' || payment.tax_type === pphType)
     .map(payment => ({
       module: 'historical_tax_payment' as const,
@@ -279,6 +293,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       journal_reference: payment.payment_reference || payment.billing_code || null,
       journal_id: payment.journal_entry_id,
       posting_date: payment.payment_date,
+      journal_status: payment.journal_entry_id ? 'Posted' : 'Not posted',
     }));
 
   return [...expenses, ...vouchers, ...imports, ...historicalPayments].sort((a, b) =>

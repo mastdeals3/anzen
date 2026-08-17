@@ -6,6 +6,8 @@
  * embedded relation is unavailable or changes shape.  Keep the invoice-item
  * record authoritative, then attach the display-only records by their IDs.
  */
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 export interface InvoiceDisplayItem {
   id: string;
   product_id: string;
@@ -23,58 +25,111 @@ export interface InvoiceDisplayItem {
   batches?: { batch_number: string; expiry_date: string | null } | null;
 }
 
-type QueryClient = {
-  from: (table: string) => any;
-};
+interface InvoiceItemRow {
+  id: string;
+  invoice_id: string;
+  product_id: string;
+  batch_id: string | null;
+  quantity: number;
+  unit_price: number;
+  tax_rate: number;
+  tax_amount: number | null;
+  line_total: number | null;
+  delivery_challan_item_id: string | null;
+}
+
+interface ProductRow {
+  id: string;
+  product_name: string;
+  product_code: string;
+  unit: string;
+}
+
+interface BatchRow {
+  id: string;
+  batch_number: string;
+  expiry_date: string | null;
+}
+
+interface DcItemRow {
+  id: string;
+  challan_id: string;
+}
+
+interface ChallanRow {
+  id: string;
+  challan_number: string;
+}
+
+function rowsOf<T>(data: T[] | null | undefined): T[] {
+  return data ?? [];
+}
 
 export async function loadInvoiceDisplayItems(
-  client: QueryClient,
+  client: SupabaseClient,
   invoiceId: string,
 ): Promise<InvoiceDisplayItem[]> {
-  const { data: invoiceItems, error: invoiceItemsError } = await client
+  const { data: invoiceItemData, error: invoiceItemsError } = await client
     .from('sales_invoice_items')
     .select('id, invoice_id, product_id, batch_id, quantity, unit_price, tax_rate, tax_amount, line_total, delivery_challan_item_id')
     .eq('invoice_id', invoiceId);
 
   if (invoiceItemsError) throw invoiceItemsError;
-  if (!invoiceItems?.length) return [];
+  const invoiceItems = rowsOf(invoiceItemData as InvoiceItemRow[] | null);
+  if (!invoiceItems.length) return [];
 
-  const productIds = [...new Set(invoiceItems.map((item: any) => item.product_id).filter(Boolean))];
-  const batchIds = [...new Set(invoiceItems.map((item: any) => item.batch_id).filter(Boolean))];
-  const dcItemIds = [...new Set(invoiceItems.map((item: any) => item.delivery_challan_item_id).filter(Boolean))];
+  const productIds = [...new Set(invoiceItems.map(item => item.product_id).filter(Boolean))];
+  const batchIds = [...new Set(invoiceItems.map(item => item.batch_id).filter((id): id is string => Boolean(id)))];
+  const dcItemIds = [...new Set(invoiceItems.map(item => item.delivery_challan_item_id).filter((id): id is string => Boolean(id)))];
+
+  const emptyProducts: ProductRow[] = [];
+  const emptyBatches: BatchRow[] = [];
+  const emptyDcItems: DcItemRow[] = [];
 
   const [productsResult, batchesResult, dcItemsResult] = await Promise.all([
     productIds.length
       ? client.from('products').select('id, product_name, product_code, unit').in('id', productIds)
-      : Promise.resolve({ data: [], error: null }),
+      : Promise.resolve({ data: emptyProducts, error: null }),
     batchIds.length
       ? client.from('batches').select('id, batch_number, expiry_date').in('id', batchIds)
-      : Promise.resolve({ data: [], error: null }),
+      : Promise.resolve({ data: emptyBatches, error: null }),
     dcItemIds.length
       ? client.from('delivery_challan_items').select('id, challan_id').in('id', dcItemIds)
-      : Promise.resolve({ data: [], error: null }),
+      : Promise.resolve({ data: emptyDcItems, error: null }),
   ]);
 
   if (productsResult.error) throw productsResult.error;
   if (batchesResult.error) throw batchesResult.error;
   if (dcItemsResult.error) throw dcItemsResult.error;
 
-  const challanIds = [...new Set((dcItemsResult.data || []).map((item: any) => item.challan_id).filter(Boolean))];
+  const products = rowsOf(productsResult.data as ProductRow[] | null);
+  const batches = rowsOf(batchesResult.data as BatchRow[] | null);
+  const dcItems = rowsOf(dcItemsResult.data as DcItemRow[] | null);
+
+  const challanIds = [...new Set(dcItems.map(item => item.challan_id).filter(Boolean))];
   const challansResult = challanIds.length
     ? await client.from('delivery_challans').select('id, challan_number').in('id', challanIds)
-    : { data: [], error: null };
+    : { data: [] as ChallanRow[], error: null };
   if (challansResult.error) throw challansResult.error;
+  const challans = rowsOf(challansResult.data as ChallanRow[] | null);
 
-  const productsById = new Map((productsResult.data || []).map((product: any) => [product.id, product]));
-  const batchesById = new Map((batchesResult.data || []).map((batch: any) => [batch.id, batch]));
-  const dcItemsById = new Map((dcItemsResult.data || []).map((item: any) => [item.id, item]));
-  const challansById = new Map((challansResult.data || []).map((challan: any) => [challan.id, challan]));
+  const productsById = new Map(products.map(product => [product.id, product]));
+  const batchesById = new Map(batches.map(batch => [batch.id, batch]));
+  const dcItemsById = new Map(dcItems.map(item => [item.id, item]));
+  const challansById = new Map(challans.map(challan => [challan.id, challan]));
 
-  return invoiceItems.map((item: any) => {
+  return invoiceItems.map(item => {
     const dcItem = item.delivery_challan_item_id ? dcItemsById.get(item.delivery_challan_item_id) : undefined;
-    const challan = dcItem?.challan_id ? challansById.get(dcItem.challan_id) : undefined;
+    const challan = dcItem ? challansById.get(dcItem.challan_id) : undefined;
     return {
-      ...item,
+      id: item.id,
+      product_id: item.product_id,
+      batch_id: item.batch_id,
+      quantity: Number(item.quantity),
+      unit_price: Number(item.unit_price),
+      tax_rate: Number(item.tax_rate),
+      tax_amount: item.tax_amount == null ? undefined : Number(item.tax_amount),
+      line_total: item.line_total == null ? undefined : Number(item.line_total),
       delivery_challan_item_id: item.delivery_challan_item_id ?? null,
       challan_id: dcItem?.challan_id ?? null,
       dc_number: challan?.challan_number,

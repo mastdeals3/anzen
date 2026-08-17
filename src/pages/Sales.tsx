@@ -1012,9 +1012,23 @@ export function Sales() {
   const loadInvoiceItems = async (invoiceId: string) => {
     try {
       const itemsWithDCInfo = await loadInvoiceDisplayItems(supabase, invoiceId);
+      const mappedItems: InvoiceItem[] = itemsWithDCInfo.map(item => ({
+        id: item.id,
+        product_id: item.product_id,
+        batch_id: item.batch_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        tax_rate: item.tax_rate,
+        total: item.line_total ?? item.total ?? item.quantity * item.unit_price * (1 + item.tax_rate / 100),
+        delivery_challan_item_id: item.delivery_challan_item_id,
+        challan_id: item.challan_id,
+        dc_number: item.dc_number,
+        products: item.products,
+        batches: item.batches,
+      }));
 
-      setInvoiceItems(itemsWithDCInfo || []);
-      return itemsWithDCInfo || [];
+      setInvoiceItems(mappedItems);
+      return mappedItems;
     } catch (error) {
       console.error('Error loading invoice items:', error);
       return [];
