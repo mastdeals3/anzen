@@ -77,25 +77,6 @@ export function AboutSystem() {
         if (buckets && buckets.length > 0) next.buckets = buckets.length;
       } catch { /* storage listing not permitted for this role */ }
 
-      try {
-        // PostgREST publishes an OpenAPI document listing every exposed
-        // table/view and RPC — a genuinely live schema statistic.
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-        if (token) {
-          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`, {
-            headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-          });
-          if (res.ok) {
-            const spec = await res.json();
-            const defs = Object.keys(spec.definitions ?? {}).length;
-            const rpcs = Object.keys(spec.paths ?? {}).filter(p => p.startsWith('/rpc/')).length;
-            if (defs > 0) next.tables = defs;
-            if (rpcs > 0) next.functions = rpcs;
-          }
-        }
-      } catch { /* spec not reachable — fall back to config */ }
-
       if (!cancelled) setLive(next);
     })();
 

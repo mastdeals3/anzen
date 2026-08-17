@@ -44,7 +44,7 @@ export function PricingParserReview() {
       .from('sourcing_parser_results')
       .select(`
         *,
-        pr:price_requests(pr_number, customer_name),
+        pr:price_requests(pr_number:price_request_number, customer_name),
         item:price_request_items(product_name, specification, source_type)
       `)
       .order('created_at', { ascending: false })

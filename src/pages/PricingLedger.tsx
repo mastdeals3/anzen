@@ -56,7 +56,7 @@ export function PricingLedger() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from('pricing_ledger').select('*, price_request:price_requests(pr_number)').order('created_at', { ascending: false });
+    const { data } = await supabase.from('pricing_ledger').select('*, price_request:price_requests(pr_number:price_request_number)').order('created_at', { ascending: false });
     setEntries((data as LedgerEntry[]) || []);
     setLoading(false);
   }, []);

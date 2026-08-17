@@ -11,6 +11,15 @@ interface NotificationParams {
   referenceType?: string;
 }
 
+function isNavigationAbort(error: unknown): boolean {
+  const err = error as { name?: string; message?: string; details?: string; code?: string } | null;
+  if (err && typeof err === 'object' && err.code) return false;
+  const blob = error && typeof error === 'object'
+    ? `${err?.name || ''} ${err?.message || ''} ${err?.details || ''}`
+    : String(error);
+  return /AbortError|The user aborted|signal is aborted|net::ERR_ABORTED|Failed to fetch/i.test(blob);
+}
+
 // Uses a DB-side RPC with ON CONFLICT DO NOTHING so duplicates are silently
 // skipped at the database level — no 409 HTTP errors, no console noise.
 export async function createNotification(params: NotificationParams) {
@@ -25,6 +34,7 @@ export async function createNotification(params: NotificationParams) {
     });
     if (error) throw error;
   } catch (error) {
+    if (isNavigationAbort(error)) return;
     console.error('Error creating notification:', error);
   }
 }
@@ -96,6 +106,7 @@ export async function checkAndCreateLowStockNotifications() {
       });
     }
   } catch (error) {
+    if (isNavigationAbort(error)) return;
     console.error('Error checking low stock:', error);
   }
 }
@@ -143,6 +154,7 @@ export async function checkAndCreateExpiryNotifications() {
       });
     }
   } catch (error) {
+    if (isNavigationAbort(error)) return;
     console.error('Error checking expiry dates:', error);
   }
 }
@@ -182,6 +194,7 @@ export async function checkAndCreateFollowUpNotifications() {
       });
     }
   } catch (error) {
+    if (isNavigationAbort(error)) return;
     console.error('Error checking follow-ups:', error);
   }
 }
@@ -232,6 +245,7 @@ export async function checkAndCreateDeliveryDueNotifications() {
       }
     }
   } catch (error) {
+    if (isNavigationAbort(error)) return;
     console.error('Error checking delivery due alerts:', error);
   }
 }
@@ -243,6 +257,7 @@ async function checkAndCreateTaxNotifications() {
     const { error } = await supabase.rpc('generate_tax_notifications');
     if (error) throw error;
   } catch (error) {
+    if (isNavigationAbort(error)) return;
     console.error('Error generating tax notifications:', error);
   }
 }

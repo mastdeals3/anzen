@@ -83,7 +83,7 @@ async function notifyAssignedUser(priceRequestId: string, productName: string, f
   try {
     const { data: pr } = await supabase
       .from('price_requests')
-      .select('assigned_to, pr_number, customer_name')
+      .select('assigned_to, pr_number:price_request_number, customer_name')
       .eq('id', priceRequestId)
       .maybeSingle();
 
@@ -115,7 +115,7 @@ export function PricingDesk() {
     setLoading(true);
     const { data } = await supabase
       .from('price_request_items')
-      .select('*, pr:price_requests(pr_number, customer_name, assigned_to)')
+      .select('*, pr:price_requests(pr_number:price_request_number, customer_name, assigned_to)')
       .eq('price_status', 'received')
       .is('final_quote_price', null)
       .order('created_at');

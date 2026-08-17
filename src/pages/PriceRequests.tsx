@@ -154,7 +154,7 @@ export function PriceRequests() {
     setLoading(true);
     const { data } = await supabase
       .from('price_requests')
-      .select('*, inquiry:crm_inquiries(inquiry_number)')
+      .select('*, pr_number:price_request_number, overall_status:status, inquiry:crm_inquiries(inquiry_number)')
       .order('created_at', { ascending: false });
     setList((data as PriceRequest[]) || []);
     setLoading(false);
@@ -165,7 +165,7 @@ export function PriceRequests() {
   const filtered = list.filter(pr => {
     const matchStatus = statusFilter === 'all' || pr.overall_status === statusFilter;
     const q = search.toLowerCase();
-    const matchSearch = !q || pr.pr_number.toLowerCase().includes(q)
+    const matchSearch = !q || (pr.pr_number || '').toLowerCase().includes(q)
       || (pr.customer_name || '').toLowerCase().includes(q)
       || (pr.inquiry?.inquiry_number || '').toLowerCase().includes(q);
     return matchStatus && matchSearch;

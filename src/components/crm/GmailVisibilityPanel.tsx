@@ -110,7 +110,7 @@ export function GmailVisibilityPanel() {
         .order('created_at', { ascending: false })
         .limit(20),
       supabase.from('crm_inquiry_timeline')
-        .select('created_at,event_type,description,metadata')
+        .select('created_at,event_type,event_title,event_description')
         .gte('created_at', since)
         .in('event_type', ['sourcing_request_sent','reminder_sent','customer_quote_sent','email_sent','email_received'])
         .order('created_at', { ascending: false })
@@ -135,13 +135,12 @@ export function GmailVisibilityPanel() {
       }
     }
     if (crm.status === 'fulfilled' && !crm.value.error && crm.value.data) {
-      for (const r of crm.value.data as Array<{ created_at: string; event_type: string; description: string; metadata: any }>) {
+      for (const r of crm.value.data as Array<{ created_at: string; event_type: string; event_title: string | null; event_description: string | null }>) {
         rows.push({
           ts: r.created_at,
           source: 'crm',
           event: r.event_type,
-          description: r.description,
-          metaSender: r.metadata?.sender_mode || null,
+          description: r.event_description || r.event_title || r.event_type,
         });
       }
     }

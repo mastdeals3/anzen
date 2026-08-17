@@ -1213,7 +1213,7 @@ export function PriceRequestDetail({ prId, onBack }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     const [prRes, itemsRes, timelineRes] = await Promise.all([
-      supabase.from('price_requests').select('*, inquiry:crm_inquiries(inquiry_number)').eq('id', prId).maybeSingle(),
+      supabase.from('price_requests').select('*, pr_number:price_request_number, overall_status:status, inquiry:crm_inquiries(inquiry_number)').eq('id', prId).maybeSingle(),
       supabase.from('price_request_items').select('*').eq('price_request_id', prId).order('created_at'),
       supabase.from('communication_timeline').select('*').eq('price_request_id', prId).order('created_at', { ascending: false }),
     ]);
