@@ -14,10 +14,17 @@ interface FinanceContextType {
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
+function localDateString(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const [dateRange, setDateRange] = useState<FinanceDateRange>({
-    startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    startDate: localDateString(new Date(new Date().getFullYear(), 0, 1)),
+    endDate: localDateString(new Date()),
   });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
