@@ -249,7 +249,6 @@ Trigger-only functions are also not executable by `anon`.
 Required commands:
 
 ```text
-npm run verify:inventory-v1
 npm run test:inventory-v1 -- --linked
 npm run verify:finance-release
 npm run typecheck
