@@ -117,8 +117,8 @@ BEGIN
   END IF;
 
   INSERT INTO public.finance_historical_repair_commands(idempotency_key,document_type,document_id,
-    bank_statement_line_id,payment_kind,requested_by,before_state,after_state,status)
-  VALUES(p_idempotency_key,p_document_type,p_document_id,p_bank_statement_line_id,p_payment_kind,auth.uid(),'{}','{}','committed')
+    bank_statement_line_id,payment_kind,operation,requested_by,before_state,after_state,status)
+  VALUES(p_idempotency_key,p_document_type,p_document_id,p_bank_statement_line_id,p_payment_kind,p_operation,auth.uid(),'{}','{}','committed')
   RETURNING id INTO v_cmd;
   PERFORM set_config('app.finance_historical_repair_command',v_cmd::text,true);
   PERFORM set_config('app.finance_historical_repair','on',true);
