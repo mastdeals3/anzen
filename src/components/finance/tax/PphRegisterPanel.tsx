@@ -96,7 +96,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const lastDay = new Date(yr, mo, 0).getDate();
   const endDate = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
 
-  const [feRes, pvRes, importRes, bankPaymentRes, allocationRes, linkedVoucherRes, historicalRes] = await Promise.all([
+  const [feRes, pvRes, importRes, bankPaymentRes, bankAllocRes, allocationRes, linkedVoucherRes, historicalRes] = await Promise.all([
     supabase
       .from('finance_expenses')
       .select('id, voucher_number, expense_date, due_date, pph_amount, pph_tax_period_id, description, payment_method, expense_category, approval_status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
@@ -115,8 +115,11 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       .in('expense_category', ['pib_import', 'pph_import']),
     supabase
       .from('bank_statement_lines')
-      .select('matched_expense_id, transaction_date, payment_kind')
+      .select('id, matched_expense_id, transaction_date, payment_kind')
       .not('matched_expense_id', 'is', null),
+    supabase
+      .from('bank_statement_allocations')
+      .select('document_id, document_type, payment_kind, bank_statement_line_id'),
     supabase
       .from('voucher_allocations')
       .select('finance_expense_id, payment_voucher_id, payment_kind')
@@ -129,8 +132,8 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       : supabase.from('tax_payments').select('id, tax_type, payment_date, amount, billing_code, ntpn, payment_reference, historical_source_reference, historical_source_note, journal_entry_id, status').eq('tax_period_id', row.tax_period_id).eq('historical_source_status', 'missing_source_verified'),
   ]);
 
-  // Untouched documents retain the engine's existing payment/due-date
-  // attribution; an explicit selected PPh period takes precedence.
+  // Match get_expense_pph_period_date: supplier bank allocations, unmatched
+  // matched_expense_id lines, and posted payment-voucher allocations.
   const linkedVouchers = new Map<string, any>(
     ((linkedVoucherRes.data ?? []) as any[]).map(v => [v.id, v]),
   );
@@ -140,10 +143,26 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
     const current = latestPaymentDate.get(expenseId);
     if (!current || date > current) latestPaymentDate.set(expenseId, date);
   };
-  for (const line of (bankPaymentRes.data ?? []) as any[]) {
-    if ((line.payment_kind ?? 'supplier') === 'supplier') {
-      addPaymentDate(line.matched_expense_id, line.transaction_date);
+  const allocRows = (bankAllocRes.data ?? []) as any[];
+  const allocatedLineIds = new Set(allocRows.map(a => a.bank_statement_line_id).filter(Boolean));
+  const allocLineDate = new Map<string, string>();
+  if (allocatedLineIds.size) {
+    const { data: allocLines } = await supabase
+      .from('bank_statement_lines')
+      .select('id, transaction_date')
+      .in('id', [...allocatedLineIds]);
+    for (const line of (allocLines ?? []) as any[]) {
+      if (line.id && line.transaction_date) allocLineDate.set(line.id, line.transaction_date);
     }
+  }
+  for (const line of (bankPaymentRes.data ?? []) as any[]) {
+    if ((line.payment_kind ?? 'supplier') !== 'supplier') continue;
+    if (allocatedLineIds.has(line.id)) continue;
+    addPaymentDate(line.matched_expense_id, line.transaction_date);
+  }
+  for (const bankAlloc of allocRows) {
+    if (bankAlloc.document_type !== 'expense' || bankAlloc.payment_kind !== 'supplier') continue;
+    addPaymentDate(bankAlloc.document_id, allocLineDate.get(bankAlloc.bank_statement_line_id) ?? null);
   }
   for (const allocation of (allocationRes.data ?? []) as any[]) {
     if ((allocation.payment_kind ?? 'supplier') !== 'supplier') continue;
