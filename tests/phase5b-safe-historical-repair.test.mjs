@@ -10,7 +10,7 @@ const migration = fs.readFileSync(
 // definition, not a data repair.
 assert.match(migration, /BEGIN;[\s\S]*COMMIT;/);
 assert.match(migration, /execute_historical_finance_repair/);
-assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.execute_historical_finance_repair[\s\S]*TO service_role/);
+assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.execute_historical_finance_repair[\s\S]*TO authenticated,service_role/);
 assert.match(migration, /role='admin'/);
 assert.match(migration, /FOR UPDATE/);
 assert.match(migration, /idempotency_key text NOT NULL UNIQUE/);

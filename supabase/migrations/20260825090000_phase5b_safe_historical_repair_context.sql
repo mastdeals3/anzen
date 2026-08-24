@@ -218,7 +218,7 @@ BEGIN
 END $$;
 
 REVOKE ALL ON FUNCTION public.execute_historical_finance_repair(text,text,uuid,uuid,numeric,jsonb,text,text) FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.execute_historical_finance_repair(text,text,uuid,uuid,numeric,jsonb,text,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.execute_historical_finance_repair(text,text,uuid,uuid,numeric,jsonb,text,text) TO authenticated,service_role;
 COMMENT ON FUNCTION public.execute_historical_finance_repair IS
   'Privileged, transaction-scoped, idempotent historical allocation or explicit cash correction. Existing recognition journals are immutable; no ordinary document sync path is called.';
 
