@@ -488,7 +488,6 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
             tax_amount: tax,
             total_amount: total,
             updated_at: new Date().toISOString(),
-            inquiry_id: (existingOrder as any).inquiry_id || prefill?.inquiry_id || null,
           })
           .eq('id', existingOrder.id);
 
@@ -556,7 +555,6 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
             tax_amount: tax,
             total_amount: total,
             created_by: user?.id,
-            inquiry_id: prefill?.inquiry_id || null,
           })
           .select()
           .single();
