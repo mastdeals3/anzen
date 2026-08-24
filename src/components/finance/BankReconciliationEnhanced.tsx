@@ -10,7 +10,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useSupabaseRealtimeChannel } from '../../hooks/useSupabaseRealtimeChannel';
 import { useExpenseCategories } from './useExpenseCategories';
 import { groupExpenseCategories } from './ExpenseCategorySelect';
-import { calculateCanonicalCashPayable, calculateCanonicalExpenseTotal } from '../../utils/taxCalculations';
+import { calculateCanonicalCashPayable, calculateCanonicalExpenseTotal, paymentDateGapWarning } from '../../utils/taxCalculations';
 import {
   FINANCE_RECONCILIATION_REFRESH_EVENT,
   notifyFinanceReconciliationRefresh,
@@ -1989,6 +1989,10 @@ export function BankReconciliationEnhanced({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      const receipt = existingReceipts.find((candidate) => candidate.id === receiptId);
+      const warning = paymentDateGapWarning(line.date, receipt?.voucher_date);
+      if (warning) console.warn(warning, { bankDate: line.date, voucherDate: receipt?.voucher_date });
+
       await linkBankStatementLine(line.id, 'receipt', receiptId);
 
       setRecordModal(false);
@@ -2191,6 +2195,9 @@ export function BankReconciliationEnhanced({
 
   const handleLinkSupplierPayment = async (line: StatementLine, paymentVoucherId: string) => {
     try {
+      const payment = supplierPayments.find((candidate) => candidate.id === paymentVoucherId);
+      const warning = paymentDateGapWarning(line.date, payment?.voucher_date);
+      if (warning) console.warn(warning, { bankDate: line.date, voucherDate: payment?.voucher_date });
       await linkBankStatementLine(line.id, 'payment', paymentVoucherId);
 
       setRecordModal(false);
@@ -3995,6 +4002,12 @@ export function BankReconciliationEnhanced({
         </>}
       >
         {pendingExpenseAllocation && <div className="space-y-3 text-sm">
+          {paymentDateGapWarning(
+            pendingExpenseAllocation.line.date,
+            pendingExpenseAllocation.expense.expense_date,
+          ) && <p className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded">
+            {paymentDateGapWarning(pendingExpenseAllocation.line.date, pendingExpenseAllocation.expense.expense_date)}
+          </p>}
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 p-3 bg-gray-50 border rounded">
             <span className="text-gray-500">Bank transaction</span><span className="text-right font-semibold">{formatCurrency(pendingExpenseAllocation.line.debit || pendingExpenseAllocation.line.credit, pendingExpenseAllocation.line.currency)}</span>
             <span className="text-gray-500">Already allocated</span><span className="text-right">{formatCurrency(pendingExpenseAllocation.line.allocatedAmount, pendingExpenseAllocation.line.currency)}</span>

@@ -373,6 +373,29 @@ export function calculateCanonicalCashPayable(
   return calculateExpenseTotals(exp).settlementAmount;
 }
 
+/**
+ * Read-only warning for reconciliation screens. Dates are business dates
+ * (YYYY-MM-DD), so parsing them as UTC avoids timezone shifts at midnight.
+ */
+export function paymentDateGapWarning(
+  bankDate?: string | null,
+  voucherDate?: string | null,
+  thresholdDays = 3,
+): string | null {
+  if (!bankDate || !voucherDate) return null;
+  const toDay = (value: string) => {
+    const match = value.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return match ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : NaN;
+  };
+  const bankDay = toDay(bankDate);
+  const voucherDay = toDay(voucherDate);
+  if (!Number.isFinite(bankDay) || !Number.isFinite(voucherDay)) return null;
+  const days = Math.abs(bankDay - voucherDay) / 86_400_000;
+  return days > thresholdDays
+    ? 'Payment date differs from voucher date by more than 3 days. Please verify the transaction date.'
+    : null;
+}
+
 /** Input for outstanding calculation — same as totals plus paid_amount. */
 export interface OutstandingInput extends ExpenseTotalsInput {
   paid_amount?: number | null;
