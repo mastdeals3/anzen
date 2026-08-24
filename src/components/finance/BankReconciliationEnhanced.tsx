@@ -550,7 +550,7 @@ export function BankReconciliationEnhanced({
       const { data: rangeData, error } = await supabase
         .from('bank_statement_lines')
         // perf: projected columns (was select('*'))
-        .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_payment_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
+        .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, manually_unlinked, notes, matched_expense_id, matched_receipt_id, matched_payment_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
         .eq('bank_account_id', selectedBank)
         .gte('transaction_date', dateRange.start)
         .lt('transaction_date', endDateStr)
@@ -566,7 +566,7 @@ export function BankReconciliationEnhanced({
       ) {
         const { data: focusedLine, error: focusedLineError } = await supabase
           .from('bank_statement_lines')
-          .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, notes, matched_expense_id, matched_receipt_id, matched_payment_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
+          .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, manually_unlinked, notes, matched_expense_id, matched_receipt_id, matched_payment_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
           .eq('id', initialStatementLineId)
           .eq('bank_account_id', selectedBank)
           .maybeSingle();
@@ -702,6 +702,16 @@ export function BankReconciliationEnhanced({
         const allocations = allocationMap.get(row.id) || [];
         const bankAmount = Number(row.debit_amount || row.credit_amount || 0);
         const allocatedAmount = allocations.reduce((sum, allocation) => sum + allocation.allocation_amount, 0);
+        const hasDirectLink = Boolean(
+          row.matched_expense_id || row.matched_receipt_id || row.matched_payment_id
+          || row.matched_fund_transfer_id || row.matched_petty_cash_id
+          || row.matched_tax_payment_id || row.matched_entry_id
+        );
+        // A stale status is not a reconciliation. If no typed FK or allocation
+        // exists, always expose the line as Unrecorded so it remains actionable.
+        const effectiveStatus = hasDirectLink || allocations.length > 0
+          ? (row.reconciliation_status || 'unmatched')
+          : 'unmatched';
         return {
           id: row.id,
           date: row.transaction_date,
@@ -711,7 +721,7 @@ export function BankReconciliationEnhanced({
           credit: row.credit_amount || 0,
           balance: row.running_balance || 0,
           currency: row.currency || 'IDR',
-          status: row.reconciliation_status || 'unmatched',
+          status: effectiveStatus,
           allocatedAmount,
           remainingAmount: Math.max(0, bankAmount - allocatedAmount),
           allocations,
@@ -1601,10 +1611,10 @@ export function BankReconciliationEnhanced({
       else if (bsl.matched_tax_payment_id) await linkBankStatementLine(lineId, 'tax_payment', bsl.matched_tax_payment_id);
       else if (bsl.matched_entry_id) await linkBankStatementLine(lineId, 'journal', bsl.matched_entry_id);
 
-      // Update in local state
-      setStatementLines(prev => prev.map(line =>
-        line.id === lineId ? { ...line, status: 'matched' } : line
-      ));
+      // Reload the canonical links/status. This is important for fund
+      // transfers, where the RPC also writes matched_entry_id and may clear
+      // the legacy single-owner fields when allocations are plural.
+      await loadStatementLines();
     } catch (err: any) {
       console.error('Error confirming match:', err);
       alert('❌ ' + (err?.message || 'Failed to confirm match'));
