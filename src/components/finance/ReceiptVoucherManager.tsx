@@ -493,7 +493,7 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
 
     // Detail presentation uses the same canonical linked records as Bank
     // Reconciliation and GL; this is read-only UI enrichment.
-    const [{ data: allocs }, { data: bankLines }, { data: journalLines }] = await Promise.all([
+    const [{ data: allocs }, { data: bankLines }, { data: canonicalBankAllocations }, { data: journalLines }] = await Promise.all([
       supabase
       .from('voucher_allocations')
       .select(`
@@ -505,13 +505,25 @@ export function ReceiptVoucherManager({ canManage, initialViewVoucherId, onIniti
       supabase.from('bank_statement_lines')
         .select('id, transaction_date, description, reference, debit_amount, credit_amount, reconciliation_status, bank_accounts(bank_name, account_name, alias, currency)')
         .eq('matched_receipt_id', voucher.id),
+      supabase.from('bank_statement_allocations')
+        .select('id, allocation_amount, bank_statement_lines(id, transaction_date, description, reference, debit_amount, credit_amount, reconciliation_status, bank_accounts(bank_name, account_name, alias, currency))')
+        .eq('document_type', 'receipt')
+        .eq('document_id', voucher.id),
       voucher.journal_entry_id
         ? supabase.from('journal_entry_lines').select('line_number, debit, credit, description, chart_of_accounts(code, name)').eq('journal_entry_id', voucher.journal_entry_id).order('line_number')
         : Promise.resolve({ data: [] as any[] }),
     ]);
 
     setVoucherAllocations(allocs || []);
-    setReceiptBankLines(bankLines || []);
+    const canonicalLines = (canonicalBankAllocations || []).map((allocation: any) => {
+      const line = Array.isArray(allocation.bank_statement_lines)
+        ? allocation.bank_statement_lines[0]
+        : allocation.bank_statement_lines;
+      return line ? { ...line, allocation_id: allocation.id, allocation_amount: allocation.allocation_amount } : null;
+    }).filter(Boolean);
+    const mergedBankLines = [...(bankLines || []), ...canonicalLines]
+      .filter((line: any, index: number, rows: any[]) => rows.findIndex(candidate => candidate.id === line.id) === index);
+    setReceiptBankLines(mergedBankLines);
     setReceiptJournalLines(journalLines || []);
     setViewModalOpen(true);
   };

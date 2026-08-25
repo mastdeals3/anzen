@@ -177,6 +177,8 @@ interface FinanceExpense {
     credit_amount: number;
     bank_account_id: string;
     payment_kind?: string | null;
+    allocation_amount?: number | null;
+    allocation_id?: string | null;
     bank_accounts?: { bank_name: string; account_number: string; alias: string | null; currency: string } | null;
   }> | null;
   pph_paid_amount?: number | null;
@@ -642,7 +644,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     const expenseIds = [...new Set(candidateIds.filter((id): id is string => Boolean(id)))];
     if (expenseIds.length === 0) return;
 
-    const { data, error } = await supabase
+    const [{ data, error }, { data: canonicalAllocations, error: allocationError }] = await Promise.all([
+      supabase
       .from('bank_statement_lines')
       .select(`
         id,
@@ -655,10 +658,30 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         matched_expense_id,
         bank_accounts(bank_name, account_number, alias, currency)
       `)
-      .in('matched_expense_id', expenseIds);
+      .in('matched_expense_id', expenseIds),
+      supabase
+        .from('bank_statement_allocations')
+        .select(`
+          id,
+          document_id,
+          allocation_amount,
+          payment_kind,
+          bank_statement_lines!inner(
+            id,
+            transaction_date,
+            description,
+            debit_amount,
+            credit_amount,
+            bank_account_id,
+            bank_accounts(bank_name, account_number, alias, currency)
+          )
+        `)
+        .eq('document_type', 'expense')
+        .in('document_id', expenseIds),
+    ]);
 
-    if (error) {
-      console.error('Unable to synchronize expense bank links:', error.message);
+    if (error || allocationError) {
+      console.error('Unable to synchronize expense bank links:', error?.message || allocationError?.message);
       return;
     }
 
@@ -671,6 +694,21 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       if (!expenseId) return;
       const links = linksByExpenseId.get(expenseId) || [];
       links.push(line);
+      linksByExpenseId.set(expenseId, links);
+    });
+
+    (canonicalAllocations || []).forEach((allocation: any) => {
+      const expenseId = allocation.document_id;
+      const line = allocation.bank_statement_lines;
+      if (!expenseId || !line) return;
+      const links = linksByExpenseId.get(expenseId) || [];
+      if (links.some(existing => existing.id === line.id)) return;
+      links.push({
+        ...line,
+        allocation_id: allocation.id,
+        allocation_amount: Number(allocation.allocation_amount || 0),
+        payment_kind: allocation.payment_kind,
+      });
       linksByExpenseId.set(expenseId, links);
     });
 
@@ -836,7 +874,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       ]);
 
       if (expensesRes.error) throw expensesRes.error;
-      setExpenses(expensesRes.data || []);
+      const loadedExpenses = expensesRes.data || [];
+      setExpenses(loadedExpenses);
+      // Legacy matched_* joins intentionally disappear for split allocations;
+      // hydrate the canonical allocation relationships for payment breakdowns.
+      void syncExpenseBankLinks(loadedExpenses.map((expense: any) => expense.id));
       setBatches(batchesRes.data || []);
       setContainers(containersRes.data || []);
       setChallans((challansRes.data || []).map(challan => ({
@@ -1083,8 +1125,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         pph_code_id:            (persistHeaderTax && formData.pph_code_id) ? formData.pph_code_id : null,
         stamp_duty_amount:      persistHeaderTax ? (formData.stamp_duty_amount || 0) : 0,
         fixed_asset_account_id: isFixedAsset ? (formData.fixed_asset_account_id || null) : null,
-        // Task 5: bank charges only for Utility category; all others forced 0
-        bank_charges_amount:    formData.expense_category === 'utilities' ? (formData.bank_charges_amount || 0) : 0,
+        bank_charges_amount:    rules.bankCharges === 'show' ? (formData.bank_charges_amount || 0) : 0,
         currency_code: transactionCurrency,
         transaction_currency: transactionCurrency,
         functional_currency: 'IDR' as const,

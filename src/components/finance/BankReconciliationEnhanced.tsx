@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from 'react';
+import { Fragment, useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Upload, RefreshCw, CheckCircle2, AlertCircle, XCircle, Plus, Calendar, Landmark, FileText, Pencil as Edit } from 'lucide-react';
+import { Upload, RefreshCw, CheckCircle2, AlertCircle, XCircle, Plus, Calendar, Landmark, FileText, Pencil as Edit, ChevronDown, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { FinanceModal as Modal } from './FinanceModal';
 import { SearchableSelect } from '../SearchableSelect';
@@ -85,9 +85,14 @@ interface StatementLine {
     id: string;
     document_type: string;
     document_id: string;
+    journal_entry_id?: string;
     allocation_amount: number;
     payment_kind: string;
     label?: string;
+    counterparty?: string;
+    document_total?: number;
+    document_remaining?: number;
+    journal_status?: string;
   }>;
   matchedEntry?: string;
   matchedExpenseId?: string;
@@ -156,6 +161,8 @@ interface StatementLine {
     source_module?: string;
     reference_id?: string;
     reference_number?: string;
+    is_posted?: boolean;
+    is_reversed?: boolean;
   } | null;
   notes?: string;
 }
@@ -234,10 +241,15 @@ export function BankReconciliationEnhanced({
   const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
   const [statementLines, setStatementLines] = useState<StatementLine[]>([]);
   const [loading, setLoading] = useState(false);
+  // Keep a failed read distinct from a successful empty result.  Collapsing
+  // both states into `statementLines=[]` made RLS/runtime failures look like
+  // an empty bank account.
+  const [statementLoadError, setStatementLoadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'matched' | 'suggested' | 'unmatched'>('unmatched');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [highlightedLineId, setHighlightedLineId] = useState<string | null>(null);
+  const [expandedLineIds, setExpandedLineIds] = useState<Set<string>>(new Set());
 
   // Use master date range from Finance context
   const { dateRange: financeDateRange } = useFinance();
@@ -483,6 +495,7 @@ export function BankReconciliationEnhanced({
   }, [selectedBank, bankAccounts, financeDateRange]);
 
   const loadBankAccounts = async () => {
+    setStatementLoadError(null);
     try {
       const { data, error } = await supabase
         .from('bank_accounts')
@@ -497,7 +510,7 @@ export function BankReconciliationEnhanced({
         if (!savedExists) {
           const bcaAccount = data.find(
             acc => acc.bank_name === 'BCA Bank' &&
-                   acc.account_number === '0930 2010 22' &&
+                   acc.account_number === '0930 2010 14' &&
                    acc.currency === 'IDR'
           );
           const defaultId = bcaAccount?.id || data[0].id;
@@ -507,6 +520,7 @@ export function BankReconciliationEnhanced({
       }
     } catch (err) {
       console.error('Error loading bank accounts:', err);
+      setStatementLoadError(err instanceof Error ? err.message : 'Unable to load bank accounts.');
     }
   };
 
@@ -550,6 +564,7 @@ export function BankReconciliationEnhanced({
   const loadStatementLines = async () => {
     if (!selectedBank) return;
     setLoading(true);
+    setStatementLoadError(null);
     try {
       // Calculate next day for inclusive end date filtering
       const endDatePlusOne = new Date(dateRange.end);
@@ -589,7 +604,7 @@ export function BankReconciliationEnhanced({
       if (lineIds.length > 0) {
         const { data: allocations, error: allocationError } = await supabase
           .from('bank_statement_allocations')
-          .select('id, bank_statement_line_id, document_type, document_id, allocation_amount, payment_kind')
+          .select('id, bank_statement_line_id, document_type, document_id, journal_entry_id, allocation_amount, payment_kind')
           .in('bank_statement_line_id', lineIds);
         if (allocationError) throw allocationError;
         for (const allocation of allocations || []) {
@@ -598,6 +613,7 @@ export function BankReconciliationEnhanced({
             id: allocation.id,
             document_type: allocation.document_type,
             document_id: allocation.document_id,
+            journal_entry_id: allocation.journal_entry_id,
             allocation_amount: Number(allocation.allocation_amount || 0),
             payment_kind: allocation.payment_kind,
           });
@@ -620,7 +636,10 @@ export function BankReconciliationEnhanced({
       const paymentIds = idsFor('payment', data.map(r => r.matched_payment_id));
       const fundTransferIds = idsFor('fund_transfer', data.map(r => r.matched_fund_transfer_id));
       const pettyCashIds = idsFor('petty_cash', data.map(r => r.matched_petty_cash_id));
-      const entryIds = idsFor('journal', data.map(r => r.matched_entry_id));
+      const entryIds = [...new Set([
+        ...idsFor('journal', data.map(r => r.matched_entry_id)),
+        ...allAllocations.map(a => a.journal_entry_id).filter((id): id is string => Boolean(id)),
+      ])];
       const taxPaymentIds = idsFor('tax_payment', data.map(r => r.matched_tax_payment_id));
 
       // Batch load all expenses
@@ -628,7 +647,7 @@ export function BankReconciliationEnhanced({
       if (expenseIds.length > 0) {
         const { data: expenses } = await supabase
           .from('finance_expenses')
-          .select('id, expense_category, amount, description, expense_date, voucher_number, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items')
+          .select('id, expense_category, amount, paid_amount, description, expense_date, voucher_number, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items, suppliers(company_name)')
           .in('id', expenseIds);
         expenses?.forEach(e => expenseMap.set(e.id, e));
       }
@@ -697,7 +716,7 @@ export function BankReconciliationEnhanced({
       if (entryIds.length > 0) {
         const { data: entries } = await supabase
           .from('journal_entries')
-          .select('id, source_module, reference_id, reference_number, description, entry_date, entry_number')
+          .select('id, source_module, reference_id, reference_number, description, entry_date, entry_number, is_posted, is_reversed')
           .in('id', entryIds);
         entries?.forEach(e => entryMap.set(e.id, e));
       }
@@ -728,16 +747,29 @@ export function BankReconciliationEnhanced({
         const firstJournal = allocations.find(a => a.document_type === 'journal');
         const labeledAllocations = allocations.map(allocation => {
           let label = allocation.document_type;
+          let counterparty: string | undefined;
+          let documentTotal: number | undefined;
+          let documentRemaining: number | undefined;
           if (allocation.document_type === 'expense') {
-            label = expenseMap.get(allocation.document_id)?.voucher_number
-              || expenseMap.get(allocation.document_id)?.expense_category
+            const expense = expenseMap.get(allocation.document_id);
+            label = expense?.voucher_number
+              || expense?.expense_category
               || 'Expense';
+            counterparty = expense?.suppliers?.company_name;
+            documentTotal = Number(expense?.amount || 0);
+            documentRemaining = Math.max(0, documentTotal - Number(expense?.paid_amount || 0));
           } else if (allocation.document_type === 'receipt') {
-            label = receiptMap.get(allocation.document_id)?.payment_number
-              || receiptMap.get(allocation.document_id)?.customer_name
+            const receipt = receiptMap.get(allocation.document_id);
+            label = receipt?.payment_number
+              || receipt?.customer_name
               || 'Receipt';
+            counterparty = receipt?.customer_name;
+            documentTotal = Number(receipt?.amount || 0);
           } else if (allocation.document_type === 'payment') {
-            label = paymentMap.get(allocation.document_id)?.voucher_number || 'Payment';
+            const payment = paymentMap.get(allocation.document_id);
+            label = payment?.voucher_number || 'Payment';
+            counterparty = payment?.supplier_name || payment?.staff_name;
+            documentTotal = Number(payment?.amount || 0);
           } else if (allocation.document_type === 'fund_transfer') {
             const ft = fundTransferMap.get(allocation.document_id);
             label = ft?.transfer_number || 'Fund Transfer';
@@ -749,7 +781,17 @@ export function BankReconciliationEnhanced({
           } else if (allocation.document_type === 'journal') {
             label = entryMap.get(allocation.document_id)?.entry_number || 'Journal';
           }
-          return { ...allocation, label };
+          const journal = allocation.journal_entry_id ? entryMap.get(allocation.journal_entry_id) : undefined;
+          return {
+            ...allocation,
+            label,
+            counterparty,
+            document_total: documentTotal,
+            document_remaining: documentRemaining,
+            journal_status: journal
+              ? (journal.is_reversed ? 'Reversed' : journal.is_posted ? 'Posted' : 'Unposted')
+              : undefined,
+          };
         });
         const expenseId = firstExpense?.document_id || null;
         const receiptId = firstReceipt?.document_id || null;
@@ -792,7 +834,7 @@ export function BankReconciliationEnhanced({
       setStatementLines(lines);
     } catch (err) {
       console.error('Error loading statement lines:', err);
-      setStatementLines([]);
+      setStatementLoadError(err instanceof Error ? err.message : 'Unable to load bank transactions.');
     } finally {
       setLoading(false);
     }
@@ -2846,7 +2888,22 @@ export function BankReconciliationEnhanced({
         <div className="flex items-center justify-center py-12 bg-white rounded-lg">
           <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
         </div>
-      ) : filteredLines.length === 0 ? (
+      ) : statementLoadError ? (
+        <div role="alert" className="flex items-start gap-3 py-5 px-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
+          <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+          <div>
+            <h3 className="font-medium">Unable to load bank transactions</h3>
+            <p className="text-sm mt-1">{statementLoadError}</p>
+            <button
+              type="button"
+              onClick={() => { void loadStatementLines(); }}
+              className="mt-3 inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Retry
+            </button>
+          </div>
+        </div>
+      ) : statementLines.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed">
           <Landmark className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <h3 className="text-lg font-medium text-gray-600 mb-1">No Bank Transactions</h3>
@@ -2862,6 +2919,12 @@ export function BankReconciliationEnhanced({
               Upload Statement
             </button>
           )}
+        </div>
+      ) : filteredLines.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-lg border">
+          <Landmark className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+          <h3 className="text-lg font-medium text-gray-600 mb-1">No Matching Transactions</h3>
+          <p className="text-sm text-gray-500">Change the reconciliation filter to view the loaded bank transactions.</p>
         </div>
       ) : (
         <div className="bg-white border rounded-lg overflow-hidden">
@@ -2928,10 +2991,11 @@ export function BankReconciliationEnhanced({
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sortedLines.map(line => (
+                <Fragment key={line.id}>
                 <tr
                   id={`bank-statement-line-${line.id}`}
                   data-statement-line-id={line.id}
-                  key={line.id}
+                  key={`${line.id}-row`}
                   className={
                     line.id === highlightedLineId
                       ? 'bg-amber-100 ring-2 ring-inset ring-amber-400'
@@ -2988,6 +3052,21 @@ export function BankReconciliationEnhanced({
                   </td>
                   <td className="px-1.5 py-1 text-center">
                     <div className="flex items-center justify-center gap-1">
+                      {line.allocations.length > 0 && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100"
+                          aria-expanded={expandedLineIds.has(line.id)}
+                          onClick={() => setExpandedLineIds(previous => {
+                            const next = new Set(previous);
+                            if (next.has(line.id)) next.delete(line.id); else next.add(line.id);
+                            return next;
+                          })}
+                        >
+                          {expandedLineIds.has(line.id) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                          {line.allocations.length} document{line.allocations.length === 1 ? '' : 's'}
+                        </button>
+                      )}
                       {canManage && (
                         <FinanceActionButton action="edit" label="Edit debit/credit" onClick={() => openEditModal(line)} />
                       )}
@@ -3029,6 +3108,54 @@ export function BankReconciliationEnhanced({
                     </div>
                   </td>
                 </tr>
+                {expandedLineIds.has(line.id) && line.allocations.length > 0 && (
+                  <tr key={`${line.id}-allocations`} className="bg-slate-50 border-b">
+                    <td colSpan={6} className="px-4 py-3">
+                      <div className="flex items-center justify-between text-xs text-gray-700 mb-2">
+                        <span className="font-semibold">Allocation breakdown</span>
+                        <span>
+                          Bank {formatCurrency(line.debit || line.credit, line.currency)} · Allocated {formatCurrency(line.allocatedAmount, line.currency)} · Remaining {formatCurrency(line.remainingAmount, line.currency)}
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-left text-gray-500 border-b">
+                              <th className="py-1 pr-2">Document</th>
+                              <th className="py-1 pr-2">Counterparty</th>
+                              <th className="py-1 pr-2 text-right">Allocated</th>
+                              <th className="py-1 pr-2 text-right">Document total</th>
+                              <th className="py-1 pr-2 text-right">Document remaining</th>
+                              <th className="py-1 pr-2">Journal</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {line.allocations.map(allocation => (
+                              <tr key={allocation.id} className="border-b last:border-b-0">
+                                <td className="py-1 pr-2">
+                                  <button
+                                    type="button"
+                                    className="font-mono text-blue-700 hover:underline"
+                                    onClick={() => allocation.journal_entry_id && onOpenJournal?.(allocation.journal_entry_id)}
+                                  >
+                                    {allocation.label || allocation.document_type}
+                                  </button>
+                                  <span className="ml-2 text-gray-500">{allocation.document_type}</span>
+                                </td>
+                                <td className="py-1 pr-2">{allocation.counterparty || '—'}</td>
+                                <td className="py-1 pr-2 text-right font-medium">{formatCurrency(allocation.allocation_amount, line.currency)}</td>
+                                <td className="py-1 pr-2 text-right">{allocation.document_total == null ? '—' : formatCurrency(allocation.document_total, line.currency)}</td>
+                                <td className="py-1 pr-2 text-right">{allocation.document_remaining == null ? '—' : formatCurrency(allocation.document_remaining, line.currency)}</td>
+                                <td className="py-1 pr-2">{allocation.journal_entry_id ? `${allocation.journal_entry_id.slice(0, 8)} · ${allocation.journal_status || 'Unknown'}` : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
               {/* Totals Row */}
               <tr className="bg-blue-50 border-t-2 border-blue-200 font-bold">

@@ -296,15 +296,23 @@ export function JournalEntryViewerEnhanced({
     if (!confirmed) return;
 
     try {
-      const { data: bankLinks, error: checkError } = await supabase
+      const [{ data: bankLinks, error: checkError }, { data: canonicalAllocations, error: allocationError }] = await Promise.all([
+        supabase
         .from('bank_statement_lines')
         .select('id')
         .eq('matched_entry_id', journalId)
-        .limit(1);
+        .limit(1),
+        supabase
+          .from('bank_statement_allocations')
+          .select('id')
+          .eq('journal_entry_id', journalId)
+          .limit(1),
+      ]);
 
       if (checkError) throw checkError;
+      if (allocationError) throw allocationError;
 
-      if (bankLinks && bankLinks.length > 0) {
+      if ((bankLinks && bankLinks.length > 0) || (canonicalAllocations && canonicalAllocations.length > 0)) {
         showToast({ type: 'error', title: 'Cannot Delete', message: t.finance.journalLinkedBankError });
         return;
       }

@@ -92,6 +92,7 @@ interface PaymentVoucher {
   journal_entry_id: string | null;
   bank_statement_line_id?: string | null;
   bank_statement_line?: BankTransactionLine | null;
+  bank_statement_lines?: BankTransactionLine[];
   suppliers?: { company_name: string };
   finance_staff_master?: { full_name: string };
   bank_accounts?: { account_name: string; bank_name: string; alias: string | null; currency: string | null };
@@ -391,6 +392,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
       const allocCcyMap: Record<string, string> = {};
       const invoicesMap: Record<string, { id: string; number: string }[]> = {};
       const bankLineMap = new Map<string, BankTransactionLine>();
+      const bankLinesByPaymentId = new Map<string, BankTransactionLine[]>();
       const advanceApplicationsMap: Record<string, PaymentVoucher['salary_advance_applications']> = {};
       if (voucherIds.length > 0) {
         const { data: allocs } = await supabase
@@ -452,11 +454,38 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
         }
       }
 
+      // Canonical bank allocations are authoritative and support one bank
+      // event settling many vouchers/documents. Legacy journal links remain a
+      // compatibility fallback only.
+      if (voucherIds.length > 0) {
+        const { data: canonicalBankAllocations, error: canonicalBankError } = await supabase
+          .from('bank_statement_allocations')
+          .select('document_id, bank_statement_lines(id, transaction_date, description, reference, debit_amount, credit_amount, bank_account_id, bank_accounts(bank_name, account_name, account_number, alias, currency))')
+          .eq('document_type', 'payment')
+          .in('document_id', voucherIds);
+        if (canonicalBankError) throw canonicalBankError;
+        for (const allocation of (canonicalBankAllocations || []) as any[]) {
+          const line = Array.isArray(allocation.bank_statement_lines)
+            ? allocation.bank_statement_lines[0]
+            : allocation.bank_statement_lines;
+          if (line) {
+            const lines = bankLinesByPaymentId.get(allocation.document_id) || [];
+            if (!lines.some(existing => existing.id === line.id)) lines.push(line as BankTransactionLine);
+            bankLinesByPaymentId.set(allocation.document_id, lines);
+          }
+        }
+      }
+
       const enriched = (data || []).map((v: PaymentVoucher) => {
         const bankCcy = v.bank_accounts?.currency || 'IDR';
         const isCross = (v.invoice_currency || allocCcyMap[v.id] || bankCcy) !== bankCcy;
         const invCcy = v.invoice_currency || allocCcyMap[v.id] || (isCross ? 'USD' : bankCcy);
-        const bankLine = v.journal_entry_id ? bankLineMap.get(v.journal_entry_id) || null : null;
+        const canonicalBankLines = bankLinesByPaymentId.get(v.id) || [];
+        const legacyBankLine = v.journal_entry_id ? bankLineMap.get(v.journal_entry_id) : null;
+        const bankLinesForVoucher = canonicalBankLines.length > 0
+          ? canonicalBankLines
+          : (legacyBankLine ? [legacyBankLine] : []);
+        const bankLine = bankLinesForVoucher[0] || null;
         return {
           ...v,
           invoice_currency: invCcy,
@@ -464,6 +493,7 @@ export function PaymentVoucherManager({ canManage, initialViewVoucherId, onIniti
           salary_advance_applications: advanceApplicationsMap[v.id] || [],
           bank_statement_line_id: bankLine?.id || null,
           bank_statement_line: bankLine,
+          bank_statement_lines: bankLinesForVoucher,
         };
       });
       setVouchers(enriched);
