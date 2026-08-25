@@ -265,7 +265,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const exportTrialBalance = () => {
     const rows: Record<string, string | number>[] = [
       { 'Code': '', 'Account': `Trial Balance — ${fmtDate(dateRange.startDate)} to ${fmtDate(dateRange.endDate)}`, 'Opening Dr': '', 'Opening Cr': '', 'Period Dr': '', 'Period Cr': '', 'Closing Dr': '', 'Closing Cr': '' },
-      { 'Code': '', 'Account': `Reporting Currency: IDR | USD Rate: 1 USD = Rp ${fmt(usdRate)}`, 'Opening Dr': '', 'Opening Cr': '', 'Period Dr': '', 'Period Cr': '', 'Closing Dr': '', 'Closing Cr': '' },
+      { 'Code': '', 'Account': `Reporting basis: Functional IDR (USD transaction amounts are not converted or mixed) | Reference rate: 1 USD = Rp ${fmt(usdRate)}`, 'Opening Dr': '', 'Opening Cr': '', 'Period Dr': '', 'Period Cr': '', 'Closing Dr': '', 'Closing Cr': '' },
       { 'Code': '', 'Account': '', 'Opening Dr': '', 'Opening Cr': '', 'Period Dr': '', 'Period Cr': '', 'Closing Dr': '', 'Closing Cr': '' },
     ];
     for (const section of TB_SECTIONS) {
@@ -291,7 +291,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const exportPnL = () => {
     const rows: Record<string, string | number>[] = [
       { 'Section': `Profit & Loss — ${fmtDate(dateRange.startDate)} to ${fmtDate(dateRange.endDate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '', '% of Revenue': '' },
-      { 'Section': `Reporting Currency: IDR | USD Rate: 1 USD = Rp ${fmt(usdRate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '', '% of Revenue': '' },
+      { 'Section': `Reporting basis: Functional IDR (USD transaction amounts are not converted or mixed) | Reference rate: 1 USD = Rp ${fmt(usdRate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '', '% of Revenue': '' },
       { 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '', '% of Revenue': '' },
     ];
     const add = (label: string, items: TrialBalanceRow[], getAmt: (r: TrialBalanceRow) => number) => {
@@ -321,7 +321,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   const exportBalanceSheet = () => {
     const rows: Record<string, string | number>[] = [
       { 'Section': `Balance Sheet — As of ${fmtDate(dateRange.endDate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '' },
-      { 'Section': `Reporting Currency: IDR | USD Rate: 1 USD = Rp ${fmt(usdRate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '' },
+      { 'Section': `Reporting basis: Functional IDR (USD transaction amounts are not converted or mixed) | Reference rate: 1 USD = Rp ${fmt(usdRate)}`, 'Code': '', 'Account': '', 'Amount (Rp)': '' },
       { 'Section': '', 'Code': '', 'Account': '', 'Amount (Rp)': '' },
     ];
     const addGroup = (label: string, items: TrialBalanceRow[], getAmt: (r: TrialBalanceRow) => number, total: number, totalLabel: string) => {
@@ -395,10 +395,10 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   // Shared currency info bar shown in every report header
   const CurrencyBar = () => (
     <div className="flex items-center gap-4 mt-1.5 print:hidden">
-      <span className="text-[10px] text-slate-300">Reporting Currency: <span className="font-semibold text-white">IDR</span></span>
+      <span className="text-[10px] text-slate-300">Reporting basis: <span className="font-semibold text-white">Functional IDR</span></span>
       <span className="text-slate-500 text-[10px]">|</span>
       <span className="text-[10px] text-slate-300 flex items-center gap-1.5">
-        USD Rate:
+        Reference USD Rate (not applied):
         <span className="text-[10px] text-slate-400">1 USD =</span>
         <input
           type="text"
@@ -415,7 +415,7 @@ export function FinancialReports({ initialReport = 'trial_balance', onDrillDown 
   // Print-only currency info
   const CurrencyBarPrint = () => (
     <div className="hidden print:block text-[9px] text-gray-500 mt-0.5">
-      Reporting Currency: IDR &nbsp;|&nbsp; USD Rate: 1 USD = Rp {fmt(usdRate)}
+      Reporting basis: Functional IDR (USD transaction amounts are not converted or mixed) &nbsp;|&nbsp; Reference rate: 1 USD = Rp {fmt(usdRate)}
     </div>
   );
 

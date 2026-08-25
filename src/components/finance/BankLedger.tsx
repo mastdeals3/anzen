@@ -199,6 +199,50 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
         });
       }
 
+      // Canonical allocations are authoritative. Legacy matched_* columns are
+      // retained only as a compatibility fallback for genuinely unallocated
+      // statement lines.
+      const lineIds = (bankLines || []).map((line: any) => line.id);
+      const { data: allocations } = lineIds.length
+        ? await supabase.from('bank_statement_allocations')
+            .select('bank_statement_line_id, document_type, document_id, journal_entry_id, allocation_amount, payment_kind')
+            .in('bank_statement_line_id', lineIds)
+        : { data: [] as any[] };
+      const allocationRows = allocations || [];
+      const allocationExpenseIds = allocationRows.filter((a: any) => a.document_type === 'expense').map((a: any) => a.document_id);
+      const allocationReceiptIds = allocationRows.filter((a: any) => a.document_type === 'receipt').map((a: any) => a.document_id);
+      const allocationPaymentIds = allocationRows.filter((a: any) => a.document_type === 'payment').map((a: any) => a.document_id);
+      const allocationEntryIds = allocationRows.filter((a: any) => ['journal', 'journal_entry', 'entry'].includes(a.document_type)).map((a: any) => a.document_id || a.journal_entry_id);
+      const allocationFundIds = allocationRows.filter((a: any) => a.document_type === 'fund_transfer').map((a: any) => a.document_id);
+      const allocationPettyIds = allocationRows.filter((a: any) => a.document_type === 'petty_cash').map((a: any) => a.document_id);
+      const allocationTaxIds = allocationRows.filter((a: any) => a.document_type === 'tax_payment').map((a: any) => a.document_id);
+      const [canonicalExp, canonicalRec, canonicalPay, canonicalEntry, canonicalFund, canonicalPetty, canonicalTax] = await Promise.all([
+        allocationExpenseIds.length ? supabase.from('finance_expenses').select('id, voucher_number').in('id', allocationExpenseIds).then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.voucher_number]))) : Promise.resolve({} as Record<string,string>),
+        allocationReceiptIds.length ? supabase.from('receipt_vouchers').select('id, voucher_number').in('id', allocationReceiptIds).then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.voucher_number]))) : Promise.resolve({} as Record<string,string>),
+        allocationPaymentIds.length ? supabase.from('payment_vouchers').select('id, voucher_number').in('id', allocationPaymentIds).then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.voucher_number]))) : Promise.resolve({} as Record<string,string>),
+        allocationEntryIds.length ? supabase.from('journal_entries').select('id, reference_number, entry_number').in('id', allocationEntryIds.filter(Boolean)).then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.reference_number || x.entry_number]))) : Promise.resolve({} as Record<string,string>),
+        allocationFundIds.length ? supabase.from('fund_transfers').select('id, transfer_number').in('id', allocationFundIds).then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.transfer_number]))) : Promise.resolve({} as Record<string,string>),
+        allocationPettyIds.length ? supabase.from('petty_cash_transactions').select('id, description').in('id', allocationPettyIds).then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, x.description || 'Petty Cash']))) : Promise.resolve({} as Record<string,string>),
+        allocationTaxIds.length ? supabase.from('tax_payments').select('id, tax_type, payment_date').in('id', allocationTaxIds).then(r => Object.fromEntries((r.data || []).map((x: any) => [x.id, `${x.tax_type} ${x.payment_date}`]))) : Promise.resolve({} as Record<string,string>),
+      ]);
+      const canonicalRef = (a: any) => a.document_type === 'expense' ? canonicalExp[a.document_id]
+        : a.document_type === 'receipt' ? canonicalRec[a.document_id]
+        : a.document_type === 'payment' ? canonicalPay[a.document_id]
+        : a.document_type === 'fund_transfer' ? canonicalFund[a.document_id]
+        : a.document_type === 'petty_cash' ? canonicalPetty[a.document_id]
+        : a.document_type === 'tax_payment' ? canonicalTax[a.document_id]
+        : canonicalEntry[a.document_id || a.journal_entry_id];
+      const byLine = new Map<string, any[]>();
+      allocationRows.forEach((a: any) => { const list = byLine.get(a.bank_statement_line_id) || []; list.push({ ...a, reference: canonicalRef(a) || a.document_id, amount: Number(a.allocation_amount || 0) }); byLine.set(a.bank_statement_line_id, list); });
+      entries.forEach((e: any) => {
+        const docs = byLine.get(e.id) || [];
+        if (docs.length) {
+          e.allocations = docs;
+          e.canonical_reference = docs.map(d => `${d.reference} (${formatAmount(d.amount, selectedBankData?.currency || 'IDR')})`).join(' + ');
+          e.linkedId = docs[0].document_id;
+        }
+      });
+
       // Resolve canonical reference (voucher number) for matched entries —
       // single batched lookup per source table so the Ref No column matches
       // what the Expenses / Receipt / Journal pages display.
@@ -227,6 +271,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
       ]);
 
       entries.forEach(e => {
+        if ((byLine.get(e.id) || []).length) return;
         const resolved =
           (e.matched_expense_id && expMap[e.matched_expense_id]) ||
           (e.matched_receipt_id && recMap[e.matched_receipt_id]) ||
@@ -571,6 +616,18 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
                 <div>
                   <p className="text-sm text-gray-600">Notes</p>
                   <p className="font-medium">{selectedEntry.notes}</p>
+                </div>
+              )}
+
+              {selectedEntry.allocations?.length > 0 && (
+                <div className="bg-emerald-50 p-3 rounded-lg">
+                  <p className="text-sm text-emerald-900 font-medium mb-1">Canonical allocations</p>
+                  {selectedEntry.allocations.map((allocation: any, index: number) => (
+                    <div key={`${allocation.document_id}-${index}`} className="flex justify-between text-sm text-emerald-800">
+                      <span>{allocation.reference}</span>
+                      <span>{selectedBankData && formatAmount(allocation.amount, selectedBankData.currency)}</span>
+                    </div>
+                  ))}
                 </div>
               )}
 
