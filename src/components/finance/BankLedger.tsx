@@ -38,6 +38,7 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
   const [banks, setBanks] = useState<BankAccount[]>([]);
   const [selectedBank, setSelectedBank] = useState<string>('');
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
+  const [showUnreconciledOnly, setShowUnreconciledOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -236,6 +237,10 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
       allocationRows.forEach((a: any) => { const list = byLine.get(a.bank_statement_line_id) || []; list.push({ ...a, reference: canonicalRef(a) || a.document_id, amount: Number(a.allocation_amount || 0) }); byLine.set(a.bank_statement_line_id, list); });
       entries.forEach((e: any) => {
         const docs = byLine.get(e.id) || [];
+        const bankAmount = Math.abs(Number(e.debit || 0) - Number(e.credit || 0));
+        const allocated = docs.reduce((sum, doc) => sum + Number(doc.amount || 0), 0);
+        e.allocated_amount = Math.min(bankAmount, allocated);
+        e.unreconciled_amount = Math.max(0, bankAmount - allocated);
         if (docs.length) {
           e.allocations = docs;
           e.canonical_reference = docs.map(d => `${d.reference} (${formatAmount(d.amount, selectedBankData?.currency || 'IDR')})`).join(' + ');
@@ -305,6 +310,8 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
           debit,
           credit,
           running_balance: runningBalance,
+          allocated_amount: entry.allocated_amount || 0,
+          unreconciled_amount: entry.unreconciled_amount || 0,
         };
       });
 
@@ -388,6 +395,12 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
 
   const totalDebit = ledgerEntries.reduce((sum, e) => sum + e.debit, 0);
   const totalCredit = ledgerEntries.reduce((sum, e) => sum + e.credit, 0);
+  const statementMovement = totalCredit - totalDebit;
+  const reconciledAmount = ledgerEntries.reduce((sum, e) => sum + Number(e.allocated_amount || 0), 0);
+  const unreconciledAmount = ledgerEntries.reduce((sum, e) => sum + Number(e.unreconciled_amount || 0), 0);
+  const visibleLedgerEntries = showUnreconciledOnly
+    ? ledgerEntries.filter(entry => Number(entry.unreconciled_amount || 0) > 0.01)
+    : ledgerEntries;
   const closingBalance = openingBalance + totalCredit - totalDebit;
   const glDifference = glClosingBalance === null ? null : glClosingBalance - closingBalance;
 
@@ -469,6 +482,28 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
             {Math.abs(glDifference || 0) <= 0.01 ? ' · Reconciled' : ` · Difference ${formatAmount(Math.abs(glDifference || 0), selectedBankData.currency)}`}
           </div>
         )}
+        {selectedBankData && (
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+            <div className="rounded border border-slate-200 bg-slate-50 p-3">
+              <div className="text-slate-500">Bank Statement Balance / Movement</div>
+              <strong className="text-slate-900">{formatAmount(closingBalance, selectedBankData.currency)}</strong>
+              <div className="text-[10px] text-slate-500">Movement: {formatAmount(statementMovement, selectedBankData.currency)}</div>
+            </div>
+            <div className="rounded border border-emerald-200 bg-emerald-50 p-3">
+              <div className="text-emerald-700">Reconciled / Allocated</div>
+              <strong className="text-emerald-900">{formatAmount(reconciledAmount, selectedBankData.currency)}</strong>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowUnreconciledOnly(value => !value)}
+              className={`rounded border p-3 text-left ${showUnreconciledOnly ? 'border-amber-400 bg-amber-100' : 'border-amber-200 bg-amber-50'}`}
+            >
+              <div className="text-amber-700 underline">Unreconciled Bank Balance</div>
+              <strong className="text-amber-900">{formatAmount(unreconciledAmount, selectedBankData.currency)}</strong>
+              <div className="text-[10px] text-amber-700">{showUnreconciledOnly ? 'Showing unreconciled lines · click to show all' : 'Click to filter statement lines'}</div>
+            </button>
+          </div>
+        )}
       </div>
 
       {selectedBank && (
@@ -507,14 +542,14 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
                   <tr>
                     <td colSpan={6} className="px-3 py-8 text-center text-gray-500">Loading entries...</td>
                   </tr>
-                ) : ledgerEntries.length === 0 ? (
+                ) : visibleLedgerEntries.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-3 py-8 text-center text-gray-500">
                       No recorded transactions found for this period
                     </td>
                   </tr>
                 ) : (
-                  ledgerEntries.map(entry => (
+                  visibleLedgerEntries.map(entry => (
                     <tr
                       key={entry.id}
                       className="hover:bg-blue-50 cursor-pointer transition-colors"
