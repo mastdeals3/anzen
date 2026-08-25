@@ -207,4 +207,4 @@ Bank Reconciliation UI allocation-status fix was left in place. Canonical truth 
 
 ## Git commit
 
-Filled after commit (this file’s introducing commit hash).
+`398cb4196409d05e89e575611741aad4c93d12ba`
