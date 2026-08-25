@@ -478,19 +478,20 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
 
         {selectedBankData && glClosingBalance !== null && (
           <div className={`mb-4 rounded-lg border p-3 text-xs ${Math.abs(glDifference || 0) <= 0.01 ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
-            Active GL balance: <strong>{formatAmount(glClosingBalance, selectedBankData.currency)}</strong> · Statement closing: <strong>{formatAmount(closingBalance, selectedBankData.currency)}</strong>
-            {Math.abs(glDifference || 0) <= 0.01 ? ' · Reconciled' : ` · Difference ${formatAmount(Math.abs(glDifference || 0), selectedBankData.currency)}`}
+            <div>Bank vs GL difference: <strong>{formatAmount(Math.abs(glDifference || 0), selectedBankData.currency)}</strong></div>
+            <div className="mt-1">GL closing balance: <strong>{formatAmount(glClosingBalance, selectedBankData.currency)}</strong> · Bank closing balance: <strong>{formatAmount(closingBalance, selectedBankData.currency)}</strong></div>
+            <div className="mt-1 text-[10px]">{Math.abs(glDifference || 0) <= 0.01 ? 'No bank-vs-GL difference.' : 'Difference explanation: opening balance / posting cut-off / statement population. This does not classify canonically allocated bank lines as unreconciled.'}</div>
           </div>
         )}
         {selectedBankData && (
-          <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-4 gap-2 text-xs">
             <div className="rounded border border-slate-200 bg-slate-50 p-3">
               <div className="text-slate-500">Bank Statement Balance / Movement</div>
               <strong className="text-slate-900">{formatAmount(closingBalance, selectedBankData.currency)}</strong>
               <div className="text-[10px] text-slate-500">Movement: {formatAmount(statementMovement, selectedBankData.currency)}</div>
             </div>
             <div className="rounded border border-emerald-200 bg-emerald-50 p-3">
-              <div className="text-emerald-700">Reconciled / Allocated</div>
+              <div className="text-emerald-700">Reconciled Bank Movement</div>
               <strong className="text-emerald-900">{formatAmount(reconciledAmount, selectedBankData.currency)}</strong>
             </div>
             <button
@@ -498,10 +499,17 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
               onClick={() => setShowUnreconciledOnly(value => !value)}
               className={`rounded border p-3 text-left ${showUnreconciledOnly ? 'border-amber-400 bg-amber-100' : 'border-amber-200 bg-amber-50'}`}
             >
-              <div className="text-amber-700 underline">Unreconciled Bank Balance</div>
+              <div className="text-amber-700 underline">Unreconciled Bank Transactions</div>
               <strong className="text-amber-900">{formatAmount(unreconciledAmount, selectedBankData.currency)}</strong>
               <div className="text-[10px] text-amber-700">{showUnreconciledOnly ? 'Showing unreconciled lines · click to show all' : 'Click to filter statement lines'}</div>
             </button>
+            {glClosingBalance !== null && (
+              <div className="rounded border border-violet-200 bg-violet-50 p-3">
+                <div className="text-violet-700">Bank vs GL Difference</div>
+                <strong className="text-violet-900">{formatAmount(Math.abs(glDifference || 0), selectedBankData.currency)}</strong>
+                <div className="text-[10px] text-violet-700">Opening / cut-off / statement population</div>
+              </div>
+            )}
           </div>
         )}
       </div>
