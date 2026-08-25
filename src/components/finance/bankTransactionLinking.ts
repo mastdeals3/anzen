@@ -51,27 +51,39 @@ interface LinkBankTransactionOptions {
   allocationAmount?: number;
 }
 
+/** Same decimal tolerance used by Finance cash/tax outstanding checks. */
+export const BANK_ALLOCATION_EPSILON = 0.01;
+
+export type CanonicalBankReconStatus = 'matched' | 'partially_reconciled' | 'unmatched';
+
+export function bankStatementLineAmount(debit?: number | null, credit?: number | null): number {
+  const debitAmount = Number(debit || 0);
+  const creditAmount = Number(credit || 0);
+  return debitAmount > 0 ? debitAmount : creditAmount;
+}
+
+/**
+ * Linked / partial / unlinked from bank_statement_allocations only.
+ * Legacy matched_* FKs, reconciliation_status, and manually_unlinked are ignored.
+ */
+export function canonicalBankReconciliationStatus(
+  bankAmount: number,
+  allocatedAmount: number,
+  epsilon: number = BANK_ALLOCATION_EPSILON,
+): CanonicalBankReconStatus {
+  const bank = Number(bankAmount) || 0;
+  const allocated = Number(allocatedAmount) || 0;
+  if (allocated <= epsilon) return 'unmatched';
+  if (allocated >= bank - epsilon) return 'matched';
+  return 'partially_reconciled';
+}
+
 export function isAvailableTransaction(line: BankTransactionLine) {
-  const hasDirectDocumentLink = Boolean(
-    line.matched_expense_id
-    || line.matched_entry_id
-    || line.matched_receipt_id
-    || line.matched_payment_id
-    || line.matched_petty_cash_id
-    || line.matched_fund_transfer_id
-    || line.matched_tax_payment_id
-  );
-
-  const hasAllocation = Number(line.allocationCount || 0) > 0;
-  if (Number(line.remainingAmount ?? 0) <= 0.01) return false;
-
-  // A real allocation is authoritative. A partially allocated line remains
-  // available even though the sole-allocation compatibility fields contain
-  // its current document. Without an allocation, typed links/status remain
-  // authoritative for legacy/direct matches and must exclude the line.
-  if (hasAllocation) return line.reconciliation_status === 'partially_reconciled';
-  return !hasDirectDocumentLink
-    && !['matched', 'recorded'].includes((line.reconciliation_status || '').toLowerCase());
+  const bankAmount = bankStatementLineAmount(line.debit_amount, line.credit_amount);
+  const allocatedAmount = Number(line.allocatedAmount || 0);
+  const remainingAmount = line.remainingAmount ?? Math.max(0, bankAmount - allocatedAmount);
+  return canonicalBankReconciliationStatus(bankAmount, allocatedAmount) !== 'matched'
+    && Number(remainingAmount) > BANK_ALLOCATION_EPSILON;
 }
 
 export async function loadUnmatchedDebitBankTransactions({
@@ -133,7 +145,7 @@ export async function loadUnmatchedDebitBankTransactions({
 
   return ((data || []) as unknown as BankTransactionLine[])
     .map((line) => {
-      const total = Number(line.debit_amount || line.credit_amount || 0);
+      const total = bankStatementLineAmount(line.debit_amount, line.credit_amount);
       const allocatedAmount = allocatedByLine.get(line.id) || 0;
       const enriched = {
         ...line,

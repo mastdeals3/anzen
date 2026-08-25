@@ -12,7 +12,10 @@ import { useExpenseCategories } from './useExpenseCategories';
 import { groupExpenseCategories } from './ExpenseCategorySelect';
 import { calculateCanonicalCashPayable, calculateCanonicalExpenseTotal, paymentDateGapWarning } from '../../utils/taxCalculations';
 import {
+  BANK_ALLOCATION_EPSILON,
   FINANCE_RECONCILIATION_REFRESH_EVENT,
+  canonicalBankReconciliationStatus,
+  bankStatementLineAmount,
   notifyFinanceReconciliationRefresh,
 } from './bankTransactionLinking';
 import { formatCurrency, parseIndonesianNumber } from '../../utils/currency';
@@ -84,6 +87,7 @@ interface StatementLine {
     document_id: string;
     allocation_amount: number;
     payment_kind: string;
+    label?: string;
   }>;
   matchedEntry?: string;
   matchedExpenseId?: string;
@@ -413,20 +417,25 @@ export function BankReconciliationEnhanced({
 
   const loadLinkedDocumentIds = async (exceptBankLineId?: string) => {
     let query = supabase
-      .from('bank_statement_lines')
-      .select('matched_expense_id, matched_receipt_id, matched_payment_id, matched_petty_cash_id, matched_fund_transfer_id, matched_tax_payment_id, matched_entry_id');
-    if (exceptBankLineId) query = query.neq('id', exceptBankLineId);
+      .from('bank_statement_allocations')
+      .select('document_type, document_id, bank_statement_line_id');
+    if (exceptBankLineId) query = query.neq('bank_statement_line_id', exceptBankLineId);
     const { data, error } = await query;
     if (error) throw error;
-    const ids = (column: string) => new Set((data || []).map((row: any) => row[column]).filter(Boolean));
+    const ids = (documentType: string) => new Set(
+      (data || [])
+        .filter((row: { document_type: string }) => row.document_type === documentType)
+        .map((row: { document_id: string }) => row.document_id)
+        .filter(Boolean),
+    );
     return {
-      expenseIds: ids('matched_expense_id'),
-      receiptIds: ids('matched_receipt_id'),
-      paymentIds: ids('matched_payment_id'),
-      pettyCashIds: ids('matched_petty_cash_id'),
-      fundTransferIds: ids('matched_fund_transfer_id'),
-      taxPaymentIds: ids('matched_tax_payment_id'),
-      journalIds: ids('matched_entry_id'),
+      expenseIds: ids('expense'),
+      receiptIds: ids('receipt'),
+      paymentIds: ids('payment'),
+      pettyCashIds: ids('petty_cash'),
+      fundTransferIds: ids('fund_transfer'),
+      taxPaymentIds: ids('tax_payment'),
+      journalIds: ids('journal'),
     };
   };
 
@@ -596,17 +605,23 @@ export function BankReconciliationEnhanced({
         }
       }
 
-      // HARDENING FIX #5: Batch load all matched records to eliminate N+1 queries
-      // Collect all IDs. Petty cash IS a valid recon target (petty_cash_transactions
-      // linked via matched_petty_cash_id). Journal entry is the canonical link
-      // (matched_entry_id) resolved for display fallback.
-      const expenseIds = data.map(r => r.matched_expense_id).filter(Boolean);
-      const receiptIds = data.map(r => r.matched_receipt_id).filter(Boolean);
-      const paymentIds = data.map(r => r.matched_payment_id).filter(Boolean);
-      const fundTransferIds = data.map(r => r.matched_fund_transfer_id).filter(Boolean);
-      const pettyCashIds = data.map(r => r.matched_petty_cash_id).filter(Boolean);
-      const entryIds = data.map(r => r.matched_entry_id).filter(Boolean);
-      const taxPaymentIds = data.map(r => r.matched_tax_payment_id).filter(Boolean);
+      const allAllocations = [...allocationMap.values()].flat();
+      const idsFor = (documentType: string, legacy: Array<string | null | undefined>) =>
+        [...new Set([
+          ...legacy.filter((id): id is string => Boolean(id)),
+          ...allAllocations.filter(a => a.document_type === documentType).map(a => a.document_id),
+        ])];
+
+      // Display lookups use allocation document ids. Legacy matched_* columns
+      // are only extra keys so a leftover FK can still render a name; they do
+      // not decide linked/unlinked status.
+      const expenseIds = idsFor('expense', data.map(r => r.matched_expense_id));
+      const receiptIds = idsFor('receipt', data.map(r => r.matched_receipt_id));
+      const paymentIds = idsFor('payment', data.map(r => r.matched_payment_id));
+      const fundTransferIds = idsFor('fund_transfer', data.map(r => r.matched_fund_transfer_id));
+      const pettyCashIds = idsFor('petty_cash', data.map(r => r.matched_petty_cash_id));
+      const entryIds = idsFor('journal', data.map(r => r.matched_entry_id));
+      const taxPaymentIds = idsFor('tax_payment', data.map(r => r.matched_tax_payment_id));
 
       // Batch load all expenses
       const expenseMap = new Map();
@@ -700,18 +715,49 @@ export function BankReconciliationEnhanced({
       // Map lines with pre-loaded data (NO MORE QUERIES!)
       const lines: StatementLine[] = data.map(row => {
         const allocations = allocationMap.get(row.id) || [];
-        const bankAmount = Number(row.debit_amount || row.credit_amount || 0);
+        const bankAmount = bankStatementLineAmount(row.debit_amount, row.credit_amount);
         const allocatedAmount = allocations.reduce((sum, allocation) => sum + allocation.allocation_amount, 0);
-        const hasDirectLink = Boolean(
-          row.matched_expense_id || row.matched_receipt_id || row.matched_payment_id
-          || row.matched_fund_transfer_id || row.matched_petty_cash_id
-          || row.matched_tax_payment_id || row.matched_entry_id
-        );
-        // A stale status is not a reconciliation. If no typed FK or allocation
-        // exists, always expose the line as Unrecorded so it remains actionable.
-        const effectiveStatus = hasDirectLink || allocations.length > 0
-          ? (row.reconciliation_status || 'unmatched')
-          : 'unmatched';
+        const remainingAmount = Math.max(0, bankAmount - allocatedAmount);
+        const status = canonicalBankReconciliationStatus(bankAmount, allocatedAmount);
+        const firstExpense = allocations.find(a => a.document_type === 'expense');
+        const firstReceipt = allocations.find(a => a.document_type === 'receipt');
+        const firstPayment = allocations.find(a => a.document_type === 'payment');
+        const firstFund = allocations.find(a => a.document_type === 'fund_transfer');
+        const firstPetty = allocations.find(a => a.document_type === 'petty_cash');
+        const firstTax = allocations.find(a => a.document_type === 'tax_payment');
+        const firstJournal = allocations.find(a => a.document_type === 'journal');
+        const labeledAllocations = allocations.map(allocation => {
+          let label = allocation.document_type;
+          if (allocation.document_type === 'expense') {
+            label = expenseMap.get(allocation.document_id)?.voucher_number
+              || expenseMap.get(allocation.document_id)?.expense_category
+              || 'Expense';
+          } else if (allocation.document_type === 'receipt') {
+            label = receiptMap.get(allocation.document_id)?.payment_number
+              || receiptMap.get(allocation.document_id)?.customer_name
+              || 'Receipt';
+          } else if (allocation.document_type === 'payment') {
+            label = paymentMap.get(allocation.document_id)?.voucher_number || 'Payment';
+          } else if (allocation.document_type === 'fund_transfer') {
+            const ft = fundTransferMap.get(allocation.document_id);
+            label = ft?.transfer_number || 'Fund Transfer';
+          } else if (allocation.document_type === 'petty_cash') {
+            label = pettyCashMap.get(allocation.document_id)?.description || 'Petty Cash';
+          } else if (allocation.document_type === 'tax_payment') {
+            const tax = taxPaymentMap.get(allocation.document_id);
+            label = tax ? `${tax.tax_type} ${tax.payment_date}` : 'Tax Payment';
+          } else if (allocation.document_type === 'journal') {
+            label = entryMap.get(allocation.document_id)?.entry_number || 'Journal';
+          }
+          return { ...allocation, label };
+        });
+        const expenseId = firstExpense?.document_id || null;
+        const receiptId = firstReceipt?.document_id || null;
+        const paymentId = firstPayment?.document_id || null;
+        const fundId = firstFund?.document_id || null;
+        const pettyId = firstPetty?.document_id || null;
+        const taxId = firstTax?.document_id || null;
+        const journalId = firstJournal?.document_id || null;
         return {
           id: row.id,
           date: row.transaction_date,
@@ -721,24 +767,24 @@ export function BankReconciliationEnhanced({
           credit: row.credit_amount || 0,
           balance: row.running_balance || 0,
           currency: row.currency || 'IDR',
-          status: effectiveStatus,
+          status,
           allocatedAmount,
-          remainingAmount: Math.max(0, bankAmount - allocatedAmount),
-          allocations,
-          matchedEntry: row.matched_entry_id,
-          matchedExpenseId: row.matched_expense_id,
-          matchedReceiptId: row.matched_receipt_id,
-          matchedPaymentId: row.matched_payment_id,
-          matchedFundTransferId: row.matched_fund_transfer_id,
-          matchedPettyCashId: row.matched_petty_cash_id,
-          matchedExpense: row.matched_expense_id ? expenseMap.get(row.matched_expense_id) : null,
-          matchedReceipt: row.matched_receipt_id ? receiptMap.get(row.matched_receipt_id) : null,
-          matchedPayment: row.matched_payment_id ? paymentMap.get(row.matched_payment_id) : null,
-          matchedFundTransfer: row.matched_fund_transfer_id ? fundTransferMap.get(row.matched_fund_transfer_id) : null,
-          matchedPettyCash: row.matched_petty_cash_id ? pettyCashMap.get(row.matched_petty_cash_id) : null,
-          matchedTaxPaymentId: row.matched_tax_payment_id,
-          matchedTaxPayment: row.matched_tax_payment_id ? taxPaymentMap.get(row.matched_tax_payment_id) : null,
-          matchedEntryRecord: row.matched_entry_id ? entryMap.get(row.matched_entry_id) : null,
+          remainingAmount,
+          allocations: labeledAllocations,
+          matchedEntry: journalId || undefined,
+          matchedExpenseId: expenseId || undefined,
+          matchedReceiptId: receiptId || undefined,
+          matchedPaymentId: paymentId || undefined,
+          matchedFundTransferId: fundId || undefined,
+          matchedPettyCashId: pettyId || undefined,
+          matchedExpense: expenseId ? expenseMap.get(expenseId) : null,
+          matchedReceipt: receiptId ? receiptMap.get(receiptId) : null,
+          matchedPayment: paymentId ? paymentMap.get(paymentId) : null,
+          matchedFundTransfer: fundId ? fundTransferMap.get(fundId) : null,
+          matchedPettyCash: pettyId ? pettyCashMap.get(pettyId) : null,
+          matchedTaxPaymentId: taxId || undefined,
+          matchedTaxPayment: taxId ? taxPaymentMap.get(taxId) : null,
+          matchedEntryRecord: journalId ? entryMap.get(journalId) : null,
           notes: row.notes,
         };
       });
@@ -2523,7 +2569,7 @@ export function BankReconciliationEnhanced({
     total: statementLines.length,
     matched: statementLines.filter(l => l.status === 'matched' || l.status === 'recorded').length,
     suggested: statementLines.filter(l => l.status === 'suggested').length,
-    unmatched: statementLines.filter(l => l.status === 'unmatched').length,
+    unmatched: statementLines.filter(l => l.status === 'unmatched' || l.status === 'partially_reconciled').length,
   };
 
   const openEditModal = (line: StatementLine) => {
@@ -2642,6 +2688,9 @@ export function BankReconciliationEnhanced({
           matchedPettyCash: null,
           matchedTaxPayment: null,
           matchedEntryRecord: null,
+          allocations: [],
+          allocatedAmount: 0,
+          remainingAmount: bankStatementLineAmount(line.debit, line.credit),
           notes: undefined
         } : line
       ));
@@ -2906,138 +2955,29 @@ export function BankReconciliationEnhanced({
                   </td>
                   <td className="px-1.5 py-1">
                     <div className="flex flex-col gap-1">
-                      {(line.status === 'matched' || line.status === 'recorded') && (() => {
-                        // Two separate concepts:
-                        //  - hasAnyFk        : row carries a link in the DB
-                        //  - hasResolvedLink : the batch fetch resolved that link to a display object
-                        // "No link found" must ONLY fire when hasAnyFk is false. If hasAnyFk is
-                        // true but hasResolvedLink is false, the target row is temporarily
-                        // unresolvable (RLS masking / deleted-between-queries race / permission
-                        // drift). Treat that as "Reference unresolved" — not as an orphan.
-                        const hasAnyFk = !!(
-                          line.matchedExpenseId ||
-                          line.matchedReceiptId ||
-                          line.matchedPaymentId ||
-                          line.matchedFundTransferId ||
-                          line.matchedPettyCashId ||
-                          line.matchedTaxPaymentId ||
-                          line.matchedEntry
-                        );
-                        const hasResolvedLink = !!(
-                          line.matchedExpense ||
-                          line.matchedReceipt ||
-                          line.matchedPayment ||
-                          line.matchedFundTransfer ||
-                          line.matchedPettyCash ||
-                          line.matchedTaxPayment ||
-                          line.matchedEntryRecord
-                        );
-                        return (
-                          <>
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                              <CheckCircle2 className="w-3 h-3" /> Recorded
+                      {line.status === 'matched' && (
+                        <>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                            <CheckCircle2 className="w-3 h-3" /> Recorded
+                          </span>
+                          {line.allocations.map(allocation => (
+                            <span key={allocation.id} className="text-xs text-gray-600">
+                              → {allocation.document_type === 'expense' ? 'Expense' : allocation.document_type.replace('_', ' ')}: {allocation.label} ({formatCurrency(allocation.allocation_amount, line.currency)})
                             </span>
-                            {/* Show what it's linked to */}
-                            {line.matchedExpense && (
-                              <span className="text-xs text-gray-600">
-                                → Expense: {line.matchedExpense.expense_category}
-                              </span>
-                            )}
-                            {line.matchedReceipt && (
-                              <span className="text-xs text-gray-600">
-                                → Receipt: {line.matchedReceipt.customer_name || 'Customer'}
-                              </span>
-                            )}
-                            {line.matchedPayment && (
-                              <span className="text-xs text-gray-600">
-                                → Payment: {line.matchedPayment.voucher_number}
-                              </span>
-                            )}
-                            {line.matchedFundTransfer && (
-                              <span className="text-xs text-gray-600">
-                                → Fund Transfer: {line.matchedFundTransfer.from_account_type} → {line.matchedFundTransfer.to_account_type}
-                              </span>
-                            )}
-                            {line.matchedPettyCash && (
-                              <span className="text-xs text-gray-600">
-                                → Petty Cash: {line.matchedPettyCash.description}
-                              </span>
-                            )}
-                            {line.matchedTaxPayment && (
-                              <span className="text-xs text-gray-600">
-                                → Tax Payment: {line.matchedTaxPayment.tax_type} {line.matchedTaxPayment.payment_date}
-                              </span>
-                            )}
-                            {/* Only show JE fallback chip if no typed FK produced a chip above */}
-                            {!line.matchedExpense && !line.matchedReceipt && !line.matchedPayment && !line.matchedFundTransfer && !line.matchedPettyCash && !line.matchedTaxPayment && line.matchedEntryRecord && (
-                              <span className="text-xs text-gray-600">
-                                → Journal:{' '}
-                                <button
-                                  type="button"
-                                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                                  onClick={() => onOpenJournal?.(line.matchedEntryRecord!.id)}
-                                >
-                                  {line.matchedEntryRecord.entry_number}
-                                </button>
-                              </span>
-                            )}
-                            {/*
-                              Warning states — split cleanly:
-                                (a) No FK at all → genuine orphan → "No link found" + Reset action.
-                                (b) FK present but not resolved → data is intact, the fetch
-                                    just didn't return it (RLS, race, etc.). Show which FK
-                                    is unresolved so ops can act, but never claim it's missing.
-                            */}
-                            {!hasResolvedLink && !hasAnyFk && (
-                              <>
-                                <span className="text-xs text-orange-600 font-medium">
-                                  ⚠️ No link found
-                                </span>
-                                {canManage && (
-                                  <button
-                                    onClick={() => resetOrphanToUnmatched(line)}
-                                    className="text-xs text-blue-600 hover:underline text-left"
-                                    title="Reset this row's status to Unmatched"
-                                  >
-                                    Reset to Unmatched
-                                  </button>
-                                )}
-                              </>
-                            )}
-                            {!hasResolvedLink && hasAnyFk && (
-                              <span
-                                className="text-xs text-gray-500"
-                                title={`Link exists but could not be loaded. FK: ${
-                                  line.matchedFundTransferId  ? 'fund_transfer:' + line.matchedFundTransferId :
-                                  line.matchedExpenseId       ? 'expense:'       + line.matchedExpenseId :
-                                  line.matchedReceiptId       ? 'receipt:'       + line.matchedReceiptId :
-                                  line.matchedPaymentId       ? 'payment:'       + line.matchedPaymentId :
-                                  line.matchedPettyCashId     ? 'petty_cash:'    + line.matchedPettyCashId :
-                                  line.matchedTaxPaymentId    ? 'tax_payment:'   + line.matchedTaxPaymentId :
-                                  line.matchedEntry           ? 'journal:'       + line.matchedEntry : 'unknown'
-                                }`}
-                              >
-                                {/* Reference didn't resolve, but the row IS linked and the
-                                    bank line always carries its own amount — show that plus
-                                    the link type so the amount is never blank. */}
-                                → Linked to {
-                                  line.matchedFundTransferId ? 'Fund Transfer' :
-                                  line.matchedExpenseId      ? 'Expense' :
-                                  line.matchedReceiptId      ? 'Receipt' :
-                                  line.matchedPaymentId      ? 'Payment' :
-                                  line.matchedPettyCashId    ? 'Petty Cash' :
-                                  line.matchedTaxPaymentId   ? 'Tax Payment' :
-                                  line.matchedEntry          ? 'Journal' : 'document'
-                                }: {formatCurrency(line.debit || line.credit || 0, selectedAccount?.currency)} <span className="text-gray-400">(reference unresolved)</span>
-                              </span>
-                            )}
-                          </>
-                        );
-                      })()}
-                      {line.status === 'suggested' && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                          <AlertCircle className="w-3 h-3" /> Review
-                        </span>
+                          ))}
+                        </>
+                      )}
+                      {line.status === 'partially_reconciled' && (
+                        <>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                            <AlertCircle className="w-3 h-3" /> Partial
+                          </span>
+                          {line.allocations.map(allocation => (
+                            <span key={allocation.id} className="text-xs text-gray-600">
+                              → {allocation.document_type === 'expense' ? 'Expense' : allocation.document_type.replace('_', ' ')}: {allocation.label} ({formatCurrency(allocation.allocation_amount, line.currency)})
+                            </span>
+                          ))}
+                        </>
                       )}
                       {line.status === 'unmatched' && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
@@ -3080,10 +3020,10 @@ export function BankReconciliationEnhanced({
                         <div className="text-[10px] text-gray-600 leading-tight">
                           <div>Bank: {formatCurrency(line.debit || line.credit, line.currency)}</div>
                           <div>Allocated: {formatCurrency(line.allocatedAmount, line.currency)}</div>
-                          <div className={line.remainingAmount > 0.01 ? 'text-amber-700 font-medium' : 'text-green-700 font-medium'}>
+                          <div className={line.remainingAmount > BANK_ALLOCATION_EPSILON ? 'text-amber-700 font-medium' : 'text-green-700 font-medium'}>
                             Remaining: {formatCurrency(line.remainingAmount, line.currency)}
                           </div>
-                          <div>{line.remainingAmount > 0.01 ? 'Partially Reconciled' : 'Fully Reconciled'}</div>
+                          <div>{line.remainingAmount > BANK_ALLOCATION_EPSILON ? 'Partially Reconciled' : 'Fully Reconciled'}</div>
                         </div>
                       )}
                     </div>
@@ -4290,16 +4230,10 @@ export function BankReconciliationEnhanced({
                     <span className="text-green-700 font-medium">Matched</span>
                   </>
                 )}
-                {editingLine.status === 'recorded' && (
+                {editingLine.status === 'partially_reconciled' && (
                   <>
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
-                    <span className="text-green-700 font-medium">Recorded</span>
-                  </>
-                )}
-                {editingLine.status === 'suggested' && (
-                  <>
-                    <AlertCircle className="w-4 h-4 text-yellow-600" />
-                    <span className="text-yellow-700 font-medium">Suggested</span>
+                    <AlertCircle className="w-4 h-4 text-amber-600" />
+                    <span className="text-amber-700 font-medium">Partial</span>
                   </>
                 )}
                 {editingLine.status === 'unmatched' && (
@@ -4311,7 +4245,7 @@ export function BankReconciliationEnhanced({
               </div>
             </div>
 
-            {(editingLine.matchedExpense || editingLine.matchedReceipt || editingLine.matchedPayment || editingLine.matchedFundTransfer) && (
+            {(editingLine.allocations.length > 0 || editingLine.matchedExpense || editingLine.matchedReceipt || editingLine.matchedPayment || editingLine.matchedFundTransfer) && (
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -4329,7 +4263,22 @@ export function BankReconciliationEnhanced({
                   )}
                 </div>
 
-                {editingLine.matchedExpense && (
+                {editingLine.allocations.length > 0 && (
+                  <div className="space-y-1 text-sm mb-3">
+                    {editingLine.allocations.map(allocation => (
+                      <div key={allocation.id} className="flex justify-between gap-2">
+                        <span className="text-gray-600">
+                          {allocation.document_type === 'expense' ? 'Expense' : allocation.document_type.replace('_', ' ')} {allocation.label}
+                        </span>
+                        <span className="font-medium text-gray-900 font-mono">
+                          {formatCurrency(allocation.allocation_amount, editingLine.currency)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {editingLine.matchedExpense && editingLine.allocations.length <= 1 && (
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Type:</span>
