@@ -145,12 +145,30 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
       if (selectedBankData?.coa_id) {
         const { data: glLines } = await supabase
           .from('journal_entry_lines')
-          .select('debit, credit, transaction_debit, transaction_credit, journal_entries!inner(entry_date, is_posted, is_reversed)')
+          .select('debit, credit, transaction_debit, transaction_credit, journal_entry_id, journal_entries!inner(entry_date, source_module, reference_number, is_posted, is_reversed)')
           .eq('account_id', selectedBankData.coa_id)
           .eq('journal_entries.is_posted', true)
           .eq('journal_entries.is_reversed', false)
           .lte('journal_entries.entry_date', globalDateRange.endDate);
+        const journalIds = Array.from(new Set((glLines || []).map((line: any) => line.journal_entry_id).filter(Boolean)));
+        const { data: economicDates } = journalIds.length
+          ? await supabase.from('bank_statement_allocations')
+              .select('journal_entry_id, bank_statement_lines!inner(transaction_date)')
+              .in('journal_entry_id', journalIds)
+          : { data: [] as any[] };
+        const transferEconomicDate = new Map<string, string>();
+        (economicDates || []).forEach((row: any) => {
+          const date = row.bank_statement_lines?.transaction_date;
+          if (!date) return;
+          const current = transferEconomicDate.get(row.journal_entry_id);
+          if (!current || date < current) transferEconomicDate.set(row.journal_entry_id, date);
+        });
         setGlClosingBalance((glLines || []).reduce((sum: number, line: any) => {
+          const journal = line.journal_entries;
+          const isHistoricalTransfer = journal?.source_module === 'fund_transfers'
+            || (journal?.source_module === 'historical_repair' && String(journal?.reference_number || '').startsWith('HR-FX-'));
+          const economicDate = isHistoricalTransfer ? transferEconomicDate.get(line.journal_entry_id) : undefined;
+          if (economicDate ? economicDate > globalDateRange.endDate : journal?.entry_date > globalDateRange.endDate) return sum;
           const useTransaction = selectedBankData.currency === 'USD';
           const debit = useTransaction ? Number(line.transaction_debit ?? line.debit ?? 0) : Number(line.debit || 0);
           const credit = useTransaction ? Number(line.transaction_credit ?? line.credit ?? 0) : Number(line.credit || 0);
