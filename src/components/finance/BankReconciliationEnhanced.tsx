@@ -179,6 +179,27 @@ interface BankReconciliationEnhancedProps {
 
 type PickerCandidate = Record<string, any> & { _linked?: boolean; _linkedReason?: string };
 
+// Keep PostgREST URLs bounded. UUID filters become query-string parameters,
+// so an unbounded `.in()` can fail before Postgres ever receives the query.
+// This remains a batch read (not an N+1 read) and works for any statement range.
+export const BANK_RECONCILIATION_IN_BATCH_SIZE = 75;
+export const BANK_RECONCILIATION_PAGE_SIZE = 1000;
+
+async function loadBankReconciliationRowsInBatches<T>(
+  ids: Array<string | null | undefined>,
+  queryBatch: (batchIds: string[]) => PromiseLike<{ data: T[] | null; error: any }>,
+): Promise<T[]> {
+  const uniqueIds = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  const rows: T[] = [];
+  for (let offset = 0; offset < uniqueIds.length; offset += BANK_RECONCILIATION_IN_BATCH_SIZE) {
+    const batchIds = uniqueIds.slice(offset, offset + BANK_RECONCILIATION_IN_BATCH_SIZE);
+    const { data, error } = await queryBatch(batchIds);
+    if (error) throw error;
+    rows.push(...(data || []));
+  }
+  return rows;
+}
+
 function rankBankCandidates<T extends PickerCandidate>(
   candidates: T[],
   line: StatementLine,
@@ -571,18 +592,24 @@ export function BankReconciliationEnhanced({
       endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
       const endDateStr = endDatePlusOne.toISOString().split('T')[0];
 
-      const { data: rangeData, error } = await supabase
-        .from('bank_statement_lines')
-        // perf: projected columns (was select('*'))
-        .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, manually_unlinked, notes, matched_expense_id, matched_receipt_id, matched_payment_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
-        .eq('bank_account_id', selectedBank)
-        .gte('transaction_date', dateRange.start)
-        .lt('transaction_date', endDateStr)
-        .order('transaction_date', { ascending: false });
+      const rangeData: any[] = [];
+      for (let offset = 0; ; offset += BANK_RECONCILIATION_PAGE_SIZE) {
+        const { data: page, error } = await supabase
+          .from('bank_statement_lines')
+          // perf: projected columns (was select('*'))
+          .select('id, bank_account_id, transaction_date, description, reference, currency, debit_amount, credit_amount, running_balance, reconciliation_status, manually_unlinked, notes, matched_expense_id, matched_receipt_id, matched_payment_id, matched_fund_transfer_id, matched_entry_id, matched_petty_cash_id, matched_tax_payment_id')
+          .eq('bank_account_id', selectedBank)
+          .gte('transaction_date', dateRange.start)
+          .lt('transaction_date', endDateStr)
+          .order('transaction_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(offset, offset + BANK_RECONCILIATION_PAGE_SIZE - 1);
+        if (error) throw error;
+        rangeData.push(...(page || []));
+        if (!page || page.length < BANK_RECONCILIATION_PAGE_SIZE) break;
+      }
 
-      if (error) throw error;
-
-      let data = rangeData || [];
+      let data = rangeData;
       if (
         initialStatementLineId
         && initialBankAccountId === selectedBank
@@ -602,12 +629,11 @@ export function BankReconciliationEnhanced({
       const lineIds = data.map(row => row.id);
       const allocationMap = new Map<string, StatementLine['allocations']>();
       if (lineIds.length > 0) {
-        const { data: allocations, error: allocationError } = await supabase
+        const allocations = await loadBankReconciliationRowsInBatches<any>(lineIds, batchIds => supabase
           .from('bank_statement_allocations')
           .select('id, bank_statement_line_id, document_type, document_id, journal_entry_id, allocation_amount, payment_kind')
-          .in('bank_statement_line_id', lineIds);
-        if (allocationError) throw allocationError;
-        for (const allocation of allocations || []) {
+          .in('bank_statement_line_id', batchIds));
+        for (const allocation of allocations) {
           const list = allocationMap.get(allocation.bank_statement_line_id) || [];
           list.push({
             id: allocation.id,
@@ -645,20 +671,20 @@ export function BankReconciliationEnhanced({
       // Batch load all expenses
       const expenseMap = new Map();
       if (expenseIds.length > 0) {
-        const { data: expenses } = await supabase
+        const expenses = await loadBankReconciliationRowsInBatches<any>(expenseIds, batchIds => supabase
           .from('finance_expenses')
           .select('id, expense_category, amount, paid_amount, description, expense_date, voucher_number, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items, suppliers(company_name)')
-          .in('id', expenseIds);
-        expenses?.forEach(e => expenseMap.set(e.id, e));
+          .in('id', batchIds));
+        expenses.forEach(e => expenseMap.set(e.id, e));
       }
 
       const paymentMap = new Map();
       if (paymentIds.length > 0) {
-        const { data: payments } = await supabase
+        const payments = await loadBankReconciliationRowsInBatches<any>(paymentIds, batchIds => supabase
           .from('payment_vouchers')
           .select('id, amount, actual_bank_debit, bank_amount, payment_currency, voucher_date, voucher_number, supplier_id, staff_id, suppliers(company_name), finance_staff_master(full_name)')
-          .in('id', paymentIds);
-        payments?.forEach(payment => {
+          .in('id', batchIds));
+        payments.forEach(payment => {
           paymentMap.set(payment.id, {
             id: payment.id,
             amount: payment.actual_bank_debit && Number(payment.actual_bank_debit) > 0
@@ -675,11 +701,11 @@ export function BankReconciliationEnhanced({
       // Batch load all receipts with customers
       const receiptMap = new Map();
       if (receiptIds.length > 0) {
-        const { data: receipts } = await supabase
+        const receipts = await loadBankReconciliationRowsInBatches<any>(receiptIds, batchIds => supabase
           .from('receipt_vouchers')
           .select('id, amount, voucher_date, voucher_number, customer_id, customers(company_name)')
-          .in('id', receiptIds);
-        receipts?.forEach(r => {
+          .in('id', batchIds));
+        receipts.forEach(r => {
           receiptMap.set(r.id, {
             id: r.id,
             amount: r.amount,
@@ -693,42 +719,42 @@ export function BankReconciliationEnhanced({
       // Batch load all fund transfers
       const fundTransferMap = new Map();
       if (fundTransferIds.length > 0) {
-        const { data: fundTransfers } = await supabase
+        const fundTransfers = await loadBankReconciliationRowsInBatches<any>(fundTransferIds, batchIds => supabase
           .from('fund_transfers')
           .select('id, transfer_number, amount, description, transfer_date, from_account_type, to_account_type')
-          .in('id', fundTransferIds);
-        fundTransfers?.forEach(f => fundTransferMap.set(f.id, f));
+          .in('id', batchIds));
+        fundTransfers.forEach(f => fundTransferMap.set(f.id, f));
       }
 
       // Batch load matched petty cash by id. Do not exclude fund-transfer-backed
       // rows here — that filter hid valid matches and left the UI unresolved.
       const pettyCashMap = new Map();
       if (pettyCashIds.length > 0) {
-        const { data: pettyCash } = await supabase
+        const pettyCash = await loadBankReconciliationRowsInBatches<any>(pettyCashIds, batchIds => supabase
           .from('petty_cash_transactions')
           .select('id, description, amount, transaction_date, transaction_type')
-          .in('id', pettyCashIds);
-        pettyCash?.forEach(p => pettyCashMap.set(p.id, p));
+          .in('id', batchIds));
+        pettyCash.forEach(p => pettyCashMap.set(p.id, p));
       }
 
       // Batch load all journal entries (canonical link fallback for display)
       const entryMap = new Map();
       if (entryIds.length > 0) {
-        const { data: entries } = await supabase
+        const entries = await loadBankReconciliationRowsInBatches<any>(entryIds, batchIds => supabase
           .from('journal_entries')
           .select('id, source_module, reference_id, reference_number, description, entry_date, entry_number, is_posted, is_reversed')
-          .in('id', entryIds);
-        entries?.forEach(e => entryMap.set(e.id, e));
+          .in('id', batchIds));
+        entries.forEach(e => entryMap.set(e.id, e));
       }
 
       // Batch load all tax payments
       const taxPaymentMap = new Map();
       if (taxPaymentIds.length > 0) {
-        const { data: taxPayments } = await supabase
+        const taxPayments = await loadBankReconciliationRowsInBatches<any>(taxPaymentIds, batchIds => supabase
           .from('tax_payments')
           .select('id, tax_type, amount, payment_date, billing_code, ntpn')
-          .in('id', taxPaymentIds);
-        taxPayments?.forEach(t => taxPaymentMap.set(t.id, t));
+          .in('id', batchIds));
+        taxPayments.forEach(t => taxPaymentMap.set(t.id, t));
       }
 
       // Map lines with pre-loaded data (NO MORE QUERIES!)

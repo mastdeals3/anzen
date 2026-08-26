@@ -198,6 +198,137 @@ const getExpenseCurrency = (expense: FinanceExpense): string =>
       ?? expense.bank_statement_lines?.[0]?.bank_accounts,
   });
 
+const SETTLED_EXPENSE_CANCELLATION_MESSAGE =
+  'This expense is already paid/reconciled. Reverse or unlink the payment/bank reconciliation first.';
+
+type ExpenseCancellationBlock = {
+  kind: 'settled' | 'closed_period' | 'already_reversed' | 'no_active_journal' | 'not_approved' | 'verification_failed';
+  message: string;
+  bankStatementLineId?: string;
+  paymentVoucherId?: string;
+};
+
+type ExpenseCancellationPreflight = {
+  block: ExpenseCancellationBlock | null;
+};
+
+async function preflightExpenseCancellation(expenseId: string): Promise<ExpenseCancellationPreflight> {
+  const [expenseResult, journalResult, voucherResult, expenseAllocationResult, legacyBankResult] = await Promise.all([
+    supabase
+      .from('finance_expenses')
+      .select('id, voucher_number, approval_status, paid_amount, pph_paid_amount')
+      .eq('id', expenseId)
+      .maybeSingle(),
+    supabase
+      .from('journal_entries')
+      .select('id, entry_date, is_posted, is_reversed, created_at')
+      .in('source_module', ['expense', 'expenses'])
+      .or(`reference_id.eq.${expenseId},reference_number.eq.EXP-${expenseId}`)
+      .eq('is_posted', true)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('voucher_allocations')
+      .select('id, payment_voucher_id')
+      .eq('finance_expense_id', expenseId)
+      .limit(1),
+    supabase
+      .from('bank_statement_allocations')
+      .select('id, bank_statement_line_id')
+      .eq('document_type', 'expense')
+      .eq('document_id', expenseId)
+      .limit(1),
+    supabase
+      .from('bank_statement_lines')
+      .select('id')
+      .eq('matched_expense_id', expenseId)
+      .limit(1),
+  ]);
+
+  const firstError = [expenseResult, journalResult, voucherResult, expenseAllocationResult, legacyBankResult]
+    .find(result => result.error)?.error;
+  if (firstError) throw firstError;
+
+  const expense = expenseResult.data;
+  if (!expense) {
+    return { block: { kind: 'verification_failed', message: 'Unable to verify this expense because it no longer exists.' } };
+  }
+  if (expense.approval_status !== 'approved') {
+    return { block: { kind: 'not_approved', message: 'This expense is not currently posted, so there is no posting to cancel.' } };
+  }
+
+  const journals = journalResult.data || [];
+  const activeJournal = journals.find(journal => !journal.is_reversed);
+  if (!activeJournal) {
+    const alreadyReversed = journals.some(journal => journal.is_reversed);
+    return {
+      block: {
+        kind: alreadyReversed ? 'already_reversed' : 'no_active_journal',
+        message: alreadyReversed
+          ? 'This expense posting has already been reversed.'
+          : 'No active journal exists for this expense. Cancellation cannot continue.',
+      },
+    };
+  }
+
+  const [journalAllocationResult, reconciliationResult, periodResult] = await Promise.all([
+    supabase
+      .from('bank_statement_allocations')
+      .select('id, bank_statement_line_id')
+      .eq('journal_entry_id', activeJournal.id)
+      .limit(1),
+    supabase
+      .from('bank_reconciliation_items')
+      .select('id')
+      .eq('journal_entry_id', activeJournal.id)
+      .limit(1),
+    supabase
+      .from('accounting_periods')
+      .select('status')
+      .lte('start_date', activeJournal.entry_date)
+      .gte('end_date', activeJournal.entry_date)
+      .order('start_date', { ascending: false })
+      .limit(1),
+  ]);
+  const dependentError = [journalAllocationResult, reconciliationResult, periodResult]
+    .find(result => result.error)?.error;
+  if (dependentError) throw dependentError;
+
+  const voucherAllocation = voucherResult.data?.[0];
+  const expenseAllocation = expenseAllocationResult.data?.[0];
+  const journalAllocation = journalAllocationResult.data?.[0];
+  const legacyBankLine = legacyBankResult.data?.[0];
+  const isSettled = Number(expense.paid_amount || 0) > 0.01
+    || Number(expense.pph_paid_amount || 0) > 0.01
+    || Boolean(voucherAllocation)
+    || Boolean(expenseAllocation)
+    || Boolean(journalAllocation)
+    || Boolean(legacyBankLine)
+    || Boolean(reconciliationResult.data?.length);
+  if (isSettled) {
+    return {
+      block: {
+        kind: 'settled',
+        message: SETTLED_EXPENSE_CANCELLATION_MESSAGE,
+        bankStatementLineId: expenseAllocation?.bank_statement_line_id
+          || journalAllocation?.bank_statement_line_id
+          || legacyBankLine?.id,
+        paymentVoucherId: voucherAllocation?.payment_voucher_id || undefined,
+      },
+    };
+  }
+
+  const period = periodResult.data?.[0];
+  if (period && period.status !== 'open') {
+    return {
+      block: {
+        kind: 'closed_period',
+        message: 'This expense is in a closed accounting period. Reopen the period before cancelling its posting.',
+      },
+    };
+  }
+  return { block: null };
+}
+
 interface Supplier {
   id: string;
   company_name: string;
@@ -279,6 +410,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   const [cancelPostingTarget, setCancelPostingTarget] = useState<FinanceExpense | null>(null);
   const [cancelPostingReason, setCancelPostingReason] = useState('');
   const [cancelPostingLoading, setCancelPostingLoading] = useState(false);
+  const [cancelPostingBlock, setCancelPostingBlock] = useState<ExpenseCancellationBlock | null>(null);
   const [expenses, setExpenses] = useState<FinanceExpense[]>([]);
   const [, setBatches] = useState<Batch[]>([]);
   const [containers, setContainers] = useState<ImportContainer[]>([]);
@@ -1543,23 +1675,86 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     }
   };
 
+  const closeCancelPostingModal = () => {
+    setCancelPostingModalOpen(false);
+    setCancelPostingTarget(null);
+    setCancelPostingReason('');
+    setCancelPostingBlock(null);
+  };
+
+  const handleCancelPostingRequest = async (expense: FinanceExpense) => {
+    setCancelPostingLoading(true);
+    setCancelPostingTarget(expense);
+    setCancelPostingReason('');
+    try {
+      const { block } = await preflightExpenseCancellation(expense.id);
+      setCancelPostingBlock(block);
+      setCancelPostingModalOpen(true);
+    } catch (err) {
+      setCancelPostingBlock({
+        kind: 'verification_failed',
+        message: `Cancellation safety checks could not be completed: ${supabaseErrorMessage(err)}. No cancellation request was sent.`,
+      });
+      setCancelPostingModalOpen(true);
+    } finally {
+      setCancelPostingLoading(false);
+    }
+  };
+
   const handleCancelPostingConfirm = async () => {
     if (!cancelPostingTarget || !cancelPostingReason.trim()) return;
     setCancelPostingLoading(true);
     try {
+      // Repeat the read-only guard immediately before the RPC so a payment or
+      // reconciliation added while the dialog was open cannot race cancellation.
+      const { block } = await preflightExpenseCancellation(cancelPostingTarget.id);
+      if (block) {
+        setCancelPostingBlock(block);
+        return;
+      }
       const { error } = await supabase.rpc('cancel_expense_posting', {
         p_exp_id:       cancelPostingTarget.id,
         p_cancelled_by: profile?.id,
         p_reason:       cancelPostingReason,
       });
       if (error) throw error;
-      setCancelPostingModalOpen(false);
-      setCancelPostingTarget(null);
-      setCancelPostingReason('');
+      closeCancelPostingModal();
       loadData();
     } catch (err) {
       const msg = supabaseErrorMessage(err);
-      alert(msg.includes('closed') ? `Period closed: ${msg}` : `Failed to cancel posting: ${msg}`);
+      const lower = msg.toLowerCase();
+      if (lower.includes('paid') || lower.includes('settled') || lower.includes('allocation')) {
+        setCancelPostingBlock({ kind: 'settled', message: SETTLED_EXPENSE_CANCELLATION_MESSAGE });
+      } else if (lower.includes('closed')) {
+        setCancelPostingBlock({ kind: 'closed_period', message: `Period closed: ${msg}` });
+      } else if (lower.includes('already reversed') || lower.includes('not approved')) {
+        setCancelPostingBlock({ kind: 'already_reversed', message: 'This expense posting has already been reversed or cancelled.' });
+      } else if (lower.includes('no active journal')) {
+        setCancelPostingBlock({ kind: 'no_active_journal', message: 'No active journal exists for this expense. Cancellation cannot continue.' });
+      } else {
+        alert(`Failed to cancel posting: ${msg}`);
+      }
+    } finally {
+      setCancelPostingLoading(false);
+    }
+  };
+
+  const handleCancelPostingBankUnlink = async () => {
+    if (!cancelPostingTarget || !cancelPostingBlock?.bankStatementLineId) return;
+    if (!confirm(
+      'Open the safe unlink workflow for this bank reconciliation?\n\n' +
+      'This removes the reconciliation relationship but does not delete the bank statement, expense, or journal.'
+    )) return;
+    setCancelPostingLoading(true);
+    try {
+      await unlinkBankTransaction(cancelPostingBlock.bankStatementLineId);
+      await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: cancelPostingTarget.id });
+      notifyFinanceReconciliationRefresh();
+      const { block } = await preflightExpenseCancellation(cancelPostingTarget.id);
+      setCancelPostingBlock(block);
+      await loadData();
+    } catch (err) {
+      alert(`Failed to unlink bank reconciliation: ${supabaseErrorMessage(err)}`);
     } finally {
       setCancelPostingLoading(false);
     }
@@ -2542,7 +2737,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               <FinanceActionButton
                                 action="reverse"
                                 label="Cancel Posting"
-                                onClick={() => { setCancelPostingTarget(expense); setCancelPostingReason(''); setCancelPostingModalOpen(true); }}
+                                onClick={() => void handleCancelPostingRequest(expense)}
+                                disabled={cancelPostingLoading && cancelPostingTarget?.id === expense.id}
                               />
                             </>
                           )}
@@ -4272,33 +4468,62 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
       {/* Cancel Posting modal */}
       {cancelPostingModalOpen && cancelPostingTarget && (
-        <Modal isOpen={cancelPostingModalOpen} onClose={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }} title="Cancel Expense Posting" size="sm">
+        <Modal isOpen={cancelPostingModalOpen} onClose={closeCancelPostingModal} title="Cancel Expense Posting" size="sm">
           <div className="space-y-4">
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
+            <div className={`${cancelPostingBlock ? 'bg-red-50 border-red-200 text-red-800' : 'bg-orange-50 border-orange-200 text-orange-800'} border rounded-lg p-3 text-sm`}>
               <p className="font-semibold mb-1">{cancelPostingTarget.expense_category} — {formatCurrency(calculateCanonicalExpenseTotal(cancelPostingTarget), getExpenseCurrency(cancelPostingTarget))}</p>
-              <p>This will delete the posted journal entry and return the expense to Draft. Edit and re-approve to repost.</p>
-              <p className="mt-1 text-xs flex items-center gap-1"><Lock className="w-3 h-3" /> Not allowed if the accounting period is closed.</p>
+              {cancelPostingBlock ? (
+                <p>{cancelPostingBlock.message}</p>
+              ) : (
+                <>
+                  <p>This preserves the original journal, creates its auditable reversal, and returns the expense to Pending Approval.</p>
+                  <p className="mt-1 text-xs flex items-center gap-1"><Lock className="w-3 h-3" /> Available only for unpaid expenses in an open accounting period.</p>
+                </>
+              )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
-              <textarea
-                value={cancelPostingReason}
-                onChange={e => setCancelPostingReason(e.target.value)}
-                rows={3}
-                placeholder="Reason for cancelling posting..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
+            {!cancelPostingBlock && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
+                <textarea
+                  value={cancelPostingReason}
+                  onChange={e => setCancelPostingReason(e.target.value)}
+                  rows={3}
+                  placeholder="Reason for cancelling posting..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+            )}
             <div className="flex justify-end gap-2">
-              <button onClick={() => { setCancelPostingModalOpen(false); setCancelPostingTarget(null); setCancelPostingReason(''); }} className="h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50">Back</button>
-              <button
-                onClick={handleCancelPostingConfirm}
-                disabled={!cancelPostingReason.trim() || cancelPostingLoading}
-                className="h-7 px-2 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 flex items-center gap-1.5"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                {cancelPostingLoading ? 'Cancelling...' : 'Cancel Posting'}
-              </button>
+              <button onClick={closeCancelPostingModal} className="h-7 px-2 text-xs border border-gray-300 rounded hover:bg-gray-50">Back</button>
+              {cancelPostingBlock?.paymentVoucherId && onViewPaymentVoucher && (
+                <button
+                  type="button"
+                  onClick={() => { const id = cancelPostingBlock.paymentVoucherId!; closeCancelPostingModal(); onViewPaymentVoucher(id); }}
+                  className="h-7 px-2 text-xs border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+                >
+                  Open Payment Voucher
+                </button>
+              )}
+              {cancelPostingBlock?.bankStatementLineId && (
+                <button
+                  type="button"
+                  onClick={() => void handleCancelPostingBankUnlink()}
+                  disabled={cancelPostingLoading}
+                  className="h-7 px-2 text-xs border border-blue-300 text-blue-700 rounded hover:bg-blue-50 disabled:opacity-50"
+                >
+                  {cancelPostingLoading ? 'Checking...' : 'Unlink Bank Reconciliation'}
+                </button>
+              )}
+              {!cancelPostingBlock && (
+                <button
+                  onClick={handleCancelPostingConfirm}
+                  disabled={!cancelPostingReason.trim() || cancelPostingLoading}
+                  className="h-7 px-2 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  {cancelPostingLoading ? 'Cancelling...' : 'Cancel Posting'}
+                </button>
+              )}
             </div>
           </div>
         </Modal>

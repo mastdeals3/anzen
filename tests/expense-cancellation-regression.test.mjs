@@ -94,3 +94,11 @@ test('frontend RPC name and exact deployed signature remain aligned', () => {
   assert.match(frontend, /rpc\('cancel_expense_posting',\s*\{[\s\S]*p_exp_id:[\s\S]*p_cancelled_by:[\s\S]*p_reason:/);
   assert.match(migration, /cancel_expense_posting\(\s*p_exp_id uuid,\s*p_cancelled_by uuid,\s*p_reason text/);
 });
+
+test('frontend blocks settled cancellation before RPC and explains every protected state', () => {
+  assert.match(frontend, /preflightExpenseCancellation\(cancelPostingTarget\.id\)/);
+  assert.match(frontend, /This expense is already paid\/reconciled\. Reverse or unlink the payment\/bank reconciliation first\./);
+  assert.match(frontend, /closed accounting period/);
+  assert.match(frontend, /already been reversed/);
+  assert.match(frontend, /No active journal exists/);
+});
