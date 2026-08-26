@@ -124,6 +124,18 @@ export const getReportingUsdRate = async (): Promise<number> => {
 export const saveFinanceExpense = (expenseId: string | null, payload: FinanceExpensePayload) =>
   rpc<string>('save_finance_expense', { p_expense_id: expenseId, p_payload: payload });
 
+export const editApprovedFinanceExpense = (
+  expenseId: string,
+  payload: FinanceExpensePayload,
+  bankStatementLineId?: string | null,
+  allocationAmount?: number,
+) => rpc<string>('edit_approved_finance_expense_atomic', {
+  p_expense_id: expenseId,
+  p_payload: payload,
+  p_bank_statement_line_id: bankStatementLineId || null,
+  p_allocation_amount: allocationAmount ?? null,
+});
+
 export const approveFinanceExpense = (expenseId: string, approvedBy?: string | null) =>
   rpc<string>('approve_finance_expense', { p_expense_id: expenseId, p_approved_by: approvedBy || null });
 

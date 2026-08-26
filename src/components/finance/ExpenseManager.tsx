@@ -11,7 +11,7 @@ import { getCategoryFieldRules } from './categoryFieldRules';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { useExpenseCategories } from './useExpenseCategories';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
-import { approveFinanceExpense, getReportingUsdRate, saveFinanceExpense } from '../../services/financeCommands';
+import { approveFinanceExpense, editApprovedFinanceExpense, getReportingUsdRate, saveFinanceExpense } from '../../services/financeCommands';
 import {
   getEffectiveExpensePostingState,
   getEffectiveExpensePostingStates,
@@ -1326,7 +1326,17 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         console.log('=== UPDATING EXPENSE ===');
         console.log('Expense ID:', editingExpense.id);
 
-        await saveFinanceExpense(editingExpense.id, expenseData);
+        const editingApprovedExpense = editingExpense.approval_status === 'approved';
+        if (editingApprovedExpense) {
+          await editApprovedFinanceExpense(
+            editingExpense.id,
+            expenseData,
+            selectedBankTransactionId || null,
+            selectedBankAllocationAmount,
+          );
+        } else {
+          await saveFinanceExpense(editingExpense.id, expenseData);
+        }
 
         if (formData.expense_category === 'salary' && selectedStaffId && applySalaryAdvance && persistedSalaryAdvanceApplied === 0) {
           const { error: advanceError } = await supabase.rpc('apply_salary_advances_to_expense', {
@@ -1369,13 +1379,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         console.log('document_urls from DB:', updatedExpense.document_urls);
         console.log('Full updated expense:', updatedExpense);
 
+        const [hydratedUpdatedExpense] = await hydrateExpensePostingLifecycle([updatedExpense as FinanceExpense]);
+
         // Update in local state
         setExpenses(prev => prev.map(exp =>
-          exp.id === editingExpense.id ? updatedExpense : exp
+          exp.id === editingExpense.id ? hydratedUpdatedExpense : exp
         ));
+        void syncExpenseBankLinks([editingExpense.id]);
 
         // Link to bank transaction if selected
-        if (selectedBankTransactionId) {
+        if (selectedBankTransactionId && !editingApprovedExpense) {
           await approveFinanceExpense(editingExpense.id, profile?.id);
           let linkFailed = false;
           try {
@@ -1551,10 +1564,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   };
 
   const handleEdit = async (expense: FinanceExpense) => {
-    if (expense.effective_posting_state === 'ACTIVE') {
-      alert('This expense is posted. Cancel Posting first to make changes.');
-      return;
-    }
     if (expense.effective_posting_state === 'REVERSED' || expense.effective_posting_state === 'REPLACED' || expense.effective_posting_state === 'AMBIGUOUS') {
       alert('This historical expense cannot be edited through the normal workflow. Open its journal/reversal history instead.');
       return;
@@ -1581,7 +1590,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     const effectiveBankAccountId = reconciledBankInfo?.bank_account_id || expense.bank_account_id || '';
     const effectivePaymentMethod = reconciledBankInfo?.bank_account_id
       ? 'bank_transfer'
-      : (expense.payment_method || 'bank_transfer');
+      : expense.payment_method;
 
     // Determine document type from category
     const docType = (Object.entries(DOCUMENT_TYPE_GROUPS) as [DocumentType, string[]][])
@@ -2790,7 +2799,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                               }
                             }}
                           />
-                          {(postingState === 'PENDING' || postingState === 'REJECTED') && (
+                          {(postingState === 'ACTIVE' || postingState === 'PENDING' || postingState === 'REJECTED') && (
                             <FinanceActionButton action="edit" onClick={() => handleEdit(expense)} />
                           )}
                           {onSettleBill &&
@@ -3686,7 +3695,12 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     documentDate={formData.expense_date}
                     documentOutstanding={Math.max(
                       0,
-                      calculateCanonicalCashPayable(formData) - Number(editingExpense?.paid_amount || 0),
+                      calculateCanonicalCashPayable(formData)
+                        - Number(editingExpense?.paid_amount || 0)
+                        + Number(editingExpense?.bank_statement_lines?.reduce(
+                          (sum, line) => sum + Number(line.payment_kind === 'pph23' ? 0 : line.allocation_amount || 0),
+                          0,
+                        ) || 0),
                     )}
                     documentLabel={editingExpense?.voucher_number || 'Expense'}
                     canUnlink={canManage}
@@ -3694,7 +3708,15 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                       setSelectedBankTransactionId(transaction.id);
                       setSelectedBankAllocationAmount(Math.min(
                         Number(transaction.remainingAmount ?? transaction.debit_amount ?? transaction.credit_amount ?? 0),
-                        Math.max(0, calculateCanonicalCashPayable(formData) - Number(editingExpense?.paid_amount || 0)),
+                        Math.max(
+                          0,
+                          calculateCanonicalCashPayable(formData)
+                            - Number(editingExpense?.paid_amount || 0)
+                            + Number(editingExpense?.bank_statement_lines?.reduce(
+                              (sum, line) => sum + Number(line.payment_kind === 'pph23' ? 0 : line.allocation_amount || 0),
+                              0,
+                            ) || 0),
+                        ),
                       ));
                     }}
                     onUnlink={() => handleUnlinkFromBankStatement(editingExpense!.id)}
@@ -4504,7 +4526,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
             {/* ── FOOTER ── */}
             <div className="px-4 py-2 flex justify-end gap-2">
-              {canManage && (viewingExpense.effective_posting_state === 'PENDING' || viewingExpense.effective_posting_state === 'REJECTED') && (
+              {canManage && (viewingExpense.effective_posting_state === 'ACTIVE' || viewingExpense.effective_posting_state === 'PENDING' || viewingExpense.effective_posting_state === 'REJECTED') && (
                 <button
                   onClick={() => { handleEdit(viewingExpense); setViewModalOpen(false); setViewingExpense(null); }}
                   className="px-2.5 py-1 text-[11px] font-medium text-blue-700 bg-white border border-blue-300 rounded hover:bg-blue-50"
