@@ -9,6 +9,7 @@ import { useFinance } from '../../contexts/FinanceContext';
 import { FINANCE_RECONCILIATION_REFRESH_EVENT } from './bankTransactionLinking';
 import { formatCurrency } from '../../utils/currency';
 import { calculateCanonicalCashPayable } from '../../utils/taxCalculations';
+import { getEffectiveExpensePostingStates, isEffectiveExpensePosting } from '../../services/expensePostingLifecycle';
 
 interface Party {
   id: string;
@@ -127,6 +128,11 @@ export default function PartyLedger() {
       if (fromDate) qq = qq.gte(col, fromDate);
       return qq;
     };
+    const onlyEffectiveExpenses = async <T extends { id: string }>(rows: T[] | null): Promise<T[]> => {
+      if (!rows?.length) return [];
+      const states = await getEffectiveExpensePostingStates(rows.map(row => row.id));
+      return rows.filter(row => isEffectiveExpensePosting(states.get(row.id)?.effective_posting_state));
+    };
 
     if (partyType === 'customer') {
       const { data: invoices } = await dateRange(
@@ -240,8 +246,9 @@ export default function PartyLedger() {
         'expense_date',
       ).order('expense_date');
 
-      if (expenseBills) {
-        expenseBills.forEach(bill => {
+      const effectiveExpenseBills = await onlyEffectiveExpenses(expenseBills);
+      if (effectiveExpenseBills.length) {
+        effectiveExpenseBills.forEach(bill => {
           const payable = calculateCanonicalCashPayable(bill);
           const outstanding = payable - (bill.paid_amount ?? 0);
           const currency = bill.transaction_currency || bill.currency_code || 'IDR';
@@ -264,10 +271,11 @@ export default function PartyLedger() {
       // Payment Voucher. Raw finance_expenses.amount is not used here.
       const brokerLinesQuery = supabase
         .from('journal_entry_lines')
-        .select('id, entry_date:journal_entries!inner(entry_date), debit, credit, description, journal_entry_id, journal_entries!inner(reference_number, transaction_category, is_posted)')
+        .select('id, entry_date:journal_entries!inner(entry_date), debit, credit, description, journal_entry_id, journal_entries!inner(reference_number, transaction_category, is_posted, is_reversed)')
         .eq('supplier_id', selectedParty)
         .eq('journal_entries.transaction_category', 'import_broker')
-        .eq('journal_entries.is_posted', true);
+        .eq('journal_entries.is_posted', true)
+        .eq('journal_entries.is_reversed', false);
       const brokerLines = await dateRange(brokerLinesQuery, 'journal_entries.entry_date');
       if (brokerLines.data) {
         brokerLines.data.forEach((line: any) => {
@@ -326,8 +334,9 @@ export default function PartyLedger() {
         'expense_date',
       ).order('expense_date');
 
-      if (bills) {
-        bills.forEach(bill => {
+      const effectiveBills = await onlyEffectiveExpenses(bills);
+      if (effectiveBills.length) {
+        effectiveBills.forEach(bill => {
           const payable = calculateCanonicalCashPayable(bill);
           const outstanding = payable - (bill.paid_amount ?? 0);
           const currency = bill.transaction_currency || bill.currency_code || 'IDR';
@@ -355,8 +364,9 @@ export default function PartyLedger() {
         'expense_date',
       ).order('expense_date');
 
-      if (advances) {
-        advances.forEach(adv => {
+      const effectiveAdvances = await onlyEffectiveExpenses(advances);
+      if (effectiveAdvances.length) {
+        effectiveAdvances.forEach(adv => {
           const currency = adv.transaction_currency || adv.currency_code || 'IDR';
           entries.push({
             id: adv.id,

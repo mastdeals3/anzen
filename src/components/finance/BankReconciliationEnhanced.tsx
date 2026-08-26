@@ -32,6 +32,11 @@ import {
   saveReceiptVoucher,
   unlinkBankStatementLine,
 } from '../../services/financeCommands';
+import {
+  getEffectiveExpensePostingState,
+  getEffectiveExpensePostingStates,
+  isEffectiveExpensePosting,
+} from '../../services/expensePostingLifecycle';
 
 interface OutstandingBill {
   id: string;
@@ -571,9 +576,12 @@ export function BankReconciliationEnhanced({
       if (error) throw error;
 
       const linked = await loadLinkedDocumentIds();
+      const postingStates = await getEffectiveExpensePostingStates((allExpenses || []).map(expense => expense.id));
       // Expenses can receive legal partial payments. A prior bank link is only
       // unavailable once the relevant supplier/PPh balance is fully settled.
-      setExpenses((allExpenses || []).map((expense: any) => ({
+      setExpenses((allExpenses || [])
+        .filter(expense => isEffectiveExpensePosting(postingStates.get(expense.id)?.effective_posting_state))
+        .map((expense: any) => ({
         ...expense,
         _linked: linked.expenseIds.has(expense.id),
       })));
@@ -1834,6 +1842,11 @@ export function BankReconciliationEnhanced({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+
+      const postingState = await getEffectiveExpensePostingState(expenseId);
+      if (!isEffectiveExpensePosting(postingState?.effective_posting_state)) {
+        throw new Error('This expense is already reversed/replaced without an effective payable path and cannot receive a new bank allocation.');
+      }
 
       const { data: exp, error: expenseError } = await supabase
           .from('finance_expenses')

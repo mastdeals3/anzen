@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabase';
 import { formatFinancePeriod } from '../../../utils/financePeriod';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState } from './TaxUI';
+import { getEffectiveExpensePostingStates, isEffectiveExpensePosting } from '../../../services/expensePostingLifecycle';
 
 interface Row {
   tax_period_id: string;
@@ -100,10 +101,14 @@ async function loadDetail(row: Row): Promise<{ input: InputLine[]; output: Outpu
     })),
   ];
 
+  const expenseStates = await getEffectiveExpensePostingStates(((feRes.data ?? []) as any[]).map(expense => expense.id));
+  const effectiveExpenseRows = ((feRes.data ?? []) as any[])
+    .filter(expense => isEffectiveExpensePosting(expenseStates.get(expense.id)?.effective_posting_state));
+
   // finance_expenses: broker-line PPN and PIB PPN are additive; the regular
   // ppn_amount is counted ONLY on rows that carry no broker-line PPN (exactly
   // the engine's NOT EXISTS guard), to avoid double-counting.
-  for (const r of ((feRes.data ?? []) as any[])) {
+  for (const r of effectiveExpenseRows) {
     const brokerItems: any[] = Array.isArray(r.broker_items) ? r.broker_items : [];
     const hasBrokerPpn = brokerItems.some(it => Number(it?.ppn_amount ?? 0) > 0);
     const supplier = r.suppliers?.company_name ?? '—';

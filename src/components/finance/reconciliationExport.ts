@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
+import { getEffectiveExpensePostingStates } from '../../services/expensePostingLifecycle';
 
 /**
  * A common, accountant-facing workbook for operational finance exports.
@@ -95,18 +96,34 @@ export async function getPostedJournalsForExport(
 ): Promise<Map<string, PostedJournal>> {
   if (!documentIds.length) return new Map();
 
-  const { data, error } = await supabase
+  const isExpenseExport = sourceModules.length > 0
+    && sourceModules.every(module => module === 'expense' || module === 'expenses');
+  const journalDocumentIds = new Map<string, string>();
+  let effectiveJournalIds: string[] = [];
+  if (isExpenseExport) {
+    const states = await getEffectiveExpensePostingStates(documentIds);
+    for (const documentId of documentIds) {
+      const journalId = states.get(documentId)?.effective_journal_id;
+      if (journalId) journalDocumentIds.set(journalId, documentId);
+    }
+    effectiveJournalIds = [...journalDocumentIds.keys()];
+    if (!effectiveJournalIds.length) return new Map();
+  }
+
+  let journalQuery = supabase
     .from('journal_entries')
     .select('id, reference_id, entry_number, entry_date, is_posted, is_reversed, journal_entry_lines(line_number, description, debit, credit, tax_code_id, customer_id, supplier_id, chart_of_accounts(code,name), tax_codes(code), customers(company_name), suppliers(company_name))')
-    .in('reference_id', documentIds)
-    .in('source_module', sourceModules)
     .eq('is_posted', true)
     .order('entry_date', { ascending: true });
+  journalQuery = isExpenseExport
+    ? journalQuery.in('id', effectiveJournalIds)
+    : journalQuery.in('reference_id', documentIds).in('source_module', sourceModules);
+  const { data, error } = await journalQuery;
   if (error) throw error;
 
   const result = new Map<string, PostedJournal>();
   for (const entry of (data || []) as any[]) {
-    const documentId = entry.reference_id as string;
+    const documentId = journalDocumentIds.get(entry.id) || entry.reference_id as string;
     // A document can have historical/reversed entries; retain the current posted one.
     if (!documentId || entry.is_reversed || result.has(documentId)) continue;
     const lines = ((entry.journal_entry_lines || []) as any[])

@@ -13,6 +13,7 @@ import { formatDate } from '../utils/dateFormat';
 import { canSeeInventoryCosting } from '../utils/permissions';
 import { calculateCanonicalExpenseTotal } from '../utils/taxCalculations';
 import type { BrokerItem } from '../utils/taxCalculations';
+import { getEffectiveExpensePostingStates, isEffectiveExpensePosting } from '../services/expensePostingLifecycle';
 
 interface Supplier {
   id: string;
@@ -140,9 +141,12 @@ export default function ImportContainers() {
             containerRows.map(async (container) => {
               const { data: expenses } = await supabase
                 .from('finance_expenses')
-                .select('amount, expense_category, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items')
+                .select('id, amount, expense_category, ppn_amount, pph_amount, stamp_duty_amount, bank_charges_amount, broker_items')
                 .eq('import_container_id', container.id);
-              const linkedExpensesTotal = expenses?.reduce((sum, exp) => sum + calculateCanonicalExpenseTotal(exp), 0) || 0;
+              const states = await getEffectiveExpensePostingStates((expenses || []).map(expense => expense.id));
+              const linkedExpensesTotal = expenses
+                ?.filter(expense => isEffectiveExpensePosting(states.get(expense.id)?.effective_posting_state))
+                .reduce((sum, exp) => sum + calculateCanonicalExpenseTotal(exp), 0) || 0;
               return { ...container, linked_expenses_total: linkedExpensesTotal };
             })
           )
@@ -275,7 +279,8 @@ export default function ImportContainers() {
         .eq('import_container_id', containerId)
         .order('expense_date', { ascending: false });
       if (error) throw error;
-      setLinkedExpenses(data || []);
+      const states = await getEffectiveExpensePostingStates((data || []).map(expense => expense.id));
+      setLinkedExpenses((data || []).filter(expense => isEffectiveExpensePosting(states.get(expense.id)?.effective_posting_state)));
     } catch {
       setLinkedExpenses([]);
     }

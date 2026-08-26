@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabase';
 import { formatFinancePeriod } from '../../../utils/financePeriod';
 import { useFinance } from '../../../contexts/FinanceContext';
 import { StatCard, StatCardGrid, SectionCard, StatusChip, EmptyState, taxPaymentBusinessStatus } from './TaxUI';
+import { getEffectiveExpensePostingStates, isEffectiveExpensePosting } from '../../../services/expensePostingLifecycle';
 
 type PphType = 'PPh21' | 'PPh22' | 'PPh23' | 'PPh4(2)' | 'PPh_Unifikasi';
 
@@ -177,8 +178,15 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
     return date >= startDate && date <= endDate;
   };
 
-  const expenseData = ((feRes.data ?? []) as any[]).filter(isSelectedPeriod);
-  const importData = ((importRes.data ?? []) as any[]).filter(isSelectedPeriod);
+  const allExpenseSources = [
+    ...((feRes.data ?? []) as any[]),
+    ...((importRes.data ?? []) as any[]),
+  ];
+  const expenseStates = await getEffectiveExpensePostingStates(allExpenseSources.map(expense => expense.id));
+  const isEffectiveExpense = (expense: any) =>
+    isEffectiveExpensePosting(expenseStates.get(expense.id)?.effective_posting_state);
+  const expenseData = ((feRes.data ?? []) as any[]).filter(isEffectiveExpense).filter(isSelectedPeriod);
+  const importData = ((importRes.data ?? []) as any[]).filter(isEffectiveExpense).filter(isSelectedPeriod);
 
   const sourceRows = [
     ...expenseData,
