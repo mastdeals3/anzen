@@ -455,35 +455,22 @@ BEGIN
   PERFORM pg_temp.assert_numeric(
     (
       SELECT COALESCE(sum(reserved_quantity), 0)
+      FROM public.so_product_reservations
+      WHERE sales_order_id = v_so_id
+        AND status = 'active'
+    ),
+    50,
+    'Sales Order creates a product-level reservation'
+  );
+  PERFORM pg_temp.assert_numeric(
+    (
+      SELECT count(*)
       FROM public.stock_reservations
       WHERE sales_order_id = v_so_id
-        AND batch_id = v_expired_batch_id
         AND status = 'active'
     ),
     0,
-    'FEFO excludes expired batch'
-  );
-  PERFORM pg_temp.assert_numeric(
-    (
-      SELECT COALESCE(sum(reserved_quantity), 0)
-      FROM public.stock_reservations
-      WHERE sales_order_id = v_so_id
-        AND batch_id = v_early_batch_id
-        AND status = 'active'
-    ),
-    40,
-    'FEFO reserves earliest expiry first'
-  );
-  PERFORM pg_temp.assert_numeric(
-    (
-      SELECT COALESCE(sum(reserved_quantity), 0)
-      FROM public.stock_reservations
-      WHERE sales_order_id = v_so_id
-        AND batch_id = v_late_batch_id
-        AND status = 'active'
-    ),
-    10,
-    'FEFO reserves later expiry remainder'
+    'Sales Order does not create batch-level reservations'
   );
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
@@ -491,73 +478,32 @@ BEGIN
     'Sales Order reservation does not change physical stock'
   );
 
-  PERFORM public.fn_release_reservation_by_so_id(v_so_id, v_actor_id);
+  UPDATE public.sales_orders
+  SET status='rejected',rejected_by=v_actor_id,rejected_at=now(),
+      rejection_reason='rollback regression'
+  WHERE id=v_so_id;
   PERFORM pg_temp.assert_numeric(
     (
       SELECT COALESCE(sum(reserved_quantity), 0)
-      FROM public.stock_reservations
+      FROM public.so_product_reservations
       WHERE sales_order_id = v_so_id
         AND status = 'active'
     ),
     0,
-    'Reservation release'
+    'SO rejection releases the product reservation'
   );
   PERFORM pg_temp.assert_numeric(
     (SELECT reserved_stock FROM public.batches WHERE id = v_early_batch_id),
     0,
-    'Reservation release batch synchronization'
+    'Product reservation lifecycle does not change batch reserved stock'
   );
 
-  PERFORM *
-  FROM public.approve_sales_order_inventory_v1(v_so_id, v_actor_id);
-
-  -- A DC cannot bypass the FEFO reservation by selecting another batch.
-  INSERT INTO public.delivery_challans (
-    challan_number,
-    customer_id,
-    challan_date,
-    delivery_address,
-    sales_order_id,
-    approval_status,
-    created_by
-  )
-  VALUES (
-    'DO-WRONG-' || v_suffix,
-    v_customer_id,
-    CURRENT_DATE,
-    'Regression address',
-    v_so_id,
-    'pending_approval',
-    v_actor_id
-  )
-  RETURNING id INTO v_wrong_dc_id;
-
-  INSERT INTO public.delivery_challan_items (
-    challan_id,
-    product_id,
-    batch_id,
-    quantity
-  )
-  VALUES (
-    v_wrong_dc_id,
-    v_fefo_product_id,
-    v_late_batch_id,
-    20
-  );
-
-  PERFORM pg_temp.assert_raises(
-    format(
-      'UPDATE public.delivery_challans
-       SET approval_status = ''approved'',
-           approval_operation_id = gen_random_uuid(),
-           approved_by = %L::uuid,
-           approved_at = now()
-       WHERE id = %L::uuid',
-      v_actor_id,
-      v_wrong_dc_id
-    ),
-    'does not match canonical FEFO reservation',
-    'Delivery Challan FEFO enforcement'
+  PERFORM public.approve_sales_order_product_reservation_v2(v_so_id, v_actor_id);
+  PERFORM pg_temp.assert_numeric(
+    (SELECT COALESCE(sum(reserved_quantity),0) FROM public.so_product_reservations
+      WHERE sales_order_id=v_so_id AND status='active'),
+    50,
+    'SO re-approval recreates the product reservation'
   );
 
   INSERT INTO public.delivery_challans (
@@ -582,12 +528,14 @@ BEGIN
 
   INSERT INTO public.delivery_challan_items (
     challan_id,
+    sales_order_item_id,
     product_id,
     batch_id,
     quantity
   )
   VALUES (
     v_dc_id,
+    v_so_item_id,
     v_fefo_product_id,
     v_early_batch_id,
     20
@@ -616,46 +564,6 @@ BEGIN
     ),
     -20,
     'Delivery Challan canonical movement'
-  );
-
-  -- Approved DC edit reverses the current version and reposts the new version.
-  SELECT public.admin_edit_approved_delivery_challan(
-    v_dc_id,
-    jsonb_build_array(
-      jsonb_build_object(
-        'product_id', v_fefo_product_id,
-        'batch_id', v_early_batch_id,
-        'quantity', 15
-      )
-    ),
-    gen_random_uuid()
-  )
-  INTO v_result;
-
-  SELECT id
-  INTO v_dc_item_id
-  FROM public.delivery_challan_items
-  WHERE challan_id = v_dc_id
-  LIMIT 1;
-
-  PERFORM pg_temp.assert_numeric(
-    (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    25,
-    'Delivery Challan edit reversal and repost'
-  );
-  PERFORM pg_temp.assert_numeric(
-    (
-      SELECT sum(quantity)
-      FROM public.inventory_transactions
-      WHERE reference_id = v_dc_id
-        AND reference_type IN (
-          'delivery_challan',
-          'delivery_challan_edit_reversal'
-        )
-        AND metadata->>'canonical_engine_version' = '1.0'
-    ),
-    -15,
-    'Delivery Challan edit movement history nets to current quantity'
   );
 
   -- Sales Invoice validates the approved DC but never changes stock.
@@ -699,7 +607,7 @@ BEGIN
     v_fefo_product_id,
     v_early_batch_id,
     v_dc_item_id,
-    15,
+    20,
     100,
     0
   )
@@ -707,7 +615,7 @@ BEGIN
 
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    25,
+    20,
     'Sales Invoice Create does not move stock'
   );
 
@@ -716,7 +624,7 @@ BEGIN
   WHERE id = v_invoice_item_id;
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    25,
+    20,
     'Sales Invoice Edit does not move stock'
   );
 
@@ -734,7 +642,7 @@ BEGIN
   );
   PERFORM pg_temp.assert_raises(
     format(
-      'UPDATE public.sales_invoice_items SET quantity = 16 WHERE id = %L::uuid',
+      'UPDATE public.sales_invoice_items SET quantity = 21 WHERE id = %L::uuid',
       v_invoice_item_id
     ),
     'exceeds approved Delivery Challan quantity',
@@ -806,7 +714,7 @@ BEGIN
     v_fefo_product_id,
     v_early_batch_id,
     3,
-    15,
+    20,
     100,
     'good',
     'restock'
@@ -819,7 +727,7 @@ BEGIN
   WHERE id = v_material_return_id;
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    28,
+    23,
     'Material Return approval'
   );
 
@@ -829,7 +737,7 @@ BEGIN
   WHERE id = v_material_return_id;
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    25,
+    20,
     'Material Return reversal'
   );
 
@@ -885,7 +793,7 @@ BEGIN
   WHERE id = v_credit_note_id;
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    27,
+    22,
     'Credit Note approval'
   );
 
@@ -894,7 +802,7 @@ BEGIN
   WHERE id = v_credit_note_id;
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    25,
+    20,
     'Credit Note reversal'
   );
 
@@ -933,7 +841,7 @@ BEGIN
   WHERE id = v_rejection_id;
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    24,
+    19,
     'Stock Rejection approval'
   );
 
@@ -942,7 +850,7 @@ BEGIN
   WHERE id = v_rejection_id;
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    25,
+    20,
     'Stock Rejection reversal'
   );
 
@@ -951,7 +859,7 @@ BEGIN
   DELETE FROM public.sales_invoice_items WHERE id = v_invoice_item_id;
   PERFORM pg_temp.assert_numeric(
     (SELECT current_stock FROM public.batches WHERE id = v_early_batch_id),
-    25,
+    20,
     'Sales Invoice Delete does not move stock'
   );
 
@@ -968,13 +876,12 @@ BEGIN
   PERFORM pg_temp.assert_numeric(
     (
       SELECT COALESCE(sum(reserved_quantity), 0)
-      FROM public.stock_reservations
+      FROM public.so_product_reservations
       WHERE sales_order_id = v_so_id
-        AND batch_id = v_early_batch_id
         AND status = 'active'
     ),
-    40,
-    'Delivery Challan reversal restores FEFO reservation'
+    50,
+    'Delivery Challan reversal restores the product reservation'
   );
   PERFORM pg_temp.assert_raises(
     format(
@@ -1064,8 +971,8 @@ BEGIN
       FROM public.inventory_v1_stock_summary
       WHERE product_id = v_fefo_product_id
     ),
-    50,
-    'Canonical Stock Summary reservation balance'
+    0,
+    'Batch Stock Summary has no batch-level SO reservation balance'
   );
   PERFORM pg_temp.assert_numeric(
     (
@@ -1073,8 +980,13 @@ BEGIN
       FROM public.inventory_v1_stock_summary
       WHERE product_id = v_fefo_product_id
     ),
+    140,
+    'Batch Stock Summary excludes expired stock from physical availability'
+  );
+  PERFORM pg_temp.assert_numeric(
+    public.product_available_to_promise(v_fefo_product_id,NULL),
     90,
-    'Canonical Stock Summary excludes expired stock from availability'
+    'Product ATP subtracts the active product-level SO commitment'
   );
   PERFORM pg_temp.assert_numeric(
     (

@@ -144,6 +144,7 @@ export function DeliveryChallan() {
   const [salesOrders, setSalesOrders] = useState<any[]>([]);
   const approvalOperationIdsRef = useRef<Record<string, string>>({});
   const [soReservations, setSoReservations] = useState<Map<string, number>>(new Map());
+  const [soReservationLoadState, setSoReservationLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [linkedInvoicePreview, setLinkedInvoicePreview] = useState<any | null>(null);
   const [linkedInvoiceItems, setLinkedInvoiceItems] = useState<any[]>([]);
   const [linkedSOPreview, setLinkedSOPreview] = useState<any | null>(null);
@@ -467,6 +468,8 @@ export function DeliveryChallan() {
     setFormData(prev => ({ ...prev, sales_order_id: soId, customer_id: sourceOrder?.customer_id || prev.customer_id }));
 
     if (soId) {
+      setSoReservations(new Map());
+      setSoReservationLoadState('loading');
       const so = sourceOrder || salesOrders.find(s => s.id === soId);
       if (so) {
         setFormData(prev => ({ ...prev, customer_id: so.customer_id }));
@@ -484,12 +487,14 @@ export function DeliveryChallan() {
           ]);
 
           if (soItemsResult.error) throw soItemsResult.error;
+          if (reservationsResult.error) throw reservationsResult.error;
 
           const resMap = new Map<string, number>();
           (reservationsResult.data || []).forEach((r: any) => {
             resMap.set(r.sales_order_item_id, parseFloat(r.reserved_quantity));
           });
           setSoReservations(resMap);
+          setSoReservationLoadState('ready');
 
           const soItems = soItemsResult.data;
           const normalizedSoItems = (soItems || []).map((item: any) => ({
@@ -549,11 +554,16 @@ export function DeliveryChallan() {
           }
         } catch (error) {
           console.error('Error loading SO items:', error);
-          showToast({ type: 'error', title: 'Error', message: 'Failed to load Sales Order items. Please try again.' });
+          setSoReservations(new Map());
+          setSoReservationLoadState('error');
+          showToast({ type: 'error', title: 'Error', message: 'Failed to load Sales Order reservation data. Delivery Challan quantities cannot be validated; please try again.' });
         }
+      } else {
+        setSoReservationLoadState('error');
       }
     } else {
       setSoReservations(new Map());
+      setSoReservationLoadState('idle');
       setSalesOrderItemSources([]);
       setItems([{
         product_id: '',
@@ -1494,7 +1504,15 @@ export function DeliveryChallan() {
                     {salesOrderItemSources.map(source => (
                       <div key={source.id} className="flex justify-between gap-3">
                         <span>{source.products?.product_name || source.product_id}</span>
-                        <span>Ordered {source.quantity} · Delivered {source.delivered_quantity || 0} · Reserved {soReservations.get(source.id) || 0} · Remaining {Math.max(0, Number(source.quantity) - Number(source.delivered_quantity || 0))} {source.products?.unit || ''}</span>
+                        <span>
+                          Ordered {source.quantity} · Delivered {source.delivered_quantity || 0} · Reserved{' '}
+                          {soReservationLoadState === 'loading'
+                            ? 'Loading…'
+                            : soReservationLoadState === 'error'
+                              ? 'Unavailable (reservation query failed)'
+                              : (soReservations.get(source.id) ?? 0)}{' '}
+                          · Remaining {Math.max(0, Number(source.quantity) - Number(source.delivered_quantity || 0))} {source.products?.unit || ''}
+                        </span>
                       </div>
                     ))}
                   </div>

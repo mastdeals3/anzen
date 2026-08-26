@@ -55,8 +55,8 @@ const requiredSourceContracts = [
   },
   {
     file: 'src/pages/SalesOrders.tsx',
-    pattern: /\.rpc\(['"]approve_sales_order_inventory_v1['"]/,
-    message: 'Sales Order approval is not routed through the canonical approval RPC',
+    pattern: /\.rpc\(['"]approve_sales_order_product_reservation_v2['"]/,
+    message: 'Sales Order approval is not routed through the product-reservation approval RPC',
   },
   {
     file: 'src/pages/Inventory.tsx',
@@ -90,6 +90,10 @@ for (const contract of requiredSourceContracts) {
 const migrationFile =
   'supabase/migrations/20260801120000_inventory_v1_canonical_stock_engine.sql';
 const migration = readFileSync(migrationFile, 'utf8');
+const productReservationMigration = readFileSync(
+  'supabase/migrations/20260827140000_product_so_reservation_dc_batch_allocation.sql',
+  'utf8',
+);
 const requiredDatabaseContracts = [
   'CREATE OR REPLACE FUNCTION public.post_inventory_movement',
   'CREATE OR REPLACE FUNCTION public.save_batch_inventory_v1',
@@ -110,6 +114,17 @@ const requiredDatabaseContracts = [
 for (const contract of requiredDatabaseContracts) {
   if (!migration.includes(contract)) {
     failures.push(`${migrationFile}: missing database contract: ${contract}`);
+  }
+}
+
+for (const contract of [
+  'CREATE TABLE IF NOT EXISTS public.so_product_reservations',
+  'CREATE OR REPLACE FUNCTION public.approve_sales_order_product_reservation_v2',
+  'CREATE OR REPLACE FUNCTION public.consume_so_product_reservation_v2',
+  'CREATE OR REPLACE VIEW public.so_product_reservation_status',
+]) {
+  if (!productReservationMigration.includes(contract)) {
+    failures.push(`product reservation migration: missing database contract: ${contract}`);
   }
 }
 

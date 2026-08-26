@@ -16,5 +16,8 @@ assert.match(dc, /SO reservations are product-level/);
 assert.match(dc, /\.from\('so_product_reservations'\)/);
 assert.doesNotMatch(dc, /realign_reservation_for_delivery_challan/);
 assert.match(dc, /Pending DCs are not deliveries/);
+assert.match(dc, /if \(reservationsResult\.error\) throw reservationsResult\.error/);
+assert.match(dc, /Unavailable \(reservation query failed\)/);
+assert.doesNotMatch(dc, /soReservations\.get\(source\.id\) \|\| 0/);
 
 console.log('delivery challan product-reservation regression checks passed');
