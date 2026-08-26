@@ -1213,33 +1213,6 @@ export function Sales() {
           setFormData(prev => ({ ...prev, invoice_number: invoiceNumber }));
         }
 
-        const { data: newInvoice, error: invoiceError } = await supabase
-          .from('sales_invoices')
-          .insert([{
-            invoice_number: invoiceNumber,
-            customer_id: formData.customer_id,
-            sales_order_id: selectedSOId || null,
-            invoice_date: formData.invoice_date,
-            due_date: dueDate.toISOString().split('T')[0],
-            discount_amount: formData.discount,
-            delivery_challan_number: null,
-            po_number: formData.po_number || null,
-            payment_terms_days: paymentTermsDays,
-            notes: formData.notes || null,
-            subtotal: totals.subtotal,
-            tax_amount: totals.taxAmount,
-            stamp_duty_amount: totals.stampDuty,
-            total_amount: totals.total,
-            payment_status: 'pending',
-            created_by: user.id,
-            linked_challan_ids: selectedDCIds.length > 0 ? selectedDCIds : null,
-          }])
-          .select()
-          .single();
-
-        if (invoiceError) throw invoiceError;
-        invoice = newInvoice;
-
         // Filter and map only valid items (with product_id)
         const invoiceItemsData = items
           .filter(item => item.product_id && item.product_id.trim() !== '')
@@ -1253,35 +1226,35 @@ export function Sales() {
             delivery_challan_item_id: item.delivery_challan_item_id || null,
           }));
 
-        if (invoiceItemsData.length === 0) {
-          // The header insert posts its own accounting entry, so never leave a
-          // financially valid but item-less invoice behind after an empty
-          // conversion attempt.
-          await supabase.from('sales_invoices').delete().eq('id', invoice.id);
-          throw new Error('Invoice product rows were empty; no invoice was created.');
-        }
+        if (invoiceItemsData.length === 0) throw new Error('Invoice product rows were empty; no invoice was created.');
 
-        const { error: itemsError } = await supabase
-          .from('sales_invoice_items')
-          .insert(invoiceItemsData);
-
-        if (itemsError) {
-          console.error('Error inserting invoice items:', itemsError);
-          console.error('Invoice items data:', invoiceItemsData);
-          throw new Error(`Failed to save invoice items: ${itemsError.message}`);
-        }
-
-        // Verify items were actually inserted
-        const { data: insertedItems, error: verifyError } = await supabase
-          .from('sales_invoice_items')
-          .select('id')
-          .eq('invoice_id', invoice.id);
-
-        if (verifyError) {
-          console.error('Error verifying items:', verifyError);
-        } else if (!insertedItems || insertedItems.length === 0) {
-          throw new Error('Invoice items were not saved. Please try again.');
-        }
+        // New invoices are created in one database transaction. The RPC
+        // derives totals from the persisted source lines and rolls back the
+        // header, items, journal, and links if any validation fails.
+        const { data: newInvoiceId, error: invoiceError } = await supabase.rpc('create_sales_invoice_atomic', {
+          p_invoice: {
+            invoice_number: invoiceNumber,
+            customer_id: formData.customer_id,
+            sales_order_id: selectedSOId || null,
+            invoice_date: formData.invoice_date,
+            due_date: dueDate.toISOString().split('T')[0],
+            discount_amount: formData.discount,
+            po_number: formData.po_number || null,
+            payment_terms_days: paymentTermsDays,
+            notes: formData.notes || null,
+            subtotal: totals.subtotal,
+            tax_amount: totals.taxAmount,
+            stamp_duty_amount: totals.stampDuty,
+            total_amount: totals.total,
+            created_by: user.id,
+            linked_challan_ids: selectedDCIds.length > 0 ? selectedDCIds : null,
+          },
+          p_items: invoiceItemsData,
+        });
+        if (invoiceError) throw invoiceError;
+        const { data: newInvoice, error: fetchInvoiceError } = await supabase.from('sales_invoices').select().eq('id', newInvoiceId).single();
+        if (fetchInvoiceError) throw fetchInvoiceError;
+        invoice = newInvoice;
       }
 
       // Stock deduction and inventory transactions are handled automatically by database trigger
