@@ -16,10 +16,13 @@ type TabType = 'transactions' | 'returns' | 'rejections';
 
 interface InventoryTransaction {
   id: string;
-  transaction_type: 'purchase' | 'sale' | 'adjustment';
+  transaction_type: string;
   product_id: string;
   batch_id: string | null;
   quantity: number;
+  effective_quantity: number;
+  is_effective: boolean;
+  effective_classification: string;
   reference_number: string | null;
   notes: string | null;
   transaction_date: string;
@@ -158,7 +161,7 @@ export function Inventory() {
 
   const loadTransactions = async () => {
     const { data, error } = await supabase
-      .from('inventory_transactions')
+      .from('inventory_v1_effective_ledger')
       .select(`
         *,
         products(product_name, product_code),
@@ -391,7 +394,7 @@ export function Inventory() {
     },
     {
       key: 'quantity',
-      label: t('common.quantity'),
+      label: 'Historical Qty',
       render: (value: any, tx: InventoryTransaction) => (
         <span className={`font-semibold ${
           tx.transaction_type === 'purchase' ? 'text-green-600' :
@@ -401,6 +404,20 @@ export function Inventory() {
           {tx.transaction_type === 'purchase' ? '+' : tx.transaction_type === 'sale' ? '-' : ''}
           {tx.quantity}
         </span>
+      )
+    },
+    {
+      key: 'effective_quantity',
+      label: 'Effective Qty',
+      render: (value: any, tx: InventoryTransaction) => (
+        <div>
+          <span className={`font-semibold ${tx.is_effective ? 'text-gray-900' : 'text-gray-400'}`}>
+            {Number(tx.effective_quantity || 0).toLocaleString()}
+          </span>
+          <div className={`text-xs ${tx.is_effective ? 'text-green-700' : 'text-amber-700'}`}>
+            {tx.is_effective ? 'Effective' : 'Evidence only'}
+          </div>
+        </div>
       )
     },
     {

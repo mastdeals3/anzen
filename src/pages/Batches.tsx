@@ -557,7 +557,7 @@ export function Batches() {
     setTransactionHistoryModal(true);
 
     let txnQuery = supabase
-      .from('inventory_transactions')
+      .from('inventory_v1_effective_ledger')
       .select('*')
       .or('metadata->>superseded.is.null,metadata->>superseded.neq.true')
       .order('transaction_date', { ascending: false })
@@ -1777,6 +1777,7 @@ export function Batches() {
               <div className="space-y-2">
                 {transactionHistory.map((txn: any) => {
                   const isReservation = txn._type === 'reservation';
+                  const isEvidenceOnly = !isReservation && txn.is_effective === false;
                   const qty = parseFloat(txn.quantity);
                   const isPositive = !isReservation && qty > 0;
                   const isNegative = !isReservation && qty < 0;
@@ -1805,6 +1806,11 @@ export function Batches() {
                             }`}>
                               {txn.transaction_type.replace(/_/g, ' ').replace(/^delivery challan$/i, 'Delivery')}
                             </span>
+                            {isEvidenceOnly && (
+                              <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                                Historical evidence · 0 effective qty
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm text-gray-600 space-y-0.5">
                             {txn.transaction_date && (
