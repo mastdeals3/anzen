@@ -15,6 +15,10 @@ const partyAndPettyCash = readFileSync(
   new URL('../supabase/migrations/20260830135000_normalize_party_and_petty_cash_resolution.sql', import.meta.url),
   'utf8',
 );
+const trialBalance = readFileSync(
+  new URL('../supabase/migrations/20260830136000_normalize_effective_trial_balance.sql', import.meta.url),
+  'utf8',
+);
 
 test('normal expense UI exposes business states and keeps audit mechanics out of actions', () => {
   assert.match(expenseUi, /s === 'REPLACED'[\s\S]*Approved · Active/);
@@ -48,4 +52,11 @@ test('party and petty-cash reconciliation fix identities without changing amount
   assert.match(partyAndPettyCash, /CREATE OR REPLACE VIEW public\.missing_petty_cash_links/);
   assert.match(partyAndPettyCash, /historical_expense:%/);
   assert.doesNotMatch(partyAndPettyCash, /SET\s+(?:debit|credit|amount|entry_date)\s*=/i);
+});
+
+test('trial balance resolves only effective posted non-reversed journals', () => {
+  assert.match(trialBalance, /CREATE OR REPLACE VIEW public\.trial_balance_view/);
+  assert.match(trialBalance, /j\.is_posted = true/);
+  assert.match(trialBalance, /NOT COALESCE\(j\.is_reversed, false\)/);
+  assert.doesNotMatch(trialBalance, /UPDATE public\.(?:journal_entries|journal_entry_lines)/i);
 });
