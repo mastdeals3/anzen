@@ -42,6 +42,8 @@ interface SalesInvoice {
   paid_amount?: number;
   balance_amount?: number;
   product_names?: string;
+  item_count?: number;
+  item_integrity_status?: 'ok' | 'missing_product_rows';
   customers?: {
     company_name: string;
     gst_vat_type: string;
@@ -396,12 +398,25 @@ export function Sales() {
         return { ...inv, paid_amount: paidAmount, balance_amount: balance };
       });
 
+      const itemCounts = new Map<string, number>();
+      if (invoiceIdsForPaid.length > 0) {
+        const { data: itemRows } = await supabase
+          .from('sales_invoice_items')
+          .select('invoice_id')
+          .in('invoice_id', invoiceIdsForPaid);
+        (itemRows || []).forEach((row: any) => itemCounts.set(row.invoice_id, (itemCounts.get(row.invoice_id) || 0) + 1));
+      }
+
 
       const bundle = await fetchLinkedDocumentsBundle();
       const invoicesWithLinked = invoicesWithPayments.map((inv: any) => {
         const links = bundle.invMap.get(inv.id);
         return {
           ...inv,
+          item_count: itemCounts.get(inv.id) || 0,
+          item_integrity_status: Number(inv.total_amount || 0) > 0 && !(itemCounts.get(inv.id) || 0)
+            ? 'missing_product_rows'
+            : 'ok',
           sales_order: links?.sos?.[0] ? { so_number: links.sos[0].number } : null,
           linked_challans: (links?.dcs || []).map((d) => ({ id: d.id, challan_number: d.number }))
         };
@@ -1104,7 +1119,7 @@ export function Sales() {
       // Validate that invoice has at least one item with a product selected
       const validItems = items.filter(item => item.product_id && item.product_id.trim() !== '');
       if (validItems.length === 0) {
-        showToast({ type: 'error', title: 'Error', message: 'Please add at least one product to the invoice before saving.' });
+        showToast({ type: 'error', title: 'Error', message: 'Invoice cannot be saved because its product table is empty. Select an approved Delivery Challan item or add a product line.' });
         return;
       }
 
@@ -1237,6 +1252,14 @@ export function Sales() {
             tax_rate: item.tax_rate,
             delivery_challan_item_id: item.delivery_challan_item_id || null,
           }));
+
+        if (invoiceItemsData.length === 0) {
+          // The header insert posts its own accounting entry, so never leave a
+          // financially valid but item-less invoice behind after an empty
+          // conversion attempt.
+          await supabase.from('sales_invoices').delete().eq('id', invoice.id);
+          throw new Error('Invoice product rows were empty; no invoice was created.');
+        }
 
         const { error: itemsError } = await supabase
           .from('sales_invoice_items')
@@ -1421,7 +1444,18 @@ export function Sales() {
       label: t('common.date'),
       render: (value: any, inv: SalesInvoice) => formatDate(inv.invoice_date)
     },
-    { key: 'invoice_number', label: t('sales.invoiceNumber') },
+    {
+      key: 'invoice_number',
+      label: t('sales.invoiceNumber'),
+      render: (value: any, inv: SalesInvoice) => (
+        <div>
+          <div>{inv.invoice_number}</div>
+          {inv.item_integrity_status === 'missing_product_rows' && (
+            <div className="text-[10px] font-semibold text-red-700">Missing product rows</div>
+          )}
+        </div>
+      )
+    },
     {
       key: 'customer',
       label: t('sales.customer'),
