@@ -326,7 +326,13 @@ export function PettyCashManager({ canManage, onNavigateToFundTransfer, initialV
         };
       });
 
-      const balanceRes = await supabase.rpc('get_petty_cash_balance');
+      // Cash movement reporting follows the petty-cash transaction/transfer
+      // date. The RPC resolves canonical, historical-expense, and legacy
+      // transfer-linked accounting paths without changing journal dates.
+      const balanceRes = await supabase.rpc('get_petty_cash_balance_by_transaction_date', {
+        start_date: startDate,
+        end_date: endDate,
+      });
       if (balanceRes.error) throw balanceRes.error;
       const balance = Number(balanceRes.data || 0);
 

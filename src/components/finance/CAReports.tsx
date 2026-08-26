@@ -209,22 +209,57 @@ export function CAReports({ onOpenJournal, onDrillDown }: CAReportsProps) {
     const accountMap = new Map(coaAccounts?.map(a => [a.id, a]) || []);
 
     const { data: lines, error } = await supabase.rpc('ca_report_journal_lines', {
-      p_date_from: dateRange.from,
+      p_date_from: '2025-01-01',
       p_date_to: dateRange.to,
       p_account_ids: accountIds
     });
 
     if (error) throw error;
+    const journalIds = Array.from(new Set((lines || []).map((line: any) => line.journal_entry_id).filter(Boolean)));
+    const { data: allocations, error: allocationError } = journalIds.length
+      ? await supabase.from('bank_statement_allocations')
+          .select('journal_entry_id, allocation_amount, bank_statement_lines!inner(transaction_date, transaction_hash, debit_amount, credit_amount)')
+          .in('journal_entry_id', journalIds)
+      : { data: [], error: null };
+    if (allocationError) throw allocationError;
+    const reportingDates = new Map<string, string>();
+    const canonicalMovement = new Map<string, { debit: number; credit: number }>();
+    (allocations || []).forEach((allocation: any) => {
+      const date = allocation.bank_statement_lines?.transaction_date;
+      if (!date) return;
+      const current = reportingDates.get(allocation.journal_entry_id);
+      if (!current || date < current) reportingDates.set(allocation.journal_entry_id, date);
+      const statement = allocation.bank_statement_lines;
+      const amount = Number(allocation.allocation_amount || 0);
+      const statementTotal = Number(statement?.debit_amount || statement?.credit_amount || 0);
+      const signed = statement?.credit_amount > 0 ? amount : -amount;
+      const movement = canonicalMovement.get(allocation.journal_entry_id) || { debit: 0, credit: 0 };
+      if (signed >= 0) movement.credit += Math.min(amount, statementTotal);
+      else movement.debit += Math.min(amount, statementTotal);
+      canonicalMovement.set(allocation.journal_entry_id, movement);
+    });
 
-    return (lines || []).map((line: any) => ({
+    const emittedCanonical = new Set<string>();
+    return (lines || []).filter((line: any) => {
+      const reportDate = reportingDates.get(line.journal_entry_id) || line.entry_date;
+      return reportDate >= dateRange.from && reportDate <= dateRange.to;
+    }).map((line: any) => {
+      const reportDate = reportingDates.get(line.journal_entry_id) || line.entry_date;
+      const canonical = canonicalMovement.get(line.journal_entry_id);
+      const isFirstCanonicalLine = canonical && !emittedCanonical.has(line.journal_entry_id);
+      if (isFirstCanonicalLine) emittedCanonical.add(line.journal_entry_id);
+      return {
       journal_entry_id: line.journal_entry_id,
-      date: line.entry_date,
+      date: reportDate,
       voucher_no: line.entry_number,
       account_name: accountMap.get(line.line_account_id)?.name,
-      debit: line.debit,
-      credit: line.credit,
-      narration: line.line_description || line.reference_number || ''
-    }));
+      debit: isFirstCanonicalLine ? canonical.debit : (canonical ? 0 : line.debit),
+      credit: isFirstCanonicalLine ? canonical.credit : (canonical ? 0 : line.credit),
+      narration: line.line_description || line.reference_number || '',
+      canonical_statement_date: reportingDates.get(line.journal_entry_id) || null,
+      reconciliation_status: reportingDates.has(line.journal_entry_id) ? 'allocated' : 'unallocated'
+    };
+    });
   };
 
   const loadSalesRegister = async () => {

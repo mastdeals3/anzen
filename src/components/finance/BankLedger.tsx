@@ -26,6 +26,11 @@ interface LedgerEntry {
   debit: number;
   credit: number;
   running_balance: number;
+  statement_debit?: number;
+  statement_credit?: number;
+  ledger_debit?: number;
+  ledger_credit?: number;
+  reconciliation_difference?: number | null;
 }
 
 interface BankLedgerProps {
@@ -148,36 +153,24 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
           .select('debit, credit, transaction_debit, transaction_credit, journal_entry_id, journal_entries!inner(entry_date, source_module, reference_number, is_posted, is_reversed)')
           .eq('account_id', selectedBankData.coa_id)
           .eq('journal_entries.is_posted', true)
-          .eq('journal_entries.is_reversed', false)
-          .gte('journal_entries.entry_date', openingBalanceDate)
-          .lte('journal_entries.entry_date', globalDateRange.endDate);
+          .eq('journal_entries.is_reversed', false);
         const journalIds = Array.from(new Set((glLines || []).map((line: any) => line.journal_entry_id).filter(Boolean)));
         const { data: economicDates } = journalIds.length
           ? await supabase.from('bank_statement_allocations')
               .select('journal_entry_id, bank_statement_lines!inner(transaction_date)')
               .in('journal_entry_id', journalIds)
           : { data: [] as any[] };
-        const transferEconomicDate = new Map<string, string>();
+        const canonicalBankDate = new Map<string, string>();
         (economicDates || []).forEach((row: any) => {
           const date = row.bank_statement_lines?.transaction_date;
           if (!date) return;
-          const current = transferEconomicDate.get(row.journal_entry_id);
-          if (!current || date < current) transferEconomicDate.set(row.journal_entry_id, date);
+          const current = canonicalBankDate.get(row.journal_entry_id);
+          if (!current || date < current) canonicalBankDate.set(row.journal_entry_id, date);
         });
         const glMovement = (glLines || []).reduce((sum: number, line: any) => {
           const journal = line.journal_entries;
-          const isAccountingOnlyReversal = journal?.source_module === 'historical_repair'
-            && (String(journal?.reference_number || '').startsWith('HR-REV-')
-              || String(journal?.description || '').startsWith('Explicit reversal of incorrect cash recognition'));
-          // Historical repair reversals reverse an old cash posting; the
-          // replacement/restatement journal and its canonical bank allocation
-          // represent the economic cash event. Do not report the reversal as
-          // an additional unmatched bank movement.
-          if (isAccountingOnlyReversal) return sum;
-          const isHistoricalTransfer = journal?.source_module === 'fund_transfers'
-            || (journal?.source_module === 'historical_repair' && String(journal?.reference_number || '').startsWith('HR-FX-'));
-          const economicDate = isHistoricalTransfer ? transferEconomicDate.get(line.journal_entry_id) : undefined;
-          if (economicDate ? economicDate > globalDateRange.endDate : journal?.entry_date > globalDateRange.endDate) return sum;
+          const reportingDate = canonicalBankDate.get(line.journal_entry_id) || journal?.entry_date;
+          if (!reportingDate || reportingDate < openingBalanceDate || reportingDate > globalDateRange.endDate) return sum;
           const useTransaction = selectedBankData.currency === 'USD';
           const debit = useTransaction ? Number(line.transaction_debit ?? line.debit ?? 0) : Number(line.debit || 0);
           const credit = useTransaction ? Number(line.transaction_credit ?? line.credit ?? 0) : Number(line.credit || 0);
@@ -196,14 +189,17 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
       const endDateStr = endDatePlusOne.toISOString().split('T')[0];
 
       // Get bank statement lines (source of truth for Bank Ledger)
-      const { data: bankLines } = await supabase
+      const { data: rawBankLines } = await supabase
         .from('bank_statement_lines')
-        .select('id, transaction_date, description, reference, debit_amount, credit_amount, matched_expense_id, matched_receipt_id, matched_payment_id, matched_entry_id, notes')
+        .select('id, transaction_hash, transaction_date, description, reference, debit_amount, credit_amount, matched_expense_id, matched_receipt_id, matched_payment_id, matched_entry_id, notes')
         .eq('bank_account_id', selectedBank)
         .gte('transaction_date', globalDateRange.startDate)
         .lt('transaction_date', endDateStr)
         .order('transaction_date');
 
+      // transaction_hash is canonical for duplicate-upload suppression.  A
+      // statement transaction must appear once even when imported repeatedly.
+      const bankLines = Array.from(new Map((rawBankLines || []).map((line: any) => [line.transaction_hash || line.id, line])).values());
       if (bankLines) {
         bankLines.forEach(line => {
           entries.push({
@@ -217,6 +213,11 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
             canonical_reference: line.reference || '-',
             debit: Number(line.debit_amount || 0),
             credit: Number(line.credit_amount || 0),
+            statement_debit: Number(line.debit_amount || 0),
+            statement_credit: Number(line.credit_amount || 0),
+            ledger_debit: null,
+            ledger_credit: null,
+            reconciliation_difference: null,
             type: 'bank',
             matched_expense_id: line.matched_expense_id || null,
             matched_receipt_id: line.matched_receipt_id || null,
@@ -238,6 +239,23 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
             .in('bank_statement_line_id', lineIds)
         : { data: [] as any[] };
       const allocationRows = allocations || [];
+      const allocationJournalIds = Array.from(new Set(allocationRows.map((a: any) => a.journal_entry_id).filter(Boolean)));
+      const { data: linkedBankLines } = allocationJournalIds.length
+        ? await supabase.from('journal_entry_lines')
+            .select('journal_entry_id, debit, credit, transaction_debit, transaction_credit')
+            .eq('account_id', selectedBankData?.coa_id || '')
+            .in('journal_entry_id', allocationJournalIds)
+        : { data: [] as any[] };
+      const ledgerByJournal = new Map<string, { debit: number; credit: number }>();
+      (linkedBankLines || []).forEach((line: any) => {
+        const useTransaction = selectedBankData?.currency === 'USD';
+        const debit = Number(useTransaction ? (line.transaction_debit ?? line.debit) : line.debit || 0);
+        const credit = Number(useTransaction ? (line.transaction_credit ?? line.credit) : line.credit || 0);
+        const current = ledgerByJournal.get(line.journal_entry_id) || { debit: 0, credit: 0 };
+        current.debit += debit;
+        current.credit += credit;
+        ledgerByJournal.set(line.journal_entry_id, current);
+      });
       const allocationExpenseIds = allocationRows.filter((a: any) => a.document_type === 'expense').map((a: any) => a.document_id);
       const allocationReceiptIds = allocationRows.filter((a: any) => a.document_type === 'receipt').map((a: any) => a.document_id);
       const allocationPaymentIds = allocationRows.filter((a: any) => a.document_type === 'payment').map((a: any) => a.document_id);
@@ -273,6 +291,18 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
           e.allocations = docs;
           e.canonical_reference = docs.map(d => `${d.reference} (${formatAmount(d.amount, selectedBankData?.currency || 'IDR')})`).join(' + ');
           e.linkedId = docs[0].document_id;
+          const journals = Array.from(new Set(docs.map((doc: any) => doc.journal_entry_id).filter(Boolean)));
+          const ledger = journals.reduce((sum: any, journalId: any) => {
+            const movement = ledgerByJournal.get(journalId);
+            if (!movement) return sum;
+            sum.debit += movement.debit;
+            sum.credit += movement.credit;
+            return sum;
+          }, { debit: 0, credit: 0 });
+          e.ledger_debit = ledger.debit;
+          e.ledger_credit = ledger.credit;
+          e.reconciliation_difference = (Number(e.statement_credit || 0) - Number(e.statement_debit || 0))
+            - (ledger.debit - ledger.credit);
         }
       });
 
@@ -340,6 +370,11 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
           running_balance: runningBalance,
           allocated_amount: entry.allocated_amount || 0,
           unreconciled_amount: entry.unreconciled_amount || 0,
+          statement_debit: entry.statement_debit,
+          statement_credit: entry.statement_credit,
+          ledger_debit: entry.ledger_debit,
+          ledger_credit: entry.ledger_credit,
+          reconciliation_difference: entry.reconciliation_difference,
         };
       });
 
@@ -421,9 +456,13 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
 
   const selectedBankData = banks.find(b => b.id === selectedBank);
 
-  const totalDebit = ledgerEntries.reduce((sum, e) => sum + e.debit, 0);
-  const totalCredit = ledgerEntries.reduce((sum, e) => sum + e.credit, 0);
+  const totalDebit = ledgerEntries.reduce((sum, e) => sum + Number(e.statement_debit || 0), 0);
+  const totalCredit = ledgerEntries.reduce((sum, e) => sum + Number(e.statement_credit || 0), 0);
+  const ledgerDebit = ledgerEntries.reduce((sum, e) => sum + Number(e.ledger_debit || 0), 0);
+  const ledgerCredit = ledgerEntries.reduce((sum, e) => sum + Number(e.ledger_credit || 0), 0);
   const statementMovement = totalCredit - totalDebit;
+  const ledgerMovement = ledgerDebit - ledgerCredit;
+  const reconciliationDifference = statementMovement - ledgerMovement;
   const reconciledAmount = ledgerEntries.reduce((sum, e) => sum + Number(e.allocated_amount || 0), 0);
   const unreconciledAmount = ledgerEntries.reduce((sum, e) => sum + Number(e.unreconciled_amount || 0), 0);
   const visibleLedgerEntries = showUnreconciledOnly
@@ -506,13 +545,13 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
 
         {selectedBankData && glClosingBalance !== null && (
           <div className={`mb-4 rounded-lg border p-3 text-xs ${Math.abs(glDifference || 0) <= 0.01 ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
-            <div>Bank vs GL difference: <strong>{formatAmount(Math.abs(glDifference || 0), selectedBankData.currency)}</strong></div>
+            <div>Statement / Ledger / Difference: <strong>{formatAmount(statementMovement, selectedBankData.currency)} / {formatAmount(ledgerMovement, selectedBankData.currency)} / {formatAmount(reconciliationDifference, selectedBankData.currency)}</strong></div>
             <div className="mt-1">GL closing balance: <strong>{formatAmount(glClosingBalance, selectedBankData.currency)}</strong> · Bank closing balance: <strong>{formatAmount(closingBalance, selectedBankData.currency)}</strong></div>
             <div className="mt-1 text-[10px]">{Math.abs(glDifference || 0) <= 0.01 ? 'No bank-vs-GL difference.' : 'Difference explanation: opening balance / posting cut-off / statement population. This does not classify canonically allocated bank lines as unreconciled.'}</div>
           </div>
         )}
         {selectedBankData && (
-          <div className="mb-4 grid grid-cols-1 md:grid-cols-4 gap-2 text-xs">
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-5 gap-2 text-xs">
             <div className="rounded border border-slate-200 bg-slate-50 p-3">
               <div className="text-slate-500">Bank Statement Balance / Movement</div>
               <strong className="text-slate-900">{formatAmount(closingBalance, selectedBankData.currency)}</strong>
@@ -521,6 +560,11 @@ export default function BankLedger({ selectedBank: propSelectedBank }: BankLedge
             <div className="rounded border border-emerald-200 bg-emerald-50 p-3">
               <div className="text-emerald-700">Reconciled Bank Movement</div>
               <strong className="text-emerald-900">{formatAmount(reconciledAmount, selectedBankData.currency)}</strong>
+            </div>
+            <div className={`rounded border p-3 ${Math.abs(reconciliationDifference) <= 0.01 ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
+              <div className="text-slate-600">Statement / Ledger / Difference</div>
+              <strong className="text-slate-900">{formatAmount(statementMovement, selectedBankData.currency)} / {formatAmount(ledgerMovement, selectedBankData.currency)} / {formatAmount(reconciliationDifference, selectedBankData.currency)}</strong>
+              <div className="text-[10px] text-slate-500">Canonical statement date and allocated bank COA lines</div>
             </div>
             <button
               type="button"
