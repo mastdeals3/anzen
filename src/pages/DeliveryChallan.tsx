@@ -53,6 +53,7 @@ interface DeliveryChallan {
 
 interface ChallanItem {
   id?: string;
+  sales_order_item_id?: string | null;
   product_id: string;
   batch_id: string;
   quantity: number;
@@ -84,6 +85,15 @@ interface Product {
   product_name: string;
   product_code: string;
   unit: string;
+}
+
+interface SalesOrderItemSource {
+  id: string;
+  product_id: string;
+  quantity: number;
+  delivered_quantity: number;
+  unit_price: number;
+  products?: { product_name: string; unit: string } | null;
 }
 
 interface Batch {
@@ -137,6 +147,7 @@ export function DeliveryChallan() {
   const [linkedInvoicePreview, setLinkedInvoicePreview] = useState<any | null>(null);
   const [linkedInvoiceItems, setLinkedInvoiceItems] = useState<any[]>([]);
   const [linkedSOPreview, setLinkedSOPreview] = useState<any | null>(null);
+  const [salesOrderItemSources, setSalesOrderItemSources] = useState<SalesOrderItemSource[]>([]);
   const [items, setItems] = useState<Omit<ChallanItem, 'id'>[]>([{
     product_id: '',
     batch_id: '',
@@ -465,7 +476,7 @@ export function DeliveryChallan() {
           const [soItemsResult, reservationsResult] = await Promise.all([
             supabase
               .from('sales_order_items')
-              .select(`id, product_id, quantity, products(product_name)`)
+              .select(`id, product_id, quantity, delivered_quantity, unit_price, products(product_name, unit)`)
               .eq('sales_order_id', soId),
             supabase
               .from('stock_reservations')
@@ -484,6 +495,11 @@ export function DeliveryChallan() {
           setSoReservations(resMap);
 
           const soItems = soItemsResult.data;
+          const normalizedSoItems = (soItems || []).map((item: any) => ({
+            ...item,
+            products: Array.isArray(item.products) ? (item.products[0] || null) : item.products,
+          })) as SalesOrderItemSource[];
+          setSalesOrderItemSources(normalizedSoItems);
           if (soItems && soItems.length > 0) {
             const newItems = soItems.map(item => {
               const productBatches = batches
@@ -497,6 +513,7 @@ export function DeliveryChallan() {
 
               if (!fifoBatch) {
                 return {
+                  sales_order_item_id: item.id,
                   product_id: item.product_id,
                   batch_id: '',
                   quantity: parseFloat(String(item.quantity)) || 0,
@@ -520,6 +537,7 @@ export function DeliveryChallan() {
               }
 
               return {
+                sales_order_item_id: item.id,
                 product_id: item.product_id,
                 batch_id: fifoBatch.id,
                 quantity: parseFloat(String(item.quantity)) || 0,
@@ -537,6 +555,7 @@ export function DeliveryChallan() {
       }
     } else {
       setSoReservations(new Map());
+      setSalesOrderItemSources([]);
       setItems([{
         product_id: '',
         batch_id: '',
@@ -678,6 +697,7 @@ export function DeliveryChallan() {
     if (loadedItems.length > 0) {
       setItems(loadedItems.map(item => ({
         product_id: item.product_id,
+        sales_order_item_id: item.sales_order_item_id || null,
         batch_id: item.batch_id,
         quantity: parseFloat(String(item.quantity)) || 0,
         pack_size: item.pack_size ? parseFloat(String(item.pack_size)) : null,
@@ -747,6 +767,43 @@ export function DeliveryChallan() {
       return;
     }
 
+    if (formData.sales_order_id) {
+      const { data: sourceOrder, error: sourceError } = await supabase
+        .from('sales_orders')
+        .select('id, customer_id, status')
+        .eq('id', formData.sales_order_id)
+        .maybeSingle();
+      if (sourceError || !sourceOrder) {
+        showToast({ type: 'error', title: 'Delivery Challan', message: 'The selected Sales Order no longer exists.' });
+        return;
+      }
+      if (sourceOrder.customer_id !== formData.customer_id) {
+        showToast({ type: 'error', title: 'Delivery Challan', message: 'Customer does not match the selected Sales Order.' });
+        return;
+      }
+      const { data: sourceItems, error: sourceItemsError } = await supabase
+        .from('sales_order_items')
+        .select('id, product_id, quantity, delivered_quantity')
+        .eq('sales_order_id', formData.sales_order_id);
+      if (sourceItemsError) throw sourceItemsError;
+      const sourceMap = new Map((sourceItems || []).map((row: any) => [row.id, row]));
+      for (const item of items) {
+        if (!item.sales_order_item_id || !sourceMap.has(item.sales_order_item_id)) {
+          showToast({ type: 'error', title: 'Delivery Challan', message: 'Every item must come from the selected Sales Order.' });
+          return;
+        }
+        const source = sourceMap.get(item.sales_order_item_id) as any;
+        if (source.product_id !== item.product_id) {
+          showToast({ type: 'error', title: 'Delivery Challan', message: 'A selected product does not match its Sales Order item.' });
+          return;
+        }
+        if (item.quantity <= 0 || item.quantity > Number(source.quantity) - Number(source.delivered_quantity || 0) + 0.0001) {
+          showToast({ type: 'error', title: 'Delivery Challan', message: `Quantity for ${item.product_id} exceeds the remaining Sales Order quantity.` });
+          return;
+        }
+      }
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -780,6 +837,7 @@ export function DeliveryChallan() {
         const itemsForRpc = items.map(item => ({
           product_id: item.product_id,
           batch_id: item.batch_id,
+          sales_order_item_id: item.sales_order_item_id || null,
           quantity: item.quantity,
           pack_size: item.pack_size,
           pack_type: item.pack_type,
@@ -847,8 +905,9 @@ export function DeliveryChallan() {
       if (!editingChallan) {
         const challanItemsData = items.map(item => ({
           challan_id: challanId,
-          product_id: item.product_id,
-          batch_id: item.batch_id,
+            product_id: item.product_id,
+            batch_id: item.batch_id,
+            sales_order_item_id: item.sales_order_item_id || null,
           quantity: parseFloat(String(item.quantity)),
           pack_size: item.pack_size ? parseFloat(String(item.pack_size)) : null,
           pack_type: item.pack_type,
@@ -1053,6 +1112,7 @@ export function DeliveryChallan() {
   const resetForm = () => {
     setEditingChallan(null);
     setOriginalItems([]);
+    setSalesOrderItemSources([]);
     setFormData({
       challan_number: '',
       customer_id: '',
@@ -1453,6 +1513,20 @@ export function DeliveryChallan() {
                   </button>
                 )}
               </div>
+
+              {formData.sales_order_id && salesOrderItemSources.length > 0 && (
+                <div className="mb-3 rounded border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+                  <div className="font-semibold mb-1">Sales Order source and remaining quantities</div>
+                  <div className="space-y-1">
+                    {salesOrderItemSources.map(source => (
+                      <div key={source.id} className="flex justify-between gap-3">
+                        <span>{source.products?.product_name || source.product_id}</span>
+                        <span>Ordered {source.quantity} · Delivered {source.delivered_quantity || 0} · Remaining {Math.max(0, Number(source.quantity) - Number(source.delivered_quantity || 0))} {source.products?.unit || ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {editingChallan?.approval_status === 'approved' && profile?.role !== 'admin' && (
                 <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-center gap-2">

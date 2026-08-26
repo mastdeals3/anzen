@@ -3,7 +3,57 @@ import { supabase } from '../lib/supabase';
 export const DUPLICATE_CUSTOMER_MESSAGE = 'A customer with this name already exists.';
 
 export const normalizeCustomerName = (name: string) =>
-  name.trim().toLowerCase();
+  name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+export const normalizeCustomerTaxId = (value: string | null | undefined) =>
+  (value || '').replace(/[^0-9]/g, '');
+
+export const normalizeCustomerEmail = (value: string | null | undefined) =>
+  (value || '').trim().toLowerCase();
+
+export const normalizeCustomerPhone = (value: string | null | undefined) =>
+  (value || '').replace(/[^0-9]/g, '');
+
+export type PossibleCustomerMatch = {
+  id: string;
+  company_name: string;
+  npwp?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  evidence: string[];
+};
+
+export const findPossibleCustomerMatches = (
+  candidate: { company_name: string; npwp?: string | null; email?: string | null; phone?: string | null; address?: string | null },
+  existing: PossibleCustomerMatch[],
+  excludeId?: string,
+): PossibleCustomerMatch[] => {
+  const name = normalizeCustomerName(candidate.company_name);
+  const tax = normalizeCustomerTaxId(candidate.npwp);
+  const email = normalizeCustomerEmail(candidate.email);
+  const phone = normalizeCustomerPhone(candidate.phone);
+  const address = normalizeCustomerName(candidate.address || '');
+  return existing.filter(row => {
+    if (row.id === excludeId) return false;
+    const hasStrongEvidence = Boolean(
+      (tax && tax === normalizeCustomerTaxId(row.npwp)) ||
+      (email && email === normalizeCustomerEmail(row.email)) ||
+      (phone && phone === normalizeCustomerPhone(row.phone)) ||
+      (name && name === normalizeCustomerName(row.company_name)),
+    );
+    return hasStrongEvidence;
+  }).map(row => ({
+    ...row,
+    evidence: [
+      ...(tax && tax === normalizeCustomerTaxId(row.npwp) ? ['same NPWP/tax ID'] : []),
+      ...(email && email === normalizeCustomerEmail(row.email) ? ['same email'] : []),
+      ...(phone && phone === normalizeCustomerPhone(row.phone) ? ['same phone'] : []),
+      ...(name && name === normalizeCustomerName(row.company_name) ? ['same normalized legal name'] : []),
+      ...(address && address === normalizeCustomerName(row.address || '') ? ['same address'] : []),
+    ],
+  }));
+};
 
 export const isDuplicateCustomerError = (error: unknown) => {
   const err = error as { code?: string; message?: string; details?: string } | null;

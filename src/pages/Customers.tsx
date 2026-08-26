@@ -14,6 +14,8 @@ import {
   DUPLICATE_CUSTOMER_MESSAGE,
   ensureUniqueCustomerName,
   isDuplicateCustomerError,
+  findPossibleCustomerMatches,
+  type PossibleCustomerMatch,
 } from '../utils/customerValidation';
 
 interface Customer {
@@ -39,6 +41,7 @@ export function Customers() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [possibleMatches, setPossibleMatches] = useState<PossibleCustomerMatch[]>([]);
   const [formData, setFormData] = useState({
     company_name: '',
     npwp: '',
@@ -80,6 +83,20 @@ export function Customers() {
     try {
       await ensureUniqueCustomerName(formData.company_name, editingCustomer?.id);
 
+      if (!editingCustomer) {
+        const { data: existing, error: matchError } = await supabase
+          .from('customers')
+          .select('id, company_name, npwp, email, phone, address')
+          .eq('is_active', true)
+          .limit(10000);
+        if (matchError) throw matchError;
+        const matches = findPossibleCustomerMatches(formData, (existing || []) as PossibleCustomerMatch[]);
+        if (matches.length > 0) {
+          setPossibleMatches(matches);
+          return;
+        }
+      }
+
       if (editingCustomer) {
         const { error } = await supabase
           .from('customers')
@@ -96,6 +113,7 @@ export function Customers() {
       }
 
       setModalOpen(false);
+      setPossibleMatches([]);
       setEditingCustomer(null);
       resetForm();
       loadCustomers();
@@ -112,6 +130,7 @@ export function Customers() {
   };
 
   const resetForm = () => {
+    setPossibleMatches([]);
     setFormData({
       company_name: '',
       npwp: '',
@@ -143,6 +162,26 @@ export function Customers() {
       payment_terms: customer.payment_terms,
     });
     setModalOpen(true);
+  };
+
+  const handleUseExistingCustomer = (match: PossibleCustomerMatch) => {
+    const customer = customers.find(c => c.id === match.id);
+    if (!customer) return;
+    setEditingCustomer(customer);
+    setFormData({
+      company_name: customer.company_name,
+      npwp: customer.npwp || '',
+      address: customer.address || '',
+      city: customer.city || '',
+      country: customer.country || 'Indonesia',
+      contact_person: customer.contact_person || '',
+      email: customer.email || '',
+      phone: customer.phone || '',
+      pbf_license: customer.pbf_license || '',
+      gst_vat_type: customer.gst_vat_type || '',
+      payment_terms: customer.payment_terms || '',
+    });
+    setPossibleMatches([]);
   };
 
   const handleDelete = async (customer: Customer) => {
@@ -255,6 +294,20 @@ export function Customers() {
         size="xl"
       >
         <form onSubmit={handleSubmit} className="space-y-3">
+          {possibleMatches.length > 0 && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <div className="font-semibold">Possible existing customer found</div>
+              <div className="mt-1">Review the evidence and select the existing master if this is the same legal entity.</div>
+              <div className="mt-2 space-y-2">
+                {possibleMatches.map(match => (
+                  <div key={match.id} className="flex items-center justify-between gap-3 rounded bg-white p-2 border border-amber-200">
+                    <div><div className="font-medium">{match.company_name}</div><div className="text-xs text-gray-600">{match.evidence.join(', ')}</div></div>
+                    <button type="button" onClick={() => handleUseExistingCustomer(match)} className="px-2 py-1 text-xs bg-amber-600 text-white rounded">Use existing</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
