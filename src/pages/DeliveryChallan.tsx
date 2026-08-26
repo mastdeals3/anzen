@@ -502,6 +502,9 @@ export function DeliveryChallan() {
           setSalesOrderItemSources(normalizedSoItems);
           if (soItems && soItems.length > 0) {
             const newItems = soItems.map(item => {
+              const reservedBatch = batches.find(b =>
+                b.product_id === item.product_id && (resMap.get(b.id) || 0) > 0
+              );
               const productBatches = batches
                 .filter(b => {
                   const soReservedForBatch = resMap.get(b.id) || 0;
@@ -509,7 +512,9 @@ export function DeliveryChallan() {
                   return b.product_id === item.product_id && available > 0;
                 })
                 .sort((a, b) => new Date(a.import_date!).getTime() - new Date(b.import_date!).getTime());
-              const fifoBatch = productBatches.length > 0 ? productBatches[0] : null;
+              // The canonical SO reservation is authoritative. FEFO/FIFO is
+              // only a fallback when no reservation exists for this item.
+              const fifoBatch = reservedBatch || (productBatches.length > 0 ? productBatches[0] : null);
 
               if (!fifoBatch) {
                 return {
@@ -802,6 +807,34 @@ export function DeliveryChallan() {
           return;
         }
       }
+
+      // A user may intentionally choose another eligible batch, but the
+      // reservation must be moved explicitly before approval. Never let the
+      // approval trigger discover this mismatch later.
+      const { data: activeReservations, error: reservationError } = await supabase
+        .from('stock_reservations')
+        .select('sales_order_item_id, batch_id, reserved_quantity')
+        .eq('sales_order_id', formData.sales_order_id)
+        .eq('status', 'active');
+      if (reservationError) throw reservationError;
+      const mismatch = items.some(item => {
+        const reserved = (activeReservations || [])
+          .filter((r: any) => r.sales_order_item_id === item.sales_order_item_id && r.batch_id === item.batch_id)
+          .reduce((sum: number, r: any) => sum + Number(r.reserved_quantity), 0);
+        return reserved + 0.0001 < Number(item.quantity);
+      });
+      if (mismatch) {
+        if (editingChallan?.approval_status === 'approved') {
+          showToast({ type: 'error', title: 'Delivery Challan', message: 'An approved challan cannot change its reserved batch. Create a controlled replacement instead.' });
+          return;
+        }
+        const confirmed = await showConfirm({
+          title: 'Selected batch differs from the Sales Order reservation',
+          message: 'The selected batch is eligible, but it is not the batch currently reserved for this Sales Order. Update the reservation explicitly before saving this Delivery Challan?',
+          variant: 'warning',
+        });
+        if (!confirmed) return;
+      }
     }
 
     try {
@@ -933,6 +966,23 @@ export function DeliveryChallan() {
           await supabase.from('delivery_challans').delete().eq('id', challanId);
           throw new Error('Items failed to save. The Delivery Challan was not created. Please try again.');
         }
+
+        if (formData.sales_order_id) {
+          const { error: alignError } = await supabase.rpc('realign_reservation_for_delivery_challan', {
+            p_challan_id: challanId,
+            p_confirmed: true,
+          });
+          if (alignError) {
+            await supabase.from('delivery_challans').delete().eq('id', challanId);
+            throw alignError;
+          }
+        }
+      } else if (formData.sales_order_id && editingChallan.approval_status !== 'approved') {
+        const { error: alignError } = await supabase.rpc('realign_reservation_for_delivery_challan', {
+          p_challan_id: challanId,
+          p_confirmed: true,
+        });
+        if (alignError) throw alignError;
       }
 
       // HARDENING FIX #3: Atomic delivered_quantity update
