@@ -9,69 +9,66 @@
 
 BEGIN;
 
-CREATE OR REPLACE FUNCTION public.validate_expense_bank_allocations_after_edit()
+CREATE OR REPLACE FUNCTION public.validate_expense_bank_allocation_against_journal()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_journal_id uuid;
-  v_allocation record;
   v_bank_coa uuid;
+  v_bank_account_id uuid;
+  v_statement_is_debit boolean;
   v_journal_bank_amount numeric;
+  v_document_bank_allocated numeric;
 BEGIN
-  IF NEW.approval_status <> 'approved' THEN RETURN NEW; END IF;
+  IF NEW.document_type <> 'expense' OR NEW.payment_kind <> 'supplier' THEN
+    RETURN NEW;
+  END IF;
 
-  SELECT id INTO v_journal_id
-    FROM public.journal_entries
-   WHERE source_module IN ('expense', 'expenses')
-     AND (reference_id = NEW.id OR reference_number = 'EXP-' || NEW.id::text)
-     AND is_posted AND NOT COALESCE(is_reversed, false)
-   ORDER BY created_at DESC, id DESC
-   LIMIT 1;
-
-  FOR v_allocation IN
-    SELECT a.bank_statement_line_id,
-           sum(a.allocation_amount) AS allocated_amount,
-           b.bank_account_id,
-           COALESCE(b.debit_amount, 0) > 0 AS statement_is_debit
-      FROM public.bank_statement_allocations a
-      JOIN public.bank_statement_lines b ON b.id = a.bank_statement_line_id
-     WHERE a.document_type = 'expense'
-       AND a.document_id = NEW.id
-       AND a.payment_kind = 'supplier'
-     GROUP BY a.bank_statement_line_id, b.bank_account_id, b.debit_amount
-  LOOP
-    SELECT coa_id INTO v_bank_coa
-      FROM public.bank_accounts WHERE id = v_allocation.bank_account_id;
-    SELECT COALESCE(sum(
-             CASE WHEN v_allocation.statement_is_debit
-               THEN COALESCE(l.transaction_credit, l.credit)
-               ELSE COALESCE(l.transaction_debit, l.debit)
-             END
-           ), 0)
-      INTO v_journal_bank_amount
-      FROM public.journal_entry_lines l
-     WHERE l.journal_entry_id = v_journal_id
-       AND l.account_id = v_bank_coa;
-    IF v_journal_bank_amount + 0.01 < v_allocation.allocated_amount THEN
-      RAISE EXCEPTION
-        'Edited expense no longer supports its existing bank allocation. Select a matching bank transaction or unlink first.';
-    END IF;
-  END LOOP;
+  SELECT b.bank_account_id, COALESCE(b.debit_amount, 0) > 0
+    INTO v_bank_account_id, v_statement_is_debit
+    FROM public.bank_statement_lines b
+   WHERE b.id = NEW.bank_statement_line_id;
+  SELECT coa_id INTO v_bank_coa
+    FROM public.bank_accounts WHERE id = v_bank_account_id;
+  SELECT COALESCE(sum(
+           CASE WHEN v_statement_is_debit
+             THEN COALESCE(l.transaction_credit, l.credit)
+             ELSE COALESCE(l.transaction_debit, l.debit)
+           END
+         ), 0)
+    INTO v_journal_bank_amount
+    FROM public.journal_entry_lines l
+   WHERE l.journal_entry_id = NEW.journal_entry_id
+     AND l.account_id = v_bank_coa;
+  SELECT COALESCE(sum(a.allocation_amount), 0) + NEW.allocation_amount
+    INTO v_document_bank_allocated
+    FROM public.bank_statement_allocations a
+    JOIN public.bank_statement_lines b ON b.id = a.bank_statement_line_id
+   WHERE a.document_type = 'expense'
+     AND a.document_id = NEW.document_id
+     AND a.payment_kind = 'supplier'
+     AND b.bank_account_id = v_bank_account_id
+     AND (TG_OP <> 'UPDATE' OR a.id <> NEW.id);
+  IF v_journal_bank_amount + 0.01 < v_document_bank_allocated THEN
+    RAISE EXCEPTION
+      'Edited expense no longer supports its existing bank allocation. Select a matching bank transaction or unlink first.';
+  END IF;
   RETURN NEW;
 END;
 $$;
 
 DROP TRIGGER IF EXISTS zz_validate_expense_bank_allocations_after_edit
   ON public.finance_expenses;
-CREATE TRIGGER zz_validate_expense_bank_allocations_after_edit
-AFTER UPDATE OF amount, ppn_amount, pph_amount, stamp_duty_amount,
-  bank_charges_amount, payment_method, bank_account_id, transaction_currency,
-  exchange_rate, approval_status
-ON public.finance_expenses
-FOR EACH ROW EXECUTE FUNCTION public.validate_expense_bank_allocations_after_edit();
+DROP FUNCTION IF EXISTS public.validate_expense_bank_allocations_after_edit();
+DROP TRIGGER IF EXISTS zz_validate_expense_bank_allocation_against_journal
+  ON public.bank_statement_allocations;
+CREATE TRIGGER zz_validate_expense_bank_allocation_against_journal
+BEFORE INSERT OR UPDATE OF bank_statement_line_id, document_type, document_id,
+  journal_entry_id, allocation_amount, payment_kind
+ON public.bank_statement_allocations
+FOR EACH ROW EXECUTE FUNCTION public.validate_expense_bank_allocation_against_journal();
 
 CREATE OR REPLACE FUNCTION public.save_and_link_finance_expense_atomic(
   p_expense_id uuid DEFAULT NULL,
@@ -259,9 +256,9 @@ REVOKE ALL ON FUNCTION public.unlink_finance_expense_bank_atomic(uuid,text)
   FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.unlink_finance_expense_bank_atomic(uuid,text)
   TO authenticated, service_role;
-REVOKE ALL ON FUNCTION public.validate_expense_bank_allocations_after_edit()
+REVOKE ALL ON FUNCTION public.validate_expense_bank_allocation_against_journal()
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.validate_expense_bank_allocations_after_edit()
+GRANT EXECUTE ON FUNCTION public.validate_expense_bank_allocation_against_journal()
   TO service_role;
 
 NOTIFY pgrst, 'reload schema';

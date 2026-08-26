@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL('../supabase/migrations/20260830130000_restore_simple_expense_bank_workflow.sql', import.meta.url),
   'utf8',
 );
+const allocationValidationMigration = readFileSync(
+  new URL('../supabase/migrations/20260830131000_validate_expense_allocation_after_rebuild.sql', import.meta.url),
+  'utf8',
+);
 const expenseUi = readFileSync(new URL('../src/components/finance/ExpenseManager.tsx', import.meta.url), 'utf8');
 const bankUi = readFileSync(new URL('../src/components/finance/BankReconciliationEnhanced.tsx', import.meta.url), 'utf8');
 const commands = readFileSync(new URL('../src/services/financeCommands.ts', import.meta.url), 'utf8');
@@ -49,9 +53,11 @@ test('linked edit keeps the existing canonical in-place edit path', () => {
   assert.doesNotMatch(migration, /INSERT INTO public\.journal_entry_lines/);
   assert.match(migration, /source_module IN \('expense', 'expenses'\)/);
   assert.match(migration, /reference_number = 'EXP-' \|\| v_expense_id::text/);
-  assert.match(migration, /validate_expense_bank_allocations_after_edit/);
-  assert.match(migration, /v_journal_bank_amount \+ 0\.01 < v_allocation\.allocated_amount/);
+  assert.match(migration, /validate_expense_bank_allocation_against_journal/);
+  assert.match(migration, /v_journal_bank_amount \+ 0\.01 < v_document_bank_allocated/);
   assert.match(migration, /Select a matching bank transaction or unlink first/);
+  assert.match(allocationValidationMigration, /BEFORE INSERT OR UPDATE OF bank_statement_line_id/);
+  assert.doesNotMatch(allocationValidationMigration, /CREATE TRIGGER[^;]+ON public\.finance_expenses/s);
 });
 
 test('unlink releases only expense allocations and returns it to pending through audited reversal', () => {
