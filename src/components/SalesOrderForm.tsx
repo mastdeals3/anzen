@@ -236,15 +236,14 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
       if (error) throw error;
 
       const totalStock = batches?.reduce((sum, b) => sum + Number(b.current_stock), 0) || 0;
+      const { data: atp, error: atpError } = await supabase.rpc('product_available_to_promise', {
+        p_product_id: productId,
+        p_exclude_sales_order_item_id: null,
+      });
+      if (atpError) throw atpError;
 
-      const { data: reservations } = await supabase
-        .from('so_product_reservations')
-        .select('reserved_quantity')
-        .eq('product_id', productId)
-        .eq('status', 'active');
-
-      const reservedStock = reservations?.reduce((sum, r) => sum + Number(r.reserved_quantity), 0) || 0;
-      const freeStock = totalStock - reservedStock;
+      const freeStock = Number(atp || 0);
+      const reservedStock = totalStock - freeStock;
 
       setStockInfo(prev => ({
         ...prev,

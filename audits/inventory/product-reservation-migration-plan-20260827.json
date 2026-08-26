@@ -1,6 +1,8 @@
 {
   "generated_at": "2026-08-27",
   "production_migration_executed": false,
+  "transition_atp_rule": "Subtract active product reservations plus active legacy reservations not mapped through legacy_reservation_ids; this preserves ATP while HOLD rows remain legacy-active.",
+  "proof_totals": {"physical_stock_delta": 0, "delivered_quantity_delta": 0, "active_commitment_before": 16630, "active_commitment_after": 16630, "atp_delta": 0, "outstanding_so_quantity_delta": 0, "pending_dc_quantity_delta": 0},
   "missing_third_ambiguous_record": "f7428c8d-68fd-473f-9d14-ce5b77a98768",
   "summary": {"safe_rows": 19, "safe_quantity": 15630, "ambiguous_rows": 3, "ambiguous_quantity": 1000, "historical_rows": 126, "historical_quantity": 100995},
   "reservations": [

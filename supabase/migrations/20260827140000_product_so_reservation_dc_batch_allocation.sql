@@ -79,7 +79,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
         AND (b.expiry_date IS NULL OR b.expiry_date>CURRENT_DATE)),0)
     - COALESCE((SELECT sum(r.reserved_quantity) FROM public.so_product_reservations r
       WHERE r.product_id=p_product_id AND r.status='active'
-        AND (p_exclude_sales_order_item_id IS NULL OR r.sales_order_item_id<>p_exclude_sales_order_item_id)),0),0);
+        AND (p_exclude_sales_order_item_id IS NULL OR r.sales_order_item_id<>p_exclude_sales_order_item_id)),0)
+    - COALESCE((SELECT sum(sr.reserved_quantity) FROM public.stock_reservations sr
+      WHERE sr.product_id=p_product_id AND sr.status='active' AND NOT sr.is_released
+        AND (p_exclude_sales_order_item_id IS NULL OR sr.sales_order_item_id<>p_exclude_sales_order_item_id)
+        AND NOT EXISTS (SELECT 1 FROM public.so_product_reservations migrated
+          WHERE sr.id=ANY(migrated.legacy_reservation_ids))),0),0);
 $$;
 
 CREATE OR REPLACE FUNCTION public.reconcile_so_product_reservation_v2(
