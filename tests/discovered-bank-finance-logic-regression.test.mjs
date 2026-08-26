@@ -30,11 +30,11 @@ assert.equal(payable, 6_860_000);
 assert.equal(payable - actualCash, 40_000);
 assert.equal(actualCash, 6_820_000);
 
-// Historical correction and cross-period transfer rules remain in the existing
-// report path; this task does not replace them or alter accounting data.
-assert.match(ledger, /isAccountingOnlyReversal/);
-assert.match(ledger, /transferEconomicDate/);
-assert.match(ledger, /economicDate/);
+// The bank report now uses the canonical allocation relationship for every
+// payment type: statement date for bank movement, journal date as fallback.
+assert.match(ledger, /bank_statement_allocations/);
+assert.match(ledger, /canonicalBankDate/);
+assert.match(ledger, /canonicalBankDate\.get\(line\.journal_entry_id\) \|\| journal\?\.entry_date/);
 
 // Rounding continues to use the existing tolerance RPC and canonical accounts.
 assert.match(rounding, /apply_receipt_allocation_rounding_adjustment/);

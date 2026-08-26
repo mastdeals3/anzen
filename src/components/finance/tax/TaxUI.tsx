@@ -125,14 +125,19 @@ export function paymentStatusLabel(status: string | null | undefined): string {
 /** One accountant-facing payment status shared by Register and payment UI. */
 export function taxPaymentBusinessStatus(args: {
   paymentStatus?: string | null;
+  totalAmount?: number | null;
   paidAmount?: number | null;
   outstandingAmount?: number | null;
 }): string {
   const outstanding = Number(args.outstandingAmount ?? 0);
   const paid = Number(args.paidAmount ?? 0);
-  if (outstanding <= 0.01) return 'paid';
+  const total = Number(args.totalAmount ?? (paid + outstanding));
+  if (args.paymentStatus === 'closed' || args.paymentStatus === 'filed') return args.paymentStatus;
+  // A zero/empty aggregate is not evidence of settlement. "Paid" requires
+  // both a real liability and no remaining balance.
+  if (total > 0.01 && outstanding <= 0.01) return 'paid';
   if (paid > 0.01) return 'partial';
-  return args.paymentStatus === 'overdue' ? 'overdue' : 'payment_pending';
+  return args.paymentStatus === 'overdue' ? 'overdue' : 'open';
 }
 
 /** Colored status pill; falls back to neutral gray for unknown statuses. */

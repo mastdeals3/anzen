@@ -97,7 +97,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const lastDay = new Date(yr, mo, 0).getDate();
   const endDate = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
 
-  const [feRes, pvRes, importRes, bankPaymentRes, bankAllocRes, allocationRes, linkedVoucherRes, historicalRes] = await Promise.all([
+  const [feRes, pvRes, importRes, historicalRes] = await Promise.all([
     supabase
       .from('finance_expenses')
       .select('id, voucher_number, expense_date, due_date, pph_amount, pph_tax_period_id, description, payment_method, expense_category, approval_status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
@@ -105,8 +105,6 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
     supabase
       .from('payment_vouchers')
       .select('id, voucher_number, voucher_date, pph_amount, tax_period_id, description, is_posted, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
-      .gte('voucher_date', startDate)
-      .lte('voucher_date', endDate)
       .gt('pph_amount', 0),
     // Import PPh 22: pib_import (pib_pph_amount) + pph_import (whole amount).
     // Mirrors compute_period_ppn's import branch. Always PPh22.
@@ -114,64 +112,17 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       .from('finance_expenses')
       .select('id, voucher_number, expense_date, due_date, amount, pib_pph_amount, pph_tax_period_id, description, expense_category, approval_status, suppliers:supplier_id(company_name)')
       .in('expense_category', ['pib_import', 'pph_import']),
-    supabase
-      .from('bank_statement_lines')
-      .select('id, matched_expense_id, transaction_date, payment_kind')
-      .not('matched_expense_id', 'is', null),
-    supabase
-      .from('bank_statement_allocations')
-      .select('document_id, document_type, payment_kind, bank_statement_line_id'),
-    supabase
-      .from('voucher_allocations')
-      .select('finance_expense_id, payment_voucher_id, payment_kind')
-      .not('finance_expense_id', 'is', null),
-    supabase
-      .from('payment_vouchers')
-      .select('id, voucher_date, is_posted'),
     row.tax_type === 'PPh_Unifikasi'
       ? supabase.from('tax_payments').select('id, tax_type, payment_date, amount, billing_code, ntpn, payment_reference, historical_source_reference, historical_source_note, journal_entry_id, status').eq('historical_source_status', 'missing_source_verified').gte('payment_date', startDate).lte('payment_date', endDate)
       : supabase.from('tax_payments').select('id, tax_type, payment_date, amount, billing_code, ntpn, payment_reference, historical_source_reference, historical_source_note, journal_entry_id, status').eq('tax_period_id', row.tax_period_id).eq('historical_source_status', 'missing_source_verified'),
   ]);
 
-  // Match get_expense_pph_period_date: supplier bank allocations, unmatched
-  // matched_expense_id lines, and posted payment-voucher allocations.
-  const linkedVouchers = new Map<string, any>(
-    ((linkedVoucherRes.data ?? []) as any[]).map(v => [v.id, v]),
-  );
-  const latestPaymentDate = new Map<string, string>();
-  const addPaymentDate = (expenseId: string | null, date: string | null) => {
-    if (!expenseId || !date) return;
-    const current = latestPaymentDate.get(expenseId);
-    if (!current || date > current) latestPaymentDate.set(expenseId, date);
-  };
-  const allocRows = (bankAllocRes.data ?? []) as any[];
-  const allocatedLineIds = new Set(allocRows.map(a => a.bank_statement_line_id).filter(Boolean));
-  const allocLineDate = new Map<string, string>();
-  if (allocatedLineIds.size) {
-    const { data: allocLines } = await supabase
-      .from('bank_statement_lines')
-      .select('id, transaction_date')
-      .in('id', [...allocatedLineIds]);
-    for (const line of (allocLines ?? []) as any[]) {
-      if (line.id && line.transaction_date) allocLineDate.set(line.id, line.transaction_date);
-    }
-  }
-  for (const line of (bankPaymentRes.data ?? []) as any[]) {
-    if ((line.payment_kind ?? 'supplier') !== 'supplier') continue;
-    if (allocatedLineIds.has(line.id)) continue;
-    addPaymentDate(line.matched_expense_id, line.transaction_date);
-  }
-  for (const bankAlloc of allocRows) {
-    if (bankAlloc.document_type !== 'expense' || bankAlloc.payment_kind !== 'supplier') continue;
-    addPaymentDate(bankAlloc.document_id, allocLineDate.get(bankAlloc.bank_statement_line_id) ?? null);
-  }
-  for (const allocation of (allocationRes.data ?? []) as any[]) {
-    if ((allocation.payment_kind ?? 'supplier') !== 'supplier') continue;
-    const voucher = linkedVouchers.get(allocation.payment_voucher_id);
-    if (voucher?.is_posted) addPaymentDate(allocation.finance_expense_id, voucher.voucher_date);
-  }
+  // PPh belongs to its explicitly assigned period. Without an explicit
+  // assignment, the statutory due date is authoritative; payment/bank dates
+  // settle the liability but do not move the source document to another PPh
+  // period.
   const periodDate = (expense: any): string =>
-    latestPaymentDate.get(expense.id) ?? expense.due_date ?? expense.expense_date;
+    expense.due_date ?? expense.expense_date;
   const isSelectedPeriod = (expense: any): boolean => {
     if (row.tax_type !== 'PPh_Unifikasi' && expense.pph_tax_period_id) return expense.pph_tax_period_id === row.tax_period_id;
     const date = periodDate(expense);
@@ -190,7 +141,11 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
 
   const sourceRows = [
     ...expenseData,
-    ...((pvRes.data ?? []) as any[]).filter(v => row.tax_type !== 'PPh_Unifikasi' && v.tax_period_id ? v.tax_period_id === row.tax_period_id : v.voucher_date >= startDate && v.voucher_date <= endDate),
+    ...((pvRes.data ?? []) as any[]).filter(v =>
+      row.tax_type !== 'PPh_Unifikasi' && v.tax_period_id
+        ? v.tax_period_id === row.tax_period_id
+        : v.voucher_date >= startDate && v.voucher_date <= endDate
+    ),
     ...importData,
   ];
   const sourceIds = [...new Set(sourceRows.map(r => r.id).filter(Boolean))];
@@ -517,6 +472,7 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                 const isOpen = expandedId === r.tax_period_id;
                 const businessStatus = taxPaymentBusinessStatus({
                   paymentStatus: r.payment_status,
+                  totalAmount: r.pph_total,
                   paidAmount: r.pph_paid_total,
                   outstandingAmount: r.pph_outstanding,
                 });

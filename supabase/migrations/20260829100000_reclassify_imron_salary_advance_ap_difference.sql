@@ -65,9 +65,13 @@ BEGIN
     AND l.account_id=v_ap AND l.debit=0 AND l.credit=500000
     AND l.supplier_id IS NULL;
   IF v_candidate_count <> 1 THEN
-    RAISE EXCEPTION
-      'Imron AP evidence changed: expected exactly one active supplier-less 2110 credit, found %',
+    -- Later canonical historical normalization may already have removed or
+    -- replaced this exact source path. Never redirect a different Rp500,000
+    -- payable merely because the old evidence is absent.
+    RAISE NOTICE
+      'Imron AP evidence is no longer the exact legacy candidate (found %); no accounting data changed',
       v_candidate_count;
+    RETURN;
   END IF;
 
   SELECT fe.id,je.id,je.entry_number,je.entry_date,je.period_id,fe.amount

@@ -248,8 +248,8 @@ async function preflightExpenseCancellation(expenseId: string): Promise<ExpenseC
       block: {
         kind: 'already_reversed',
         message: lifecycle.effective_posting_state === 'REPLACED'
-          ? `Already replaced by ${lifecycle.replacement_journal_number || lifecycle.replacement_reference || 'a historical repair journal'}. The reversed original cannot be cancelled again.`
-          : 'This expense posting has already been reversed. The preserved original cannot be cancelled again.',
+          ? 'This expense already has a current effective posting. Refresh and work with the current transaction; the obsolete posting cannot be cancelled.'
+          : 'This expense is already cancelled. It cannot be cancelled again.',
       },
     };
   }
@@ -1484,8 +1484,10 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
   };
 
   const handleEdit = async (expense: FinanceExpense) => {
-    if (expense.effective_posting_state === 'REVERSED' || expense.effective_posting_state === 'REPLACED' || expense.effective_posting_state === 'AMBIGUOUS') {
-      alert('This historical expense cannot be edited through the normal workflow. Open its journal/reversal history instead.');
+    if (expense.effective_posting_state === 'REVERSED' || expense.effective_posting_state === 'AMBIGUOUS') {
+      alert(expense.effective_posting_state === 'REVERSED'
+        ? 'This expense is cancelled and cannot be edited.'
+        : 'This expense requires accounting review before it can be edited.');
       return;
     }
     setEditingExpense(expense);
@@ -2187,13 +2189,17 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         'Posting Date': journal?.date || '',
         'Journal Number': journal?.number || '',
         'Journal Status': exp.effective_posting_state === 'REVERSED'
-          ? 'Reversed'
+          ? 'Cancelled'
           : exp.effective_posting_state === 'REPLACED'
-            ? `Replaced · ${journal?.status || 'Posted'}`
+            ? (journal?.status || 'Posted')
             : journal?.status || 'Not posted',
-        'Approval Status': exp.effective_posting_state || exp.approval_status || '',
-        'Payment Status': exp.effective_posting_state === 'REVERSED' ? `Historical · ${paymentStatus}` : paymentStatus,
-        'Reconciliation Status': exp.effective_posting_state === 'REVERSED' ? `Historical · ${reconStatus}` : reconStatus,
+        'Approval Status': exp.effective_posting_state === 'REVERSED'
+          ? 'Cancelled'
+          : exp.effective_posting_state === 'REPLACED'
+            ? 'Approved'
+            : exp.effective_posting_state || exp.approval_status || '',
+        'Payment Status': exp.effective_posting_state === 'REVERSED' ? 'Cancelled' : paymentStatus,
+        'Reconciliation Status': exp.effective_posting_state === 'REVERSED' ? 'Unlinked' : reconStatus,
         'Party Type': exp.staff_id ? 'Employee' : exp.suppliers ? 'Supplier' : '',
         'Party Name': partyName,
         'Category Parent': category?.group || '',
@@ -2519,7 +2525,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
               sortedExpenses.map((expense) => {
                 const category = expenseCategories.find(c => c.value === expense.expense_category);
                 const postingState = expense.effective_posting_state || 'AMBIGUOUS';
-                const isHistoricalPosting = postingState === 'REVERSED' || postingState === 'REPLACED';
+                const isCancelledPosting = postingState === 'REVERSED';
 
                 // Fix: Check reconciliation from actual bank_statement_lines relationship
                 const isReconciled = expense.bank_statement_lines && expense.bank_statement_lines.length > 0;
@@ -2601,7 +2607,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {(() => {
                         if (postingState === 'REVERSED') {
-                          return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-500" title="Historical payment relationship (posting reversed)"><Banknote className="w-3 h-3" /></span>;
+                          return <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-500" title="Cancelled"><Banknote className="w-3 h-3" /></span>;
                         }
                         // Payment status — Banknote icon colored by status
                         if (expense.payment_method !== null) {
@@ -2648,8 +2654,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       {isReconciled ? (
                         <span
-                          className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${isHistoricalPosting ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700'}`}
-                          title={isHistoricalPosting ? 'Historical reconciliation relationship' : 'Linked'}
+                          className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${isCancelledPosting ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700'}`}
+                          title={isCancelledPosting ? 'Cancelled' : 'Linked'}
                         >
                           <Link2 className="w-3 h-3" />
                         </span>
@@ -2671,11 +2677,11 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                           <ClipboardCheck className="w-3 h-3" />
                         </span>
                       ) : postingState === 'REPLACED' ? (
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-100 text-indigo-700" title={`Replaced · Effective journal ${expense.posting_lifecycle?.replacement_journal_number || 'available in history'}`}>
-                          <RotateCcw className="w-3 h-3" />
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700" title="Approved · Current posting">
+                          <ClipboardCheck className="w-3 h-3" />
                         </span>
                       ) : postingState === 'REVERSED' ? (
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-gray-600" title="Reversed · No active posting">
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-gray-600" title="Cancelled">
                           <RotateCcw className="w-3 h-3" />
                         </span>
                       ) : postingState === 'REJECTED' ? (
@@ -3808,8 +3814,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         const approvalBadge = () => {
           const s = viewingExpense.effective_posting_state || 'AMBIGUOUS';
           if (s === 'ACTIVE') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200"><CheckCircle className="w-3 h-3" /> Approved · Active</span>;
-          if (s === 'REPLACED') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"><RotateCcw className="w-3 h-3" /> Replaced</span>;
-          if (s === 'REVERSED') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700 border border-gray-300"><RotateCcw className="w-3 h-3" /> Reversed</span>;
+          if (s === 'REPLACED') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200"><CheckCircle className="w-3 h-3" /> Approved · Active</span>;
+          if (s === 'REVERSED') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700 border border-gray-300"><RotateCcw className="w-3 h-3" /> Cancelled</span>;
           if (s === 'REJECTED') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200"><XCircle className="w-3 h-3" /> Rejected</span>;
           if (s === 'AMBIGUOUS') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-50 text-orange-700 border border-orange-200"><AlertCircle className="w-3 h-3" /> Review required</span>;
           return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"><AlertCircle className="w-3 h-3" /> Pending</span>;
@@ -4408,7 +4414,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     <span className="text-gray-400 text-[10px]">{accountingExpanded ? 'Collapse' : 'Expand'}</span>
                   </button>
                   {accountingExpanded && (
-                    viewingExpense.effective_posting_state === 'ACTIVE' ? (
+                    (viewingExpense.effective_posting_state === 'ACTIVE' || viewingExpense.effective_posting_state === 'REPLACED') ? (
                     <div className="px-4 pb-2 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1">
                       <div>
                         <div className="text-[9px] uppercase font-medium text-gray-400">Expenses (P&L)</div>
@@ -4429,10 +4435,8 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
                     </div>
                     ) : (
                       <div className="px-4 pb-2 text-[11px] text-gray-600">
-                        {viewingExpense.effective_posting_state === 'REPLACED'
-                          ? `The original posting is reversed. ${viewingExpense.posting_lifecycle?.replacement_journal_number || 'The historical repair journal'} is the sole effective accounting path; open Journal Register or General Ledger for its account classification.`
-                          : viewingExpense.effective_posting_state === 'REVERSED'
-                            ? 'The original posting is reversed and has no active accounting effect. Historical journal and reversal evidence remain available above.'
+                        {viewingExpense.effective_posting_state === 'REVERSED'
+                            ? 'This expense is cancelled and has no current accounting effect. Journal history remains available in the audit views.'
                             : 'Accounting impact is not presented because the effective posting state requires review.'}
                       </div>
                     )
@@ -4441,7 +4445,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
 
             {/* ── FOOTER ── */}
             <div className="px-4 py-2 flex justify-end gap-2">
-              {canManage && (viewingExpense.effective_posting_state === 'ACTIVE' || viewingExpense.effective_posting_state === 'PENDING' || viewingExpense.effective_posting_state === 'REJECTED') && (
+              {canManage && (viewingExpense.effective_posting_state === 'ACTIVE' || viewingExpense.effective_posting_state === 'REPLACED' || viewingExpense.effective_posting_state === 'PENDING' || viewingExpense.effective_posting_state === 'REJECTED') && (
                 <button
                   onClick={() => { handleEdit(viewingExpense); setViewModalOpen(false); setViewingExpense(null); }}
                   className="px-2.5 py-1 text-[11px] font-medium text-blue-700 bg-white border border-blue-300 rounded hover:bg-blue-50"

@@ -65,7 +65,7 @@ test('expense UI hydrates state centrally and blocks repeated cancellation/delet
   assert.match(expenseUi, /effective_posting_state !== 'ACTIVE'/);
   assert.match(expenseUi, /postingState === 'ACTIVE'[\s\S]*label="Cancel Posting"/);
   assert.match(expenseUi, /\['PENDING', 'REJECTED'\]\.includes\(expense\.effective_posting_state/);
-  assert.match(expenseUi, /Already replaced by/);
+  assert.match(expenseUi, /already has a current effective posting/);
   assert.match(expenseUi, /Journal \/ reversal history/);
   assert.match(expenseUi, /Effective replacement:/);
 });

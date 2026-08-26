@@ -9,7 +9,8 @@ const invoiceDisplay = fs.readFileSync('src/utils/invoiceItemDisplay.ts', 'utf8'
 test('invoice creation refuses an empty product table and verifies inserted rows', () => {
   assert.match(sales, /Invoice cannot be saved because its product table is empty/);
   assert.match(sales, /invoiceItemsData\.length === 0/);
-  assert.match(sales, /Invoice items were not saved/);
+  assert.match(sales, /Invoice product rows were empty; no invoice was created/);
+  assert.match(sales, /create_sales_invoice_atomic/);
 });
 
 test('invoice PDF read path hydrates authoritative invoice items, products, batches and DCs', () => {
