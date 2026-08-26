@@ -10,6 +10,14 @@ const allocationValidationMigration = readFileSync(
   new URL('../supabase/migrations/20260830131000_validate_expense_allocation_after_rebuild.sql', import.meta.url),
   'utf8',
 );
+const rebuildBeforeAllocationMigration = readFileSync(
+  new URL('../supabase/migrations/20260830132000_rebuild_expense_journal_before_bank_allocation.sql', import.meta.url),
+  'utf8',
+);
+const approvedEditMigration = readFileSync(
+  new URL('../supabase/migrations/20260830110000_atomic_approved_expense_edit.sql', import.meta.url),
+  'utf8',
+);
 const expenseUi = readFileSync(new URL('../src/components/finance/ExpenseManager.tsx', import.meta.url), 'utf8');
 const bankUi = readFileSync(new URL('../src/components/finance/BankReconciliationEnhanced.tsx', import.meta.url), 'utf8');
 const commands = readFileSync(new URL('../src/services/financeCommands.ts', import.meta.url), 'utf8');
@@ -34,6 +42,29 @@ test('bank selection atomically saves, posts through existing trigger, and alloc
   assert.match(migration, /Expense bank link did not preserve exactly one canonical allocation/);
   assert.doesNotMatch(expenseUi, /Expense recorded, but the bank allocation was not created/);
   assert.doesNotMatch(expenseUi, /Expense updated, but the bank allocation was not created/);
+  assert.match(rebuildBeforeAllocationMigration, /app\.expense_atomic_bank_link/);
+  assert.ok(
+    rebuildBeforeAllocationMigration.indexOf('v_update_replacement')
+      < rebuildBeforeAllocationMigration.indexOf("'public.edit_approved_finance_expense_atomic"),
+  );
+  assert.match(rebuildBeforeAllocationMigration, /DROP TRIGGER IF EXISTS trigger_auto_post_expense_accounting/);
+});
+
+test('EXP/26/056 accrual-to-bank edit rebuilds before allocation', () => {
+  assert.match(
+    rebuildBeforeAllocationMigration,
+    /NEW\.payment_method = 'bank_transfer'[\s\S]*app\.expense_atomic_bank_link[\s\S]*NEW\.payment_method := NULL/,
+  );
+  assert.match(
+    rebuildBeforeAllocationMigration,
+    /app\.expense_atomic_bank_link[\s\S]*v_update_marker/,
+  );
+  const updatePosition = approvedEditMigration.indexOf('UPDATE public.finance_expenses SET');
+  const identityPosition = approvedEditMigration.indexOf('-- The trigger must retain the header identity');
+  const allocationPosition = approvedEditMigration.indexOf('PERFORM public.link_bank_statement_line');
+  assert.ok(updatePosition >= 0 && updatePosition < identityPosition);
+  assert.ok(identityPosition < allocationPosition);
+  assert.match(approvedEditMigration, /upsert_expense_journal_header_in_place/);
 });
 
 test('both Expenses and Bank Reconciliation use the same atomic link command', () => {

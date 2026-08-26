@@ -116,6 +116,7 @@ BEGIN
 
   -- Existing document command: a new/unlinked expense remains pending until
   -- the approval call below. Any later failure rolls this insert/update back.
+  PERFORM set_config('app.expense_atomic_bank_link', 'on', true);
   v_expense_id := public.save_finance_expense(p_expense_id, p_payload);
 
   IF p_apply_salary_advances THEN
