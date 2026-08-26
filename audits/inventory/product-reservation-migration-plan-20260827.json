@@ -1,6 +1,10 @@
 {
   "generated_at": "2026-08-27",
-  "production_migration_executed": false,
+  "production_migration_executed": true,
+  "production_migration_applied_at": "2026-08-26T15:21:22.607+07:00",
+  "production_project_ref": "dkrtsqienlhpouohmfki",
+  "production_migration_versions": ["20260827140000", "20260827150000"],
+  "production_verification": {"active_product_reservation_rows": 11, "active_product_reservation_units": 15630, "released_safe_legacy_rows": 19, "released_safe_legacy_units": 15630, "hold_rows": 3, "hold_units": 1000, "total_active_commitment": 16630, "physical_stock_delta": 0, "delivered_quantity_delta": 0, "atp_delta": 0, "outstanding_so_quantity_delta": 0, "pending_dc_quantity_delta": 0, "duplicate_active_reservations": 0, "negative_reservations": 0, "orphan_reservations": 0, "stale_active_reservations": 0, "hold_rows_unchanged": true},
   "transition_atp_rule": "Subtract active product reservations plus active legacy reservations not mapped through legacy_reservation_ids; this preserves ATP while HOLD rows remain legacy-active.",
   "proof_totals": {"physical_stock_delta": 0, "delivered_quantity_delta": 0, "active_commitment_before": 16630, "active_commitment_after": 16630, "atp_delta": 0, "outstanding_so_quantity_delta": 0, "pending_dc_quantity_delta": 0},
   "missing_third_ambiguous_record": "f7428c8d-68fd-473f-9d14-ce5b77a98768",
