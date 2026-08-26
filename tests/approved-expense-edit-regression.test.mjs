@@ -12,6 +12,10 @@ const cancellation = readFileSync(
   new URL('../supabase/migrations/20260827160000_fix_expense_cancellation_uuid_and_audit.sql', import.meta.url),
   'utf8',
 );
+const journalIdentityFix = readFileSync(
+  new URL('../supabase/migrations/20260830120000_fix_approved_expense_edit_journal_identity.sql', import.meta.url),
+  'utf8',
+);
 
 test('approved expense edit preserves one effective journal header and reference', () => {
   assert.match(migration, /edit_approved_finance_expense_atomic/);
@@ -21,6 +25,11 @@ test('approved expense edit preserves one effective journal header and reference
   assert.match(migration, /DELETE FROM public\.journal_entry_lines WHERE journal_entry_id=v_journal_id/);
   assert.doesNotMatch(migration, /DELETE FROM public\.journal_entries/);
   assert.match(migration, /Expense edit did not preserve exactly one active journal/);
+  const postUpdateValidation = migration.slice(migration.indexOf('-- The trigger must retain the header identity'));
+  assert.match(postUpdateValidation, /source_module IN\('expense','expenses'\)[\s\S]*\(reference_id=p_expense_id OR reference_number='EXP-'\|\|p_expense_id::text\)/);
+  assert.doesNotMatch(postUpdateValidation, /source_module IN\('expense','expenses'\) AND reference_id=p_expense_id/);
+  assert.match(journalIdentityFix, /v_old_count_check[\s\S]*v_new_count_check/);
+  assert.match(journalIdentityFix, /EXECUTE v_definition/);
 });
 
 test('bank-linked description edit preserves and revalidates its allocation', () => {

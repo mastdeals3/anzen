@@ -358,11 +358,14 @@ BEGIN
   -- The trigger must retain the header identity and rebuild only its lines.
   IF NOT EXISTS(
     SELECT 1 FROM public.journal_entries
-     WHERE id=v_journal_id AND reference_number='EXP-'||p_expense_id::text
+     WHERE id=v_journal_id
+       AND source_module IN('expense','expenses')
+       AND (reference_id=p_expense_id OR reference_number='EXP-'||p_expense_id::text)
        AND is_posted AND NOT COALESCE(is_reversed,false)
   ) THEN RAISE EXCEPTION 'Expense journal identity changed during edit'; END IF;
   IF (SELECT count(*) FROM public.journal_entries
-       WHERE source_module IN('expense','expenses') AND reference_id=p_expense_id
+       WHERE source_module IN('expense','expenses')
+         AND (reference_id=p_expense_id OR reference_number='EXP-'||p_expense_id::text)
          AND is_posted AND NOT COALESCE(is_reversed,false))<>1 THEN
     RAISE EXCEPTION 'Expense edit did not preserve exactly one active journal';
   END IF;
