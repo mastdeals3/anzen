@@ -460,8 +460,7 @@ export function DeliveryChallan() {
   };
 
   const getAvailableStock = (batch: Batch) => {
-    const soReservedForThisBatch = soReservations.get(batch.id) || 0;
-    return (batch.current_stock - (batch.reserved_stock || 0)) + soReservedForThisBatch;
+    return batch.current_stock;
   };
 
   const handleSalesOrderChange = async (soId: string, sourceOrder?: { id: string; customer_id: string }) => {
@@ -479,18 +478,16 @@ export function DeliveryChallan() {
               .select(`id, product_id, quantity, delivered_quantity, unit_price, products(product_name, unit)`)
               .eq('sales_order_id', soId),
             supabase
-              .from('stock_reservations')
-              .select('batch_id, reserved_quantity')
+              .from('so_product_reservation_status')
+              .select('sales_order_item_id, reserved_quantity')
               .eq('sales_order_id', soId)
-              .eq('status', 'active')
           ]);
 
           if (soItemsResult.error) throw soItemsResult.error;
 
           const resMap = new Map<string, number>();
           (reservationsResult.data || []).forEach((r: any) => {
-            const current = resMap.get(r.batch_id) || 0;
-            resMap.set(r.batch_id, current + parseFloat(r.reserved_quantity));
+            resMap.set(r.sales_order_item_id, parseFloat(r.reserved_quantity));
           });
           setSoReservations(resMap);
 
@@ -502,19 +499,16 @@ export function DeliveryChallan() {
           setSalesOrderItemSources(normalizedSoItems);
           if (soItems && soItems.length > 0) {
             const newItems = soItems.map(item => {
-              const reservedBatch = batches.find(b =>
-                b.product_id === item.product_id && (resMap.get(b.id) || 0) > 0
-              );
               const productBatches = batches
                 .filter(b => {
-                  const soReservedForBatch = resMap.get(b.id) || 0;
-                  const available = (b.current_stock - (b.reserved_stock || 0)) + soReservedForBatch;
-                  return b.product_id === item.product_id && available > 0;
+                  return b.product_id === item.product_id && b.current_stock > 0 && !isExpired(b.expiry_date);
                 })
-                .sort((a, b) => new Date(a.import_date!).getTime() - new Date(b.import_date!).getTime());
-              // The canonical SO reservation is authoritative. FEFO/FIFO is
-              // only a fallback when no reservation exists for this item.
-              const fifoBatch = reservedBatch || (productBatches.length > 0 ? productBatches[0] : null);
+                .sort((a, b) => {
+                  const ea = a.expiry_date ? new Date(a.expiry_date).getTime() : Number.MAX_SAFE_INTEGER;
+                  const eb = b.expiry_date ? new Date(b.expiry_date).getTime() : Number.MAX_SAFE_INTEGER;
+                  return ea - eb || new Date(a.import_date!).getTime() - new Date(b.import_date!).getTime();
+                });
+              const fifoBatch = productBatches[0] || null;
 
               if (!fifoBatch) {
                 return {
@@ -808,32 +802,23 @@ export function DeliveryChallan() {
         }
       }
 
-      // A user may intentionally choose another eligible batch, but the
-      // reservation must be moved explicitly before approval. Never let the
-      // approval trigger discover this mismatch later.
+      // SO reservations are product-level. Batch is independently selected
+      // here and validated as physical stock at DC approval.
       const { data: activeReservations, error: reservationError } = await supabase
-        .from('stock_reservations')
-        .select('sales_order_item_id, batch_id, reserved_quantity')
+        .from('so_product_reservations')
+        .select('sales_order_item_id, reserved_quantity')
         .eq('sales_order_id', formData.sales_order_id)
         .eq('status', 'active');
       if (reservationError) throw reservationError;
       const mismatch = items.some(item => {
         const reserved = (activeReservations || [])
-          .filter((r: any) => r.sales_order_item_id === item.sales_order_item_id && r.batch_id === item.batch_id)
+          .filter((r: any) => r.sales_order_item_id === item.sales_order_item_id)
           .reduce((sum: number, r: any) => sum + Number(r.reserved_quantity), 0);
         return reserved + 0.0001 < Number(item.quantity);
       });
       if (mismatch) {
-        if (editingChallan?.approval_status === 'approved') {
-          showToast({ type: 'error', title: 'Delivery Challan', message: 'An approved challan cannot change its reserved batch. Create a controlled replacement instead.' });
-          return;
-        }
-        const confirmed = await showConfirm({
-          title: 'Selected batch differs from the Sales Order reservation',
-          message: 'The selected batch is eligible, but it is not the batch currently reserved for this Sales Order. Update the reservation explicitly before saving this Delivery Challan?',
-          variant: 'warning',
-        });
-        if (!confirmed) return;
+        showToast({ type: 'error', title: 'Delivery Challan', message: 'Delivery quantity exceeds the remaining Sales Order product reservation.' });
+        return;
       }
     }
 
@@ -866,7 +851,8 @@ export function DeliveryChallan() {
 
         if (updateError) throw updateError;
 
-        // For approved DCs, only admin can edit items (uses admin override RPC)
+        // Approved allocations are immutable. Corrections must use the
+        // canonical rejection/cancellation reversal and a replacement DC.
         const itemsForRpc = items.map(item => ({
           product_id: item.product_id,
           batch_id: item.batch_id,
@@ -878,22 +864,7 @@ export function DeliveryChallan() {
         }));
 
         if (editingChallan.approval_status === 'approved') {
-          if (profile?.role === 'admin') {
-            const operationId = crypto.randomUUID();
-            const { data: rpcResult, error: rpcError } = await supabase.rpc('admin_edit_approved_delivery_challan', {
-              p_challan_id: editingChallan.id,
-              p_new_items: itemsForRpc,
-              p_operation_id: operationId
-            });
-            if (rpcError) {
-              console.error('Admin Edit RPC Error:', rpcError);
-              throw new Error(`Failed to update approved DC: ${rpcError.message}`);
-            }
-            if (!rpcResult?.success) {
-              console.error('Admin Edit RPC Result Error:', rpcResult?.error);
-              throw new Error(rpcResult?.error || 'Failed to update approved DC items');
-            }
-          }
+          throw new Error('Approved Delivery Challans cannot be edited. Reject/cancel the DC to reverse its allocation, then create a corrected DC.');
         } else {
           const { data: rpcResult, error: rpcError } = await supabase.rpc('edit_delivery_challan', {
             p_challan_id: editingChallan.id,
@@ -967,59 +938,11 @@ export function DeliveryChallan() {
           throw new Error('Items failed to save. The Delivery Challan was not created. Please try again.');
         }
 
-        if (formData.sales_order_id) {
-          const { error: alignError } = await supabase.rpc('realign_reservation_for_delivery_challan', {
-            p_challan_id: challanId,
-            p_confirmed: true,
-          });
-          if (alignError) {
-            await supabase.from('delivery_challans').delete().eq('id', challanId);
-            throw alignError;
-          }
-        }
-      } else if (formData.sales_order_id && editingChallan.approval_status !== 'approved') {
-        const { error: alignError } = await supabase.rpc('realign_reservation_for_delivery_challan', {
-          p_challan_id: challanId,
-          p_confirmed: true,
-        });
-        if (alignError) throw alignError;
       }
 
-      // HARDENING FIX #3: Atomic delivered_quantity update
-      // Prevents race conditions from concurrent DC creation
-      if (!editingChallan && formData.sales_order_id) {
-        const dcItemsForRpc = items.map(item => ({
-          product_id: item.product_id,
-          quantity: item.quantity,
-        }));
-
-        const { error: soUpdateError } = await supabase
-          .rpc('update_so_delivered_quantity_atomic', {
-            p_sales_order_id: formData.sales_order_id,
-            p_dc_items: dcItemsForRpc,
-          });
-
-        if (soUpdateError) throw soUpdateError;
-
-        // Archive SO if fully delivered (status was updated by RPC)
-        const { data: updatedSO } = await supabase
-          .from('sales_orders')
-          .select('status')
-          .eq('id', formData.sales_order_id)
-          .single();
-
-        if (updatedSO?.status === 'delivered') {
-          await supabase
-            .from('sales_orders')
-            .update({
-              is_archived: true,
-              archived_at: new Date().toISOString(),
-              archived_by: user.id,
-              archive_reason: 'Delivery Challan created and all items delivered'
-            })
-            .eq('id', formData.sales_order_id);
-        }
-      }
+      // Pending DCs are not deliveries. The approval trigger recomputes the SO
+      // only after reservation consumption, batch allocation, and physical
+      // stock movement succeed in the same database transaction.
 
       setModalOpen(false);
       resetForm();
@@ -1392,8 +1315,8 @@ export function DeliveryChallan() {
                   >
                     <FileText className="w-4 h-4" />
                   </button>}
-                  {/* Edit and Delete only for admin on approved DCs */}
-                  {(challan.approval_status !== 'approved' || profile?.role === 'admin') && (
+                  {/* Approved DCs are immutable; use the canonical reversal path. */}
+                  {challan.approval_status !== 'approved' && (
                     <>
                       <button
                         onClick={() => handleEdit(challan)}
@@ -1571,24 +1494,17 @@ export function DeliveryChallan() {
                     {salesOrderItemSources.map(source => (
                       <div key={source.id} className="flex justify-between gap-3">
                         <span>{source.products?.product_name || source.product_id}</span>
-                        <span>Ordered {source.quantity} · Delivered {source.delivered_quantity || 0} · Remaining {Math.max(0, Number(source.quantity) - Number(source.delivered_quantity || 0))} {source.products?.unit || ''}</span>
+                        <span>Ordered {source.quantity} · Delivered {source.delivered_quantity || 0} · Reserved {soReservations.get(source.id) || 0} · Remaining {Math.max(0, Number(source.quantity) - Number(source.delivered_quantity || 0))} {source.products?.unit || ''}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {editingChallan?.approval_status === 'approved' && profile?.role !== 'admin' && (
+              {editingChallan?.approval_status === 'approved' && (
                 <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-center gap-2">
                   <span className="text-amber-500">!</span>
-                  Items are locked after approval to preserve stock accuracy. You can still edit vehicle, driver, address, and notes above.
-                </div>
-              )}
-
-              {editingChallan?.approval_status === 'approved' && profile?.role === 'admin' && (
-                <div className="mb-3 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-800 flex items-center gap-2">
-                  <span className="text-orange-500">!</span>
-                  Admin override: editing items on an approved DC will reverse and reapply stock movements automatically.
+                  Approved Delivery Challans are immutable. Reject/cancel this DC to reverse its allocation, then create a corrected DC.
                 </div>
               )}
 

@@ -584,7 +584,7 @@ export default function SalesOrders() {
       if (!user) throw new Error('Not authenticated');
 
       const { data: reserveResult, error: reserveError } = await supabase
-        .rpc('approve_sales_order_inventory_v1', {
+        .rpc('approve_sales_order_product_reservation_v2', {
           p_so_id: orderId,
           p_approved_by: user.id,
         });

@@ -26,6 +26,7 @@ interface StockInfo {
 }
 
 interface OrderItem {
+  id?: string;
   product_id: string;
   quantity: number;
   unit_price: number;
@@ -154,6 +155,7 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
 
       if (existingOrder.sales_order_items && existingOrder.sales_order_items.length > 0) {
         const mappedItems: OrderItem[] = existingOrder.sales_order_items.map(item => ({
+          id: item.id,
           product_id: item.product_id,
           quantity: item.quantity,
           unit_price: item.unit_price,
@@ -236,7 +238,7 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
       const totalStock = batches?.reduce((sum, b) => sum + Number(b.current_stock), 0) || 0;
 
       const { data: reservations } = await supabase
-        .from('stock_reservations')
+        .from('so_product_reservations')
         .select('reserved_quantity')
         .eq('product_id', productId)
         .eq('status', 'active');
@@ -392,16 +394,17 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
       'approved',
       'stock_reserved',
       'shortage',
-      'pending_approval',
       'pending_delivery',
       'partially_delivered',
+      'delivered',
+      'closed',
+      'rejected',
+      'cancelled',
     ].includes(existingOrder.status);
 
     if (wasApproved && existingOrder) {
-      // Replacing SO lines deletes their stock_reservations through the
-      // sales_order_item FK. Keep an already prepared DC and its canonical FEFO
-      // reservation together; the DC must be rejected/cancelled before the SO
-      // can be edited and submitted through approval again.
+      // SO item IDs are the durable identity of reservation history. Keep an
+      // already prepared DC and its source item together until it is reversed.
       const { data: activeChallan, error: challanError } = await supabase
         .from('delivery_challans')
         .select('challan_number')
@@ -419,7 +422,7 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
         showToast({
           type: 'error',
           title: 'Sales order cannot be edited',
-          message: `Delivery Challan ${activeChallan.challan_number} is still pending or approved. Reject or cancel it before editing this order so its FEFO reservation is retained.`,
+          message: `Delivery Challan ${activeChallan.challan_number} is still pending or approved. Reject or cancel it before editing this order so its reservation history remains intact.`,
         });
         return;
       }
@@ -431,6 +434,18 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
       });
 
       if (!confirmed) return;
+
+      const removedHistoricalItem = existingOrder.sales_order_items?.some(
+        persisted => !items.some(item => item.id === persisted.id),
+      );
+      if (removedHistoricalItem) {
+        showToast({
+          type: 'error',
+          title: 'Sales order item cannot be removed',
+          message: 'An item with reservation history cannot be deleted. Adjust its quantity, or cancel/void the Sales Order to preserve the audit trail.',
+        });
+        return;
+      }
     }
 
     try {
@@ -451,14 +466,14 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
       if (existingOrder) {
         // Release stock reservations if order was approved
         if (wasApproved) {
-          const { error: releaseError } = await supabase.rpc('fn_release_reservation_by_so_id', {
+          const { error: releaseError } = await supabase.rpc('release_so_product_reservations_v2', {
             p_so_id: existingOrder.id,
-            p_released_by: user?.id
+            p_reason: 'Approved Sales Order edited and submitted for re-approval'
           });
 
           if (releaseError) {
             console.error('Error releasing reservations:', releaseError);
-            // Continue anyway - we'll show a warning but allow the update
+            throw new Error(`Unable to release the existing product reservation: ${releaseError.message}`);
           }
         }
 
@@ -493,16 +508,7 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
 
         if (soError) throw soError;
 
-        // Delete old items
-        const { error: deleteError } = await supabase
-          .from('sales_order_items')
-          .delete()
-          .eq('sales_order_id', existingOrder.id);
-
-        if (deleteError) throw deleteError;
-
-        // Insert new items
-        const itemsToInsert = items.map(item => ({
+        const itemValues = (item: OrderItem) => ({
           sales_order_id: existingOrder.id,
           product_id: item.product_id,
           quantity: item.quantity,
@@ -515,17 +521,36 @@ export default function SalesOrderForm({ existingOrder, prefill, onSuccess, onCa
           item_delivery_date: item.item_delivery_date || null,
           notes: item.notes || null,
           quoted_usd_unit_price: item.quoted_usd_unit_price || null,
-        }));
+        });
 
-        const { data: insertedItems, error: itemsError } = await supabase
-          .from('sales_order_items')
-          .insert(itemsToInsert)
-          .select();
+        if (wasApproved) {
+          for (const item of items.filter(item => item.id)) {
+            const { error: itemError } = await supabase
+              .from('sales_order_items')
+              .update(itemValues(item))
+              .eq('id', item.id!);
+            if (itemError) throw itemError;
+          }
+          const newItems = items.filter(item => !item.id).map(itemValues);
+          if (newItems.length > 0) {
+            const { error: itemError } = await supabase.from('sales_order_items').insert(newItems);
+            if (itemError) throw itemError;
+          }
+        } else {
+          const { error: deleteError } = await supabase
+            .from('sales_order_items')
+            .delete()
+            .eq('sales_order_id', existingOrder.id);
+          if (deleteError) throw deleteError;
 
-        if (itemsError) throw itemsError;
-
-        if (insertedItems && insertedItems.length !== items.length) {
-          showToast({ type: 'warning', title: 'Warning', message: `Expected ${items.length} items but only ${insertedItems.length} were saved. Please verify the order.` });
+          const { data: insertedItems, error: itemsError } = await supabase
+            .from('sales_order_items')
+            .insert(items.map(itemValues))
+            .select();
+          if (itemsError) throw itemsError;
+          if (insertedItems && insertedItems.length !== items.length) {
+            throw new Error(`Expected ${items.length} items but only ${insertedItems.length} were saved.`);
+          }
         }
 
         const statusMessage = wasApproved
