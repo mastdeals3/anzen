@@ -124,6 +124,22 @@ export const getReportingUsdRate = async (): Promise<number> => {
 export const saveFinanceExpense = (expenseId: string | null, payload: FinanceExpensePayload) =>
   rpc<string>('save_finance_expense', { p_expense_id: expenseId, p_payload: payload });
 
+export const saveAndLinkFinanceExpense = (
+  expenseId: string | null,
+  payload: FinanceExpensePayload,
+  bankStatementLineId: string,
+  allocationAmount?: number,
+  approvedBy?: string | null,
+  applySalaryAdvances = false,
+) => rpc<string>('save_and_link_finance_expense_atomic', {
+  p_expense_id: expenseId,
+  p_payload: payload,
+  p_bank_statement_line_id: bankStatementLineId,
+  p_allocation_amount: allocationAmount ?? null,
+  p_approved_by: approvedBy || null,
+  p_apply_salary_advances: applySalaryAdvances,
+});
+
 export const editApprovedFinanceExpense = (
   expenseId: string,
   payload: FinanceExpensePayload,
@@ -248,3 +264,12 @@ export const unlinkBankStatementLine = (bankLineId: string) =>
   rpc<{ success: boolean; bank_line_id: string }>('unmatch_bank_line', {
     p_bank_line_id: bankLineId,
   });
+
+export const unlinkFinanceExpenseBankLink = (expenseId: string, reason?: string) =>
+  rpc<{ success: boolean; expense_id: string; released_allocations: number }>(
+    'unlink_finance_expense_bank_atomic',
+    {
+      p_expense_id: expenseId,
+      p_reason: reason || 'Bank statement link removed by user',
+    },
+  );

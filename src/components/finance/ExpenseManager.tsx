@@ -11,7 +11,14 @@ import { getCategoryFieldRules } from './categoryFieldRules';
 import { SapRow, SapField, SAP_INPUT } from './SapLayout';
 import { useExpenseCategories } from './useExpenseCategories';
 import { BankTransactionLinkField } from './BankTransactionLinkField';
-import { approveFinanceExpense, editApprovedFinanceExpense, getReportingUsdRate, saveFinanceExpense } from '../../services/financeCommands';
+import {
+  approveFinanceExpense,
+  editApprovedFinanceExpense,
+  getReportingUsdRate,
+  saveAndLinkFinanceExpense,
+  saveFinanceExpense,
+  unlinkFinanceExpenseBankLink,
+} from '../../services/financeCommands';
 import {
   getEffectiveExpensePostingState,
   getEffectiveExpensePostingStates,
@@ -20,7 +27,6 @@ import {
 } from '../../services/expensePostingLifecycle';
 import {
   FINANCE_RECONCILIATION_REFRESH_EVENT,
-  linkBankTransaction,
   notifyFinanceReconciliationRefresh,
   unlinkBankTransaction,
 } from './bankTransactionLinking';
@@ -1321,7 +1327,6 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
       console.log('Full expense data:', expenseData);
 
       if (editingExpense) {
-        let bankAllocationError: string | null = null;
         // Regular update - bank expenses only (cash expenses go to Petty Cash Manager)
         console.log('=== UPDATING EXPENSE ===');
         console.log('Expense ID:', editingExpense.id);
@@ -1334,11 +1339,20 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
             selectedBankTransactionId || null,
             selectedBankAllocationAmount,
           );
+        } else if (selectedBankTransactionId) {
+          await saveAndLinkFinanceExpense(
+            editingExpense.id,
+            expenseData,
+            selectedBankTransactionId,
+            selectedBankAllocationAmount,
+            profile?.id,
+            formData.expense_category === 'salary' && !!selectedStaffId && applySalaryAdvance && persistedSalaryAdvanceApplied === 0,
+          );
         } else {
           await saveFinanceExpense(editingExpense.id, expenseData);
         }
 
-        if (formData.expense_category === 'salary' && selectedStaffId && applySalaryAdvance && persistedSalaryAdvanceApplied === 0) {
+        if (!selectedBankTransactionId && formData.expense_category === 'salary' && selectedStaffId && applySalaryAdvance && persistedSalaryAdvanceApplied === 0) {
           const { error: advanceError } = await supabase.rpc('apply_salary_advances_to_expense', {
             p_salary_expense_id: editingExpense.id,
             p_apply: true,
@@ -1387,74 +1401,31 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         ));
         void syncExpenseBankLinks([editingExpense.id]);
 
-        // Link to bank transaction if selected
         if (selectedBankTransactionId && !editingApprovedExpense) {
-          await approveFinanceExpense(editingExpense.id, profile?.id);
-          let linkFailed = false;
-          try {
-            await linkBankTransaction({
-              bankStatementLineId: selectedBankTransactionId,
-              matchedExpenseId: editingExpense.id,
-              note: `Linked to expense ${updatedExpense.voucher_number || editingExpense.id}`,
-              allocationAmount: selectedBankAllocationAmount,
-            });
-          } catch (linkError) {
-            linkFailed = true;
-            console.error('Error linking to bank transaction:', linkError);
-            bankAllocationError = supabaseErrorMessage(linkError);
-          }
-
-          if (!linkFailed) {
-            // Recompute expense paid state so Payment Breakdown matches Bank Reconciliation.
-            await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: editingExpense.id });
-            // Fetch the expense again to get updated bank_statement_lines
-            const { data: refreshedExpense, error: refreshError } = await supabase
-              .from('finance_expenses')
-              .select(`
-                *,
-                batches (batch_number),
-                import_containers (container_ref),
-                delivery_challans (challan_number),
-                bank_accounts (bank_name, account_number),
-                bank_statement_lines!bsl_matched_expense_fk (
-                  id,
-                  transaction_date,
-                  description,
-                  debit_amount,
-                  credit_amount,
-                  bank_account_id,
-                  bank_accounts (bank_name, account_number)
-                )
-              `)
-              .eq('id', editingExpense.id)
-              .single();
-
-            if (!refreshError && refreshedExpense) {
-              // Update local state with refreshed expense
-              setExpenses(prev => prev.map(exp =>
-                exp.id === editingExpense.id ? refreshedExpense : exp
-              ));
-
-              // Add to reconciled list
-              setReconciledExpenseIds(prev => new Set(prev).add(editingExpense.id));
-              notifyFinanceReconciliationRefresh();
-            }
-          }
+          setReconciledExpenseIds(prev => new Set(prev).add(editingExpense.id));
+          notifyFinanceReconciliationRefresh();
         }
 
-        alert(bankAllocationError
-          ? `Expense updated, but the bank allocation was not created: ${bankAllocationError}`
-          : 'Expense updated successfully');
+        alert('Expense updated successfully');
       } else {
-        let bankAllocationError: string | null = null;
         // Create new bank expense - cash expenses should be recorded in Petty Cash Manager
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not authenticated');
 
         console.log('=== CREATING NEW EXPENSE ===');
 
-        const newExpenseId = await saveFinanceExpense(null, { ...expenseData, created_by: user.id });
-        if (formData.expense_category === 'salary' && selectedStaffId && applySalaryAdvance) {
+        const newExpensePayload = { ...expenseData, created_by: user.id };
+        const newExpenseId = selectedBankTransactionId
+          ? await saveAndLinkFinanceExpense(
+              null,
+              newExpensePayload,
+              selectedBankTransactionId,
+              selectedBankAllocationAmount,
+              profile?.id || user.id,
+              formData.expense_category === 'salary' && !!selectedStaffId && applySalaryAdvance,
+            )
+          : await saveFinanceExpense(null, newExpensePayload);
+        if (!selectedBankTransactionId && formData.expense_category === 'salary' && selectedStaffId && applySalaryAdvance) {
           const { error: advanceError } = await supabase.rpc('apply_salary_advances_to_expense', {
             p_salary_expense_id: newExpenseId,
             p_apply: true,
@@ -1486,67 +1457,16 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
         console.log('document_urls from DB:', newExpense?.document_urls);
         console.log('Full new expense:', newExpense);
 
-        // Variable to hold the final expense (may be refreshed if linked to bank)
-        let finalExpense = newExpense;
+        const finalExpense = newExpense;
 
-        // Link to bank transaction if selected
         if (selectedBankTransactionId && newExpense) {
-          await approveFinanceExpense(newExpense.id, profile?.id);
-          let linkFailed = false;
-          try {
-            await linkBankTransaction({
-              bankStatementLineId: selectedBankTransactionId,
-              matchedExpenseId: newExpense.id,
-              note: `Linked to expense ${newExpense.voucher_number || newExpense.id}`,
-              allocationAmount: selectedBankAllocationAmount,
-            });
-          } catch (linkError) {
-            linkFailed = true;
-            console.error('Error linking to bank transaction:', linkError);
-            bankAllocationError = supabaseErrorMessage(linkError);
-          }
-
-          if (!linkFailed) {
-            // Recompute expense paid state so Payment Breakdown matches Bank Reconciliation.
-            await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: newExpense.id });
-            // Fetch the expense again to get updated bank_statement_lines
-            const { data: refreshedExpense, error: refreshError } = await supabase
-              .from('finance_expenses')
-              .select(`
-                *,
-                batches (batch_number),
-                import_containers (container_ref),
-                delivery_challans (challan_number),
-                bank_accounts (bank_name, account_number),
-                bank_statement_lines!bsl_matched_expense_fk (
-                  id,
-                  transaction_date,
-                  description,
-                  debit_amount,
-                  credit_amount,
-                  bank_account_id,
-                  bank_accounts (bank_name, account_number)
-                )
-              `)
-              .eq('id', newExpense.id)
-              .single();
-
-            if (!refreshError && refreshedExpense) {
-              // Use refreshed expense with bank_statement_lines included
-              finalExpense = refreshedExpense;
-
-              // Add to reconciled list
-              setReconciledExpenseIds(prev => new Set(prev).add(newExpense.id));
-              notifyFinanceReconciliationRefresh();
-            }
-          }
+          setReconciledExpenseIds(prev => new Set(prev).add(newExpense.id));
+          notifyFinanceReconciliationRefresh();
         }
 
         // Add to local state (with bank link if applicable)
         setExpenses(prev => [finalExpense, ...prev]);
-        alert(bankAllocationError
-          ? `Expense recorded, but the bank allocation was not created: ${bankAllocationError}`
-          : 'Expense recorded successfully');
+        alert('Expense recorded successfully');
       }
 
       setModalOpen(false);
@@ -1850,12 +1770,7 @@ export function ExpenseManager({ canManage, initialViewExpenseId, onInitialViewH
     )) return;
 
     try {
-      const linkedLine = editingExpense?.bank_statement_lines?.[0];
-      if (!linkedLine) throw new Error('Linked bank transaction not found.');
-      await unlinkBankTransaction(linkedLine.id);
-
-      // Recompute expense paid state so Payment Breakdown matches Bank Reconciliation.
-      await supabase.rpc('recalculate_expense_payment_state', { p_expense_id: expenseId });
+      await unlinkFinanceExpenseBankLink(expenseId);
 
       // Fetch the updated expense with relations
       const { data: updatedExpense, error: fetchError } = await supabase

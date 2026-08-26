@@ -25,6 +25,7 @@ import {
   linkBankStatementLine,
   saveCapitalContribution,
   saveBankLinkedFinanceJournal,
+  saveAndLinkFinanceExpense,
   saveFinanceExpense,
   saveFinanceLoan,
   saveFinanceLoanRepayment,
@@ -1809,7 +1810,7 @@ export function BankReconciliationEnhanced({
       if (!user) throw new Error('Not authenticated');
       if (line.currency === 'USD' && recordExchangeRate <= 1) throw new Error('Enter a valid USD-to-IDR exchange rate');
 
-      const expenseId = await saveFinanceExpense(null, {
+      await saveAndLinkFinanceExpense(null, {
         expense_category: category,
         expense_type: 'admin',
         amount: line.debit,
@@ -1823,9 +1824,7 @@ export function BankReconciliationEnhanced({
         exchange_rate: line.currency === 'IDR' ? 1 : recordExchangeRate,
         approval_status: 'pending_approval',
         created_by: user.id,
-      });
-      await approveFinanceExpense(expenseId, user.id);
-      await linkBankStatementLine(line.id, 'expense', expenseId);
+      }, line.id, undefined, user.id);
 
       setRecordModal(false);
       setRecordingLine(null);
