@@ -279,7 +279,39 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       journal_status: payment.journal_entry_id ? 'Posted' : 'Not posted',
     }));
 
-  return [...expenses, ...vouchers, ...imports, ...historicalPayments].sort((a, b) =>
+  const currentLines = [...expenses, ...vouchers, ...imports, ...historicalPayments];
+  const currentTotal = currentLines.reduce((sum, line) => sum + Number(line.pph_amount || 0), 0);
+  // Paid/filed/closed periods may intentionally preserve a historical snapshot
+  // in tax_periods.pph_total after the source document is no longer available.
+  // Represent only the untraceable remainder explicitly as a snapshot row so
+  // the drill-down remains honest without changing the register amount.
+  const snapshotRemainder = Number(row.pph_total || 0) - currentTotal;
+  const isSnapshotPeriod = ['paid', 'filed', 'closed'].includes(row.status);
+  if (isSnapshotPeriod && snapshotRemainder > 0.01) {
+    currentLines.push({
+      module: 'historical_tax_payment',
+      id: `snapshot-${row.tax_period_id}`,
+      doc_number: 'Historical tax snapshot',
+      doc_date: startDate,
+      period_date: startDate,
+      party: 'Historical / Snapshot',
+      description: 'Authoritative tax-period snapshot; original source document is unavailable.',
+      pph_code: null,
+      pph_amount: snapshotRemainder,
+      payment_method: null,
+      recon_status: null,
+      journal_reference: null,
+      journal_id: null,
+      posting_date: null,
+      journal_status: 'Historical snapshot',
+      tax_type: row.tax_type,
+      source_status: 'Historical / Snapshot',
+      is_official: true,
+      tax_period_id: row.tax_period_id,
+    });
+  }
+
+  return currentLines.sort((a, b) =>
     a.period_date.localeCompare(b.period_date) || a.doc_date.localeCompare(b.doc_date),
   );
 }

@@ -36,6 +36,9 @@ test('register drill-down uses the same explicit-period/due-date attribution', (
   assert.match(register, /assignedPeriod === row\.tax_period_id/);
   assert.match(register, /totalAmount: r\.pph_total/);
   assert.doesNotMatch(register, /latestPaymentDate/);
+  assert.match(register, /Historical tax snapshot/);
+  assert.match(register, /isSnapshotPeriod/);
+  assert.match(register, /snapshotRemainder/);
 });
 
 test('August and July expected accounting examples retain correct arithmetic', () => {
