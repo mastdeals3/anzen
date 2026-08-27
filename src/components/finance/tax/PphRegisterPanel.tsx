@@ -100,7 +100,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const [feRes, pvRes, importRes, historicalRes] = await Promise.all([
     supabase
       .from('finance_expenses')
-      .select('id, voucher_number, expense_date, due_date, pph_amount, pph_tax_period_id, description, payment_method, expense_category, approval_status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
+      .select('id, voucher_number, expense_date, due_date, pph_amount, tax_period_id, pph_tax_period_id, description, payment_method, expense_category, approval_status, pph_code:pph_code_id(code, tax_type), suppliers:supplier_id(company_name), staff:staff_id(full_name)')
       .gt('pph_amount', 0),
     supabase
       .from('payment_vouchers')
@@ -110,7 +110,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
     // Mirrors compute_period_ppn's import branch. Always PPh22.
     supabase
       .from('finance_expenses')
-      .select('id, voucher_number, expense_date, due_date, amount, pib_pph_amount, pph_tax_period_id, description, expense_category, approval_status, suppliers:supplier_id(company_name)')
+      .select('id, voucher_number, expense_date, due_date, amount, pib_pph_amount, tax_period_id, pph_tax_period_id, description, expense_category, approval_status, suppliers:supplier_id(company_name)')
       .in('expense_category', ['pib_import', 'pph_import']),
     row.tax_type === 'PPh_Unifikasi'
       ? supabase.from('tax_payments').select('id, tax_type, payment_date, amount, billing_code, ntpn, payment_reference, historical_source_reference, historical_source_note, journal_entry_id, status').eq('historical_source_status', 'missing_source_verified').gte('payment_date', startDate).lte('payment_date', endDate)
@@ -124,7 +124,8 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
   const periodDate = (expense: any): string =>
     expense.due_date ?? expense.expense_date;
   const isSelectedPeriod = (expense: any): boolean => {
-    if (row.tax_type !== 'PPh_Unifikasi' && expense.pph_tax_period_id) return expense.pph_tax_period_id === row.tax_period_id;
+    const assignedPeriod = expense.pph_tax_period_id ?? expense.tax_period_id;
+    if (row.tax_type !== 'PPh_Unifikasi' && assignedPeriod) return assignedPeriod === row.tax_period_id;
     const date = periodDate(expense);
     return date >= startDate && date <= endDate;
   };
@@ -193,7 +194,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
       tax_type: r.pph_code?.tax_type ?? pphType,
       source_status: r.approval_status === 'approved' ? 'Approved' : 'Pending Approval',
       is_official: r.approval_status === 'approved',
-      tax_period_id: r.pph_tax_period_id ?? null,
+      tax_period_id: r.pph_tax_period_id ?? r.tax_period_id ?? null,
       payment_method: r.payment_method,
       recon_status: null,
       ...journalFields(r.id),
@@ -246,7 +247,7 @@ async function loadPphDetail(row: Row): Promise<SourceLine[]> {
           tax_type: 'PPh22',
           source_status: r.approval_status === 'approved' ? 'Approved' : 'Pending Approval',
           is_official: r.approval_status === 'approved',
-          tax_period_id: r.pph_tax_period_id ?? null,
+          tax_period_id: r.pph_tax_period_id ?? r.tax_period_id ?? null,
           payment_method: null,
           recon_status: null,
           ...journalFields(r.id),
