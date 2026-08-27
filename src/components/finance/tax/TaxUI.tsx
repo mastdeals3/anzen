@@ -90,6 +90,7 @@ const chipTone: Record<string, string> = {
   closed:          'bg-gray-200 text-gray-700',
   paid:            'bg-green-50 text-green-700',
   partial:         'bg-amber-100 text-amber-800',
+  overpaid:        'bg-purple-100 text-purple-800',
   payment_pending: 'bg-yellow-100 text-yellow-800',
   filed:           'bg-green-100 text-green-700',
   overdue:         'bg-red-100 text-red-700',
@@ -115,6 +116,7 @@ export function paymentStatusLabel(status: string | null | undefined): string {
     case 'filed':           return 'Filed';
     case 'paid':            return 'Paid';
     case 'partial':         return 'Partial';
+    case 'overpaid':        return 'Overpaid';
     case 'overdue':         return 'Overdue';
     case 'payment_pending': return 'Payment Pending';
     case 'open':            return 'Open';
@@ -133,6 +135,7 @@ export function taxPaymentBusinessStatus(args: {
   const paid = Number(args.paidAmount ?? 0);
   const total = Number(args.totalAmount ?? (paid + outstanding));
   if (args.paymentStatus === 'closed' || args.paymentStatus === 'filed') return args.paymentStatus;
+  if (paid > total + 0.01) return 'overpaid';
   // A zero/empty aggregate is not evidence of settlement. "Paid" requires
   // both a real liability and no remaining balance.
   if (total > 0.01 && outstanding <= 0.01) return 'paid';

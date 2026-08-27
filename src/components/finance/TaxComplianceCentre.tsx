@@ -15,7 +15,7 @@ type TaxSubTab =
 
 const TABS: { id: TaxSubTab; label: string; icon: JSX.Element }[] = [
   { id: 'calendar', label: 'Calendar',       icon: <Calendar className="w-4 h-4" /> },
-  { id: 'periods',  label: 'PPN Periods',    icon: <TrendingUp className="w-4 h-4" /> },
+  { id: 'periods',  label: 'PPN',            icon: <TrendingUp className="w-4 h-4" /> },
   { id: 'pph',      label: 'PPh Register',   icon: <Layers className="w-4 h-4" /> },
   { id: 'payments', label: 'Tax Payments',   icon: <Receipt className="w-4 h-4" /> },
   { id: 'faktur',   label: 'Faktur Pajak',   icon: <FileText className="w-4 h-4" /> },
@@ -33,7 +33,7 @@ export function TaxComplianceCentre({ onOpenExpense, onOpenPayment, onOpenJourna
   const [active, setActive] = useState<TaxSubTab>('calendar');
 
   return (
-    <FinancePage title="Tax Compliance" subtitle="Periods, registers, payments, Faktur Pajak, and reports">
+    <FinancePage title="TAX COMPLIANCE">
       <div className="space-y-4">
       <div className="border-b border-gray-200 bg-white px-2 py-2">
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">

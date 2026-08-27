@@ -35,6 +35,7 @@ function statusChip(period: PeriodStatus): { color: string; icon: JSX.Element; l
     case 'closed':          return { color: 'bg-green-100 text-green-800', icon: <CheckCircle2 className="w-3 h-3" />, label };
     case 'filed':           return { color: 'bg-green-100 text-green-700', icon: <CheckCircle2 className="w-3 h-3" />, label };
     case 'paid':            return { color: 'bg-green-50 text-green-700',  icon: <CheckCircle2 className="w-3 h-3" />, label };
+    case 'overpaid':        return { color: 'bg-purple-100 text-purple-800', icon: <CheckCircle2 className="w-3 h-3" />, label };
     case 'overdue':         return { color: 'bg-red-100 text-red-800',     icon: <AlertCircle className="w-3 h-3" />, label };
     case 'payment_pending': return { color: 'bg-yellow-100 text-yellow-800', icon: <Clock className="w-3 h-3" />, label };
     default:                return { color: 'bg-gray-100 text-gray-700',   icon: <Clock className="w-3 h-3" />, label: 'Open' };
