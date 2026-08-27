@@ -12,7 +12,7 @@ import { SearchableSelect } from '../SearchableSelect';
 import { FileUpload } from '../FileUpload';
 import { showToast } from '../ToastNotification';
 import { formatDate } from '../../utils/dateFormat';
-import { resolveStorageUrlCached } from '../../utils/signedUrlCache';
+import { downloadStorageDocument, openStorageDocument, resolveStorageUrlCached } from '../../utils/signedUrlCache';
 import { formatCurrency } from '../../utils/currency';
 import { useFinance } from '../../contexts/FinanceContext';
 
@@ -102,7 +102,6 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice, initialViewInv
   const [viewLoading, setViewLoading] = useState(false);
   const [viewBlobUrl, setViewBlobUrl] = useState<string | null>(null);
   const [viewBlobLoading, setViewBlobLoading] = useState(false);
-  const [signedUrlCache, setSignedUrlCache] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [uploading, setUploading] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<PurchaseInvoice | null>(null);
@@ -240,9 +239,6 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice, initialViewInv
     setViewBlobUrl(null);
     await loadViewLineItems(invoice.id);
     if (invoice.document_urls && invoice.document_urls.length > 0) {
-      Promise.all(
-        invoice.document_urls.map(async (u) => [u, await resolveStorageUrlCached(u, 3600)] as [string, string])
-      ).then((entries) => setSignedUrlCache((prev) => ({ ...prev, ...Object.fromEntries(entries) })));
       setViewBlobLoading(true);
       try {
         const url = invoice.document_urls[0];
@@ -268,6 +264,25 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice, initialViewInv
       } finally {
         setViewBlobLoading(false);
       }
+    }
+  };
+
+  const handleOpenAttachment = async (url: string) => {
+    try {
+      await openStorageDocument(url);
+    } catch (err) {
+      console.error('Error opening purchase invoice attachment:', err);
+      showToast('Unable to open attachment. Please try again.', 'error');
+    }
+  };
+
+  const handleDownloadAttachment = async (url: string) => {
+    const filename = decodeURIComponent(url.split('/').pop()?.split('?')[0] || 'attachment');
+    try {
+      await downloadStorageDocument(url, filename);
+    } catch (err) {
+      console.error('Error downloading purchase invoice attachment:', err);
+      showToast('Unable to download attachment. Please try again.', 'error');
     }
   };
 
@@ -1237,7 +1252,8 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice, initialViewInv
                     <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded border border-gray-200">
                       <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
                       <span className="text-sm text-gray-700 flex-1 truncate">{url.split('/').pop()}</span>
-                      <a href={signedUrlCache[url] || url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex-shrink-0">Open</a>
+                      <button type="button" onClick={() => void handleOpenAttachment(url)} className="text-xs text-blue-600 hover:underline flex-shrink-0">Open</button>
+                      <button type="button" onClick={() => void handleDownloadAttachment(url)} className="text-xs text-blue-600 hover:underline flex-shrink-0">Download</button>
                     </div>
                   ))}
                 </div>
@@ -1296,15 +1312,14 @@ export function PurchaseInvoiceManager({ canManage, onPayInvoice, initialViewInv
                           The file may not have been uploaded to storage yet, or the storage bucket may not be accessible. Please use the "Open" button above to download or view the file.
                         </p>
                         <div className="flex flex-wrap gap-2">
-                          <a
-                            href={signedUrlCache[selectedInvoice.document_urls[0]] || selectedInvoice.document_urls[0]}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => void handleOpenAttachment(selectedInvoice.document_urls[0])}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded hover:bg-amber-50 text-xs font-medium"
                           >
                             <FileText className="w-3.5 h-3.5" />
                             Try Opening File
-                          </a>
+                          </button>
                         </div>
                       </div>
                     </div>

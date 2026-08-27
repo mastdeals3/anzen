@@ -63,11 +63,17 @@ export async function resolveStorageUrlCached(
 
 export async function openStorageDocument(fileUrl: string): Promise<void> {
   const resolved = await resolveStorageUrlCached(fileUrl, 3600);
+  if (resolved === fileUrl && isSupabaseStorageObjectUrl(fileUrl)) {
+    throw new Error('Unable to create a signed URL for this attachment.');
+  }
   window.open(resolved, '_blank', 'noopener,noreferrer');
 }
 
 export async function downloadStorageDocument(fileUrl: string, filename: string): Promise<void> {
   const resolved = await resolveStorageUrlCached(fileUrl, 3600, { download: filename });
+  if (resolved === fileUrl && isSupabaseStorageObjectUrl(fileUrl)) {
+    throw new Error('Unable to create a signed URL for this attachment.');
+  }
   const link = document.createElement('a');
   link.href = resolved;
   link.download = filename;
@@ -75,4 +81,12 @@ export async function downloadStorageDocument(fileUrl: string, filename: string)
   document.body.appendChild(link);
   link.click();
   link.remove();
+}
+
+function isSupabaseStorageObjectUrl(fileUrl: string): boolean {
+  try {
+    return /\/storage\/v1\/object\/(?:public|sign)\/[^/]+\/.+/.test(new URL(fileUrl).pathname);
+  } catch {
+    return false;
+  }
 }
