@@ -85,22 +85,12 @@ export function PeriodClosePanel() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <Lock className="w-5 h-5" /> Tax Period Close
-        </h3>
-        <p className="text-xs text-gray-500">
-          Closing a period requires all official Faktur Pajak recorded (PPN), all tax payments reconciled, and Rp 0 outstanding.
-          Once closed, sales invoices and expenses in that period cannot be edited (admin override via Reopen).
-        </p>
-      </div>
-
+    <div className="space-y-2">
       {!loading && periods.length > 0 && (
         <StatCardGrid cols={3}>
-          <StatCard label="Ready to close" value={summary.ready} money={false} tone={summary.ready > 0 ? 'green' : 'gray'} icon={<CheckCircle2 className="w-4 h-4" />} />
-          <StatCard label="Blocked" value={summary.blocked} money={false} tone={summary.blocked > 0 ? 'red' : 'gray'} icon={<AlertTriangle className="w-4 h-4" />} hint="Faktur / reconcile / outstanding" />
-          <StatCard label="Closed" value={summary.closed} money={false} tone="blue" icon={<Lock className="w-4 h-4" />} />
+          <StatCard label="Ready to close" value={summary.ready} money={false} tone={summary.ready > 0 ? 'green' : 'gray'} icon={<CheckCircle2 className="w-3.5 h-3.5" />} />
+          <StatCard label="Blocked" value={summary.blocked} money={false} tone={summary.blocked > 0 ? 'red' : 'gray'} icon={<AlertTriangle className="w-3.5 h-3.5" />} hint="Faktur / reconcile / outstanding" />
+          <StatCard label="Closed" value={summary.closed} money={false} tone="blue" icon={<Lock className="w-3.5 h-3.5" />} />
         </StatCardGrid>
       )}
 
@@ -111,16 +101,16 @@ export function PeriodClosePanel() {
       ) : (
         <SectionCard>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-xs">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left px-3 py-2">Period</th>
-                <th className="text-left px-3 py-2">Type</th>
-                <th className="text-left px-3 py-2">Status</th>
-                <th className="text-right px-3 py-2">Amount</th>
-                <th className="text-right px-3 py-2">Outstanding</th>
-                <th className="text-left px-3 py-2">Blockers</th>
-                <th className="px-3 py-2"></th>
+                <th className="text-left px-2.5 py-1.5">Period</th>
+                <th className="text-left px-2.5 py-1.5">Type</th>
+                <th className="text-left px-2.5 py-1.5">Status</th>
+                <th className="text-right px-2.5 py-1.5">Amount</th>
+                <th className="text-right px-2.5 py-1.5">Outstanding</th>
+                <th className="text-left px-2.5 py-1.5">Blockers</th>
+                <th className="px-2.5 py-1.5"></th>
               </tr>
             </thead>
             <tbody>
@@ -134,32 +124,32 @@ export function PeriodClosePanel() {
                 const canClose = p.status !== 'closed' && blockers.length === 0;
                 return (
                   <tr key={p.id} className="border-t">
-                    <td className="px-3 py-2 font-medium">{formatFinancePeriod(p.fiscal_year, p.period_month)}</td>
-                    <td className="px-3 py-2">{p.tax_type}</td>
-                    <td className="px-3 py-2"><StatusChip status={p.payment_status ?? p.status} /></td>
-                    <td className="px-3 py-2 text-right">Rp {Number(amount).toLocaleString('id-ID')}</td>
-                    <td className="px-3 py-2 text-right">{out > 0 ? <span className="text-red-700">Rp {out.toLocaleString('id-ID')}</span> : 'Rp 0'}</td>
-                    <td className="px-3 py-2 text-xs">
+                    <td className="px-2.5 py-1.5 font-medium">{formatFinancePeriod(p.fiscal_year, p.period_month)}</td>
+                    <td className="px-2.5 py-1.5">{p.tax_type}</td>
+                    <td className="px-2.5 py-1.5"><StatusChip status={p.payment_status ?? p.status} /></td>
+                    <td className="px-2.5 py-1.5 text-right tabular-nums">Rp {Number(amount).toLocaleString('id-ID')}</td>
+                    <td className="px-2.5 py-1.5 text-right tabular-nums">{out > 0 ? <span className="text-red-700">Rp {out.toLocaleString('id-ID')}</span> : 'Rp 0'}</td>
+                    <td className="px-2.5 py-1.5 text-[11px]">
                       {blockers.length === 0 ? (
                         <span className="text-green-700">Ready</span>
                       ) : (
                         <span className="text-red-700 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{blockers.join(' · ')}</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right">
+                    <td className="px-2.5 py-1.5 text-right">
                       {p.status === 'closed' ? (
                         <button
                           onClick={() => setReopenPrompt({ id: p.id, reason: '' })}
                           disabled={busyId === p.id}
-                          className="text-xs px-2 py-1 border rounded hover:bg-gray-50 inline-flex items-center gap-1"
+                          className="text-[11px] px-1.5 py-0.5 border rounded hover:bg-gray-50 inline-flex items-center gap-1"
                         >
-                          <Unlock className="w-3 h-3" /> Reopen (admin)
+                          <Unlock className="w-3 h-3" /> Reopen
                         </button>
                       ) : (
                         <button
                           onClick={() => void close(p.id)}
                           disabled={!canClose || busyId === p.id}
-                          className="text-xs px-2 py-1 border rounded hover:bg-gray-50 disabled:opacity-50 inline-flex items-center gap-1"
+                          className="text-[11px] px-1.5 py-0.5 border rounded hover:bg-gray-50 disabled:opacity-50 inline-flex items-center gap-1"
                         >
                           <Lock className="w-3 h-3" /> Close
                         </button>

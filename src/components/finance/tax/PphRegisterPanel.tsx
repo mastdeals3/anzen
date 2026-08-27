@@ -414,18 +414,13 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900">PPh Register</h3>
-        <p className="text-xs text-gray-500">Withholding tax (PPh) by period and type. Click a period row to see the source documents.</p>
-      </div>
-
-      <div className="flex gap-2 flex-wrap">
+    <div className="space-y-2">
+      <div className="flex gap-1.5 flex-wrap">
         {TABS.map(t => (
           <button
             key={t}
             onClick={() => setActive(t)}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition ${active === t ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-200'}`}
+            className={`px-2.5 py-1 text-xs font-medium rounded-md border transition ${active === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white hover:bg-gray-50 border-gray-200'}`}
           >
             {pphTabLabel(t)}
           </button>
@@ -453,18 +448,18 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
       ) : (
         <SectionCard>
           <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-xs">
             <thead className="bg-gray-50">
               <tr>
-                <th className="w-6 px-2 py-2"></th>
-                <th className="text-left px-3 py-2">Period</th>
-                <th className="text-left px-3 py-2">Status</th>
-                <th className="text-right px-3 py-2">Total PPh</th>
-                <th className="text-right px-3 py-2">Paid</th>
-                <th className="text-right px-3 py-2">Outstanding</th>
-                <th className="text-right px-3 py-2">Overpaid / Credit</th>
-                <th className="text-left px-3 py-2">Payment Due</th>
-                <th className="text-left px-3 py-2">Filing Due</th>
+                <th className="w-6 px-2 py-1.5"></th>
+                <th className="text-left px-2.5 py-1.5">Period</th>
+                <th className="text-left px-2.5 py-1.5">Status</th>
+                <th className="text-right px-2.5 py-1.5">Total PPh</th>
+                <th className="text-right px-2.5 py-1.5">Paid</th>
+                <th className="text-right px-2.5 py-1.5">Outstanding</th>
+                <th className="text-right px-2.5 py-1.5">Overpaid / Credit</th>
+                <th className="text-left px-2.5 py-1.5">Payment Due</th>
+                <th className="text-left px-2.5 py-1.5">Filing Due</th>
               </tr>
             </thead>
             <tbody>
@@ -488,21 +483,21 @@ export function PphRegisterPanel({ onOpenExpense, onOpenPayment, onOpenJournal }
                       className={`border-t cursor-pointer select-none ${isOpen ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                       onClick={() => void toggleExpand(r)}
                     >
-                      <td className="px-2 py-2 text-gray-400">
-                        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      <td className="px-2 py-1.5 text-gray-400">
+                        {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                       </td>
-                      <td className="px-3 py-2 font-medium">{formatFinancePeriod(r.fiscal_year, r.period_month)}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-2.5 py-1.5 font-medium">{formatFinancePeriod(r.fiscal_year, r.period_month)}</td>
+                      <td className="px-2.5 py-1.5">
                         <StatusChip status={businessStatus} />
                       </td>
-                      <td className="px-3 py-2 text-right">{fmt(r.pph_total)}</td>
-                      <td className="px-3 py-2 text-right text-green-700">{fmt(r.pph_paid_total)}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-orange-700">
-                        Rp {fmt(r.pph_outstanding)}
+                      <td className="px-2.5 py-1.5 text-right tabular-nums">{fmt(r.pph_total)}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums text-green-700">{fmt(r.pph_paid_total)}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums font-semibold text-orange-700">
+                        {fmt(r.pph_outstanding)}
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold text-blue-700">Rp {fmt(r.pph_overpaid)}</td>
-                      <td className="px-3 py-2">{r.payment_due_date ?? '—'}</td>
-                      <td className="px-3 py-2">{r.filing_due_date ?? '—'}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums font-semibold text-blue-700">{fmt(r.pph_overpaid)}</td>
+                      <td className="px-2.5 py-1.5 whitespace-nowrap">{r.payment_due_date ?? '—'}</td>
+                      <td className="px-2.5 py-1.5 whitespace-nowrap">{r.filing_due_date ?? '—'}</td>
                     </tr>
                     {isOpen && (
                       <tr key={`${r.tax_period_id}-detail`} className="bg-blue-50/30">

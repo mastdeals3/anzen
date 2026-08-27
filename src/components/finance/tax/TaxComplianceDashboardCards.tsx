@@ -136,8 +136,8 @@ export function TaxComplianceDashboardCards({ variant = 'grid' }: Props) {
   };
 
   const container = variant === 'compact'
-    ? 'grid grid-cols-2 lg:grid-cols-5 gap-2'
-    : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3';
+    ? 'grid grid-cols-2 lg:grid-cols-5 gap-1.5'
+    : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2';
 
   return (
     <section className="space-y-2">
@@ -155,13 +155,13 @@ export function TaxComplianceDashboardCards({ variant = 'grid' }: Props) {
           <button
             key={c.label}
             onClick={() => navigate('/finance/tax')}
-            className={`finance-card-button text-left border rounded p-3 hover:shadow-sm transition ${colorClass(c.color)}`}
+            className={`finance-card-button text-left border rounded-md px-2.5 py-1.5 hover:shadow-sm transition ${colorClass(c.color)}`}
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs opacity-80">{c.label}</p>
-                <p className="text-2xl font-bold mt-1">{c.value}</p>
-                <p className="text-xs mt-1 opacity-70">{c.subtitle}</p>
+                <p className="text-[11px] opacity-80">{c.label}</p>
+                <p className="text-lg font-bold mt-0.5">{c.value}</p>
+                <p className="text-[11px] mt-0.5 opacity-70">{c.subtitle}</p>
               </div>
               <div className="opacity-80">{c.icon}</div>
             </div>

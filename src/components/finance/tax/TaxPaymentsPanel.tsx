@@ -399,28 +399,29 @@ export function TaxPaymentsPanel({ onOpenJournal }: TaxPaymentsPanelProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-lg font-semibold">Tax Payments</h3>
         <div className="flex items-center gap-2">
-          <select value={typeFilter} onChange={event => setTypeFilter(event.target.value)} className="h-8 rounded border px-2 text-xs" aria-label="Tax payment type filter">
+          <select value={typeFilter} onChange={event => setTypeFilter(event.target.value)} className="h-7 rounded border px-2 text-xs" aria-label="Tax payment type filter">
             <option value="all">All types</option>
             {taxTypes.map(type => <option key={type} value={type}>{type}</option>)}
           </select>
           <span className="text-xs text-gray-500 hidden md:inline">
             {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
           </span>
+        </div>
+        <div className="flex items-center gap-1.5">
           <button
             onClick={exportExcel}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded-md hover:bg-gray-50"
           >
-            <Download className="w-4 h-4" /> Excel
+            <Download className="w-3.5 h-3.5" /> Excel
           </button>
           <button
             onClick={() => { if (showForm) cancelForm(); else setShowForm(true); }}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
-            <Plus className="w-4 h-4" /> Record Tax Payment
+            <Plus className="w-3.5 h-3.5" /> Record Tax Payment
           </button>
         </div>
       </div>
@@ -591,18 +592,18 @@ export function TaxPaymentsPanel({ onOpenJournal }: TaxPaymentsPanelProps) {
       ) : (
         <SectionCard>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-xs">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left px-3 py-2">Date</th>
-                <th className="text-left px-3 py-2">Type</th>
-                <th className="text-left px-3 py-2">Period</th>
-                <th className="text-left px-3 py-2">Bank</th>
-                <th className="text-right px-3 py-2">Amount</th>
-                <th className="text-left px-3 py-2">NTPN / Billing / Ref</th>
-                <th className="text-left px-3 py-2">Status</th>
-                <th className="text-center px-3 py-2">Files</th>
-                <th className="px-3 py-2"></th>
+                <th className="text-left px-2.5 py-1.5">Date</th>
+                <th className="text-left px-2.5 py-1.5">Type</th>
+                <th className="text-left px-2.5 py-1.5">Period</th>
+                <th className="text-left px-2.5 py-1.5">Bank</th>
+                <th className="text-right px-2.5 py-1.5">Amount</th>
+                <th className="text-left px-2.5 py-1.5">NTPN / Billing / Ref</th>
+                <th className="text-left px-2.5 py-1.5">Status</th>
+                <th className="text-center px-2.5 py-1.5">Files</th>
+                <th className="px-2.5 py-1.5"></th>
               </tr>
             </thead>
             <tbody>
@@ -610,40 +611,33 @@ export function TaxPaymentsPanel({ onOpenJournal }: TaxPaymentsPanelProps) {
                 const bank = p.bank_account_id ? bankById.get(p.bank_account_id) : null;
                 return (
                   <tr key={p.id} className={`border-t ${selected?.id === p.id ? 'bg-blue-50' : ''}`}>
-                    <td className="px-3 py-2">{p.payment_date}</td>
-                    <td className="px-3 py-2">{p.tax_type}</td>
-                    <td className="px-3 py-2">{periodLabelById.get(p.tax_period_id) ?? '—'}</td>
-                    <td className="px-3 py-2">{bank ? bankLabel(bank) : '—'}</td>
-                    <td className="px-3 py-2 text-right">Rp {Number(p.amount).toLocaleString('id-ID')}</td>
-                    <td className="px-3 py-2 text-xs">
+                    <td className="px-2.5 py-1.5 whitespace-nowrap">{p.payment_date}</td>
+                    <td className="px-2.5 py-1.5">{p.tax_type}</td>
+                    <td className="px-2.5 py-1.5">{periodLabelById.get(p.tax_period_id) ?? '—'}</td>
+                    <td className="px-2.5 py-1.5">{bank ? bankLabel(bank) : '—'}</td>
+                    <td className="px-2.5 py-1.5 text-right tabular-nums">Rp {Number(p.amount).toLocaleString('id-ID')}</td>
+                    <td className="px-2.5 py-1.5 text-[11px]">
                       {p.ntpn && <div><span className="text-gray-400">NTPN:</span> {p.ntpn}</div>}
                       {p.billing_code && <div><span className="text-gray-400">Billing:</span> {p.billing_code}</div>}
                       {p.payment_reference && <div><span className="text-gray-400">Ref:</span> {p.payment_reference}</div>}
                       {!p.ntpn && !p.billing_code && !p.payment_reference && '—'}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-2.5 py-1.5">
                       <span title={p.status === 'posted' ? 'Awaiting bank reconciliation — use "Link Bank Stmt" to match' : undefined}>
                         <StatusChip status={p.status} />
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-center">
-                      <button onClick={() => setSelected(p)} title={p.attachment_count ? `${p.attachment_count} attachment(s)` : 'No attachments'} className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-blue-700">
-                        <Paperclip className={`w-4 h-4 ${p.attachment_count ? 'text-blue-600' : 'text-gray-300'}`} />{p.attachment_count || '—'}
+                    <td className="px-2.5 py-1.5 text-center">
+                      <button onClick={() => setSelected(p)} title={p.attachment_count ? `${p.attachment_count} attachment(s)` : 'No attachments'} className="inline-flex items-center gap-1 text-[11px] text-gray-600 hover:text-blue-700">
+                        <Paperclip className={`w-3.5 h-3.5 ${p.attachment_count ? 'text-blue-600' : 'text-gray-300'}`} />{p.attachment_count || '—'}
                       </button>
                     </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap space-x-1">
-                      <button onClick={() => setSelected(p)} className="text-xs px-2 py-1 border rounded hover:bg-gray-50" title="View tax payment details"><Eye className="w-3 h-3" /></button>
-                      <button
-                        onClick={() => setSelected(p)}
-                        className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
-                        title="Attachments"
-                      >
-                        Files
-                      </button>
+                    <td className="px-2.5 py-1.5 text-right whitespace-nowrap space-x-1">
+                      <button onClick={() => setSelected(p)} className="text-[11px] px-1.5 py-0.5 border rounded hover:bg-gray-50" title="View tax payment details"><Eye className="w-3 h-3" /></button>
                       {p.journal_entry_id && (
                         <button
                           onClick={() => onOpenJournal?.(p.journal_entry_id!)}
-                          className="text-xs px-2 py-1 border rounded hover:bg-blue-50 text-blue-700 border-blue-200 inline-flex items-center gap-1"
+                          className="text-[11px] px-1.5 py-0.5 border rounded hover:bg-blue-50 text-blue-700 border-blue-200 inline-flex items-center gap-1"
                           title="Open the posted journal entry"
                         >
                           Journal
@@ -652,16 +646,16 @@ export function TaxPaymentsPanel({ onOpenJournal }: TaxPaymentsPanelProps) {
                       {p.status === 'posted' && p.journal_entry_id && (
                         <button
                           onClick={() => void openBslPicker(p)}
-                          className="text-xs px-2 py-1 border rounded hover:bg-purple-50 text-purple-700 border-purple-200 inline-flex items-center gap-1"
+                          className="text-[11px] px-1.5 py-0.5 border rounded hover:bg-purple-50 text-purple-700 border-purple-200 inline-flex items-center gap-1"
                           title="Link a bank statement line to reconcile this payment"
                         >
-                          Link Bank Stmt
+                          Link Bank
                         </button>
                       )}
                       <button
                         onClick={() => startEdit(p)}
                         disabled={p.status === 'reconciled'}
-                        className="text-xs px-2 py-1 border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1"
+                        className="text-[11px] px-1.5 py-0.5 border rounded hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1"
                         title={p.status === 'reconciled' ? 'Unmatch in Bank Reconciliation first (admin can override)' : 'Edit — reverses & reposts JE'}
                       >
                         <Pencil className="w-3 h-3" /> Edit
@@ -669,7 +663,7 @@ export function TaxPaymentsPanel({ onOpenJournal }: TaxPaymentsPanelProps) {
                       <button
                         onClick={() => void del(p)}
                         disabled={busyDeleteId === p.id}
-                        className="text-xs px-2 py-1 border rounded hover:bg-red-50 text-red-600 disabled:opacity-40 inline-flex items-center gap-1"
+                        className="text-[11px] px-1.5 py-0.5 border rounded hover:bg-red-50 text-red-600 disabled:opacity-40 inline-flex items-center gap-1"
                         title="Delete — reverses JE and releases bank reconciliation"
                       >
                         <Trash2 className="w-3 h-3" />

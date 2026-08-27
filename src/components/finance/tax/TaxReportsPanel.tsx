@@ -311,50 +311,50 @@ export function TaxReportsPanel() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <FileText className="w-5 h-5" /> Tax Reports
-        </h3>
         <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-gray-500" />
           <span className="text-xs text-gray-500 hidden md:inline">
             {dateRange.startDate} → {dateRange.endDate}
           </span>
+        </div>
+        <div className="flex items-center gap-1.5">
           <button
             onClick={exportExcel}
             disabled={rows.length === 0}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded-md hover:bg-gray-50 disabled:opacity-50"
           >
-            <Download className="w-4 h-4" /> Excel
+            <Download className="w-3.5 h-3.5" /> Excel
           </button>
           <button
             onClick={exportPdf}
             disabled={rows.length === 0}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm border rounded hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs border rounded-md hover:bg-gray-50 disabled:opacity-50"
           >
-            <Download className="w-4 h-4" /> PDF
+            <Download className="w-3.5 h-3.5" /> PDF
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-2">
         <SectionCard className="overflow-hidden p-0">
           {REPORTS.map(r => (
             <button
               key={r.id}
               onClick={() => setReportId(r.id)}
-              className={`w-full text-left px-3 py-2 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 ${
+              className={`w-full text-left px-2.5 py-1.5 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 ${
                 reportId === r.id ? 'bg-blue-50 border-l-2 border-l-blue-500' : 'border-l-2 border-l-transparent'
               }`}
             >
-              <div className="text-sm font-medium">{r.label}</div>
-              <div className="text-xs text-gray-500">{r.description}</div>
+              <div className="text-xs font-medium">{r.label}</div>
+              <div className="text-[11px] text-gray-500">{r.description}</div>
             </button>
           ))}
         </SectionCard>
 
         <div>
-          <div className="mb-2 text-sm">
+          <div className="mb-1.5 text-xs">
             <b>{activeReport.label}</b> — {activeReport.description}
           </div>
           {loading ? (

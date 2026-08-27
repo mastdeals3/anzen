@@ -311,12 +311,8 @@ export function TaxPeriodsPanel() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">PPN Periods</h3>
-          <p className="text-xs text-gray-500">Input / Output / Net PPN and carry-forward per period. Click a row to see source documents.</p>
-        </div>
         <span className="text-xs text-gray-500 hidden md:inline">
           {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
         </span>
@@ -343,18 +339,18 @@ export function TaxPeriodsPanel() {
       ) : (
         <SectionCard>
           <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-xs">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left px-3 py-2 w-6"></th>
-                <th className="text-left px-3 py-2">Period</th>
-                <th className="text-left px-3 py-2">Status</th>
-                <th className="text-right px-3 py-2">Input PPN</th>
-                <th className="text-right px-3 py-2">Output PPN</th>
-                <th className="text-right px-3 py-2">Carry Fwd In</th>
-                <th className="text-right px-3 py-2">Net Payable</th>
-                <th className="text-right px-3 py-2">Carry Fwd Out</th>
-                <th className="px-3 py-2"></th>
+                <th className="text-left px-2.5 py-1.5 w-6"></th>
+                <th className="text-left px-2.5 py-1.5">Period</th>
+                <th className="text-left px-2.5 py-1.5">Status</th>
+                <th className="text-right px-2.5 py-1.5">Input PPN</th>
+                <th className="text-right px-2.5 py-1.5">Output PPN</th>
+                <th className="text-right px-2.5 py-1.5">Carry Fwd In</th>
+                <th className="text-right px-2.5 py-1.5">Net Payable</th>
+                <th className="text-right px-2.5 py-1.5">Carry Fwd Out</th>
+                <th className="px-2.5 py-1.5"></th>
               </tr>
             </thead>
             <tbody>
@@ -367,21 +363,21 @@ export function TaxPeriodsPanel() {
                       className={`border-t cursor-pointer select-none ${isOpen ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                       onClick={() => void toggleExpand(r)}
                     >
-                      <td className="px-3 py-2 text-gray-400">
-                        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      <td className="px-2.5 py-1.5 text-gray-400">
+                        {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                       </td>
-                      <td className="px-3 py-2 font-medium">{formatFinancePeriod(r.fiscal_year, r.period_month)}</td>
-                      <td className="px-3 py-2"><StatusChip status={r.status} /></td>
-                      <td className="px-3 py-2 text-right text-red-700">{fmt(r.input_ppn_total)}</td>
-                      <td className="px-3 py-2 text-right text-green-700">{fmt(r.output_ppn_total)}</td>
-                      <td className="px-3 py-2 text-right">{fmt(r.carry_forward_in)}</td>
-                      <td className="px-3 py-2 text-right font-semibold">Rp {fmt(r.net_ppn_payable)}</td>
-                      <td className="px-3 py-2 text-right">{fmt(r.carry_forward_out)}</td>
-                      <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
+                      <td className="px-2.5 py-1.5 font-medium">{formatFinancePeriod(r.fiscal_year, r.period_month)}</td>
+                      <td className="px-2.5 py-1.5"><StatusChip status={r.status} /></td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums text-red-700">{fmt(r.input_ppn_total)}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums text-green-700">{fmt(r.output_ppn_total)}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums">{fmt(r.carry_forward_in)}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums font-semibold">Rp {fmt(r.net_ppn_payable)}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums">{fmt(r.carry_forward_out)}</td>
+                      <td className="px-2.5 py-1.5 text-right" onClick={e => e.stopPropagation()}>
                         <button
                           onClick={() => void recompute(r.tax_period_id)}
                           disabled={busyId === r.tax_period_id || r.status === 'closed'}
-                          className="text-xs px-2 py-1 border rounded hover:bg-gray-50 disabled:opacity-50 inline-flex items-center gap-1"
+                          className="text-[11px] px-1.5 py-0.5 border rounded hover:bg-gray-50 disabled:opacity-50 inline-flex items-center gap-1"
                         >
                           <RefreshCw className={`w-3 h-3 ${busyId === r.tax_period_id ? 'animate-spin' : ''}`} />
                           Recompute

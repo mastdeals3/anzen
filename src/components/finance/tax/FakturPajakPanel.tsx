@@ -438,25 +438,25 @@ export function FakturPajakPanel() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <FileText className="w-5 h-5" /> Faktur Pajak
-        </h3>
         <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-gray-500" />
           <span className="text-xs text-gray-500 hidden md:inline">
             {dateRange?.startDate ?? '—'} → {dateRange?.endDate ?? '—'}
           </span>
+        </div>
+        <div className="flex items-center gap-1.5">
           <FinanceSelect
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
           >
             <option value="all">All ({invoices.length})</option>
-            <option value="waiting">Waiting for Faktur ({waitingCount})</option>
+            <option value="waiting">Waiting ({waitingCount})</option>
             <option value="recorded">Recorded</option>
           </FinanceSelect>
           <FinanceButton type="button" onClick={exportExcel}>
-            <Download className="w-4 h-4" /> Excel
+            <Download className="w-3.5 h-3.5" /> Excel
           </FinanceButton>
         </div>
       </div>

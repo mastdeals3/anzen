@@ -8,19 +8,18 @@ import { FakturPajakPanel } from './tax/FakturPajakPanel';
 import { PeriodClosePanel } from './tax/PeriodClosePanel';
 import { TaxReportsPanel } from './tax/TaxReportsPanel';
 import { FinancePage } from './FinancePage';
-import { FinanceButton } from './FinanceUI';
 
 type TaxSubTab =
   | 'calendar' | 'periods' | 'pph' | 'payments' | 'faktur' | 'close' | 'reports';
 
 const TABS: { id: TaxSubTab; label: string; icon: JSX.Element }[] = [
-  { id: 'calendar', label: 'Calendar',       icon: <Calendar className="w-4 h-4" /> },
-  { id: 'periods',  label: 'PPN',            icon: <TrendingUp className="w-4 h-4" /> },
-  { id: 'pph',      label: 'PPh Register',   icon: <Layers className="w-4 h-4" /> },
-  { id: 'payments', label: 'Tax Payments',   icon: <Receipt className="w-4 h-4" /> },
-  { id: 'faktur',   label: 'Faktur Pajak',   icon: <FileText className="w-4 h-4" /> },
-  { id: 'close',    label: 'Period Close',   icon: <Lock className="w-4 h-4" /> },
-  { id: 'reports',  label: 'Tax Reports',    icon: <ShieldCheck className="w-4 h-4" /> },
+  { id: 'calendar', label: 'Calendar',       icon: <Calendar className="w-3.5 h-3.5" /> },
+  { id: 'periods',  label: 'PPN',            icon: <TrendingUp className="w-3.5 h-3.5" /> },
+  { id: 'pph',      label: 'PPh',             icon: <Layers className="w-3.5 h-3.5" /> },
+  { id: 'payments', label: 'Tax Payments',   icon: <Receipt className="w-3.5 h-3.5" /> },
+  { id: 'faktur',   label: 'Faktur Pajak',   icon: <FileText className="w-3.5 h-3.5" /> },
+  { id: 'close',    label: 'Period Close',   icon: <Lock className="w-3.5 h-3.5" /> },
+  { id: 'reports',  label: 'Reports',        icon: <ShieldCheck className="w-3.5 h-3.5" /> },
 ];
 
 interface Props {
@@ -34,24 +33,27 @@ export function TaxComplianceCentre({ onOpenExpense, onOpenPayment, onOpenJourna
 
   return (
     <FinancePage title="TAX COMPLIANCE">
-      <div className="space-y-4">
-      <div className="border-b border-gray-200 bg-white px-2 py-2">
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1">
+      <div className="space-y-2">
+      <div className="border-b border-gray-200 bg-white px-1 py-1.5">
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
           {TABS.map(t => (
-            <FinanceButton
+            <button
               key={t.id}
               onClick={() => setActive(t.id)}
-              variant={active === t.id ? 'primary' : 'ghost'}
-              className="flex-none"
+              className={`flex-none inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md transition ${
+                active === t.id
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
             >
               {t.icon}
               {t.label}
-            </FinanceButton>
+            </button>
           ))}
         </div>
       </div>
 
-      <Suspense fallback={<div className="text-gray-500">Loading…</div>}>
+      <Suspense fallback={<div className="text-gray-500 text-sm">Loading…</div>}>
         {active === 'calendar' && <TaxCalendarPanel />}
         {active === 'periods'  && <TaxPeriodsPanel />}
         {active === 'pph'      && <PphRegisterPanel onOpenExpense={onOpenExpense} onOpenPayment={onOpenPayment} onOpenJournal={onOpenJournal} />}
