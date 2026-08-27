@@ -15,8 +15,8 @@ interface Product {
   product_name: string;
   product_code: string | null;
   hsn_code: string;
-  category: string;
-  unit: string;
+  category: string | Record<string, unknown> | null;
+  unit: string | Record<string, unknown> | null;
   packaging_type: string;
   default_supplier: string;
   description: string;
@@ -25,6 +25,20 @@ interface Product {
   duty_percent?: number | null;
   current_stock?: number;
   is_active: boolean;
+}
+
+/** Resolve plain or joined category/unit values without ever rendering [object Object]. */
+function displayProductReference(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    for (const key of ['name', 'category_name', 'unit_name', 'label', 'value']) {
+      const candidate = record[key];
+      if (typeof candidate === 'string' || typeof candidate === 'number') return String(candidate);
+    }
+  }
+  return '-';
 }
 
 interface ProductSource {
@@ -581,8 +595,8 @@ export function Products() {
       )
     },
     { key: 'hsn_code', label: t('products.hsnCode') },
-    { key: 'category', label: t('products.category'), render: (value: any) => value === null || value === undefined ? '-' : String(value) },
-    { key: 'unit', label: t('products.unit'), render: (value: any) => value === null || value === undefined ? '-' : String(value) },
+    { key: 'category', label: t('products.category'), render: (value: any) => displayProductReference(value) },
+    { key: 'unit', label: t('products.unit'), render: (value: any) => displayProductReference(value) },
     {
       key: 'current_stock',
       label: t('products.currentStock'),
@@ -939,15 +953,15 @@ export function Products() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">Category</p>
-                <p className="font-medium">{viewingProduct.category?.toUpperCase()}</p>
+                <p className="font-medium">{displayProductReference(viewingProduct.category)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Unit</p>
-                <p className="font-medium">{viewingProduct.unit?.toUpperCase()}</p>
+                <p className="font-medium">{displayProductReference(viewingProduct.unit)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Current Stock</p>
-                <p className="font-medium">{viewingProduct.current_stock?.toFixed(2) || '0.00'}</p>
+                <p className="font-medium">{viewingProduct.current_stock === null || viewingProduct.current_stock === undefined ? '0.00' : Number(viewingProduct.current_stock).toFixed(2)}</p>
               </div>
             </div>
 
