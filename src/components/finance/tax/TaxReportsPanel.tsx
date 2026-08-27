@@ -69,7 +69,7 @@ function fmtCell(col: string, v: string | number | null): string {
 async function fetchReport(id: ReportId, startDate: string, endDate: string): Promise<Row[]> {
   const { data: selectedPeriods } = await supabase
     .from('tax_periods')
-    .select('id, tax_type')
+    .select('id, tax_type, fiscal_year, period_month, period_start, period_end')
     .lte('period_start', endDate)
     .gte('period_end', startDate);
   const periodIds = (selectedPeriods ?? []).map(period => period.id);
@@ -85,7 +85,12 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
         ? query.or(`tax_period_id.in.(${ppnPeriodIds.join(',')}),and(tax_period_id.is.null,expense_date.gte.${startDate},expense_date.lte.${endDate})`)
         : query.is('tax_period_id', null).gte('expense_date', startDate).lte('expense_date', endDate);
       const { data } = await query;
-      return (data ?? []) as Row[];
+      return ((data ?? []) as any[]).map(r => ({
+        'Period': (() => { const d = String(r.expense_date ?? ''); return formatFinancePeriod(Number(d.slice(0,4)), Number(d.slice(5,7))); })(),
+        'Document': r.voucher_number ?? r.invoice_number ?? '',
+        'Date': r.expense_date ?? '',
+        'Input PPN (Rp)': Number(r.ppn_amount ?? r.input_ppn ?? r.tax_amount ?? 0),
+      }));
     }
     case 'output_ppn': {
       let query = supabase
@@ -96,7 +101,12 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
         ? query.or(`tax_period_id.in.(${ppnPeriodIds.join(',')}),and(tax_period_id.is.null,invoice_date.gte.${startDate},invoice_date.lte.${endDate})`)
         : query.is('tax_period_id', null).gte('invoice_date', startDate).lte('invoice_date', endDate);
       const { data } = await query;
-      return (data ?? []) as Row[];
+      return ((data ?? []) as any[]).map(r => ({
+        'Period': (() => { const d = String(r.invoice_date ?? ''); return formatFinancePeriod(Number(d.slice(0,4)), Number(d.slice(5,7))); })(),
+        'Invoice': r.invoice_number ?? '',
+        'Date': r.invoice_date ?? '',
+        'Output PPN (Rp)': Number(r.ppn_amount ?? r.output_ppn ?? r.tax_amount ?? 0),
+      }));
     }
     case 'ppn_payable': {
       const { data } = await supabase
@@ -106,7 +116,15 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
         .lte('period_start', endDate)
         .order('fiscal_year', { ascending: false })
         .order('period_month', { ascending: false });
-      return (data ?? []) as Row[];
+      return ((data ?? []) as any[]).map(r => ({
+        'Period': formatFinancePeriod(Number(r.fiscal_year), Number(r.period_month)),
+        'Input PPN (Rp)': Number(r.input_ppn ?? r.input_ppn_amount ?? 0),
+        'Output PPN (Rp)': Number(r.output_ppn ?? r.output_ppn_amount ?? 0),
+        'Carry Forward In (Rp)': Number(r.carry_forward_in ?? 0),
+        'Carry Forward Out (Rp)': Number(r.carry_forward_out ?? 0),
+        'PPN Payable / (Credit) (Rp)': Number(r.ppn_payable ?? r.net_ppn ?? r.net_amount ?? 0),
+        'Status': r.payment_status ?? r.status ?? 'open',
+      }));
     }
     case 'pph_register': {
       const startYM = startDate.slice(0, 7); // "YYYY-MM"
@@ -131,7 +149,7 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
         'Actual Payment (Rp)': Number(r.pph_paid_total ?? 0),
         'Outstanding (Rp)': Number(r.pph_outstanding ?? 0),
         'Overpaid / Credit (Rp)': Number(r.pph_overpaid ?? 0),
-        'Status':           r.status as string,
+        'Status':           (r.payment_status ?? r.status ?? 'open') as string,
         'Payment Due':      (r.payment_due_date as string) ?? '',
         'Filing Due':       (r.filing_due_date as string) ?? '',
       }));
@@ -143,11 +161,15 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
         .select('payment_date, tax_period_id, tax_type, amount, billing_code, ntpn, payment_reference, government_reference, status, journal_entry_id, notes, bank_accounts:bank_account_id(alias, bank_name, account_name)')
         .in('tax_period_id', periodIds)
         .order('payment_date', { ascending: false });
+      const periodMap = new Map((selectedPeriods ?? []).map(p => [p.id, p]));
       return ((data ?? []) as Array<Record<string, unknown>>).map(r => {
         const bank = r.bank_accounts as { alias?: string; bank_name?: string; account_name?: string } | null;
         const bankLabel = bank ? (bank.alias || `${bank.bank_name ?? ''} - ${bank.account_name ?? ''}`) : '';
+        const period = periodMap.get(r.tax_period_id as string) as any;
         return {
           'Payment Date':   r.payment_date as string,
+          'Reference':      (r.payment_reference || r.government_reference || r.ntpn || r.billing_code || '') as string,
+          'Tax Period':     period ? formatFinancePeriod(period.fiscal_year, period.period_month) : '',
           'Tax Type':       r.tax_type as string,
           'Amount (Rp)':    Number(r.amount ?? 0),
           'Bank':           bankLabel,
@@ -156,15 +178,26 @@ async function fetchReport(id: ReportId, startDate: string, endDate: string): Pr
           'Payment Ref':    (r.payment_reference as string) ?? '',
           'Gov Ref':        (r.government_reference as string) ?? '',
           'Status':         r.status as string,
-          'JE #':           (r.journal_entry_id as string) ?? '',
+          'Reconciliation': r.status as string,
           'Notes':          (r.notes as string) ?? '',
         };
       });
     }
     case 'outstanding': {
       if (periodIds.length === 0) return [];
-      const { data } = await supabase.from('vw_outstanding_tax').select('*').in('tax_period_id', periodIds);
-      return (data ?? []) as Row[];
+      const { data } = await supabase.from('vw_tax_period_status').select('*').in('id', periodIds);
+      return ((data ?? []) as any[])
+        .filter(r => Number(r.outstanding_amount ?? 0) > 0.01 || Number(r.overpaid_amount ?? 0) > 0.01)
+        .map(r => ({
+          'Period': formatFinancePeriod(Number(r.fiscal_year), Number(r.period_month)),
+          'Tax Type': r.tax_type,
+          'Tax Total (Rp)': Number(r.tax_type === 'PPN' ? (r.net_ppn ?? 0) : (r.pph_total ?? 0)),
+          'Actual Payment (Rp)': Number(r.paid_amount ?? 0),
+          'Outstanding (Rp)': Number(r.outstanding_amount ?? 0),
+          'Overpaid / Credit (Rp)': Number(r.overpaid_amount ?? 0),
+          'Status': r.payment_status ?? 'open',
+          'Payment Due': r.payment_due_date ?? '',
+        }));
     }
     case 'monthly_summary': {
       const { data } = await supabase

@@ -32,7 +32,8 @@ test('zero total and zero paid can never resolve to Paid', () => {
 
 test('register drill-down uses the same explicit-period/due-date attribution', () => {
   assert.match(register, /expense\.due_date \?\? expense\.expense_date/);
-  assert.match(register, /expense\.pph_tax_period_id === row\.tax_period_id/);
+  assert.match(register, /expense\.pph_tax_period_id \?\? expense\.tax_period_id/);
+  assert.match(register, /assignedPeriod === row\.tax_period_id/);
   assert.match(register, /totalAmount: r\.pph_total/);
   assert.doesNotMatch(register, /latestPaymentDate/);
 });

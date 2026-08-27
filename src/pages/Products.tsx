@@ -581,12 +581,16 @@ export function Products() {
       )
     },
     { key: 'hsn_code', label: t('products.hsnCode') },
-    { key: 'category', label: t('products.category'), render: (value: any) => (value && typeof value === 'string') ? value.toUpperCase() : '-' },
-    { key: 'unit', label: t('products.unit'), render: (value: any) => (value && typeof value === 'string') ? value.toUpperCase() : '-' },
+    { key: 'category', label: t('products.category'), render: (value: any) => value === null || value === undefined ? '-' : String(value) },
+    { key: 'unit', label: t('products.unit'), render: (value: any) => value === null || value === undefined ? '-' : String(value) },
     {
       key: 'current_stock',
       label: t('products.currentStock'),
-      render: (value: any) => (value !== null && value !== undefined && typeof value === 'number') ? value.toFixed(2) : '-'
+      render: (value: any) => {
+        if (value === null || value === undefined || value === '') return '-';
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric.toFixed(2) : '-';
+      }
     },
     { key: 'duty_a1', label: t('products.dutyA1') }
   ];
