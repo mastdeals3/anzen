@@ -297,11 +297,12 @@ export function calculatePPh(
 // (supabase/migrations/20260721123642_...sql line 222-226) which is the
 // authoritative posting engine. Do not diverge from that formula.
 //
-//   net_payable = amount + ppn − pph + stamp_duty
-//                          + (expense_category === 'utilities' ? bank_charges : 0)
+//   net_payable = amount + ppn − pph + stamp_duty + bank_charges
 //
-// Bank charges only apply when expense_category is 'utilities' — this matches
-// the trigger and the form's business rule.
+// bank_charges_amount is an additional cash component whenever it is present
+// on a paid expense. The journal/payment workflow is authoritative for whether
+// a charge was actually posted; the display must not omit it based on a stale
+// or legacy category label.
 
 /** Input shape — accepts any object with finance_expenses-style fields. */
 export interface ExpenseTotalsInput {
@@ -318,7 +319,7 @@ export interface ExpenseTotals {
   ppnAmount: number;
   pphAmount: number;
   stampDutyAmount: number;
-  /** Bank charges as applied (0 unless expense_category === 'utilities'). */
+  /** Additional bank charges included in the actual cash payment. */
   bankChargesAmount: number;
   /** Supplier/employee payable before bank-owned charges. */
   netPayable: number;
@@ -336,14 +337,14 @@ export function calculateExpenseTotals(exp: ExpenseTotalsInput): ExpenseTotals {
   const pph = Number(exp.pph_amount) || 0;
   const stamp = Number(exp.stamp_duty_amount) || 0;
   const rawBank = Number(exp.bank_charges_amount) || 0;
-  const bank = exp.expense_category === 'utilities' ? rawBank : 0;
+  const bank = rawBank;
   return {
     amount,
     ppnAmount: ppn,
     pphAmount: pph,
     stampDutyAmount: stamp,
     bankChargesAmount: bank,
-    netPayable: amount + ppn - pph + stamp,
+    netPayable: amount + ppn - pph + stamp + bank,
     settlementAmount: amount + ppn - pph + stamp + bank,
   };
 }
