@@ -81,7 +81,9 @@ function resolveFallbackState(
     && !journal.is_reversed
     && (
       journal.source_module === 'historical_salary_advance_repair'
-      || (journal.source_module === 'historical_repair' && journal.reference_number?.startsWith('HR-AP-'))
+      || (journal.source_module === 'historical_repair'
+        && (journal.reference_number?.startsWith('HR-AP-')
+          || journal.reference_number?.startsWith('HR-CASH-')))
     ),
   );
   const activeOriginals = originals.filter(journal => !journal.is_reversed).sort(newestFirst);
