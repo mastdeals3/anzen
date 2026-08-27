@@ -146,11 +146,17 @@ export function PayablesManager({ canManage }: PayablesManagerProps) {
 
   const loadOutstandingPurchaseInvoices = async () => {
     try {
-      const { data, error } = await supabase.rpc('get_outstanding_purchase_invoices', { p_as_of_date: dateRange.endDate });
+      const { data, error } = await supabase
+        .from('purchase_invoices')
+        .select('id, invoice_number, invoice_date, due_date, total_amount, paid_amount, balance_amount, currency, suppliers(company_name)')
+        .in('status', ['pending', 'partial'])
+        .gt('balance_amount', 0)
+        .lte('invoice_date', dateRange.endDate)
+        .order('due_date', { ascending: true });
       if (error) throw error;
       setOutstandingPurchaseInvoices((data || []).map(invoice => ({
         ...invoice,
-        suppliers: invoice.supplier_name ? { company_name: invoice.supplier_name } : null,
+        suppliers: Array.isArray(invoice.suppliers) ? invoice.suppliers[0] || null : invoice.suppliers,
       })) as OutstandingPurchaseInvoice[]);
     } catch (error) {
       console.error('Error loading outstanding purchase invoices:', error);
